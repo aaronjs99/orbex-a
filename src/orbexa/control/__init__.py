@@ -23,7 +23,7 @@ from orbexa.control.problem_builder import (
     build_mpc_problem,
     build_from_dynamics,
 )
-from orbexa.control.dynamictube import ancillary_controller, calc_delta, calc_d
+from orbexa.control.dynamic_tube import ancillary_controller, calc_delta, calc_d
 
 __all__ = [
     "MPCController",

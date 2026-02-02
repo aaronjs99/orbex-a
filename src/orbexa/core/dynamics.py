@@ -196,7 +196,7 @@ def orbital_ellp_undrag(
         """Evaluation of LTV matrix A at time t or anomaly q."""
         solver = kwargs.get("solver", kwargs.get("m", np))
         q_val = kwargs.get("q")
-        
+
         if q_val is None:
             if eccentricity == 0.0:
                 q_val = mean_motion * (t - t_p)
@@ -205,10 +205,12 @@ def orbital_ellp_undrag(
                 M_val = mean_motion * (t - t_p)
                 enc_arg = M_val / 2.0
                 E_val = 2 * solver.atan(
-                    solver.sqrt((1 - eccentricity) / (1 + eccentricity)) * solver.tan(enc_arg)
+                    solver.sqrt((1 - eccentricity) / (1 + eccentricity))
+                    * solver.tan(enc_arg)
                 )
                 q_val = 2 * solver.atan(
-                    solver.sqrt((1 + eccentricity) / (1 - eccentricity)) * solver.tan(E_val / 2)
+                    solver.sqrt((1 + eccentricity) / (1 - eccentricity))
+                    * solver.tan(E_val / 2)
                 )
 
         # Denominators

@@ -424,7 +424,8 @@ if __name__ == "__main__":
         except:
             try:
                 Q[i] = Q_range[i]["p1"]
-            except:
+            except (KeyError, IndexError):
+                # Use default Q value if range specification is invalid
                 pass
     sol = fn(
         hyperopt_params={
@@ -474,7 +475,7 @@ if __name__ == "__main__":
         from orbexa.visualization.orbitsim import create_animation_html
 
         create_animation_html(
-            "../plots/optimobserve.html",
+            "../plots/observation.html",
             x,
             y,
             z,

@@ -182,7 +182,7 @@ class SimulationConfig:
             bandwidth_range=tube_data["bandwidth_range"],
         )
 
-        return cls(
+        config = cls(
             seed=data["seed"],
             dt=data["dt"],
             dtheta=data.get("dtheta", 0.0),

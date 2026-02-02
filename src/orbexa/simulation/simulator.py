@@ -206,8 +206,12 @@ def create_animation_figure(
 
     # Validation
     if not (len(x_positions) == len(y_positions) == len(z_positions) == num_agents):
-        # Warn or raise? Proceeding safest for now
-        pass
+        # Warn and adjust to minimum length for safety
+        min_length = min(
+            len(x_positions), len(y_positions), len(z_positions), num_agents
+        )
+        logger.warning(f"Mismatch in position array lengths, using {min_length} agents")
+        num_agents = min_length
 
     for agent in range(num_agents):
         if lines:
@@ -926,8 +930,12 @@ def plot_deflection(target, x_surface, r_agents, f_agents, plot_flags, *args, **
                 plt.plot(t, force[j], label=f"$f_{agent},{['x','y','z'][j]}$")
         plt.legend()
         if target_folder:
-            # save
-            pass
+            # Save the plot to target folder
+            os.makedirs(target_folder, exist_ok=True)
+            plt.savefig(
+                os.path.join(target_folder, "forces.png"), dpi=150, bbox_inches="tight"
+            )
+            plt.close()
         else:
             plt.show()
 
@@ -1003,5 +1011,5 @@ if __name__ == "__main__":
             fname, X, Y, Z, [f"Agent {i+1}" for i in range(num_agents)]
         )
     else:
-        # Mocking import logic
-        pass
+        # Mocking import logic - placeholder for remote data import
+        logger.info("Remote mode enabled - import logic not implemented")

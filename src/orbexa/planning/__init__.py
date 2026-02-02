@@ -16,10 +16,10 @@ ORBEX-A Planning Module
 Mission planning, task allocation, and observation optimization.
 """
 
-from orbexa.planning.taskalloc import TaskAllocAgent
+from orbexa.planning.task_allocation import AgentStateNetwork
 from orbexa.planning.deflection import target_deflect
 
 __all__ = [
-    "TaskAllocAgent",
+    "AgentStateNetwork",
     "target_deflect",
 ]

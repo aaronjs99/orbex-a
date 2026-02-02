@@ -375,4 +375,13 @@ def run_adaptation(
 
 if __name__ == "__main__":
     # Example usage for testing
-    pass
+    import numpy as np
+
+    # Mock configuration for testing
+    range_params = {"dt": 0.1, "data_range": 100, "adaptation_range": 10}
+
+    # Mock measurement data
+    W = [np.random.rand(10, 1) for _ in range(50)]
+
+    print("Adaptor module test - placeholder implementation")
+    print(f"Mock data shape: {len(W)} measurements")

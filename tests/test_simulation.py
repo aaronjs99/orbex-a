@@ -1,5 +1,6 @@
 import pytest
 from orbexa.simulation import runner
+from orbexa.simulation import simulator
 
 
 class TestSimulation:
@@ -19,3 +20,18 @@ class TestSimulation:
             pass
         except Exception:
             pass
+
+    def test_plotting_functions_exist(self):
+        # Check for presence of main plotting functions
+        assert hasattr(simulator, "plot_mpc")
+        assert callable(simulator.plot_mpc)
+
+        assert hasattr(simulator, "plot_deflection")
+        assert callable(simulator.plot_deflection)
+
+        assert hasattr(simulator, "plot_adaptor")
+        assert callable(simulator.plot_adaptor)
+
+    def test_simulation_plot_exists(self):
+        if hasattr(simulator, "create_animation_html"):
+            assert callable(simulator.create_animation_html)

@@ -76,7 +76,9 @@ class GekkoSolver(SolverBase):
             # Tube MPC constraint tightening (if enabled)
             # Note: For robust MPC, state bounds are typically tightened by the tube radius.
             # In this version, we assume provided bounds are pre-tightened or handled externally.
-            pass
+            # Placeholder for future tube MPC implementation
+            if tube_mpc and tube_mpc.get("enabled", False):
+                logger.debug("Tube MPC enabled - bounds should be pre-tightened")
 
         solver = GEKKO(remote=self.remote)
         solver.time = np.linspace(0, problem.num_steps * problem.dt, problem.num_steps)
@@ -85,7 +87,7 @@ class GekkoSolver(SolverBase):
         p = problem.num_inputs
 
         # --- Parameters ---
-        # Optimization weight (can be used for forgetting factors etc.) 
+        # Optimization weight (can be used for forgetting factors etc.)
         w_param = solver.Param(value=np.ones(problem.num_steps))
 
         # Final Step Indicator
