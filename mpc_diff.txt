@@ -1,0 +1,1198 @@
+17d16
+< import argparse
+42c41,48
+<     timeParams, nom_matrices, act_matrices, bounds, solverParams, *args, **kwargs
+---
+>     timeParams,
+>     nom_matrices,
+>     act_matrices,
+>     bounds,
+>     solverParams,
+>     numChasers=1,
+>     *args,
+>     **kwargs,
+49,51c55,57
+<     x_0 = solverParams["x_0"]
+<     x_f = solverParams["x_f"]
+<     u_0 = solverParams["u_0"]
+---
+>     X_0 = solverParams["X_0"]
+>     X_f = solverParams["X_f"]
+>     U_0 = solverParams["U_0"]
+73,81c79,86
+<     if True:
+<         t = m.Var(value=0)
+<         q = m.Var(value=0, fixed_initial=False)
+<         x_nom = [m.Var(value=x_0[i], fixed_initial=True) for i in range(len(x_0))]
+<         x_act = [m.Var(value=x_0[i], fixed_initial=True) for i in range(len(x_0))]
+<         u_nom = [m.Var(value=u_0[i], fixed_initial=False) for i in range(len(u_0))]
+<         u_act = [m.Var(value=u_0[i], fixed_initial=False) for i in range(len(u_0))]
+<         W = m.Param(value=w)
+<         final = m.Param(value=final)
+---
+>     t = m.Var(value=0)
+>     q = m.Var(value=0, fixed_initial=False)
+>     X_nom = [m.Var(value=X_0[i], fixed_initial=True) for i in range(len(X_0))]
+>     X_act = [m.Var(value=X_0[i], fixed_initial=True) for i in range(len(X_0))]
+>     U_nom = [m.Var(value=U_0[i], fixed_initial=False) for i in range(len(U_0))]
+>     U_act = [m.Var(value=U_0[i], fixed_initial=False) for i in range(len(U_0))]
+>     W = m.Param(value=w)
+>     final = m.Param(value=final)
+83,84c88,89
+<         A_nom_val = A_nom(t + t_s, p.t_p, m=m)
+<         d_nom_val = d_nom(t + t_s, p.t_p, m=m)
+---
+>     A_nom_val = A_nom(t + t_s, p.t_p, m=m)
+>     d_nom_val = d_nom(t + t_s, p.t_p, m=m)
+86c91
+<     ## Constraint Equations ##
+---
+>     ## Constraint Equations Initialization ##
+87a93,96
+>     ## Objective Function Initialization ##
+>     intErrorArr = []
+>     finErrorArr = []
+> 
+89,146c98,104
+<     if True:
+<         eqs.append(t.dt() == 1)
+<         E = m.Intermediate(
+<             2 * m.atan(np.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(t / 2))
+<         )
+<         M = m.Intermediate(E - eccentricity * m.sin(E))
+<         eqs.append(q == p.t_p + t_s + M / p.n)
+<     ### Nominal System Dynamics ###
+<     for i in range(0, 3):
+<         eqs.append(x_nom[i + 0].dt() == x_nom[i + 3])
+<         eqs.append(
+<             x_nom[i + 3].dt()
+<             == np.matmul(A_nom_val[i + 3], x_nom) + u_nom[i] + d_nom_val[i + 3]
+<         )
+<     ### System Error ###
+<     if "tubeMPC" in solverParams and solverParams["tubeMPC"]["runTube"]:
+<         r_tilde = [1.10 * (x_act[i] - x_nom[i]) for i in range(6)]
+<         r_tilde_bound = [m.abs2(r_tilde[i]) for i in range(6)]
+<         p_tilde_norm = m.Intermediate(
+<             m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 3)]))
+<         )
+<         xy_tilde_norm = m.Intermediate(
+<             m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 2)]))
+<         )
+<         z_tilde_norm = m.Intermediate(
+<             m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(2, 3)]))
+<         )
+<         v_tilde_norm = m.Intermediate(
+<             m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(3, 6)]))
+<         )
+<         r_tilde_norm = m.Intermediate(
+<             m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 6)]))
+<         )
+<     else:
+<         r_tilde = [0.00 for i in range(6)]
+<         r_tilde_bound = [0.00 for i in range(6)]
+<         p_tilde_norm = 0.00
+<         xy_tilde_norm = 0.00
+<         z_tilde_norm = 0.00
+<         v_tilde_norm = 0.00
+<         r_tilde_norm = 0.00
+<     ### Scaling of Final State ###
+<     if True:
+<         if np.linalg.norm(x_f) > 0.00:
+<             x_f_scaled = [m.Var() for i in range(len(x_f))]
+<             for i in range(len(x_f)):
+<                 eqs.append(x_f_scaled[i] == x_f[i] * (1 + 2.0 * p_tilde_norm))
+<         else:
+<             x_f_scaled = x_f.copy()
+<     ### Actual System Dynamics ###
+<     for i in range(0, 3):
+<         eqs.append(x_act[i + 0].dt() == x_act[i + 3])
+<         eqs.append(
+<             x_act[i + 3].dt()
+<             == np.matmul((A_act(t + t_s, p.t_p, m=m))[i + 3], x_act)
+<             + u_act[i]
+<             + d_act(t + t_s, p.t_p, m=m)[i + 3]
+<         )
+---
+>     eqs.append(t.dt() == 1)
+>     E = m.Intermediate(
+>         2 * m.atan(np.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(t / 2))
+>     )
+>     M = m.Intermediate(E - eccentricity * m.sin(E))
+>     eqs.append(q == p.t_p + t_s + M / p.n)
+> 
+177,193c135,150
+<     ## Tube MPC Implementation ##
+<     if "tubeMPC" in solverParams:
+<         tubeMPC = solverParams["tubeMPC"]
+<         Lambda = tubeMPC["Lambda"]
+<         alpha_0 = tubeMPC["alpha_0"]
+<         omega_0 = tubeMPC["omega_0"]
+<         phi_0 = tubeMPC["phi_0"]
+<         v_0 = tubeMPC["v_0"]
+<         eta = tubeMPC["eta"]
+<         ### Initialize Variables ###  # len(v_0) = len(alpha_0) = len(omega_0) = len(phi_0) = 3
+<         v = [m.Var(value=v_0[i], fixed_initial=False) for i in range(3)]
+<         alpha = [
+<             m.Var(
+<                 value=alpha_0[i],
+<                 fixed_initial=False,
+<                 lb=tubeMPC["alpha_range"]["lower"],
+<                 ub=tubeMPC["alpha_range"]["upper"],
+---
+>     ### Individual Chaser Equations ###
+>     for agent in range(numChasers):
+>         #### Individual Chaser Variables ####
+>         x_nom = X_nom[agent * 6 : (agent + 1) * 6]
+>         x_act = X_act[agent * 6 : (agent + 1) * 6]
+>         u_nom = U_nom[agent * 3 : (agent + 1) * 3]
+>         u_act = U_act[agent * 3 : (agent + 1) * 3]
+>         x_0 = X_0[agent * 6 : (agent + 1) * 6]
+>         x_f = X_f[agent * 6 : (agent + 1) * 6]
+>         u_0 = U_0[agent * 3 : (agent + 1) * 3]
+>         #### Nominal System Dynamics ####
+>         for i in range(0, 3):
+>             eqs.append(x_nom[i + 0].dt() == x_nom[i + 3])
+>             eqs.append(
+>                 x_nom[i + 3].dt()
+>                 == np.matmul(A_nom_val[i + 3], x_nom) + u_nom[i] + d_nom_val[i + 3]
+195,219c152,154
+<             for i in range(3)
+<         ]
+<         omega = [m.Var(value=omega_0[i], fixed_initial=True) for i in range(3)]
+<         phi = [m.Var(value=phi_0[i], fixed_initial=True) for i in range(3)]
+<         ### Tube Equations ###
+<         Delta_nom = calcDelta(
+<             t_f + t_s,
+<             p.t_p,
+<             x_nom,
+<             m=m,
+<             eRange=kwargs["eRange"],
+<             aRange=kwargs["aRange"],
+<             bRange=kwargs["bRange"],
+<         )
+<         D_nom = calcD(
+<             t_f + t_s,
+<             p.t_p,
+<             m=m,
+<             eRange=kwargs["eRange"],
+<             aRange=kwargs["aRange"],
+<             bRange=kwargs["bRange"],
+<         )
+<         for i in range(3):
+<             eqs.append(alpha[i].dt() == v[i])
+<             eqs.append(omega[i].dt() == Lambda[i] * omega[i] + phi[i])
+---
+>         ### Actual System Dynamics ###
+>         for i in range(0, 3):
+>             eqs.append(x_act[i + 0].dt() == x_act[i + 3])
+221c156,169
+<                 phi[i].dt() == -alpha[i] * phi[i] + Delta_nom[i] + D_nom[i] + eta[i]
+---
+>                 x_act[i + 3].dt()
+>                 == np.matmul((A_act(t + t_s, p.t_p, m=m))[i + 3], x_act)
+>                 + u_act[i]
+>                 + d_act(t + t_s, p.t_p, m=m)[i + 3]
+>             )
+>         #### System Error ####
+>         if "tubeMPC" in solverParams and solverParams["tubeMPC"]["runTube"]:
+>             r_tilde = [1.10 * (x_act[i] - x_nom[i]) for i in range(6)]
+>             r_tilde_bound = [m.abs2(r_tilde[i]) for i in range(6)]
+>             p_tilde_norm = m.Intermediate(
+>                 m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 3)]))
+>             )
+>             xy_tilde_norm = m.Intermediate(
+>                 m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 2)]))
+223,258c171,211
+<     ### Radial Limit Constraint (RENDEZVOUS ONLY) ###
+<     if "radialLimit" in solverParams:
+<         radialLimit = solverParams["radialLimit"]
+<         eqs.append(
+<             np.sum([x_nom[i] ** 2 for i in range(3)])
+<             >= (radialLimit + p_tilde_norm) ** 2
+<         )
+<     ### Target Limit Constraint (DOCKING ONLY) ###
+<     if "targetLimit" in solverParams:
+<         targetLimit = solverParams["targetLimit"]
+<         rotMatrix = m.Array(m.Var, (3, 3), fixed_initial=False)
+<         x_derot = m.Array(m.Var, 3, fixed_initial=False)
+<         for i in range(3):
+<             for j in range(3):
+<                 eqs.append(
+<                     rotMatrix[i][j]
+<                     == tait_bryan_to_rotation_matrix(target_theta, m=m)[i][j]
+<                 )
+<         for i in range(3):
+<             eqs.append(x_derot[i] == np.matmul(rotMatrix.T, x_nom[:3])[i])
+<         targetLimit1 = m.Intermediate(
+<             x_derot[0] ** 2 + x_derot[1] ** 2 - (targetLimit["r_T"] + p_tilde_norm) ** 2
+<         )
+<         targetLimit2 = m.Intermediate(
+<             x_derot[2] ** 2 - (targetLimit["l_T"] + p_tilde_norm) ** 2
+<         )
+<         targetLimitMultiplier = 1.00e3
+<         targetLimit12 = m.Var(fixed_initial=False)
+<         orFunctionOption = 5
+<         if orFunctionOption == 1:
+<             targetLimit12 = m.Intermediate(
+<                 targetLimit1
+<                 * targetLimit2
+<                 * (
+<                     (targetLimit1 + targetLimit2)
+<                     - (m.abs2(targetLimit1) + m.abs2(targetLimit2))
+---
+>             z_tilde_norm = m.Intermediate(
+>                 m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(2, 3)]))
+>             )
+>             v_tilde_norm = m.Intermediate(
+>                 m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(3, 6)]))
+>             )
+>             r_tilde_norm = m.Intermediate(
+>                 m.sqrt(np.sum([r_tilde[i] ** 2 for i in range(0, 6)]))
+>             )
+>         else:
+>             r_tilde = [0.00 for i in range(6)]
+>             r_tilde_bound = [0.00 for i in range(6)]
+>             p_tilde_norm = 0.00
+>             xy_tilde_norm = 0.00
+>             z_tilde_norm = 0.00
+>             v_tilde_norm = 0.00
+>             r_tilde_norm = 0.00
+>         ### Scaling of Final State ###
+>         if np.linalg.norm(x_f) > 0.00:
+>             x_f_scaled = [m.Var() for i in range(len(x_f))]
+>             for i in range(len(x_f)):
+>                 eqs.append(x_f_scaled[i] == x_f[i] * (1 + 2.0 * p_tilde_norm))
+>         else:
+>             x_f_scaled = x_f.copy()
+>         ## Tube MPC Implementation ##
+>         if "tubeMPC" in solverParams:
+>             tubeMPC = solverParams["tubeMPC"]
+>             Lambda = tubeMPC["Lambda"]
+>             alpha_0 = tubeMPC["alpha_0"]
+>             omega_0 = tubeMPC["omega_0"]
+>             phi_0 = tubeMPC["phi_0"]
+>             v_0 = tubeMPC["v_0"]
+>             eta = tubeMPC["eta"]
+>             ### Initialize Variables ###  # len(v_0) = len(alpha_0) = len(omega_0) = len(phi_0) = 3
+>             v = [m.Var(value=v_0[i], fixed_initial=False) for i in range(3)]
+>             alpha = [
+>                 m.Var(
+>                     value=alpha_0[i],
+>                     fixed_initial=False,
+>                     lb=tubeMPC["alpha_range"]["lower"],
+>                     ub=tubeMPC["alpha_range"]["upper"],
+259a213,225
+>                 for i in range(3)
+>             ]
+>             omega = [m.Var(value=omega_0[i], fixed_initial=True) for i in range(3)]
+>             phi = [m.Var(value=phi_0[i], fixed_initial=True) for i in range(3)]
+>             ### Tube Equations ###
+>             Delta_nom = calcDelta(
+>                 t_f + t_s,
+>                 p.t_p,
+>                 x_nom,
+>                 m=m,
+>                 eRange=kwargs["eRange"],
+>                 aRange=kwargs["aRange"],
+>                 bRange=kwargs["bRange"],
+261,266c227,239
+<             eqs.append(targetLimit12 >= 0.00)
+<         elif orFunctionOption == 2:
+<             targetLimit12 = m.Intermediate(
+<                 m.max2(
+<                     targetLimitMultiplier * targetLimit1,
+<                     targetLimitMultiplier * targetLimit2,
+---
+>             D_nom = calcD(
+>                 t_f + t_s,
+>                 p.t_p,
+>                 m=m,
+>                 eRange=kwargs["eRange"],
+>                 aRange=kwargs["aRange"],
+>                 bRange=kwargs["bRange"],
+>             )
+>             for i in range(3):
+>                 eqs.append(alpha[i].dt() == v[i])
+>                 eqs.append(omega[i].dt() == Lambda[i] * omega[i] + phi[i])
+>                 eqs.append(
+>                     phi[i].dt() == -alpha[i] * phi[i] + Delta_nom[i] + D_nom[i] + eta[i]
+267a241,246
+>         ### Radial Limit Constraint (RENDEZVOUS ONLY) ###
+>         if "radialLimit" in solverParams:
+>             radialLimit = solverParams["radialLimit"]
+>             eqs.append(
+>                 np.sum([x_nom[i] ** 2 for i in range(3)])
+>                 >= (radialLimit + p_tilde_norm) ** 2
+269,298c248,274
+<             eqs.append(targetLimit12 > 1.00e-2)
+<         elif orFunctionOption == 3:
+<             targetLimit12 = m.Intermediate(
+<                 m.if2(
+<                     targetLimitMultiplier * targetLimit1 * targetLimit2,
+<                     1,
+<                     targetLimitMultiplier * (targetLimit1 + targetLimit2),
+<                 )
+<             )
+<             eqs.append(targetLimit12 > 1.00e-2)
+<         elif orFunctionOption == 4:
+<             targetLimit12 = m.Intermediate(
+<                 m.if2(
+<                     targetLimitMultiplier * targetLimit1,
+<                     targetLimitMultiplier * targetLimit2,
+<                     1,
+<                 )
+<             )
+<             eqs.append(targetLimit12 > 1.00e-2)
+<         elif orFunctionOption == 5:
+<             targetLimit12 = m.Intermediate(
+<                 m.sign2(targetLimitMultiplier * targetLimit1 - 1.00e-7)
+<                 + m.sign2(targetLimitMultiplier * targetLimit2 - 1.00e-7)
+<             )
+<             eqs.append(targetLimit12 >= 0.00)
+<         elif orFunctionOption == 6:
+<             targetLimit12 = m.Intermediate(
+<                 m.exp(
+<                     targetLimitMultiplier
+<                     * targetLimit1
+---
+>         ### Target Limit Constraint (DOCKING ONLY) ###
+>         if "targetLimit" in solverParams:
+>             targetLimit = solverParams["targetLimit"]
+>             rotMatrix = m.Array(m.Var, (3, 3), fixed_initial=False)
+>             x_derot = m.Array(m.Var, 3, fixed_initial=False)
+>             for i in range(3):
+>                 for j in range(3):
+>                     eqs.append(
+>                         rotMatrix[i][j]
+>                         == tait_bryan_to_rotation_matrix(target_theta, m=m)[i][j]
+>                     )
+>             for i in range(3):
+>                 eqs.append(x_derot[i] == np.matmul(rotMatrix.T, x_nom[:3])[i])
+>             targetLimit1 = m.Intermediate(
+>                 x_derot[0] ** 2
+>                 + x_derot[1] ** 2
+>                 - (targetLimit["r_T"] + p_tilde_norm) ** 2
+>             )
+>             targetLimit2 = m.Intermediate(
+>                 x_derot[2] ** 2 - (targetLimit["l_T"] + p_tilde_norm) ** 2
+>             )
+>             targetLimitMultiplier = 1.00e3
+>             targetLimit12 = m.Var(fixed_initial=False)
+>             orFunctionOption = 5
+>             if orFunctionOption == 1:
+>                 targetLimit12 = m.Intermediate(
+>                     targetLimit1
+305,311c281,324
+<             )
+<             eqs.append(targetLimit12 >= 1.00)
+<         elif orFunctionOption == 7:
+<             targetLimit12 = m.Intermediate(
+<                 m.max2(
+<                     targetLimitMultiplier * targetLimit1,
+<                     targetLimitMultiplier * targetLimit2,
+---
+>                 eqs.append(targetLimit12 >= 0.00)
+>             elif orFunctionOption == 2:
+>                 targetLimit12 = m.Intermediate(
+>                     m.max2(
+>                         targetLimitMultiplier * targetLimit1,
+>                         targetLimitMultiplier * targetLimit2,
+>                     )
+>                 )
+>                 eqs.append(targetLimit12 > 1.00e-2)
+>             elif orFunctionOption == 3:
+>                 targetLimit12 = m.Intermediate(
+>                     m.if2(
+>                         targetLimitMultiplier * targetLimit1 * targetLimit2,
+>                         1,
+>                         targetLimitMultiplier * (targetLimit1 + targetLimit2),
+>                     )
+>                 )
+>                 eqs.append(targetLimit12 > 1.00e-2)
+>             elif orFunctionOption == 4:
+>                 targetLimit12 = m.Intermediate(
+>                     m.if2(
+>                         targetLimitMultiplier * targetLimit1,
+>                         targetLimitMultiplier * targetLimit2,
+>                         1,
+>                     )
+>                 )
+>                 eqs.append(targetLimit12 > 1.00e-2)
+>             elif orFunctionOption == 5:
+>                 targetLimit12 = m.Intermediate(
+>                     m.sign2(targetLimitMultiplier * targetLimit1 - 1.00e-7)
+>                     + m.sign2(targetLimitMultiplier * targetLimit2 - 1.00e-7)
+>                 )
+>                 eqs.append(targetLimit12 >= 0.00)
+>             elif orFunctionOption == 6:
+>                 targetLimit12 = m.Intermediate(
+>                     m.exp(
+>                         targetLimitMultiplier
+>                         * targetLimit1
+>                         * targetLimit2
+>                         * (
+>                             (targetLimit1 + targetLimit2)
+>                             - (m.abs2(targetLimit1) + m.abs2(targetLimit2))
+>                         )
+>                     )
+313c326,328
+<                 - m.abs2(
+---
+>                 eqs.append(targetLimit12 >= 1.00)
+>             elif orFunctionOption == 7:
+>                 targetLimit12 = m.Intermediate(
+317a333,338
+>                     - m.abs2(
+>                         m.max2(
+>                             targetLimitMultiplier * targetLimit1,
+>                             targetLimitMultiplier * targetLimit2,
+>                         )
+>                     )
+318a340,376
+>                 eqs.append(targetLimit12 == 0.00)
+>             elif orFunctionOption == 8:
+>                 # targetLimit12 = m.Intermediate(m.max2(targetLimitMultiplier * targetLimit1, targetLimitMultiplier * targetLimit2))
+>                 eqs.append(
+>                     targetLimit12
+>                     == m.max2(
+>                         targetLimitMultiplier * targetLimit1,
+>                         targetLimitMultiplier * targetLimit2,
+>                     )
+>                 )
+>                 eqs.append(m.abs2(targetLimit12 - m.abs2(targetLimit12)) < 1.00e-9)
+>             # eqs.append(targetLimit12**2 >= 1.00e-5 * np.sum([(x_nom[i] - x_f_scaled[i])**2 for i in range(0,3)]))
+>             # eqs.append(targetLimit12.dt() <= 0.00)
+>         ### Pyramidal Limit Constraint (DOCKING ONLY) ###
+>         if "pyramidalLimit" in solverParams:
+>             mu_PL = solverParams["pyramidalLimit"]
+>             if mu_PL != None:
+>                 A_PL, B_PL, pol_PL = pyramidalConstraint(x_0[:3], x_f[:3], mu_PL)
+>                 if not (all(pol_PL)):
+>                     raise ValueError("Pyramidal limit polarity should be all True")
+>                 for i in range(len(A_PL)):
+>                     eqs.append(np.matmul(A_PL[i], x_nom[:3]) - B_PL[i] > 0)
+>         ### Actual Input Modification based on Tube Dynamics ###
+>         if "tubeMPC" in solverParams:
+>             a_ctrl = ancillary_controller(
+>                 p.t_p,
+>                 t_f + t_s,
+>                 x_nom,
+>                 x_act,
+>                 A_nom_val,
+>                 Lambda,
+>                 alpha,
+>                 phi,
+>                 m=m,
+>                 eRange=kwargs["eRange"],
+>                 aRange=kwargs["aRange"],
+>                 bRange=kwargs["bRange"],
+320,361c378,383
+<             eqs.append(targetLimit12 == 0.00)
+<         elif orFunctionOption == 8:
+<             # targetLimit12 = m.Intermediate(m.max2(targetLimitMultiplier * targetLimit1, targetLimitMultiplier * targetLimit2))
+<             eqs.append(
+<                 targetLimit12
+<                 == m.max2(
+<                     targetLimitMultiplier * targetLimit1,
+<                     targetLimitMultiplier * targetLimit2,
+<                 )
+<             )
+<             eqs.append(m.abs2(targetLimit12 - m.abs2(targetLimit12)) < 1.00e-9)
+<         # eqs.append(targetLimit12**2 >= 1.00e-5 * np.sum([(x_nom[i] - x_f_scaled[i])**2 for i in range(0,3)]))
+<         # eqs.append(targetLimit12.dt() <= 0.00)
+<     ### Pyramidal Limit Constraint (DOCKING ONLY) ###
+<     if "pyramidalLimit" in solverParams:
+<         mu_PL = solverParams["pyramidalLimit"]
+<         if mu_PL != None:
+<             A_PL, B_PL, pol_PL = pyramidalConstraint(x_0[:3], x_f[:3], mu_PL)
+<             if not (all(pol_PL)):
+<                 raise ValueError("Pyramidal limit polarity should be all True")
+<             for i in range(len(A_PL)):
+<                 eqs.append(np.matmul(A_PL[i], x_nom[:3]) - B_PL[i] > 0)
+< 
+<     ### Actual Input Modification based on Tube Dynamics ###
+<     if "tubeMPC" in solverParams:
+<         a_ctrl = ancillary_controller(
+<             p.t_p,
+<             t_f + t_s,
+<             x_nom,
+<             x_act,
+<             A_nom_val,
+<             Lambda,
+<             alpha,
+<             phi,
+<             m=m,
+<             eRange=kwargs["eRange"],
+<             aRange=kwargs["aRange"],
+<             bRange=kwargs["bRange"],
+<         )
+<         if solverParams["tubeMPC"]["runTube"]:
+<             for i in range(len(u_nom)):
+<                 eqs.append(u_act[i] == u_nom[i] + a_ctrl[i])
+---
+>             if solverParams["tubeMPC"]["runTube"]:
+>                 for i in range(len(u_nom)):
+>                     eqs.append(u_act[i] == u_nom[i] + a_ctrl[i])
+>             else:
+>                 for i in range(len(u_nom)):
+>                     eqs.append(u_act[i] == u_nom[i])
+365,367d386
+<     else:
+<         for i in range(len(u_nom)):
+<             eqs.append(u_act[i] == u_nom[i])
+369,426c388,407
+<     ### State and Input Bounds ###
+<     #### TubeMPC Bound Tightening ####
+<     if "tubeMPC" in solverParams:
+<         r_bar = [x_nom[i] - r_tilde_bound[i] for i in range(6)]
+<         r_Bar = [x_nom[i] + r_tilde_bound[i] for i in range(6)]
+<         F_Bar = [
+<             m.max2(
+<                 m.abs2(np.matmul(A_nom_val[i + 3], r_bar)),
+<                 m.abs2(np.matmul(A_nom_val[i + 3], r_Bar)),
+<             )
+<             for i in range(3)
+<         ]
+<         Delta_Bar = calcDelta(
+<             t_f + t_s,
+<             p.t_p,
+<             r_Bar,
+<             m=m,
+<             eRange=kwargs["eRange"],
+<             aRange=kwargs["aRange"],
+<             bRange=kwargs["bRange"],
+<         )
+<         Delta_bar = calcDelta(
+<             t_f + t_s,
+<             p.t_p,
+<             r_bar,
+<             m=m,
+<             eRange=kwargs["eRange"],
+<             aRange=kwargs["aRange"],
+<             bRange=kwargs["bRange"],
+<         )
+<         K_Bar = [
+<             alpha[i] * phi[i] + m.max2(Delta_Bar[i], Delta_bar[i]) for i in range(3)
+<         ]
+<         u_tilde_bound = [
+<             m.abs2(F_Bar[i] + K_Bar[i] + Lambda[i] * r_tilde_bound[i + 3])
+<             for i in range(3)
+<         ]
+<     else:
+<         u_tilde_bound = [0.00 for i in range(3)]
+<     #### Bound Equations ####
+<     for i in range(0, 3):
+<         if stateBounds[0]["upper"] != "+Inf":
+<             eqs.append(
+<                 x_nom[i + 0] > stateBounds[i + 0]["lower"] + r_tilde_bound[i + 0]
+<             )
+<             eqs.append(
+<                 x_nom[i + 0] < stateBounds[i + 0]["upper"] - r_tilde_bound[i + 0]
+<             )
+<         if stateBounds[3]["upper"] != "+Inf":
+<             eqs.append(
+<                 x_nom[i + 3] > stateBounds[i + 3]["lower"] + r_tilde_bound[i + 3]
+<             )
+<             eqs.append(
+<                 x_nom[i + 3] < stateBounds[i + 3]["upper"] - r_tilde_bound[i + 3]
+<             )
+<         if inputBounds[0]["upper"] != "+Inf":
+<             eqs.append(
+<                 u_nom[i + 0] > inputBounds[i + 0]["lower"] + u_tilde_bound[i + 0]
+---
+>         ### State and Input Bounds ###
+>         #### TubeMPC Bound Tightening ####
+>         if "tubeMPC" in solverParams:
+>             r_bar = [x_nom[i] - r_tilde_bound[i] for i in range(6)]
+>             r_Bar = [x_nom[i] + r_tilde_bound[i] for i in range(6)]
+>             F_Bar = [
+>                 m.max2(
+>                     m.abs2(np.matmul(A_nom_val[i + 3], r_bar)),
+>                     m.abs2(np.matmul(A_nom_val[i + 3], r_Bar)),
+>                 )
+>                 for i in range(3)
+>             ]
+>             Delta_Bar = calcDelta(
+>                 t_f + t_s,
+>                 p.t_p,
+>                 r_Bar,
+>                 m=m,
+>                 eRange=kwargs["eRange"],
+>                 aRange=kwargs["aRange"],
+>                 bRange=kwargs["bRange"],
+428,429c409,416
+<             eqs.append(
+<                 u_nom[i + 0] < inputBounds[i + 0]["upper"] - u_tilde_bound[i + 0]
+---
+>             Delta_bar = calcDelta(
+>                 t_f + t_s,
+>                 p.t_p,
+>                 r_bar,
+>                 m=m,
+>                 eRange=kwargs["eRange"],
+>                 aRange=kwargs["aRange"],
+>                 bRange=kwargs["bRange"],
+430a418,449
+>             K_Bar = [
+>                 alpha[i] * phi[i] + m.max2(Delta_Bar[i], Delta_bar[i]) for i in range(3)
+>             ]
+>             u_tilde_bound = [
+>                 m.abs2(F_Bar[i] + K_Bar[i] + Lambda[i] * r_tilde_bound[i + 3])
+>                 for i in range(3)
+>             ]
+>         else:
+>             u_tilde_bound = [0.00 for i in range(3)]
+>         #### Bound Equations ####
+>         for i in range(0, 3):
+>             if stateBounds[0]["upper"] != "+Inf":
+>                 eqs.append(
+>                     x_nom[i + 0] > stateBounds[i + 0]["lower"] + r_tilde_bound[i + 0]
+>                 )
+>                 eqs.append(
+>                     x_nom[i + 0] < stateBounds[i + 0]["upper"] - r_tilde_bound[i + 0]
+>                 )
+>             if stateBounds[3]["upper"] != "+Inf":
+>                 eqs.append(
+>                     x_nom[i + 3] > stateBounds[i + 3]["lower"] + r_tilde_bound[i + 3]
+>                 )
+>                 eqs.append(
+>                     x_nom[i + 3] < stateBounds[i + 3]["upper"] - r_tilde_bound[i + 3]
+>                 )
+>             if inputBounds[0]["upper"] != "+Inf":
+>                 eqs.append(
+>                     u_nom[i + 0] > inputBounds[i + 0]["lower"] + u_tilde_bound[i + 0]
+>                 )
+>                 eqs.append(
+>                     u_nom[i + 0] < inputBounds[i + 0]["upper"] - u_tilde_bound[i + 0]
+>                 )
+432,435c451
+<     ## Objective Function Definition ##
+<     if True:
+<         intErrorArr = []
+<         finErrorArr = []
+---
+>         #### Objective Function Definition ####
+486,487c502,505
+<         intError = np.sum(intErrorArr)
+<         finError = np.sum(finErrorArr)
+---
+> 
+>     ### Objective Function Accumulation ###
+>     intError = np.sum(intErrorArr)
+>     finError = np.sum(finErrorArr)
+490,502c508,519
+<     if True:
+<         eqs = m.Equations(eqs)
+<         m.Minimize(W * intError + final * finError)
+<         # m.options.OTOL       =    1e-7
+<         # m.options.RTOL       =    1e-7
+<         m.options.IMODE = 6
+<         # m.options.REDUCE     =    3
+<         m.options.SOLVER = 3
+<         m.options.MAX_ITER = 4000
+<         # m.options.DIAGLEVEL  =    0
+<         m.options.MAX_MEMORY = 768
+<         # m.options.COLDSTART  =    0
+<         # m.options.TIME_SHIFT =    0
+---
+>     eqs = m.Equations(eqs)
+>     m.Minimize(W * intError + final * finError)
+>     # m.options.OTOL       =    1e-7
+>     # m.options.RTOL       =    1e-7
+>     m.options.IMODE = 6
+>     # m.options.REDUCE     =    3
+>     m.options.SOLVER = 3
+>     m.options.MAX_ITER = 4000
+>     # m.options.DIAGLEVEL  =    0
+>     m.options.MAX_MEMORY = 768
+>     # m.options.COLDSTART  =    0
+>     # m.options.TIME_SHIFT =    0
+698,699c715,716
+<     x_0,
+<     f_x_f,
+---
+>     X_0,
+>     f_X_f,
+702c719
+<     u_0,
+---
+>     U_0,
+721c738
+<         "x_0": x_0,
+---
+>         "X_0": X_0,
+724c741
+<         "u_0": u_0,
+---
+>         "U_0": U_0,
+769c786,787
+<     if callable(f_x_f):
+---
+>     X_f = []
+>     if callable(f_X_f) or "list" in str(type(f_X_f)) and callable(f_X_f[0]):
+771c789,790
+<             x_f = f_x_f(t=t_f)
+---
+>             for agent in range(numChasers):
+>                 X_f.extend(f_X_f[agent](t=t_f))
+773c792
+<             x_f = f_x_f
+---
+>             X_f = f_X_f
+775c794,796
+<         x_f = f_x_f
+---
+>         X_f = f_X_f
+>     X_f = np.array(X_f)
+>     print(X_f)
+785c806
+<         dt=dt, Q=Q, R=R, constraints=(x_0, x_f), discretize=False
+---
+>         dt=dt, Q=Q, R=R, constraints=(X_0, X_f), discretize=False
+806c827
+<     mpc_X_f = []
+---
+>     mpc_x_f_list = []
+824a846,847
+>         print([(X_0[6 * agent : 6 * agent + 3]) for agent in range(numChasers)])
+>         print([(X_f[6 * agent : 6 * agent + 3]) for agent in range(numChasers)])
+826c849,855
+<             "Distance from Start State to Target   : ", np.linalg.norm((x_0 - x_f)[:3])
+---
+>             "Distances from Start States to Targets   : ",
+>             [
+>                 np.linalg.norm(
+>                     (X_0[6 * agent : 6 * agent + 3] - X_f[6 * agent : 6 * agent + 3])
+>                 )
+>                 for agent in range(numChasers)
+>             ],
+828c857,865
+<         if np.linalg.norm((x_0 - x_f)[:3]) < init_x_f_rad:
+---
+>         if all(
+>             [
+>                 np.linalg.norm(
+>                     (X_0[6 * agent : 6 * agent + 3] - X_f[6 * agent : 6 * agent + 3])
+>                 )
+>                 < init_x_f_rad
+>                 for agent in range(numChasers)
+>             ]
+>         ):
+845c882,883
+<         if callable(f_x_f):
+---
+>         X_f = []
+>         if callable(f_X_f):
+847c885,886
+<                 x_f = f_x_f(t=t_f)
+---
+>                 for agent in range(numChasers):
+>                     X_f.extend(f_X_f[agent](t=t_f))
+849c888
+<                 x_f = f_x_f
+---
+>                 X_f = f_X_f
+851c890,891
+<             x_f = f_x_f
+---
+>             X_f = f_X_f
+>         X_f = np.array(X_f)
+925c965
+<                 mpc_X_f.append(x_f)
+---
+>                 mpc_x_f_list.append(x_f)
+1000c1040
+<     return mpc_nominal, mpc_actual, mpc_X_f, mpc_adaptation, mpc_target_thetas
+---
+>     return mpc_nominal, mpc_actual, mpc_x_f_list, mpc_adaptation, mpc_target_thetas
+1042c1082
+<         help="Initial states for the chaser (6 values).",
+---
+>         help="Initial states for each chaser (6 values per chaser).",
+1064c1104
+<             ad_flags[args.opIter - 1] if 0 < args.opIter <= len(ad_flags) else True
+---
+>             ad_flags[args.opIter - 1] if 0 < args.opIter <= len(ad_flags) else False
+1067c1107
+<             dt_flags[args.opIter - 1] if 0 < args.opIter <= len(dt_flags) else True
+---
+>             dt_flags[args.opIter - 1] if 0 < args.opIter <= len(dt_flags) else False
+1082,1085c1122,1125
+< def get_initial_conditions(op_flags, initial_states_raw):
+<     """Set initial conditions from parsed arguments or predefined cases."""
+<     if op_flags["opInit"] == 0:
+<         if len(initial_states_raw) != 6:
+---
+> def get_initial_conditions(num_chasers, initial_states_raw):
+>     """Set initial conditions from parsed arguments."""
+>     if initial_states_raw:
+>         if len(initial_states_raw) != num_chasers * 6:
+1087c1127
+<                 f"Expected 6 initial states, but got {len(initial_states_raw)}."
+---
+>                 f"Expected {num_chasers * 6} initial states, but got {len(initial_states_raw)}."
+1090,1099d1129
+<     elif op_flags["opInit"] == 1:
+<         x_0 = np.array([100.000, 50.000, -80.000, 0.000, 0.000, 0.000])
+<     elif op_flags["opInit"] == 2:
+<         x_0 = np.array([2.000, 2.000, 2.000, 0.000, 0.000, 0.000])
+<     elif op_flags["opInit"] == 3:
+<         x_0 = np.array([1.000, 0.700, 1.000, 0.000, 0.000, 0.000])
+<     elif op_flags["opInit"] == 4:
+<         x_0 = np.array([0.950, 0.750, -0.800, -2.500, -3.000, 1.500])
+<     elif op_flags["opInit"] == 5:
+<         x_0 = np.array([0.500, -0.900, 0.200, 0.000, 0.000, 0.000])
+1101c1131,1133
+<         x_0 = np.zeros(6)
+---
+>         # Fallback for when opInit is not 0 and initial_states is not provided
+>         # This part of the original logic seems incomplete, so we provide a placeholder.
+>         x_0 = np.zeros(num_chasers * 6)  # Or some other default logic
+1103c1135
+<     u_0 = np.array([0.000, 0.000, 0.000])
+---
+>     u_0 = np.zeros(num_chasers * 3)  # Assuming 3 inputs per chaser
+1107c1139
+< def setup_simulation_components(op_flags, x_0):
+---
+> def setup_simulation_components(op_flags, num_chasers, x_0):
+1109,1112d1140
+<     numChasers = 1
+<     bounds = (p.stateBounds, p.inputBounds)
+<     p.tubeMPC["runTube"] = op_flags["DTFlag"]
+< 
+1115,1126c1143
+<         {
+<             "angularVelocity": p.w_T0,
+<             "momInertia": p.I_T0,
+<             "geometry": {
+<                 "Ineqs": [
+<                     lambda r: (r[2] ** 2 - p.targetLimit["l_T"] ** 2),
+<                     lambda r: (r[0] ** 2 + r[1] ** 2 - p.targetLimit["r_T"] ** 2) ** 2
+<                     - 0.01**2,
+<                 ],
+<                 "Eqs": [],
+<             },
+<         },
+---
+>         {"angularVelocity": p.w_T0, "momInertia": p.I_T0},
+1129,1130c1146,1153
+<     TStopSteps = 100
+<     x_f_body = np.array([0.00, -0.80, 0.60])
+---
+>     bounds = (p.stateBounds, p.inputBounds)
+>     p.tubeMPC["runTube"] = op_flags["DTFlag"]
+> 
+>     # Final state calculation
+>     x_f_body = np.array([[0.00, -0.80, 0.60], [0.00, 0.80, -0.60]])[
+>         :num_chasers
+>     ]  # Use only as many as needed
+> 
+1136c1159,1161
+<             x_f=np.zeros(6),
+---
+>             x_f=np.zeros(
+>                 6
+>             ),  # This seems to be a placeholder based on the original code
+1138,1139c1163,1164
+<             numSteps=TStopSteps,
+<             numChasers=numChasers,
+---
+>             numSteps=200,
+>             numChasers=num_chasers,
+1149,1154c1174,1176
+<         _, _, x_f_body, _ = output
+<         if len(x_f_body.shape) > 1:
+<             x_f_body = x_f_body[0]
+< 
+<     return target, bounds, x_f_body
+< 
+---
+>         _, _, x_f_body, _ = (
+>             output  # The original code uses 'angles' and 'forces' which are not used later
+>         )
+1156,1173c1178,1179
+< def build_mpc_parameters(
+<     operationType,
+<     numChasers,
+<     target,
+<     t_0,
+<     x_0,
+<     u_0,
+<     x_f_body,
+<     x_f_rad,
+<     v_f_rad,
+<     op_flags,
+<     bounds,
+<     nomOrbitParams,
+<     FSS,
+< ):
+<     """Build the dictionary of parameters for the mpc function."""
+<     rLen, fLen = len(x_0), len(u_0)
+<     f_x_f = partial(calcCurrentPos, target=target, x_i=x_f_body[:3])
+---
+>     # Pad x_f_body with zeros for velocity components
+>     x_f_body = np.pad(x_f_body, ((0, 0), (0, 3)), "constant")
+1175,1208c1181
+<     mpc_params = {
+<         "operation": operationType,
+<         "dt": p.dt,
+<         "t_0": t_0,
+<         "rLen": rLen,
+<         "fLen": fLen,
+<         "numChasers": numChasers,
+<         "numMPCSteps": p.numMPCSteps[operationType],
+<         "numActSteps": p.numActSteps[operationType],
+<         "x_0": x_0,
+<         "f_x_f": f_x_f,
+<         "x_f_rad": x_f_rad,
+<         "v_f_rad": v_f_rad,
+<         "u_0": u_0,
+<         "actOrbitParams": p.actOrbitParams,
+<         "nomOrbitParams": nomOrbitParams,
+<         "bounds": bounds,
+<         "initAdaptParams": FSS,
+<         "targetParams": {
+<             "theta_0": target.getObservedState(t=t_0),
+<             "omega_0": target.getObservedAngVel(t=t_0),
+<             "momInertia": target.momInertia,
+<         },
+<         "tubeMPC": p.tubeMPC,
+<         "adaptorFlag": op_flags["adFlag"],
+<         "eRange": FSS["eccentricity"],
+<         "aRange": FSS["drag_alpha"],
+<         "bRange": FSS["drag_beta"],
+<     }
+<     if operationType == "rendezvous":
+<         mpc_params["radialLimit"] = p.radialLimit
+<     elif operationType == "docking":
+<         mpc_params["targetLimit"] = p.targetLimit
+<     return mpc_params
+---
+>     return target, bounds, x_f_body
+1212,1220c1185
+<     op_flags,
+<     target,
+<     bounds,
+<     x_0,
+<     u_0,
+<     x_f_body,
+<     nomOrbitParams,
+<     FSS,
+<     main_data,
+---
+>     op_type, num_chasers, target, bounds, x_0, u_0, x_f_body, op_flags, main_data
+1223,1236c1188,1198
+<     numChasers = 1
+<     operationTypes = []
+<     if op_flags["opType"] == 0 or op_flags["opType"] == 1:
+<         operationTypes.append("rendezvous")
+<     if op_flags["opType"] == 0 or op_flags["opType"] == 2:
+<         operationTypes.append("docking")
+< 
+<     dock_index = 0
+<     rLen = 6
+<     fLen = 3
+< 
+<     for operationType in operationTypes:
+<         if operationType == "rendezvous":
+<             x_f_rads = p.rendezvous_radii if hasattr(p, "rendezvous_radii") else [2.0]
+---
+>     operation_types = []
+>     if op_type == 0 or op_type == 1:
+>         operation_types.append("rendezvous")
+>     if op_type == 0 or op_type == 2:
+>         operation_types.append("docking")
+> 
+>     for op_type_str in operation_types:
+>         if op_type_str == "rendezvous":
+>             target_rads = (
+>                 p.rendezvous_radii if hasattr(p, "rendezvous_radii") else [2.0]
+>             )
+1238,1239c1200,1201
+<         elif operationType == "docking":
+<             x_f_rads = p.docking_radii if hasattr(p, "docking_radii") else [0.0]
+---
+>         elif op_type_str == "docking":
+>             target_rads = p.docking_radii if hasattr(p, "docking_radii") else [0.0]
+1242,1246c1204,1209
+<         for x_f_rad_i in x_f_rads:
+<             if operationType == "rendezvous":
+<                 print(f"\n~ Rendezvous to Sphere of Radius {x_f_rad_i} ~")
+<             elif operationType == "docking":
+<                 print("\n~ Docking to Target ~")
+---
+>         for x_f_rad_i in target_rads:
+>             print(
+>                 f"\n~ {op_type_str.capitalize()} to Sphere of Radius {x_f_rad_i} ~"
+>                 if op_type_str == "rendezvous"
+>                 else "\n~ Docking to Target ~"
+>             )
+1247a1211
+>             # Update initial conditions for subsequent operations
+1254c1218
+<                 u_0 = np.zeros(fLen * numChasers)
+---
+>                 u_0 = np.zeros(num_chasers * 3)
+1257,1258c1221,1222
+<                 operationType,
+<                 numChasers,
+---
+>                 op_type_str,
+>                 num_chasers,
+1268,1269d1231
+<                 nomOrbitParams,
+<                 FSS,
+1271a1234
+> 
+1275c1238
+<             FSS, estim_lists, range_lists = adaptation
+---
+>             fss, estim_lists, range_lists = adaptation
+1276a1240
+>             # Update nominal orbit parameters for next step
+1278c1242
+<                 nomOrbitParams = {
+---
+>                 main_data["nom_orbit_params"] = {
+1283a1248
+>             # Append results to main data lists
+1297c1262
+<                 operationType,
+---
+>                 op_type_str,
+1300c1265,1266
+<     if "rendezvous" in operationTypes and "docking" in operationTypes:
+---
+>     # Handle the "docking" vs "rendezvous" split for plotting
+>     if "rendezvous" in operation_types and "docking" in operation_types:
+1303c1269,1324
+<     return main_data
+---
+> 
+> def build_mpc_parameters(
+>     op_type_str,
+>     num_chasers,
+>     target,
+>     t_0,
+>     x_0,
+>     u_0,
+>     x_f_body,
+>     x_f_rad,
+>     v_f_rad,
+>     op_flags,
+>     bounds,
+> ):
+>     """Build the dictionary of parameters for the mpc function."""
+>     f_x_f = [
+>         partial(calcCurrentPos, target=target, x_i=x_f_body[agent][:3])
+>         for agent in range(num_chasers)
+>     ]
+> 
+>     mpc_params = {
+>         "operation": op_type_str,
+>         "dt": p.dt,
+>         "t_0": t_0,
+>         "rLen": 6,  # Assuming 6 states per chaser
+>         "fLen": 3,  # Assuming 3 inputs per chaser
+>         "numChasers": num_chasers,
+>         "numMPCSteps": p.numMPCSteps[op_type_str],
+>         "numActSteps": p.numActSteps[op_type_str],
+>         "X_0": x_0,
+>         "f_X_f": f_x_f,
+>         "x_f_rad": x_f_rad,
+>         "v_f_rad": v_f_rad,
+>         "U_0": u_0,
+>         "actOrbitParams": p.actOrbitParams,
+>         "nomOrbitParams": p.nomOrbitParams,
+>         "bounds": bounds,
+>         "initAdaptParams": p.initAdaptParams,
+>         "targetParams": {
+>             "theta_0": target.getObservedState(t=t_0),
+>             "omega_0": target.getObservedAngVel(t=t_0),
+>             "momInertia": target.momInertia,
+>         },
+>         "tubeMPC": p.tubeMPC,
+>         "adaptorFlag": op_flags["adFlag"],
+>         "eRange": p.initAdaptParams["eccentricity"],
+>         "aRange": p.initAdaptParams["drag_alpha"],
+>         "bRange": p.initAdaptParams["drag_beta"],
+>     }
+> 
+>     if op_type_str == "rendezvous":
+>         mpc_params["radialLimit"] = p.radialLimit
+>     elif op_type_str == "docking":
+>         mpc_params["targetLimit"] = p.targetLimit
+> 
+>     return mpc_params
+1322a1344
+> 
+1328a1351
+>     # Calculate and append final and target states for plotting
+1345a1369
+> 
+1353,1360c1377,1383
+<     dummy_state = np.zeros(6)
+<     dummy_input = np.zeros(3)
+<     main_data["actual_states"].extend([dummy_state for _ in range(dummy_steps)])
+<     main_data["actual_inputs"].extend([dummy_input for _ in range(dummy_steps)])
+<     main_data["nominal_states"].extend([dummy_state for _ in range(dummy_steps)])
+<     main_data["nominal_inputs"].extend([dummy_input for _ in range(dummy_steps)])
+<     main_data["final_states"].extend([dummy_state for _ in range(dummy_steps)])
+<     main_data["target_states"].extend([dummy_state for _ in range(dummy_steps)])
+---
+>     # Create lists of dummy data for each output type
+>     main_data["actual_states"].extend([np.zeros(6) for _ in range(dummy_steps)])
+>     main_data["actual_inputs"].extend([np.zeros(3) for _ in range(dummy_steps)])
+>     main_data["nominal_states"].extend([np.zeros(6) for _ in range(dummy_steps)])
+>     main_data["nominal_inputs"].extend([np.zeros(3) for _ in range(dummy_steps)])
+>     main_data["final_states"].extend([np.zeros(6) for _ in range(dummy_steps)])
+>     main_data["target_states"].extend([np.zeros(6) for _ in range(dummy_steps)])
+1362c1385
+<     main_data["x_f_list"].extend([dummy_state for _ in range(dummy_steps)])
+---
+>     main_data["x_f_list"].extend([np.zeros(6) for _ in range(dummy_steps)])
+1403c1426
+<             plot_kwargs["targetFolder"] = target_folder
+---
+>             mpc_plot_kwargs["targetFolder"] = target_folder
+1419c1442
+<             "numSteps": 100,
+---
+>             "numSteps": 200,
+1429c1452
+<             deflection_plot_kwargs["targetFolder"] = target_folder
+---
+>             deflection_plot_kwargs["target_folder"] = target_folder
+1447,1448c1470
+<         x_0, u_0 = get_initial_conditions(op_flags, initial_states)
+<         # x_0, u_0 = get_initial_conditions(num_chasers, initial_states)
+---
+>         x_0, u_0 = get_initial_conditions(num_chasers, initial_states)
+1452a1475
+>     # Initialize data containers
+1460d1482
+<         "target_thetas": [],
+1469c1491
+<     target, bounds, x_f_body = setup_simulation_components(op_flags, x_0)
+---
+>     target, bounds, x_f_body = setup_simulation_components(op_flags, num_chasers, x_0)
+1471,1474c1493
+<     nomOrbitParams = p.nomOrbitParams.copy()
+<     FSS = p.initAdaptParams.copy()
+< 
+<     # Dummy Operation
+---
+>     # Main simulation loop
+1476,1477c1495,1497
+<         main_data = run_mpc_operation(
+<             op_flags,
+---
+>         run_mpc_operation(
+>             op_flags["opType"],
+>             num_chasers,
+1483,1484c1503
+<             p.nomOrbitParams.copy(),
+<             p.initAdaptParams.copy(),
+---
+>             op_flags,

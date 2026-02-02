@@ -18,9 +18,15 @@ dependencies = [
   "numpy",
   "scipy",
   "gekko",
-  "mayavi",
   "matplotlib",
+  "pyyaml",
+  "keyboard",
 ]
+
+[project.optional-dependencies]
+casadi = ["casadi"]
+visualization = ["mayavi"]
+all = ["casadi", "mayavi"]
 
 [tool.setuptools]
 packages = ["orbexa"]

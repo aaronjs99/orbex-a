@@ -1,0 +1,13 @@
+# ORBEX-A Core Dependencies
+numpy>=1.20.0
+scipy>=1.7.0
+gekko>=1.0.0
+matplotlib>=3.4.0
+pyyaml>=5.4.0
+keyboard>=0.13.0
+
+# Optional: CasADi solver backend
+# casadi>=3.5.0
+
+# Optional: 3D Visualization (requires VTK)
+# mayavi>=4.7.0
