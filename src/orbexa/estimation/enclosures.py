@@ -32,27 +32,27 @@ def min_enclosing_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
     Returns:
         (radii, volume): Tuple of (3,) array of radii and float volume.
     """
-    m = GEKKO(remote=False)
+    solver = GEKKO(remote=False)
 
-    R = [m.Var(value=1.0) for _ in range(3)]
+    R = [solver.Var(value=1.0) for _ in range(3)]
     for dim in range(3):
-        m.Equation(R[dim] >= 0.0)
+        solver.Equation(R[dim] >= 0.0)
 
     for point in range(len(points)):
-        m.Equation(
+        solver.Equation(
             np.sum([(points[point][dim] / R[dim]) ** 2 for dim in range(3)]) <= 1.0
         )
 
-    m.Minimize(4.0 * np.pi * R[0] * R[1] * R[2] / 3.0)
+    solver.Minimize(4.0 * np.pi * R[0] * R[1] * R[2] / 3.0)
 
-    m.options.IMODE = 3
-    m.options.SOLVER = 3
-    m.solve(disp=False)
+    solver.options.IMODE = 3
+    solver.options.SOLVER = 3
+    solver.solve(disp=False)
 
     radii = np.array([R[dim].value[-1] for dim in range(3)])
-    volume = m.options.OBJFCNVAL
+    volume = solver.options.OBJFCNVAL
 
-    m.cleanup()
+    solver.cleanup()
     return radii, volume
 
 
@@ -69,29 +69,29 @@ def max_inscribed_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
                So finding largest ellipsoid that excludes all points?
                If points describe obstacles?
     """
-    m = GEKKO(remote=False)
+    solver = GEKKO(remote=False)
 
-    R = [m.Var(value=1.0) for _ in range(3)]
+    R = [solver.Var(value=1.0) for _ in range(3)]
     for dim in range(3):
-        m.Equation(R[dim] >= 0.0)
+        solver.Equation(R[dim] >= 0.0)
 
     for point in range(len(points)):
         # Constraint: Point outside ellipsoid
-        m.Equation(
+        solver.Equation(
             np.sum([(points[point][dim] / R[dim]) ** 2 for dim in range(3)]) >= 1.0
         )
 
     # Maximize Volume
-    m.Maximize(4.0 * np.pi * R[0] * R[1] * R[2] / 3.0)
+    solver.Maximize(4.0 * np.pi * R[0] * R[1] * R[2] / 3.0)
 
-    m.options.IMODE = 3
-    m.options.SOLVER = 3
-    m.solve(disp=False)
+    solver.options.IMODE = 3
+    solver.options.SOLVER = 3
+    solver.solve(disp=False)
 
     radii = np.array([R[dim].value[-1] for dim in range(3)])
-    volume = -m.options.OBJFCNVAL
+    volume = -solver.options.OBJFCNVAL
 
-    m.cleanup()
+    solver.cleanup()
     return radii, volume
 
 

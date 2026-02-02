@@ -49,10 +49,10 @@ def calc_single_observation(r1, r2, R, shape):
 
 
 def calc_mutual_observation(theta_1, theta_2, phi_1, phi_2, *args, **kwargs):
-    m = kwargs["m"]
+    solver = kwargs["m"]
     delTheta = theta_1 - theta_2
     delPhi = phi_1 - phi_2
-    return (1 + m.cos(delTheta)) * (1 - m.sin(m.abs2(delPhi) / 4)) / 2
+    return (1 + solver.cos(delTheta)) * (1 - solver.sin(solver.abs2(delPhi) / 4)) / 2
 
 
 def calc_total_local_observation(num_chasers, r, R, shape):
@@ -116,20 +116,20 @@ def observe_optimizer(
         for chaser in range(num_chasers):
             r_0[0 + numDims * chaser + 0] = startRadii[0]
 
-    m = GEKKO(remote=True)
+    solver = GEKKO(remote=True)
 
     Rho = [[0 for dim in range(numDims)] for i in range(numLevels)]
     for level in range(numLevels):
         for dim in range(numDims):
             if level == 0:
-                Rho[level][dim] = m.Param(value=startRadii[dim])
+                Rho[level][dim] = solver.Param(value=startRadii[dim])
             elif level == numLevels - 1:
-                Rho[level][dim] = m.Param(value=finalRadii[dim])
+                Rho[level][dim] = solver.Param(value=finalRadii[dim])
             else:
                 # if 'Rho_0' not in kwargs:
-                #   Rho[level][dim] = m.Var  (value = (startRadii[dim] + 2*finalRadii[dim]) / 3)
+                #   Rho[level][dim] = solver.Var  (value = (startRadii[dim] + 2*finalRadii[dim]) / 3)
                 # else:
-                Rho[level][dim] = m.Var(value=Rho_0[level][dim])
+                Rho[level][dim] = solver.Var(value=Rho_0[level][dim])
 
     # Generate theta_0 and phi_0 from r_0
     theta_0 = [0.0 for chaser in range(num_chasers)]
@@ -149,9 +149,9 @@ def observe_optimizer(
             phi_0[chaser] = math.atan2(
                 r_0[numDims * chaser + 2], r_0[numDims * chaser + 0]
             )
-    theta = [m.Var() for i in range(num_chasers * numLevels)]
-    phi = [m.Var() for i in range(num_chasers * numLevels)]
-    # r = [m.Var() for i in range(numDims*num_chasers*numLevels)]
+    theta = [solver.Var() for i in range(num_chasers * numLevels)]
+    phi = [solver.Var() for i in range(num_chasers * numLevels)]
+    # r = [solver.Var() for i in range(numDims*num_chasers*numLevels)]
     r = [0 for i in range(numDims * num_chasers * numLevels)]
     for level, rho in enumerate(Rho):
         for chaser in range(num_chasers):
@@ -159,8 +159,8 @@ def observe_optimizer(
                 # for dim in range(numDims):
                 #   r[numDims*num_chasers*level + numDims*chaser + dim].lower = r_0[numDims*num_chasers*level + numDims*chaser + dim] - 1e-3
                 #   r[numDims*num_chasers*level + numDims*chaser + dim].upper = r_0[numDims*num_chasers*level + numDims*chaser + dim] + 1e-3
-                m.Equation(theta[num_chasers * level + chaser] == theta_0[chaser])
-                m.Equation(phi[num_chasers * level + chaser] == phi_0[chaser])
+                solver.Equation(theta[num_chasers * level + chaser] == theta_0[chaser])
+                solver.Equation(phi[num_chasers * level + chaser] == phi_0[chaser])
             # m.Equation(np.sum([(r[numDims*num_chasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
             #                    for dim in range(numDims)]) - 1**2 <  1e-3)
             # m.Equation(np.sum([(r[numDims*num_chasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
@@ -168,31 +168,31 @@ def observe_optimizer(
             if numDims == 2:
                 r[numDims * num_chasers * level + numDims * chaser + 0] = rho[
                     0
-                ] * m.cos(theta[num_chasers * level + chaser])
+                ] * solver.cos(theta[num_chasers * level + chaser])
                 r[numDims * num_chasers * level + numDims * chaser + 1] = rho[
                     1
-                ] * m.sin(theta[num_chasers * level + chaser])
+                ] * solver.sin(theta[num_chasers * level + chaser])
             elif numDims == 3:
                 r[numDims * num_chasers * level + numDims * chaser + 0] = (
                     rho[0]
-                    * m.sin(phi[num_chasers * level + chaser])
-                    * m.cos(theta[num_chasers * level + chaser])
+                    * solver.sin(phi[num_chasers * level + chaser])
+                    * solver.cos(theta[num_chasers * level + chaser])
                 )
                 r[numDims * num_chasers * level + numDims * chaser + 1] = (
                     rho[1]
-                    * m.sin(phi[num_chasers * level + chaser])
-                    * m.sin(theta[num_chasers * level + chaser])
+                    * solver.sin(phi[num_chasers * level + chaser])
+                    * solver.sin(theta[num_chasers * level + chaser])
                 )
                 r[numDims * num_chasers * level + numDims * chaser + 2] = rho[
                     2
-                ] * m.cos(phi[num_chasers * level + chaser])
+                ] * solver.cos(phi[num_chasers * level + chaser])
 
     for level in range(numLevels - 1):
         for dim in range(numDims):
-            m.Equation(Rho[level][dim] > Rho[level + 1][dim])
+            solver.Equation(Rho[level][dim] > Rho[level + 1][dim])
 
     totLocalObs = [
-        m.Intermediate(
+        solver.Intermediate(
             calc_total_local_observation(
                 num_chasers,
                 r[numDims * num_chasers * i : numDims * num_chasers * (i + 1)],
@@ -202,7 +202,7 @@ def observe_optimizer(
         )
         for i in range(numLevels)
     ]
-    finLocalObs = m.Intermediate(
+    finLocalObs = solver.Intermediate(
         calc_total_local_observation(
             num_chasers,
             r[
@@ -217,7 +217,7 @@ def observe_optimizer(
         )
     )
     totCrossObs = [
-        m.Intermediate(
+        solver.Intermediate(
             calc_total_cross_observation(
                 num_chasers,
                 r[numDims * num_chasers * (i + 0) : numDims * num_chasers * (i + 1)],
@@ -230,7 +230,7 @@ def observe_optimizer(
         for i in range(numLevels - 1)
     ]
     totMutualObs = [
-        m.Intermediate(
+        solver.Intermediate(
             calc_total_mutual_observation(
                 num_chasers,
                 theta[num_chasers * i : num_chasers * (i + 1)],
@@ -242,7 +242,7 @@ def observe_optimizer(
         for i in range(numLevels)
     ]
     totCrossRad = [
-        m.Intermediate(
+        solver.Intermediate(
             np.sum(
                 [(Rho[level][dim] - Rho[level + 1][dim]) ** 2 for dim in range(numDims)]
             )
@@ -250,7 +250,7 @@ def observe_optimizer(
         for level in range(numLevels - 1)
     ]
     totLocalRad = [
-        m.Intermediate(
+        solver.Intermediate(
             np.sum(
                 [
                     (Rho[level][dim % 3] - Rho[level][(dim + 1) % 3]) ** 2
@@ -261,7 +261,7 @@ def observe_optimizer(
         for level in range(numLevels - 1)
     ]
     # m.Maximize(Q[0]*np.sum(totLocalObs) + Q[1]*finLocalObs + Q[2]*np.sum(totCrossObs) + Q[3]*np.sum(totCrossRad) + Q[4]*np.sum(totLocalRad))
-    m.Maximize(
+    solver.Maximize(
         Q[0] * np.sum(totLocalObs)
         + Q[1] * finLocalObs
         + Q[2] * np.sum(totCrossObs)
@@ -270,11 +270,11 @@ def observe_optimizer(
         + Q[5] * np.sum(totLocalRad)
     )
 
-    m.options.SOLVER = 3
-    m.options.IMODE = 3
-    m.options.MAX_ITER = 500
+    solver.options.SOLVER = 3
+    solver.options.IMODE = 3
+    solver.options.MAX_ITER = 500
     try:
-        m.solve(disp=False, debug=2)
+        solver.solve(disp=False, debug=2)
         status = STATUS_OK
         Rho = [[rho[dim].value[0] for dim in range(numDims)] for rho in Rho]
         theta = [theta_i.value[0] for theta_i in theta]
@@ -303,7 +303,7 @@ def observe_optimizer(
                     r[numDims * num_chasers * level + numDims * chaser + 2] = Rho[
                         level
                     ][2] * math.cos(phi[num_chasers * level + chaser])
-        observation = m.options.OBJFCNVAL
+        observation = solver.options.OBJFCNVAL
     except Exception as e:
         logger.error(f"!!! Failed to solve : {e} !!!")
         status = STATUS_FAIL
@@ -311,8 +311,8 @@ def observe_optimizer(
         r = [0.0 for dim in range(numDims * num_chasers * numLevels)]
         observation = 0.0
 
-    m.cleanup()
-    del m
+    solver.cleanup()
+    del solver
 
     return {"loss": -observation, "status": status, "x": (Rho, r, Q)}
 

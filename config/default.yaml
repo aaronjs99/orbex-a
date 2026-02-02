@@ -1,5 +1,5 @@
 seed: 0
-dt: 0.0007853981633974483  # (pi/20)/200
+dt: 0.10
 total_time: 100
 num_update_steps: 200
 decoupled_mode: true
@@ -27,9 +27,11 @@ mpc:
     - {lower: "-Inf", upper: "+Inf"}
     - {lower: "-Inf", upper: "+Inf"}
   input_bounds:
-    - {lower: -100000.0, upper: 100000.0}
-    - {lower: -100000.0, upper: 100000.0}
-    - {lower: -100000.0, upper: 100000.0}
+    - {lower: -0.1, upper: 0.1}
+    - {lower: -0.1, upper: 0.1}
+    - {lower: -0.1, upper: 0.1}
+  Q: [1, 1, 1, 1, 1, 1]
+  R: [0.0001, 0.0001, 0.0001]
   force_bounds:
     - {lower: -7000.0, upper: 7000.0}
     - {lower: -7000.0, upper: 7000.0}

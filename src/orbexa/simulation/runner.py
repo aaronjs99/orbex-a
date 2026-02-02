@@ -24,6 +24,9 @@ from orbexa.control import MPCController, MissionResult
 from orbexa.core.config import SimulationConfig
 from orbexa.core.dynamics import orbital_ellp_undrag
 from orbexa.simulation.modes import CONTROL_MODES, get_mode_config
+from orbexa.utils.io_utils import save_data, create_filename
+from dataclasses import asdict
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -59,13 +62,15 @@ def run_simulation(
     logger.info(f"  {mode_config.description}")
     logger.info("=" * 60)
 
+    logger.debug(f"Initializing MPC controller with solver: {solver}")
+
     controller = MPCController(solver_backend=solver)
 
     # Initial conditions from config or hardcoded for sample task
     # X_0 = np.array([-50.0, 10.0, 5.0, 0.05, -0.01, 0.01])
-    X_0 = config.orbit.initial_conditions
-    X_f = np.zeros(6)
-    U_0 = np.zeros(3)
+    state_0 = config.orbit.initial_conditions
+    state_f = np.zeros(6)
+    control_input_0 = np.zeros(3)
 
     # OC uses single iteration
     effective_steps = 1 if mode == "oc" else max_steps
@@ -85,9 +90,9 @@ def run_simulation(
         num_chasers=1,
         num_mpc_steps=mode_config.num_mpc_steps,
         num_act_steps=mode_config.num_act_steps,
-        X_0=X_0,
-        f_X_f=X_f,
-        U_0=U_0,
+        state_0=state_0,
+        f_state_f=state_f,
+        control_input_0=control_input_0,
         dynamics_func=orbital_ellp_undrag,
         dynamics_params=dynamics_params,
         bounds=(config.mpc.state_bounds, config.mpc.input_bounds),
@@ -104,11 +109,25 @@ def run_simulation(
         ),
         # Extra explicit kwargs for solver
         t_periapsis=config.orbit.t_periapsis,
+        Q=config.mpc.Q,
+        R=config.mpc.R,
     )
 
     logger.info(f"Result: {'SUCCESS' if result.success else 'FAILED'}")
     logger.info(f"Steps completed: {len(result.time_history)}")
+    logger.info(f"Final state: {result.state_history[-1]}")
     logger.info(f"Total solve time: {result.solver_stats['total_solve_time']:.3f}s")
+
+    # Save mission data to gitignored data/ folder
+    data_dir = Path("data") / mode
+    data_path = create_filename(data_dir, ".json")
+
+    # Convert MissionResult to dict and save
+    mission_data = asdict(result)
+    mission_data["mode"] = mode
+
+    if save_data(data_path, mission_data):
+        logger.info(f"Mission data saved to: {data_path}")
 
     return result
 

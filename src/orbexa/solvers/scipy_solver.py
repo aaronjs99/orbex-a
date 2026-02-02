@@ -60,14 +60,14 @@ class ScipySolver(SolverBase):
         p = self._problem
         n, m, T = p.num_states, p.num_inputs, p.num_steps
 
-        X = z[: n * T].reshape(n, T)
-        U = z[n * T :].reshape(m, T)
+        states = z[: n * T].reshape(n, T)
+        inputs = z[n * T :].reshape(m, T)
 
         cost = 0.0
         for t in range(T):
-            x_err = X[:, t] - p.x_f
-            cost += x_err @ p.Q @ x_err
-            cost += U[:, t] @ p.R @ U[:, t]
+            state_err = states[:, t] - p.x_f
+            cost += state_err @ p.Q @ state_err
+            cost += inputs[:, t] @ p.R @ inputs[:, t]
         return cost
 
     def _dynamics_constraint(self, z: np.ndarray) -> np.ndarray:
@@ -75,18 +75,18 @@ class ScipySolver(SolverBase):
         p = self._problem
         n, m, T = p.num_states, p.num_inputs, p.num_steps
 
-        X = z[: n * T].reshape(n, T)
-        U = z[n * T :].reshape(m, T)
+        states = z[: n * T].reshape(n, T)
+        inputs = z[n * T :].reshape(m, T)
 
         constraints = []
 
         # Initial condition
-        constraints.extend(X[:, 0] - p.x_0)
+        constraints.extend(states[:, 0] - p.x_0)
 
-        # Dynamics: x_{t+1} = A*x_t + B*u_t
+        # Dynamics: state_{t+1} = A*state_t + B*input_t
         for t in range(T - 1):
-            x_next = self._A_d @ X[:, t] + self._B_d @ U[:, t]
-            constraints.extend(X[:, t + 1] - x_next)
+            state_next = self._A_d @ states[:, t] + self._B_d @ inputs[:, t]
+            constraints.extend(states[:, t + 1] - state_next)
 
         return np.array(constraints)
 
@@ -148,13 +148,13 @@ class ScipySolver(SolverBase):
             solve_time = time.time() - start_time
 
             if result.success:
-                X = result.x[: n * T].reshape(n, T)
-                U = result.x[n * T :].reshape(m, T)
+                states = result.x[: n * T].reshape(n, T)
+                inputs = result.x[n * T :].reshape(m, T)
 
                 return SolverResult(
                     success=True,
-                    states=X,
-                    inputs=U,
+                    states=states,
+                    inputs=inputs,
                     cost=result.fun,
                     solve_time=solve_time,
                     message="Optimization successful",

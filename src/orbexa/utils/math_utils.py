@@ -177,108 +177,84 @@ def discretize(
 
 
 def calc_local_occlusion_cost(
-    x: np.ndarray, w: np.ndarray, v: float, X: np.ndarray, limits: Optional[dict] = None
+    state: np.ndarray,
+    w: np.ndarray,
+    v: float,
+    states_list: np.ndarray,
+    limits: Optional[dict] = None,
 ) -> float:
     """
     Estimate occlusion cost (to be minimized).
     Higher cost = Closer to neighbors or violating bounds.
 
     Cost = Sum(w_i / distance_i) + Penalty(bounds)
-    Note: Original logic used 'distance' in the sum which implied Maximization.
-    If we want 'declustering' (separation), we want to MAXIMIZE distance.
-    If we are MINIMIZING cost, then Cost should be inversely proportional to distance?
-    OR Cost = -Sum(distance).
-
-    The user's original code:
-      obs += w * dist (Sum of distances)
-      obs -= penalty
-      return -obs / const -> -(Sum(dist) - Penalty) = Penalty - Sum(Dist)
-
-    Minimizing (Penalty - Sum(Dist)) equivalent to Maximizing Sum(Dist) and Minimizing Penalty.
-    This is consistent.
-
-    So the return value is: Penalty - WeightedSum(Distances).
-    If I return this, the optimizer should MINIMIZE it.
-
-    Let's make it explicit.
     """
-    x = np.asarray(x)
+    state = np.asarray(state)
 
     # 1. Declustering Reward (Weighted Sum of Distances)
     # We want to maximize this.
     dist_reward = 0.0
-    for j in range(len(X)):
-        dist = np.linalg.norm(x - X[j])
+    for j in range(len(states_list)):
+        dist = np.linalg.norm(state - states_list[j])
         dist_reward += w[j] * dist
 
     # 2. Bounding Penalty
     # We want to minimize this.
     penalty = 0.0
-    norm_x = np.linalg.norm(x)
+    norm_state = np.linalg.norm(state)
 
     # Hardcoded bounds from original code (9, 11) - ideally should come from 'limits'
     lower_bound = 9.0
     upper_bound = 11.0
 
-    if norm_x < lower_bound:
-        penalty += v * (lower_bound - norm_x) ** 2
-    elif norm_x > upper_bound:
-        penalty += v * (norm_x - upper_bound) ** 2
+    if norm_state < lower_bound:
+        penalty += v * (lower_bound - norm_state) ** 2
+    elif norm_state > upper_bound:
+        penalty += v * (norm_state - upper_bound) ** 2
 
     # Total Cost = Penalty - Reward
-    # Normalizer from original code: 2 * len(X)^2
-    normalizer = 2 * (len(X) ** 2) if len(X) > 0 else 1.0
+    # Normalizer from original code: 2 * len(states_list)^2
+    normalizer = 2 * (len(states_list) ** 2) if len(states_list) > 0 else 1.0
 
     cost = (penalty - dist_reward) / normalizer
     return cost
 
 
 def calc_global_occlusion_cost(
-    X: np.ndarray, W: np.ndarray, V: np.ndarray, X0: np.ndarray, B: np.ndarray
+    states_list: np.ndarray,
+    W: np.ndarray,
+    V: np.ndarray,
+    states_0_all: np.ndarray,
+    B: np.ndarray,
 ) -> float:
     """
     Global occlusion cost (to be minimized).
     """
-    num_agents = len(X0) // 3
+    num_agents = len(states_0_all) // 3
     dist_reward = 0.0
     travel_cost = 0.0
     bound_penalty = 0.0
 
-    for w_idx in range(num_agents):
-        x_w = X[3 * w_idx : 3 * w_idx + 3]
+    for agent_idx in range(num_agents):
+        state_agent = states_list[3 * agent_idx : 3 * agent_idx + 3]
 
         # Declustering (Reward)
         for i in range(num_agents):
-            if i != w_idx:
-                x_i = X[3 * i : 3 * i + 3]
+            if i != agent_idx:
+                state_other = states_list[3 * i : 3 * i + 3]
                 # Original used W[i], let's stick to that
-                dist_reward += W[i] * np.linalg.norm(x_w - x_i)
+                dist_reward += W[i] * np.linalg.norm(state_agent - state_other)
 
         # Travel Minimization (Cost)
-        x0_w = X0[3 * w_idx : 3 * w_idx + 3]
-        travel_cost += V[0] * np.linalg.norm(x_w - x0_w)
+        state_0_agent = states_0_all[3 * agent_idx : 3 * agent_idx + 3]
+        travel_cost += V[0] * np.linalg.norm(state_agent - state_0_agent)
 
         # Bounding (Penalty/Cost)
-        norm_xw = np.linalg.norm(x_w)
-        if norm_xw < B[0]:
-            bound_penalty += V[1] * (B[0] - norm_xw) ** 2
-        elif norm_xw > B[1]:
-            bound_penalty += V[2] * (norm_xw - B[1]) ** 2
-
-    # Total Cost = (Travel + Penalty) - Reward
-    # Note: original had 'obs = -obs / ...' where obs start as 0, then += Reward, -= Travel?, -= Penalty?
-    # Original:
-    # obs = 0
-    # obs -= W * dist (Negative Reward)
-    # obs += V[0] * travel (Positive Cost)
-    # obs += V * penalty (Positive Cost)
-    # return obs / const
-    # This means 'obs' was ALREADY the Cost (Minimization target).
-    # Start 0.
-    # Distances reduce cost (Good).
-    # Travel increases cost (Bad).
-    # Penalty increases cost (Bad).
-    # So the return value was (Travel + Penalty - WeightedDist).
+        norm_state_agent = np.linalg.norm(state_agent)
+        if norm_state_agent < B[0]:
+            bound_penalty += V[1] * (B[0] - norm_state_agent) ** 2
+        elif norm_state_agent > B[1]:
+            bound_penalty += V[2] * (norm_state_agent - B[1]) ** 2
 
     total_cost = (travel_cost + bound_penalty) - dist_reward
 
@@ -319,9 +295,9 @@ def gen_shape_data(shape, shapeParams, numPoints=100):
         )
         theta_data = np.linspace(0, 2 * np.pi, numPoints)
         theta, z = np.meshgrid(theta_data, z_data)
-        x = center[0] + radius * np.cos(theta)
-        y = center[1] + radius * np.sin(theta)
-        return x, y, z
+        x_pos = center[0] + radius * np.cos(theta)
+        y_pos = center[1] + radius * np.sin(theta)
+        return x_pos, y_pos, z
     elif shape == "sphere":
         center, radius = shapeParams
         return gen_shape_data(
@@ -329,12 +305,14 @@ def gen_shape_data(shape, shapeParams, numPoints=100):
         )
     elif shape == "ellipsoid":
         center, radii = shapeParams
-        u = np.linspace(0, 2 * np.pi, numPoints)
-        v = np.linspace(0, np.pi, numPoints)
-        x = center[0] + radii[0] * np.outer(np.cos(u), np.sin(v))
-        y = center[1] + radii[1] * np.outer(np.sin(u), np.sin(v))
-        z = center[2] + radii[2] * np.outer(np.ones(np.size(u)), np.cos(v))
-        return x, y, z
+        theta_vals = np.linspace(0, 2 * np.pi, numPoints)
+        phi_vals = np.linspace(0, np.pi, numPoints)
+        x_pos = center[0] + radii[0] * np.outer(np.cos(theta_vals), np.sin(phi_vals))
+        y_pos = center[1] + radii[1] * np.outer(np.sin(theta_vals), np.sin(phi_vals))
+        z_pos = center[2] + radii[2] * np.outer(
+            np.ones(np.size(theta_vals)), np.cos(phi_vals)
+        )
+        return x_pos, y_pos, z_pos
     else:
         raise ValueError("Shape not recognized")
 

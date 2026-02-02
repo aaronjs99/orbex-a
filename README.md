@@ -16,23 +16,24 @@ This repository contains simulation code, configuration files, visualizations, a
 
 ```
 .
-├── config/                         # YAML-based config for scenarios
-├── docs/
-│   └── adtmpc/                     # Evaluation plots and visualizations
-├── examples/                       # Example test cases and scripts
-├── results/                        # Output logs and benchmarks (optional runtime)
+├── config/                         # YAML-based configuration for scenarios
+├── paper/                          # Paper assets and figures
 ├── src/
 │   └── orbexa/                     # Core simulation modules and MPC logic
-├── run.py                          # Entrypoint for running ADTMPC simulations
-├── pyproject.toml                  # Project metadata and dependencies
-├── LICENSE                         # GPLv2 license
+├── tests/                          # Automated test suite
+├── INSTALL.md                      # Detailed installation guide
+├── LICENSE                         # GPL-2.0 license
 ├── README.md                       # Project documentation
-└── .gitignore                      # Output and IDE exclusions
+├── install_dependencies.sh         # Helper script for dependency installation
+├── pyproject.toml                  # Project metadata and dependencies
+├── requirements.txt                # Pip requirements file
+├── run.py                          # Entrypoint for running ADTMPC simulations
+└── setup.py                        # Legacy setup script
 ```
 
 ## Getting Started
 
-You can install dependencies and run a test scenario:
+You can install dependencies and run a test scenario. For more detailed installation options (e.g., CasADi, Mayavi), see [INSTALL.md](INSTALL.md).
 
 ```bash
 conda create -n orbexa python=3.9
@@ -52,10 +53,10 @@ GPLv2 License. See `LICENSE` for details.
 If you use this work, please cite:
 
 ```
-@inproceedings{johnsabu2024orbexa,
+@inproceedings{johnsabu2025orbexa,
   title={Capturing Tumbling Objects in Orbit with Adaptive Tube Model Predictive Control},
   author={Aaron John Sabu and Brett T. Lopez},
   booktitle={IEEE Aerospace Conference},
-  year={2024}
+  year={2025}
 }
 ```

@@ -60,24 +60,26 @@ def gen_adaptor_data(
     A_act, B_act, _, _, d_act = matrices
 
     remote = kwargs.get("remote", False)
-    m = GEKKO(remote=remote)
+    solver = GEKKO(remote=remote)
 
-    m.time = np.linspace(
+    solver.time = np.linspace(
         0,
         range_params["dt"] * (range_params["data_range"] - 1),
         range_params["data_range"],
     )
-    t = m.Var(value=0.0)
-    x_act = [m.Var(value=orbit_params["x_0"][i], fixed_initial=True) for i in range(6)]
-    u_act = [m.Param(value=orbit_params["u_t"][i]) for i in range(3)]
+    t = solver.Var(value=0.0)
+    x_act = [
+        solver.Var(value=orbit_params["x_0"][i], fixed_initial=True) for i in range(6)
+    ]
+    u_act = [solver.Param(value=orbit_params["u_t"][i]) for i in range(3)]
 
     # Equations
     eqs = []
     eqs.append(t.dt() == 1.0)
 
     # Dynamics loop
-    a_val = A_act(t, t_periapsis, m=m)
-    d_val = d_act(t, t_periapsis, m=m)
+    a_val = A_act(t, t_periapsis, m=solver)
+    d_val = d_act(t, t_periapsis, m=solver)
 
     for i in range(3):
         eqs.append(x_act[i + 0].dt() == x_act[i + 3])
@@ -87,19 +89,19 @@ def gen_adaptor_data(
 
         eqs.append(x_act[i + 3].dt() == v_dot + u_act[i] + d_val[i + 3])
 
-    m.Equations(eqs)
-    m.options.IMODE = 6
-    m.options.SOLVER = 1
-    m.options.MAX_MEMORY = 512
+    solver.Equations(eqs)
+    solver.options.IMODE = 6
+    solver.options.SOLVER = 1
+    solver.options.MAX_MEMORY = 512
 
     disp = kwargs.get("disp", False)
-    m.solve(disp=disp)
+    solver.solve(disp=disp)
 
     W = np.array([x_act[i].value for i in range(6)])
     W = np.transpose(W)
 
-    m.cleanup()
-    del m
+    solver.cleanup()
+    del solver
     return W
 
 
@@ -126,22 +128,22 @@ def run_adaptor_op(
     w_f = W[-1]
     flag = False
 
-    m = GEKKO(remote=True)
-    m.time = np.linspace(0, dt * (len(W) - 1), len(W))
+    solver = GEKKO(remote=True)
+    solver.time = np.linspace(0, dt * (len(W) - 1), len(W))
 
-    final = np.zeros(len(m.time))
+    final = np.zeros(len(solver.time))
     final[-1] = 1
-    final = m.Param(value=final)
+    final = solver.Param(value=final)
 
-    t = m.Var(value=0.0)
-    x_est = [m.Var(value=w_0[i], fixed_initial=True) for i in range(6)]
-    u_act = [m.Param(value=u_t[i]) for i in range(3)]
+    t = solver.Var(value=0.0)
+    x_est = [solver.Var(value=w_0[i], fixed_initial=True) for i in range(6)]
+    u_act = [solver.Param(value=u_t[i]) for i in range(3)]
 
     # Estimation Parameters
     p_est = []
     for i in range(len(p_range)):
         p_est.append(
-            m.FV(
+            solver.FV(
                 value=np.mean(p_range[i]),
                 lb=p_range[i][0],
                 ub=p_range[i][1],
@@ -156,7 +158,7 @@ def run_adaptor_op(
         eccentricity=p_est[0],
         alpha=p_est[1],
         beta=p_est[2],
-        m=m,
+        m=solver,
     )
     A_est, B_est, _, _, d_est = matrices
 
@@ -164,8 +166,8 @@ def run_adaptor_op(
     eqs = []
     eqs.append(t.dt() == 1.0)
 
-    a_val = A_est(t + t_s, t_periapsis, m=m)
-    d_val = d_est(t + t_s, t_periapsis, m=m)
+    a_val = A_est(t + t_s, t_periapsis, m=solver)
+    d_val = d_est(t + t_s, t_periapsis, m=solver)
 
     for i in range(3):
         eqs.append(x_est[i + 0].dt() == x_est[i + 3])
@@ -186,42 +188,42 @@ def run_adaptor_op(
     elif operation == "Optimal":
         eqs.append(final * sq_err < 4.0e-5)
 
-    m.Equations(eqs)
-    m.options.SOLVER = 3
-    m.options.IMODE = 5
-    m.options.MAX_TIME = 600
+    solver.Equations(eqs)
+    solver.options.SOLVER = 3
+    solver.options.IMODE = 5
+    solver.options.MAX_TIME = 600
 
     output = (False, [])
 
     if operation == "FSS":
-        m.options.MAX_ITER = 250
+        solver.options.MAX_ITER = 250
         idx = oper_iter // 2
         p_est[idx].value = p_range[idx][oper_iter % 2]
 
         if oper_iter % 2 == 0:
-            m.Minimize(p_est[idx] * final)
+            solver.Minimize(p_est[idx] * final)
         else:
-            m.Maximize(p_est[idx] * final)
+            solver.Maximize(p_est[idx] * final)
 
         try:
-            m.solve(disp=kwargs.get("disp", False))
+            solver.solve(disp=kwargs.get("disp", False))
             output = oper_iter, p_est[idx].value[-1]
         except:
             output = oper_iter, p_range[idx][oper_iter % 2]
 
     elif operation == "Optimal":
-        m.options.MAX_ITER = 500
-        m.Minimize(final * sq_err)
+        solver.options.MAX_ITER = 500
+        solver.Minimize(final * sq_err)
 
         try:
-            m.solve(disp=kwargs.get("disp", False))
+            solver.solve(disp=kwargs.get("disp", False))
             est_vals = [p_est[i].value[-1] for i in range(len(p_range))]
             output = False, est_vals
         except:
             flag = True
             output = True, [0] * len(p_range)
 
-    m.cleanup()
+    solver.cleanup()
     return output
 
 

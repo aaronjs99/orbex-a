@@ -20,10 +20,13 @@ and support dependency injection.
 
 import math
 import numpy as np
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 
 from orbexa.utils.io_utils import load_config
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,6 +66,9 @@ class MPCConfig:
     force_bounds: List[Dict[str, float]]
     goal_bounds: List[float]
 
+    Q: np.ndarray = field(default_factory=lambda: np.eye(6))
+    R: np.ndarray = field(default_factory=lambda: np.eye(3) * 1e-4)
+
 
 @dataclass
 class TargetConfig:
@@ -100,6 +106,7 @@ class SimulationConfig:
 
     seed: int
     dt: float
+    dtheta: float
     total_time: int
     num_update_steps: int
     decoupled_mode: bool
@@ -118,8 +125,10 @@ class SimulationConfig:
     @classmethod
     def load(cls, path: str = "config/default.yaml") -> "SimulationConfig":
         """Load configuration from a YAML file."""
+        logger.debug(f"Loading configuration from {path}")
         data = load_config(path)
         if data is None:
+            logger.error(f"Failed to load configuration from {path}")
             raise ValueError(f"Failed to load configuration from {path}")
 
         # Helper to convert list lists to numpy arrays
@@ -146,6 +155,8 @@ class SimulationConfig:
             input_bounds=mpc_data["input_bounds"],
             force_bounds=mpc_data["force_bounds"],
             goal_bounds=mpc_data["goal_bounds"],
+            Q=to_numpy(mpc_data.get("Q", np.eye(6).tolist())),
+            R=to_numpy(mpc_data.get("R", (np.eye(3) * 1e-4).tolist())),
         )
 
         target_data = data["target"]
@@ -174,6 +185,7 @@ class SimulationConfig:
         return cls(
             seed=data["seed"],
             dt=data["dt"],
+            dtheta=data.get("dtheta", 0.0),
             total_time=data["total_time"],
             num_update_steps=data["num_update_steps"],
             decoupled_mode=data["decoupled_mode"],
@@ -183,3 +195,5 @@ class SimulationConfig:
             target=target_config,
             tube=tube_config,
         )
+        logger.info(f"Configuration loaded successfully from {path}")
+        return config

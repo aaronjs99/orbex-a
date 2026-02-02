@@ -26,72 +26,79 @@ def estimator(t_stream, y_stream, model_functions, prev_theta=None):
     if prev_theta is None:
         prev_theta = np.zeros(len(model_functions))
 
-    m = GEKKO(remote=True)
-    m.time = t_stream
+    solver = GEKKO(remote=True)
+    solver.time = t_stream
 
-    T = m.Param(value=t_stream)
-    y = m.Param(value=y_stream)
+    T = solver.Param(value=t_stream)
+    y = solver.Param(value=y_stream)
 
-    t = m.Var(value=t_stream[0])
-    z = m.Var(fixed_initial=False, value=y_stream[0])
+    t = solver.Var(value=t_stream[0])
+    z = solver.Var(fixed_initial=False, value=y_stream[0])
     theta = [
-        m.FV(fixed_initial=False, value=prev_theta[i])
+        solver.FV(fixed_initial=False, value=prev_theta[i])
         for i in range(len(model_functions))
     ]
 
-    m.Equation(t.dt() == 1.0)
-    m.Equation(
+    solver.Equation(t.dt() == 1.0)
+    solver.Equation(
         z
         == np.sum(
-            [model_functions[i](t, m=m) * theta[i] for i in range(len(model_functions))]
+            [
+                model_functions[i](t, m=solver) * theta[i]
+                for i in range(len(model_functions))
+            ]
         )
     )
-    m.Minimize(T * (y - z) ** 2)
+    solver.Minimize(T * (y - z) ** 2)
 
-    m.options.IMODE = 6
-    m.options.SOLVER = 1
-    m.options.MAX_ITER = 1000
-    m.solve(disp=True)
+    solver.options.IMODE = 6
+    solver.options.SOLVER = 1
+    solver.options.MAX_ITER = 1000
+    solver.solve(disp=True)
 
-    error = m.options.OBJFCNVAL
+    error = solver.options.OBJFCNVAL
     theta = np.array([theta[i].value[-1] for i in range(len(model_functions))])
 
-    m.cleanup()
-    del m
+    solver.cleanup()
+    del solver
     return error, theta
 
 
 def gen_y_stream(y_0, phi_0, omega_0, I, t_stream):
     y_stream = []
 
-    m = GEKKO(remote=True)
-    m.time = t_stream
-    t = m.Var(value=0.0)
-    y = [m.Var(value=y_0[i], fixed_initial=True) for i in range(3)]
-    phi = [m.Var(value=phi_0[i], fixed_initial=True) for i in range(3)]
-    omega = [m.Var(value=omega_0[i], fixed_initial=True) for i in range(3)]
+    solver = GEKKO(remote=True)
+    solver.time = t_stream
+    t = solver.Var(value=0.0)
+    y = [solver.Var(value=y_0[i], fixed_initial=True) for i in range(3)]
+    phi = [solver.Var(value=phi_0[i], fixed_initial=True) for i in range(3)]
+    omega = [solver.Var(value=omega_0[i], fixed_initial=True) for i in range(3)]
 
     roll, pitch, yaw = phi
     rot_mat = [
         [
-            m.cos(yaw) * m.cos(pitch),
-            m.cos(yaw) * m.sin(pitch) * m.sin(roll) - m.sin(yaw) * m.cos(roll),
-            m.cos(yaw) * m.sin(pitch) * m.cos(roll) + m.sin(yaw) * m.sin(roll),
+            solver.cos(yaw) * solver.cos(pitch),
+            solver.cos(yaw) * solver.sin(pitch) * solver.sin(roll)
+            - solver.sin(yaw) * solver.cos(roll),
+            solver.cos(yaw) * solver.sin(pitch) * solver.cos(roll)
+            + solver.sin(yaw) * solver.sin(roll),
         ],
         [
-            m.sin(yaw) * m.cos(pitch),
-            m.sin(yaw) * m.sin(pitch) * m.sin(roll) + m.cos(yaw) * m.cos(roll),
-            m.sin(yaw) * m.sin(pitch) * m.cos(roll) - m.cos(yaw) * m.sin(roll),
+            solver.sin(yaw) * solver.cos(pitch),
+            solver.sin(yaw) * solver.sin(pitch) * solver.sin(roll)
+            + solver.cos(yaw) * solver.cos(roll),
+            solver.sin(yaw) * solver.sin(pitch) * solver.cos(roll)
+            - solver.cos(yaw) * solver.sin(roll),
         ],
         [
-            -m.sin(pitch),
-            m.cos(pitch) * m.sin(roll),
-            m.cos(pitch) * m.cos(roll),
+            -solver.sin(pitch),
+            solver.cos(pitch) * solver.sin(roll),
+            solver.cos(pitch) * solver.cos(roll),
         ],
     ]
     for i in range(3):
         for j in range(3):
-            rot_mat[i][j] = m.Intermediate(rot_mat[i][j])
+            rot_mat[i][j] = solver.Intermediate(rot_mat[i][j])
 
     eqs = []
     eqs.append(t.dt() == 1.0)
@@ -102,15 +109,15 @@ def gen_y_stream(y_0, phi_0, omega_0, I, t_stream):
             omega[i].dt()
             == -np.matmul(np.linalg.inv(I), np.cross(omega, np.matmul(I, omega)))[i]
         )
-    eqs = m.Equations(eqs)
-    m.options.IMODE = 6
-    m.options.SOLVER = 3
-    m.options.MAX_MEMORY = 512
-    m.solve(disp=True, debug=2)
+    eqs = solver.Equations(eqs)
+    solver.options.IMODE = 6
+    solver.options.SOLVER = 3
+    solver.options.MAX_MEMORY = 512
+    solver.solve(disp=True, debug=2)
 
     y_stream = [y[i].value for i in range(3)]
-    m.cleanup()
-    del m
+    solver.cleanup()
+    del solver
     return y_stream
 
 
@@ -133,20 +140,20 @@ if __name__ == "__main__":
 
     def f_exp(t, *args, **kwargs):
         if "m" in kwargs:
-            m = kwargs["m"]
-            return m.exp(t)
+            solver = kwargs["m"]
+            return solver.exp(t)
         return np.exp(t)
 
     def f_sin(t, *args, **kwargs):
         if "m" in kwargs:
-            m = kwargs["m"]
-            return m.sin(t)
+            solver = kwargs["m"]
+            return solver.sin(t)
         return np.sin(t)
 
     def f_cos(t, *args, **kwargs):
         if "m" in kwargs:
-            m = kwargs["m"]
-            return m.cos(t)
+            solver = kwargs["m"]
+            return solver.cos(t)
         return np.cos(t)
 
     y_0 = np.array([0.0, -0.8, 0.3])

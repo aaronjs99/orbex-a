@@ -192,21 +192,24 @@ def orbital_ellp_undrag(
     rho = 1.0  # Density scaling factor
 
     # Dynamics Functions (depend on true anomaly q)
-    def A_func(t: float, t_p: float, m=math, *args, **kwargs) -> Any:
-        # Calculate eccentric anomaly E and true anomaly q
-        # Assuming M = mean_motion * (t - t_p) for proper dimensional units if mean_motion is provided.
-        # This resolves the ambiguity in the legacy code regarding "t - t_tp" units.
-
-        M_val = mean_motion * (t - t_p)
-        enc_arg = M_val / 2.0
-
-        E_val = 2 * m.atan(
-            m.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(enc_arg)
-        )
-
-        q_val = 2 * m.atan(
-            m.sqrt((1 + eccentricity) / (1 - eccentricity)) * m.tan(E_val / 2)
-        )
+    def A_func(t, t_p, *args, **kwargs):
+        """Evaluation of LTV matrix A at time t or anomaly q."""
+        solver = kwargs.get("solver", kwargs.get("m", np))
+        q_val = kwargs.get("q")
+        
+        if q_val is None:
+            if eccentricity == 0.0:
+                q_val = mean_motion * (t - t_p)
+            else:
+                # Convert time to anomaly
+                M_val = mean_motion * (t - t_p)
+                enc_arg = M_val / 2.0
+                E_val = 2 * solver.atan(
+                    solver.sqrt((1 - eccentricity) / (1 + eccentricity)) * solver.tan(enc_arg)
+                )
+                q_val = 2 * solver.atan(
+                    solver.sqrt((1 + eccentricity) / (1 - eccentricity)) * solver.tan(E_val / 2)
+                )
 
         # Denominators
         den1 = (1 - eccentricity**2) ** 3
@@ -220,19 +223,19 @@ def orbital_ellp_undrag(
             [0, 0, 0, 0, 1, 0],
             [0, 0, 0, 0, 0, 1],
             [
-                coef_1 * (3 + eccentricity * m.cos(q_val)) / den1,
-                coef_1 * (eccentricity * m.sin(q_val)) / den1,
+                coef_1 * (3 + eccentricity * solver.cos(q_val)) / den1,
+                coef_1 * (eccentricity * solver.sin(q_val)) / den1,
                 0,
-                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
                 2 * coef_2 / den2,
                 0,
             ],
             [
-                coef_1 * (eccentricity * m.sin(q_val)) / den1,
-                coef_1 * eccentricity * m.cos(q_val) / den1,
+                coef_1 * (eccentricity * solver.sin(q_val)) / den1,
+                coef_1 * eccentricity * solver.cos(q_val) / den1,
                 0,
                 -2 * coef_2 / den2,
-                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
                 0,
             ],
             [
@@ -241,7 +244,7 @@ def orbital_ellp_undrag(
                 -coef_1 * (1) / den1,
                 0,
                 0,
-                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
             ],
         ]
         return np.array(A_mat) if "m" not in kwargs else A_mat

@@ -14,10 +14,13 @@
 Abstract base classes and data structures for MPC solvers.
 """
 
+import logging
 import numpy as np
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Tuple, Callable
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -143,9 +146,14 @@ class SolverBase(ABC):
         Returns:
             SolverResult with trajectory and status
         """
+        logger.debug(f"Solving MPC problem with {self.name} solver")
         self.setup(problem)
         result = self.solve()
         self.cleanup()
+        if result.success:
+            logger.debug(f"{self.name} solver succeeded in {result.solve_time:.4f}s")
+        else:
+            logger.warning(f"{self.name} solver failed: {result.message}")
         return result
 
     def _discretize(

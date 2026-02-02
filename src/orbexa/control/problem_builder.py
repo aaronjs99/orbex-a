@@ -63,6 +63,9 @@ class ORBEXAProblemConfig:
     tube_mpc_enabled: bool = False
     tube_params: Dict[str, Any] = field(default_factory=dict)
 
+    # Anomaly scaling
+    use_anomaly_scaling: bool = False
+
     # Target tracking
     target_params: Optional[Dict[str, Any]] = None
 
@@ -110,7 +113,28 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
         "eccentricity": config.eccentricity,
         "mean_motion": config.mean_motion,
         "u_0": config.u_0,
+        "use_anomaly_scaling": config.use_anomaly_scaling,
     }
+
+    # Calculate initial true anomaly q_0 for solver prediction
+    if config.use_anomaly_scaling:
+        ecc = config.eccentricity
+        n_motion = config.mean_motion
+        t_p = config.t_periapsis
+        t = config.t_start
+
+        # Calculate initial true anomaly q_0 for solver prediction
+        # M = n*(t - tp). Solve Kepler for E (approx), then q.
+        mean_anomaly_0 = n_motion * (t - t_p)
+        eccentric_anomaly_0 = mean_anomaly_0  # Initial guess
+        for _ in range(5):
+            eccentric_anomaly_0 = mean_anomaly_0 + ecc * np.sin(eccentric_anomaly_0)
+
+        # q = 2 * atan(sqrt((1+e)/(1-e)) * tan(E/2))
+        q_0 = 2 * np.arctan(
+            np.sqrt((1 + ecc) / (1 - ecc)) * np.tan(eccentric_anomaly_0 / 2)
+        )
+        extra_params["q_0"] = q_0
 
     # Add tube MPC if enabled
     if config.tube_mpc_enabled:
@@ -179,5 +203,8 @@ def build_from_dynamics(
     if "tube_mpc" in kwargs:
         config.tube_mpc_enabled = True
         config.tube_params = kwargs["tube_mpc"]
+
+    if "use_anomaly_scaling" in kwargs:
+        config.use_anomaly_scaling = kwargs["use_anomaly_scaling"]
 
     return build_mpc_problem(config)

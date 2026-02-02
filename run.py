@@ -94,7 +94,7 @@ def main():
         logger.info("Interrupted.")
         sys.exit(130)
     except Exception as e:
-        logger.error(f"Error: {e}")
+        logger.error(f"Error: {e}", exc_info=True)
         sys.exit(1)
 
 

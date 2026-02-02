@@ -30,36 +30,39 @@ np.random.seed(0)
 class DistOptAgent:
     _dids = count(0)
 
-    def __init__(self, x, w, v, N, *args):
+    def __init__(self, state, w, v, N, *args):
         self.did = next(self._dids)
         self.t = 1  ### Time Step
-        self.x = x  ### Current State
+        self.state = state  ### Current State
         self.w = w  ### Weight Vector for Neighbors in Declustering
         self.v = v  ### Weight Vector for Neighbors in Bounding
         self.N = N  ### Neighbors
-        self.allx = [x]  ### All States
+        self.state_history = [state]  ### All States
         self.updateWV("only_neighbors")
 
-    def update_x(self, X, fun=calc_local_occlusion_cost, *args):
+    def update_state(self, states, fun=calc_local_occlusion_cost, *args):
         if len(args) == 0:
-            args = [(self.w, self.v, X)]
-        self.x = opt.minimize(
+            args = [(self.w, self.v, states)]
+        self.state = opt.minimize(
             fun,
-            x0=self.allx[-1],
+            x0=self.state_history[-1],
             args=args[0],
             options={"disp": False},
             constraints=(
                 {
                     "type": "ineq",
-                    "fun": lambda x: -(
-                        np.linalg.norm(np.subtract(self.allx[-1], x)) - 1.0
+                    "fun": lambda state_candidate: -(
+                        np.linalg.norm(
+                            np.subtract(self.state_history[-1], state_candidate)
+                        )
+                        - 1.0
                     ),
                 }
             ),
         ).x
-        self.allx.append(self.x)
+        self.state_history.append(self.state)
         self.t += 1
-        return self.x
+        return self.state
 
     def updateWV(self, operation, *args):
         if operation == "setW":
@@ -99,7 +102,7 @@ if __name__ == "__main__":
     #      np.array([ 3.0, -4.0]),
     #      np.array([ 7.0,  4.5]),
     #      np.array([ 2.5, -8.5])]
-    X = [
+    states = [
         np.array(
             [
                 np.random.normal(3.0, 4.0),
@@ -109,17 +112,17 @@ if __name__ == "__main__":
         )
         for i in range(8)
     ]
-    num_agents = len(X)
-    numStates = len(X[0])
+    num_agents = len(states)
+    numStates = len(states[0])
     W = [
         np.array([1.0 / num_agents for ego in range(num_agents)])
         for agent in range(num_agents)
     ]
     V = [5.0 for agent in range(num_agents)]
-    N = gen_neighbors("maxDist", X, 40, idOffset=False)
-    agents = [DistOptAgent(X[i], W[i], V[i], N[i]) for i in range(num_agents)]
+    N = gen_neighbors("maxDist", states, 40, idOffset=False)
+    agents = [DistOptAgent(states[i], W[i], V[i], N[i]) for i in range(num_agents)]
 
-    logger.info(f"Initial States: {[agent.x for agent in agents]}")
+    logger.info(f"Initial States: {[agent.state for agent in agents]}")
 
     ax1 = plt.subplot(2, 2, 1)
     ax2 = plt.subplot(2, 2, 2)
@@ -128,31 +131,49 @@ if __name__ == "__main__":
 
     # Run Simulation
     for t in range(50):
-        X_new = []
+        states_new = []
         for j in range(num_agents):
-            x_j = agents[j].update_x(X)
-            X_new.append(x_j)
-        X = X_new.copy()
+            state_j = agents[j].update_state(states)
+            states_new.append(state_j)
+        states = states_new.copy()
 
     # Plot Results
     for i in range(num_agents):
-        ax1.scatter(agents[i].allx[0][0], agents[i].allx[0][1], label="Agent " + str(i))
+        ax1.scatter(
+            agents[i].state_history[0][0],
+            agents[i].state_history[0][1],
+            label="Agent " + str(i),
+        )
         ax1.plot(
-            [agents[i].allx[j][0] for j in range(len(agents[i].allx))],
-            [agents[i].allx[j][1] for j in range(len(agents[i].allx))],
+            [
+                agents[i].state_history[j][0]
+                for j in range(len(agents[i].state_history))
+            ],
+            [
+                agents[i].state_history[j][1]
+                for j in range(len(agents[i].state_history))
+            ],
             label="Agent " + str(i),
         )
         ax2.plot(
-            list(range(len(agents[i].allx))),
-            [agents[i].allx[j][0] for j in range(len(agents[i].allx))],
+            list(range(len(agents[i].state_history))),
+            [
+                agents[i].state_history[j][0]
+                for j in range(len(agents[i].state_history))
+            ],
             label="Agent " + str(i),
         )
         ax3.scatter(
-            agents[i].allx[-1][0], agents[i].allx[-1][1], label="Agent " + str(i)
+            agents[i].state_history[-1][0],
+            agents[i].state_history[-1][1],
+            label="Agent " + str(i),
         )
         ax4.plot(
-            list(range(len(agents[i].allx))),
-            [agents[i].allx[j][1] for j in range(len(agents[i].allx))],
+            list(range(len(agents[i].state_history))),
+            [
+                agents[i].state_history[j][1]
+                for j in range(len(agents[i].state_history))
+            ],
             label="Agent " + str(i),
         )
     plt.legend()
@@ -163,18 +184,27 @@ if __name__ == "__main__":
     ax = fig.add_subplot(111, projection="3d")
     for i in range(num_agents):
         ax.scatter(
-            agents[i].allx[0][0],
-            agents[i].allx[0][1],
-            agents[i].allx[0][2],
+            agents[i].state_history[0][0],
+            agents[i].state_history[0][1],
+            agents[i].state_history[0][2],
             label="Agent " + str(i),
         )
         ax.plot(
-            [agents[i].allx[j][0] for j in range(len(agents[i].allx))],
-            [agents[i].allx[j][1] for j in range(len(agents[i].allx))],
-            [agents[i].allx[j][2] for j in range(len(agents[i].allx))],
+            [
+                agents[i].state_history[j][0]
+                for j in range(len(agents[i].state_history))
+            ],
+            [
+                agents[i].state_history[j][1]
+                for j in range(len(agents[i].state_history))
+            ],
+            [
+                agents[i].state_history[j][2]
+                for j in range(len(agents[i].state_history))
+            ],
             label="Agent " + str(i),
         )
     plt.legend()
     plt.show()
 
-    logger.info(f"Final States: {[agent.x for agent in agents]}")
+    logger.info(f"Final States: {[agent.state for agent in agents]}")

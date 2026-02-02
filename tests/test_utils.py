@@ -127,8 +127,13 @@ class TestIOUtils:
 
     def test_thread_worker(self):
         q = Queue()
-        def success_func(): return "ok"
-        def fail_func(): raise ValueError("oops")
+
+        def success_func():
+            return "ok"
+
+        def fail_func():
+            raise ValueError("oops")
+
         io_utils.thread_worker(q, success_func)
         ok, val = q.get()
         assert ok is True

@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 from orbexa.solvers import get_solver, get_solver_from_config, MPCProblem, SolverResult
 from orbexa.control.problem_builder import build_from_dynamics
+from orbexa.utils.anomaly import true_anomaly_to_time, dtheta_dt, dt_dtheta
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,9 @@ class MPCController:
 
     def solve_step(
         self,
-        x_0: np.ndarray,
-        x_f: np.ndarray,
-        u_0: np.ndarray,
+        state_0: np.ndarray,
+        state_f: np.ndarray,
+        control_input_0: np.ndarray,
         t_start: float,
         dt: float,
         num_steps: int,
@@ -96,9 +97,9 @@ class MPCController:
         Solve a single MPC optimization step.
 
         Args:
-            x_0: Initial state vector (n,)
-            x_f: Target/reference state vector (n,)
-            u_0: Initial control guess (m,)
+            state_0: Initial state vector (n,)
+            state_f: Target/reference state vector (n,)
+            control_input_0: Initial control guess (m,)
             t_start: Current simulation time
             dt: Time step
             num_steps: MPC horizon length
@@ -114,6 +115,11 @@ class MPCController:
         A_func, B, Q, R, d_func = dynamics
         state_bounds, input_bounds = bounds
 
+        # Prepare additional kwargs, avoiding duplicates for Q and R
+        extra_kwargs = kwargs.copy()
+        extra_kwargs.pop("Q", None)
+        extra_kwargs.pop("R", None)
+
         # Build the MPC problem
         problem = build_from_dynamics(
             A_func=A_func,
@@ -121,8 +127,8 @@ class MPCController:
             Q=Q,
             R=R,
             d_func=d_func,
-            x_0=x_0,
-            x_f=x_f,
+            x_0=state_0,
+            x_f=state_f,
             t_start=t_start,
             num_steps=num_steps,
             dt=dt,
@@ -130,7 +136,7 @@ class MPCController:
             eccentricity=eccentricity,
             state_bounds=state_bounds,
             input_bounds=input_bounds,
-            **kwargs,
+            **extra_kwargs,
         )
 
         # Solve using the abstracted solver
@@ -146,9 +152,9 @@ class MPCController:
         num_chasers: int,
         num_mpc_steps: int,
         num_act_steps: int,
-        X_0: np.ndarray,
-        f_X_f: Union[np.ndarray, Callable],
-        U_0: np.ndarray,
+        state_0: np.ndarray,
+        f_state_f: Union[np.ndarray, Callable],
+        control_input_0: np.ndarray,
         dynamics_func: Callable,  # Explicit dynamics factory
         dynamics_params: Dict[str, Any],  # e.g. {mean_motion: ..., ecc: ...}
         bounds: Tuple[List[Dict], List[Dict]],
@@ -164,104 +170,184 @@ class MPCController:
            dynamics_params: Kwargs for dynamics_func (e.g. mean_motion).
         """
         t = t_0
-        X = X_0.copy()
+        state = state_0.copy()
 
-        # Determine X_f
-        if callable(f_X_f):
-            X_f_val = f_X_f(t)
+        # Determine initial true anomaly q from t
+        # (Assuming t_0 is time and we need q to start anomaly-based propagation)
+        ecc = dynamics_params.get("eccentricity", 0.0)
+        n_motion = dynamics_params.get("mean_motion", 0.001)
+        t_p = dynamics_params.get("t_periapsis", 0.0)
+
+        # We need a q variable to track anomaly. dt is dq.
+        # But wait, t_start in A_func is time.
+        # If we are in OC mode, we want to reach the goal in anomaly space.
+
+        # Convert initial velocity m/s -> m/rad
+        # dq/dt at t_0
+        # Simplest: M = n*(t - tp). Then solve Kepler for E, then q.
+        mean_anomaly_0 = n_motion * (t - t_p)
+        eccentric_anomaly_0 = mean_anomaly_0  # Initial guess
+        for _ in range(5):
+            eccentric_anomaly_0 = mean_anomaly_0 + ecc * np.sin(eccentric_anomaly_0)
+        q_0 = 2 * np.arctan(
+            np.sqrt((1 + ecc) / (1 - ecc)) * np.tan(eccentric_anomaly_0 / 2)
+        )
+
+        q = q_0
+        dq = dt  # renamed for clarity inside the loop
+
+        # State remains in [m, m/s].
+        # We don't convert velocities to m/rad because we will scale the dynamics instead.
+
+        logger.info(f"Starting mission: {operation}")
+        logger.info(f"Initial state: {state}")
+        logger.debug(f"MPC Steps: {num_mpc_steps}, Actuation Steps: {num_act_steps}")
+
+        # Determine target state
+        if callable(f_state_f):
+            state_f_val = f_state_f(t)
         else:
-            X_f_val = f_X_f
+            state_f_val = f_state_f
 
         # Lists to store history
         time_history = [t]
-        state_history = [X.copy()]
+        state_history = [state.copy()]
         input_history = []
 
         solve_times = []
         success = True
 
         # Initial solution guess
-        u_seed = U_0
+        control_input_seed = control_input_0
 
-        for step in range(max_mission_steps):
+        for step_idx in range(max_mission_steps):
+            logger.debug(
+                f"MPC Solve Step {step_idx+1}/{max_mission_steps} | Time: {t:.2f}s"
+            )
             # Update dynamics model for current step
             matrices, _, _ = dynamics_func(**dynamics_params)
 
-            # Extract necessary params for solve_step (t_periapsis, eccentricity)
-            # Default to 0.0 if not provided in dynamics_params
+            # Extract necessary params for solve_step
             t_p = dynamics_params.get("t_periapsis", 0.0)
             ecc = dynamics_params.get("eccentricity", 0.0)
 
-            # Prepare kwargs for solve_step, removing explicit args to avoid duplicates
+            # Prepare solve kwargs to avoid duplicate arguments
             solve_kwargs = kwargs.copy()
             solve_kwargs.pop("t_periapsis", None)
             solve_kwargs.pop("eccentricity", None)
 
+            # Wrapper for dynamics to convert time-base matrices to anomaly-base
+            # dX/dq = (dX/dt) * (dt/dq)
+            def anomaly_dynamics_wrapper(t_in, tp_in, **dw_kwargs):
+                # Get current dq/dt to find scaling 1/(dq/dt)
+                solver_obj = dw_kwargs.get("solver", None)
+                dqdt_val = dtheta_dt(
+                    q,
+                    eccentricity=ecc,
+                    mean_motion=n_motion,
+                    t_periapsis=tp_in,
+                    solver=solver_obj,
+                )
+                dtdq_val = 1.0 / dqdt_val
+
+                A_t, B_t, Q_t, R_t, d_t = matrices
+                return (A_t, B_t, Q_t, R_t, d_t), dtdq_val
+
+            # Since resolve needs the wrapped matrices, we build a special problem
+            # But wait, solve_step expects the matrices tuple directly.
+            # We will pass the time-matrices to solve_step, but we must ensure
+            # the SOLVER knows to scale them.
+
+            # Actually, the cleanest way is for solve_step to build a problem
+            # where A_q = A_t * dtdq.
+
+            # Let's modify solve_step to accept an optional dtdq scaling or handle it in the dynamics.
+
             result = self.solve_step(
-                x_0=X,
-                x_f=X_f_val,
-                u_0=u_seed,
+                state_0=state,
+                state_f=state_f_val,
+                control_input_0=control_input_seed,
                 t_start=t,
-                dt=dt,
+                dt=dq,  # anomaly step
                 num_steps=num_mpc_steps,
-                dynamics=matrices,
+                dynamics=matrices,  # Time-base matrices
                 bounds=bounds,
-                t_periapsis=t_p,  # Explicitly passed from dynamics_params
+                t_periapsis=t_p,
                 eccentricity=ecc,
-                **solve_kwargs,  # Pass remaining params
+                use_anomaly_scaling=True,  # New flag
+                **solve_kwargs,
             )
 
             solve_times.append(result.solve_time)
 
             if not result.success:
-                logger.warning(f"Solver failed at step {step}")
-                # success = False
-                # break/continue? simple fallback?
-                # For now continue with zero input
-                u_applied = np.zeros(3)  # num_chasers*3?
-            else:
-                # Apply first input
-                u_full = result.inputs
-                # If result inputs is vector (m*N,), take first block
-                # If list of arrays, take first
-                # Extract first input from optimized sequence
+                logger.warning(f"Solver failed at step {step_idx}")
+                success = False
+                break
+
+            # Actuations loop: Apply multiple steps from the optimized trajectory
+            # num_act_steps should be <= num_mpc_steps
+            act_count = min(num_act_steps, num_mpc_steps)
+
+            for act_idx in range(act_count):
+                # Extract input at current actuation index
                 if isinstance(result.inputs, list):
-                    # Handle list of arrays (e.g. from Gekko wrapper where inputs are per-variable lists)
-                    u_applied = np.array([u_ch[0] for u_ch in result.inputs])
+                    # Gekko style: list of per-variable arrays
+                    u_applied = np.array([u_ch[act_idx] for u_ch in result.inputs])
                 elif isinstance(result.inputs, np.ndarray):
                     if result.inputs.ndim == 2:
-                        # Shape (num_inputs, num_steps) -> Take first column
-                        u_applied = result.inputs[:, 0]
+                        # Shape (num_inputs, num_steps)
+                        u_applied = result.inputs[:, act_idx]
                     else:
-                        # Fallback
+                        # Fallback for single step results
                         u_applied = (
-                            result.inputs[0] if len(result.inputs) > 0 else np.zeros(3)
+                            result.inputs
+                            if act_idx == 0
+                            else np.zeros_like(result.inputs)
                         )
                 else:
                     u_applied = np.zeros(3)
 
-            input_history.append(u_applied)
+                input_history.append(u_applied)
 
-            # Propagate State (Simulation) using Euler integration
-            # Note: Uses the model dynamics (nominal). In a real scenario, use actual plant model.
-            A_func, B_func, _, _, d_func = matrices
+                # Propagate State (Simulated Plant)
+                A_func, B_func, _, _, d_func = matrices
+                A_val = A_func(t, t_p)
+                d_val = d_func(t, t_p)
+                B_val = B_func()
 
-            # Evaluate dynamics matrices at current time t
-            A_val = A_func(t, t_p)
-            d_val = d_func(t, t_p)
-            B_val = B_func()
+                # Propagate State (Simulated Plant)
+                # dX/dq = (dX/dt) * (dt/dq)
+                A_func, B_func, _, _, d_func = matrices
+                A_val = A_func(t, t_p)
+                d_val = d_func(t, t_p)
+                B_val = B_func()
 
-            # X_dot = AX + Bu + d
-            x_dot = A_val @ X + B_val @ u_applied + d_val
-            X = X + x_dot * dt
+                # Get dt/dq for the plant too
+                dqdt = dtheta_dt(
+                    q, eccentricity=ecc, mean_motion=n_motion, t_periapsis=t_p
+                )
+                dtdq = 1.0 / dqdt
 
-            t += dt
-            state_history.append(X.copy())
+                # state_dot_q = (A*state + B*u + d) * dtdq
+                state_dot_q = (A_val @ state + B_val @ u_applied + d_val) * dtdq
+                state = state + state_dot_q * dq
 
-            # Update target state if moving
-            if callable(f_X_f):
-                X_f_val = f_X_f(t)
+                # Real time elapsed: dt_time = dq * (dt/dq)
+                dt_time = dq * dtdq
 
+                t += dt_time
+                q += dq
+
+                # Log progress
+                state_history.append(state.copy())
+                time_history.append(t)
+
+                # Update target state if moving/dynamic
+                if callable(f_state_f):
+                    state_f_val = f_state_f(t)
+
+        logger.info(f"Mission {operation} completed. Success: {success}")
         return MissionResult(
             success=success,
             time_history=time_history,

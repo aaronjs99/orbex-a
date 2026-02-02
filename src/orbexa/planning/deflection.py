@@ -74,8 +74,8 @@ def target_deflect(
     w = np.ones(num_steps)
 
     ## Initialize MPC ##
-    m = GEKKO(remote=solver_params["remote"])
-    m.time = time_seq
+    solver = GEKKO(remote=solver_params["remote"])
+    solver.time = time_seq
     w = np.ones(num_steps)
     final = np.zeros(num_steps)
     final[-1] = 1
@@ -89,22 +89,23 @@ def target_deflect(
 
     ### Declaration of Gekko Variables
     eqs = []
-    x = [
-        m.Var(value=x_0[i], fixed_initial=True) for i in range(len(x_0))
+    target_state = [
+        solver.Var(value=x_0[i], fixed_initial=True) for i in range(len(x_0))
     ]  # Target State
-    f = [
-        m.Var(value=0, fixed_initial=False) for i in range(f_len * num_chasers)
+    chaser_forces_flat = [
+        solver.Var(value=0, fixed_initial=False) for i in range(f_len * num_chasers)
     ]  # Chaser Force
-    W = m.Param(value=w)
-    final = m.Param(value=final)
+    W = solver.Param(value=w)
+    final = solver.Param(value=final)
 
     if discretize_dockers:
-        r = [
-            m.Var(value=0.01, fixed_initial=False) for i in range(r_len * num_chasers)
+        chaser_positions_flat = [
+            solver.Var(value=0.01, fixed_initial=False)
+            for i in range(r_len * num_chasers)
         ]  # Chaser Position
     else:
-        r = [
-            m.FV(value=1, fixed_initial=False) for i in range(r_len * num_chasers)
+        chaser_positions_flat = [
+            solver.FV(value=1, fixed_initial=False) for i in range(r_len * num_chasers)
         ]  # Chaser Position
 
     ## Constraint Equations ##
@@ -112,16 +113,30 @@ def target_deflect(
     # omega = np.array(x[3:6]) # Not directly usable like this with Gekko lists
 
     # Organize vars per agent
-    state = [r[agent * r_len : (agent + 1) * r_len] for agent in range(num_chasers)]
-    force = [f[agent * f_len : (agent + 1) * f_len] for agent in range(num_chasers)]
+    chaser_positions = [
+        chaser_positions_flat[agent * r_len : (agent + 1) * r_len]
+        for agent in range(num_chasers)
+    ]
+    chaser_forces = [
+        chaser_forces_flat[agent * f_len : (agent + 1) * f_len]
+        for agent in range(num_chasers)
+    ]
 
     # Torque calculation requires cross product
     # Manual cross product for GEKKO vars
     # torque = r x f
     torques = []
     for agent in range(num_chasers):
-        rx, ry, rz = state[agent][0], state[agent][1], state[agent][2]
-        fx, fy, fz = force[agent][0], force[agent][1], force[agent][2]
+        rx, ry, rz = (
+            chaser_positions[agent][0],
+            chaser_positions[agent][1],
+            chaser_positions[agent][2],
+        )
+        fx, fy, fz = (
+            chaser_forces[agent][0],
+            chaser_forces[agent][1],
+            chaser_forces[agent][2],
+        )
         tx = ry * fz - rz * fy
         ty = rz * fx - rx * fz
         tz = rx * fy - ry * fx
@@ -146,7 +161,7 @@ def target_deflect(
 
         num_options = len(r_options)
         r_choices = [
-            m.FV(value=0.01, fixed_initial=False)
+            solver.FV(value=0.01, fixed_initial=False)
             for i in range(num_options * num_chasers)
         ]
 
@@ -154,8 +169,8 @@ def target_deflect(
             r_choice = r_choices[agent * num_options : (agent + 1) * num_options]
 
             # Sum of choices should be 1 (select exactly one point)
-            eqs.append(m.sum(r_choice) > 1.000 - choice_sum_slack)
-            eqs.append(m.sum(r_choice) < 1.000 + choice_sum_slack)
+            eqs.append(solver.sum(r_choice) > 1.000 - choice_sum_slack)
+            eqs.append(solver.sum(r_choice) < 1.000 + choice_sum_slack)
 
             # Binary relaxation constraint (x^2 ≈ x -> x near 0 or 1)
             for j in range(len(r_choice)):
@@ -164,11 +179,11 @@ def target_deflect(
 
             # Position definition
             for i in range(3):  # x, y, z
-                # state[agent][i] = sum(option[j][i] * choice[j])
+                # chaser_positions[agent][i] = sum(option[j][i] * choice[j])
                 pos_val = 0
                 for j in range(num_options):
                     pos_val += r_options[j][i] * r_choice[j]
-                eqs.append(state[agent][i] == pos_val)
+                eqs.append(chaser_positions[agent][i] == pos_val)
 
     # Dynamics (Euler Rotational)
     # x dot = [omega; I_inv * (torque - omega x I*omega)]

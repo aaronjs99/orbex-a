@@ -24,35 +24,35 @@ logger = logging.getLogger(__name__)
 class TaskAllocAgent:
     """Base class for Task Allocation Agents."""
 
-    def __init__(self, id, r_0, r_T, G_w):
+    def __init__(self, id, pos_0, pos_T, neighbor_graph):
         """
         Initialize Agent.
 
         Args:
             id: Agent ID
-            r_0: Initial position
-            r_T: Target position
-            G_w: Neighbor graph for this agent
+            pos_0: Initial position
+            pos_T: Target position
+            neighbor_graph: Neighbor graph for this agent
         """
         self.id = id
-        self.r_0 = r_0
-        self.r_T = r_T
-        self.G_w = G_w
+        self.pos_0 = pos_0
+        self.pos_T = pos_T
+        self.neighbor_graph = neighbor_graph
 
-    def getR_0(self):
-        return self.r_0
+    def getPos_0(self):
+        return self.pos_0
 
-    def getR_T(self):
-        return self.r_T
+    def getPos_T(self):
+        return self.pos_T
 
-    def getR_G(self, agents):
-        R_0G = {}  # R_0G is a part of local info
-        R_TG = {}  # R_TG is a part of local info
+    def getPos_Neighbors(self, agents):
+        pos_0_neighbors = {}  # Initial positions of neighbors
+        pos_T_neighbors = {}  # Target positions of neighbors
         for agent in agents:
-            if agent.id in self.G_w:
-                R_0G[agent.id] = agent.r_0.copy()
-                R_TG[agent.id] = agent.r_T.copy()
-        return R_0G, R_TG
+            if agent.id in self.neighbor_graph:
+                pos_0_neighbors[agent.id] = agent.pos_0.copy()
+                pos_T_neighbors[agent.id] = agent.pos_T.copy()
+        return pos_0_neighbors, pos_T_neighbors
 
     def commData(self, *args):
         raise NotImplementedError("commData() is not implemented")
@@ -76,24 +76,24 @@ class GreedyAgent(TaskAllocAgent):
     def commData(self, agents, dir, agent_i, type, *args):
         if type == "new_goal":
             if dir == "send":
-                agents[agent_i].r_T = args[0]
+                agents[agent_i].pos_T = args[0]
                 agents[agent_i].checkIntersections(agents)
             elif dir == "recv":
-                self.r_T = agents[agent_i].r_T
+                self.pos_T = agents[agent_i].pos_T
                 self.checkIntersections(agents)
         return agents
 
     def checkIntersections(self, agents):
         self.N_int = []  # list of neighbors that intersect
-        R_0G, R_TG = self.getR_G(agents)
-        for i in R_0G.keys():
-            r_0i = R_0G[i]  # initial position of neighboring agent i
-            r_Ti = R_TG[i]  # final   position of neighboring agent i
-            straightDist = calc_distance(r_Ti, r_0i) + calc_distance(
-                self.r_T, self.r_0
+        pos_0_neighbors, pos_T_neighbors = self.getPos_Neighbors(agents)
+        for i in pos_0_neighbors.keys():
+            pos_0i = pos_0_neighbors[i]  # initial position of neighboring agent i
+            pos_Ti = pos_T_neighbors[i]  # final   position of neighboring agent i
+            straightDist = calc_distance(pos_Ti, pos_0i) + calc_distance(
+                self.pos_T, self.pos_0
             )  ### sum of distances as calculated normally
-            crossedDist = calc_distance(self.r_T, r_0i) + calc_distance(
-                r_Ti, self.r_0
+            crossedDist = calc_distance(self.pos_T, pos_0i) + calc_distance(
+                pos_Ti, self.pos_0
             )  ### sum of distances as calculated crossed
             if crossedDist < straightDist:
                 self.N_int.append(i)
@@ -107,9 +107,9 @@ class GreedyAgent(TaskAllocAgent):
             return agents, self, 0
         for i in self.N_int:
             ## --- BEGIN interaction between agent w and agent i --- ##
-            r_Tn = self.r_T.copy()
+            pos_Tn = self.pos_T.copy()
             agents = self.commData(agents, "recv", i, "new_goal")
-            agents = self.commData(agents, "send", i, "new_goal", r_Tn)
+            agents = self.commData(agents, "send", i, "new_goal", pos_Tn)
             totInteractions += 1
             ## --- END interaction between agent w and agent i --- ##
             if not self.bool_int:
@@ -147,10 +147,10 @@ def genCost(egoLocation, targetLocations, minValue):
     ]
 
 
-def gen_neighbors(type, R, k, idOffset=True):
+def gen_neighbors(type, positions, k, idOffset=True):
     """Generate list of neighbors."""
-    num_agents = len(R)
-    N = [[] for i in range(num_agents)]
+    num_agents = len(positions)
+    neighbors = [[] for i in range(num_agents)]
     try:
         if len(k) != num_agents:
             raise ValueError("Incorrect List Size for k")
@@ -161,19 +161,21 @@ def gen_neighbors(type, R, k, idOffset=True):
             k_i = k[i]
         except:
             k_i = k
-        R_i = list(R - R[i])
-        D_i = np.array([np.linalg.norm(r_i) for r_i in R_i])
+        relative_positions = list(positions - positions[i])
+        distances = np.array(
+            [np.linalg.norm(rel_pos) for rel_pos in relative_positions]
+        )
         if type == "kNN":  ## Generate list of neighbors based on k-Nearest Neighbors
-            N[i] = np.setdiff1d(np.argpartition(D_i, k_i)[: k_i + 1], [i])
+            neighbors[i] = np.setdiff1d(np.argpartition(distances, k_i)[: k_i + 1], [i])
         elif (
             type == "maxDist"
         ):  ## Generate list of neighbors based on maximum communication distance maxDist
-            N[i] = np.setdiff1d(np.nonzero(D_i <= k_i), [i])
+            neighbors[i] = np.setdiff1d(np.nonzero(distances <= k_i), [i])
         else:
             raise ValueError("Unknown Type of Neighbor Allocation")
         if idOffset:
-            N[i] = np.add(N[i], 1)
-    return N
+            neighbors[i] = np.add(neighbors[i], 1)
+    return neighbors
 
 
 ## Check connectivity of graph
@@ -220,29 +222,29 @@ def stdAuction(R_0, R_T, G):
 
 
 ## Distributed Greedy Algorithm - 'Scalable Techniques for Autonomous Construction of a Paraboloidal Space Telescope in an Elliptic Orbit' - John Sabu, Mukherjee
-def checkIntersections(w, R_0, R_T, G_w):
+def checkIntersections(agent_id, pos_0_all, pos_T_all, neighbors_w):
     """
     Check for path intersections (Greedy Algorithm).
 
     Args:
-        w: id of agent under consideration
-        R_0: initial positions of all agents
-        R_T: final positions of all agents
-        G_w: neighborhood of agent w
+        agent_id: id of agent under consideration
+        pos_0_all: initial positions of all agents
+        pos_T_all: final positions of all agents
+        neighbors_w: neighborhood of agent w
     """
     N_int = []  # list of neighbors that intersect
-    r_0w = R_0[w]  # initial position of agent w
-    r_Tw = R_T[w]  # final   position of agent w
-    for i, r_0i in enumerate(
-        R_0
-    ):  # i = id of agent i, r_0i = Initial position of agent i
-        if i in G_w:  # if agent i is a neighbor of agent w
-            r_Ti = R_T[i]  # final position of agent i
-            straightDist = calc_distance(r_Ti, r_0i) + calc_distance(
-                r_Tw, r_0w
+    pos_0w = pos_0_all[agent_id]  # initial position of agent w
+    pos_Tw = pos_T_all[agent_id]  # final   position of agent w
+    for i, pos_0i in enumerate(
+        pos_0_all
+    ):  # i = id of agent i, pos_0i = Initial position of agent i
+        if i in neighbors_w:  # if agent i is a neighbor of agent w
+            pos_Ti = pos_T_all[i]  # final position of agent i
+            straightDist = calc_distance(pos_Ti, pos_0i) + calc_distance(
+                pos_Tw, pos_0w
             )  ### sum of distances as calculated normally
-            crossedDist = calc_distance(r_Tw, r_0i) + calc_distance(
-                r_Ti, r_0w
+            crossedDist = calc_distance(pos_Tw, pos_0i) + calc_distance(
+                pos_Ti, pos_0w
             )  ### sum of distances as calculated crossed
             if crossedDist < straightDist:
                 N_int.append(i)

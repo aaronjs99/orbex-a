@@ -44,7 +44,8 @@ pip install -e ".[all]"
 chmod +x install_dependencies.sh
 ./install_dependencies.sh           # Basic
 ./install_dependencies.sh --casadi  # With CasADi
-./install_dependencies.sh --full    # Everything
+./install_dependencies.sh --viz     # With Mayavi
+./install_dependencies.sh --full    # Everything (CasADi + Mayavi)
 ```
 
 ## Solver Configuration

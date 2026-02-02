@@ -190,14 +190,22 @@ def print_min_max(values, label):
 
 
 def create_animation_figure(
-    X, Y, Z, labels, *, lines=False, markers=True, point_list=None, shapes=None
+    x_positions,
+    y_positions,
+    z_positions,
+    labels,
+    *,
+    lines=False,
+    markers=True,
+    point_list=None,
+    shapes=None,
 ) -> go.Figure:
     """Create a Plotly 3D animation figure."""
     traces = []
     num_agents = len(labels)
 
     # Validation
-    if not (len(X) == len(Y) == len(Z) == num_agents):
+    if not (len(x_positions) == len(y_positions) == len(z_positions) == num_agents):
         # Warn or raise? Proceeding safest for now
         pass
 
@@ -206,9 +214,9 @@ def create_animation_figure(
             traces.append(
                 go.Scatter3d(
                     mode="lines",
-                    x=X[agent],
-                    y=Y[agent],
-                    z=Z[agent],
+                    x=x_positions[agent],
+                    y=y_positions[agent],
+                    z=z_positions[agent],
                     marker=dict(size=3),
                     name=labels[agent],
                 )
@@ -217,9 +225,9 @@ def create_animation_figure(
             traces.append(
                 go.Scatter3d(
                     mode="markers",
-                    x=X[agent],
-                    y=Y[agent],
-                    z=Z[agent],
+                    x=x_positions[agent],
+                    y=y_positions[agent],
+                    z=z_positions[agent],
                     marker=dict(size=3, color="darkblue"),
                     name=labels[agent],
                 )
@@ -297,7 +305,9 @@ def save_plotly_html(fig: go.Figure, filename: str) -> None:
     ptyplt.plot(fig, filename=str(fpath), auto_open=False)
 
 
-def create_animation_html(filename, X, Y, Z, labels, *args, **kwargs):
+def create_animation_html(
+    filename, x_positions, y_positions, z_positions, labels, *args, **kwargs
+):
     """Legacy wrapper for creating animation HTML."""
     point_list = kwargs.get("point_list")
     shapes = kwargs.get("shape")
@@ -305,9 +315,9 @@ def create_animation_html(filename, X, Y, Z, labels, *args, **kwargs):
     markers = kwargs.get("markers", True)
 
     fig = create_animation_figure(
-        X,
-        Y,
-        Z,
+        x_positions,
+        y_positions,
+        z_positions,
         labels,
         lines=lines,
         markers=markers,
@@ -319,17 +329,17 @@ def create_animation_html(filename, X, Y, Z, labels, *args, **kwargs):
 
 def plot_time_series(
     t: np.ndarray,
-    x: Sequence[np.ndarray],
-    u: Sequence[np.ndarray],
-    y: Sequence[np.ndarray] = (),
-    c: Optional[np.ndarray] = None,
+    states: Sequence[np.ndarray],
+    control_inputs: Sequence[np.ndarray],
+    y_outputs: Sequence[np.ndarray] = (),
+    cost_history: Optional[np.ndarray] = None,
     labelX: Sequence[str] = (),
     labelU: Sequence[str] = (),
     labelY: Sequence[str] = (),
     labelC: Optional[str] = None,
-    x1: Sequence[np.ndarray] = (),
+    states_ref1: Sequence[np.ndarray] = (),
     labelX1: Sequence[str] = (),
-    x2: Sequence[np.ndarray] = (),
+    states_ref2: Sequence[np.ndarray] = (),
     labelX2: Sequence[str] = (),
     save_path: Optional[Path] = None,
     **kwargs,
@@ -348,19 +358,21 @@ def plot_time_series(
 
     # Updated plot_time_series to be flexible
     # Determine active components
-    has_x = len(x) > 0
-    has_u = len(u) > 0
-    has_y = len(y) > 0 or (c is not None)  # c is legacy cost
+    has_states = len(states) > 0
+    has_inputs = len(control_inputs) > 0
+    has_outputs = len(y_outputs) > 0 or (
+        cost_history is not None
+    )  # cost_history is legacy cost
 
     # Calculate rows needed by stacking: States (if any), Inputs (if any), Outputs (if any)
 
-    n_state_plots = len(x)
+    n_state_plots = len(states)
     n_state_cols = 2
     n_state_rows = (n_state_plots + n_state_cols - 1) // n_state_cols
 
     # Total figure rows
     current_row = 0
-    total_rows = n_state_rows + (1 if has_u else 0) + (1 if has_y else 0)
+    total_rows = n_state_rows + (1 if has_inputs else 0) + (1 if has_outputs else 0)
     if total_rows == 0:
         return
 
@@ -387,32 +399,32 @@ def plot_time_series(
         plt.subplot(total_rows, 2, plot_idx)
 
         label = labelX[i] if i < len(labelX) else f"$x_{i}$"
-        plt.plot(t, x[i], c=cmap(80 * i), label=label)
+        plt.plot(t, states[i], c=cmap(80 * i), label=label)
 
-        if i < len(x1):
+        if i < len(states_ref1):
             l1 = labelX1[i] if i < len(labelX1) else f"$x_{{1,{i}}}$"
-            plt.plot(t, x1[i], c=cmap(80 * i + 40), label=l1, linestyle="--")
-        if i < len(x2):
+            plt.plot(t, states_ref1[i], c=cmap(80 * i + 40), label=l1, linestyle="--")
+        if i < len(states_ref2):
             l2 = labelX2[i] if i < len(labelX2) else f"$x_{{2,{i}}}$"
-            plt.plot(t, x2[i], c=cmap(80 * i + 80), label=l2, linestyle="-.")
+            plt.plot(t, states_ref2[i], c=cmap(80 * i + 80), label=l2, linestyle="-.")
 
         plt.legend()
         plt.ylabel("State")
         plt.xlabel("Time")
 
-    if has_x:
+    if has_states:
         current_row += n_state_rows
 
     # 2. Input Plots
-    if has_u:
+    if has_inputs:
         # Span both columns?
         # subplot(total_rows, 1, current_row + 1)
         # This usually works in matplotlib (mixing grids)
         plt.subplot(total_rows, 1, current_row + 1)
 
-        for i in range(len(u)):
+        for i in range(len(control_inputs)):
             label = labelU[i] if i < len(labelU) else f"$u_{i}$"
-            plt.plot(t, u[i], c=cmap(150 + 80 * i), label=label)
+            plt.plot(t, control_inputs[i], c=cmap(150 + 80 * i), label=label)
 
         plt.legend()
         plt.ylabel("Input")
@@ -420,16 +432,18 @@ def plot_time_series(
         current_row += 1
 
     # 3. Output Plots
-    if has_y:
+    if has_outputs:
         plt.subplot(total_rows, 1, current_row + 1)
 
-        for i in range(len(y)):
+        for i in range(len(y_outputs)):
             label = labelY[i] if i < len(labelY) else f"$y_{i}$"
-            plt.plot(t, y[i], c=cmap(180 + 96 * i), label=label)
+            plt.plot(t, y_outputs[i], c=cmap(180 + 96 * i), label=label)
 
-        if c is not None and (len(c) > 0 if hasattr(c, "__len__") else True):
+        if cost_history is not None and (
+            len(cost_history) > 0 if hasattr(cost_history, "__len__") else True
+        ):
             label = labelC if labelC else "$c$"
-            plt.plot(t, c, c=cmap(180), label=label, linestyle=":")
+            plt.plot(t, cost_history, c=cmap(180), label=label, linestyle=":")
 
         plt.legend()
         plt.ylabel("Output/Cost")
