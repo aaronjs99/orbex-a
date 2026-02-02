@@ -1,141 +1,67 @@
-# /***********************************************************
-# *                                                         *
-# * Copyright (c) 2026                                      *
-# *                                                         *
-# * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
-# * University of California, Los Angeles                   *
-# *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
-# *                                                         *
-# ***********************************************************/
-
-sim:
-  decoupled_mode: true
-  debug_section: true
-  debug_plots: false
-  dt: 7.853981633974483e-05 # (pi / 20) / 200
-  total_time: 100
-  num_update_steps: 200
-  iter_time: 0.015707963267948967
-
-# Solver Configuration
-# Options: "gekko", "casadi", "scipy"
-solver:
-  backend: "gekko"  # Primary solver backend
-  
-  gekko:
-    remote: false         # Use remote GEKKO server
-    max_iter: 3000        # Maximum solver iterations
-    max_memory: 512       # Maximum memory in MB
-    solver_type: 3        # 1=APOPT, 2=BPOPT, 3=IPOPT
-    disp: false           # Display solver output
-    otol: 1.0e-7          # Objective tolerance
-    rtol: 1.0e-7          # Relative tolerance
-    
-  casadi:
-    nlp_solver: "ipopt"   # NLP solver: "ipopt", "sqpmethod", "scpgen"
-    max_iter: 3000        # Maximum iterations
-    print_level: 0        # IPOPT print level (0-12)
-    linear_solver: "mumps" # Linear solver: "mumps", "ma27", "ma57"
-    warm_start: false     # Use warm start
-    
-  scipy:
-    method: "SLSQP"       # Optimization: "SLSQP", "trust-constr", "COBYLA"
-    max_iter: 1000        # Maximum iterations
-    ftol: 1.0e-9          # Function tolerance
-    disp: false           # Display output
-
-periapsis_anomalies:
-  t_p: 0.0
-  E_p: 0.0
-  M_p: 0.0
-  q_p: 0.0
+seed: 0
+dt: 0.0007853981633974483  # (pi/20)/200
+total_time: 100
+num_update_steps: 200
+decoupled_mode: true
+num_chasers: 1
 
 orbit:
-  a: 6678136.3 # (6378.1363 + 300.00) * 1000
   mu: 3.986004418e14
-  n: 0.0011779561070381986 # sqrt(mu / a**3)
+  semi_major_axis: 6678136.3
+  eccentricity: 0.0
+  t_periapsis: 0.0
+  initial_conditions: [-50.0, 10.0, 5.0, 0.05, -0.01, 0.01]
 
-mpc_orbit_params:
-  actual:
-    eccentricity: 0.125
-    drag_alpha: 1.3e-7
-    drag_beta: 2.6e-7
-  nominal:
-    eccentricity: 0.0
-    drag_alpha: 0.0
-    drag_beta: 2.6e-7
-  init_range:
-    eccentricity: [0.0, 0.6]
-    drag_alpha: [0.0e-7, 9.0e-7]
-    drag_beta: [2.6e-7, 2.6e-7]
-
-chaser:
-  num_chasers: 1
-  initial_time_lapse: 100
-  neighbor_max_dist: 1800
-  num_mpc_steps:
+mpc:
+  horizon_steps:
     rendezvous: 80
     docking: 40
-  num_act_steps:
+  actuation_steps:
     rendezvous: 20
     docking: 2
   state_bounds:
-    - {lower: -Inf, upper: +Inf}
-    - {lower: -Inf, upper: +Inf}
-    - {lower: -Inf, upper: +Inf}
-    - {lower: -Inf, upper: +Inf}
-    - {lower: -Inf, upper: +Inf}
-    - {lower: -Inf, upper: +Inf}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
   input_bounds:
-    - {lower: -1e5, upper: 1e5}
-    - {lower: -1e5, upper: 1e5}
-    - {lower: -1e5, upper: 1e5}
+    - {lower: -100000.0, upper: 100000.0}
+    - {lower: -100000.0, upper: 100000.0}
+    - {lower: -100000.0, upper: 100000.0}
   force_bounds:
-    - {lower: -7000, upper: 7000}
-    - {lower: -7000, upper: 7000}
-    - {lower: -7000, upper: 7000}
+    - {lower: -7000.0, upper: 7000.0}
+    - {lower: -7000.0, upper: 7000.0}
+    - {lower: -7000.0, upper: 7000.0}
   goal_bounds: [425.0, 475.0]
 
 target:
-  shape: cylinder
-  center: [0.0, 0.0, 0.0]
-  th_T0: [0.0, 0.2, -0.1]
-  w_T0: [-0.04, 0.1, -0.02]
+  initial_orientation: [0.0, 0.2, -0.1]
+  initial_angular_velocity: [-0.04, 0.1, -0.02]
   inertia:
     - [800.0, 2.0, 5.0]
     - [4.0, 450.0, 3.0]
     - [6.0, 8.0, 200.0]
-  pyramidal_limit:
-    mu_x: 0.0
-    mu_y: 0.0
-  radial_limit: 1.0
-  limit:
+  shape: "cylinder"
+  center: [0.0, 0.0, 0.0]
+  limits:
     l_T: 0.6
     r_T: 0.8
+    tolerance: 0.001
   stop_time: 5.0
-  chaser_min_dist: 0.0
   discretize_dockers: true
+  tolerance: 0.001
   observation_error:
     ang_pos: 4.0e-8
     ang_vel: 4.0e-8
 
-chaser_tuning:
-  observe_target_epsilon: 0.01
-  goal_calc:
-    w: 1.0e3  # Weight for neighbor declustering (per agent)
-    v: [1.0e2, 1.0e6, 1.0e6] # [travel_min, bounding_lower, bounding_upper]
-
-
-tube_mpc:
+tube:
   run_tube: true
-  alpha_0: [0.25, 0.25, 0.25]
-  omega_0: [0.0, 0.0, 0.0]
-  phi_0: [0.5, 0.5, 0.5]
-  eta: [0.1, 0.1, 0.1]
-  Lambda: [60.0, 60.0, 60.0]
-  v_0: [0.0, 0.0, 0.0]
-  alpha_range:
-    lower: 1.0e-2
-    upper: 1.0e1
+  bandwidth_0: [0.25, 0.25, 0.25]
+  boundary_layer_0: [0.5, 0.5, 0.5]
+  convergence_rate: [0.1, 0.1, 0.1]
+  sliding_gains: [60.0, 60.0, 60.0]
+  bandwidth_range:
+    lower: 0.01
+    upper: 10.0

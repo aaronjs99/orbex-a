@@ -12,14 +12,28 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
 from scipy.optimize import linear_sum_assignment
 
-from orbexa.utils import calcDistance
+from orbexa.utils import calc_distance
+
+logger = logging.getLogger(__name__)
 
 
 # CLASS DEFINITIONS
 class TaskAllocAgent:
+    """Base class for Task Allocation Agents."""
+
     def __init__(self, id, r_0, r_T, G_w):
+        """
+        Initialize Agent.
+
+        Args:
+            id: Agent ID
+            r_0: Initial position
+            r_T: Target position
+            G_w: Neighbor graph for this agent
+        """
         self.id = id
         self.r_0 = r_0
         self.r_T = r_T
@@ -54,6 +68,8 @@ class TaskAllocAgent:
 
 
 class GreedyAgent(TaskAllocAgent):
+    """Agent implementing Distributed Greedy Algorithm."""
+
     def __init__(self, id, r_0, r_T, G_w):
         super().__init__(id, r_0, r_T, G_w)
 
@@ -68,15 +84,15 @@ class GreedyAgent(TaskAllocAgent):
         return agents
 
     def checkIntersections(self, agents):
-        self.N_int = []  ### list of neighbors that intersect
+        self.N_int = []  # list of neighbors that intersect
         R_0G, R_TG = self.getR_G(agents)
         for i in R_0G.keys():
-            r_0i = R_0G[i]  ### initial position of neighboring agent i
-            r_Ti = R_TG[i]  ### final   position of neighboring agent i
-            straightDist = calcDistance(r_Ti, r_0i) + calcDistance(
+            r_0i = R_0G[i]  # initial position of neighboring agent i
+            r_Ti = R_TG[i]  # final   position of neighboring agent i
+            straightDist = calc_distance(r_Ti, r_0i) + calc_distance(
                 self.r_T, self.r_0
             )  ### sum of distances as calculated normally
-            crossedDist = calcDistance(self.r_T, r_0i) + calcDistance(
+            crossedDist = calc_distance(self.r_T, r_0i) + calc_distance(
                 r_Ti, self.r_0
             )  ### sum of distances as calculated crossed
             if crossedDist < straightDist:
@@ -102,6 +118,8 @@ class GreedyAgent(TaskAllocAgent):
 
 
 class DisAucAgent(TaskAllocAgent):
+    """Agent implementing Distributed Auction Algorithm."""
+
     def __init__(self, id, r_0, r_T, G_w):
         super().__init__(id, r_0, r_T, G_w)
 
@@ -121,6 +139,7 @@ class CnsAucAgent(TaskAllocAgent):
 # FUNCTION DEFINITIONS
 ## Generate cost of moving from a particular location to a list of target locations
 def genCost(egoLocation, targetLocations, minValue):
+    """Generate cost of moving from a particular location to a list of target locations."""
     return [
         (-(1 ** (minValue - 1)))
         * np.linalg.norm(np.subtract(egoLocation, targetLocations[i]))
@@ -128,16 +147,16 @@ def genCost(egoLocation, targetLocations, minValue):
     ]
 
 
-## Generate list of neighbors
-def genNeighbors(type, R, k, idOffset=True):
-    numAgents = len(R)
-    N = [[] for i in range(numAgents)]
+def gen_neighbors(type, R, k, idOffset=True):
+    """Generate list of neighbors."""
+    num_agents = len(R)
+    N = [[] for i in range(num_agents)]
     try:
-        if len(k) != numAgents:
+        if len(k) != num_agents:
             raise ValueError("Incorrect List Size for k")
     except TypeError:
         pass
-    for i in range(numAgents):
+    for i in range(num_agents):
         try:
             k_i = k[i]
         except:
@@ -159,7 +178,7 @@ def genNeighbors(type, R, k, idOffset=True):
 
 ## Check connectivity of graph
 def isConnected(G):
-    numAgents = len(G)
+    num_agents = len(G)
     metAgents = set()
     toVisit = set()
     visited = set()
@@ -173,20 +192,20 @@ def isConnected(G):
             metAgents.add(w)
             toVisit.remove(w)
             toVisit.update(
-                [i for i in range(numAgents) if i in G[w] and i not in visited]
+                [i for i in range(num_agents) if i in G[w] and i not in visited]
             )
-    if len(metAgents) == numAgents:
+    if len(metAgents) == num_agents:
         return True
     return False
 
 
 ## Standard Distributed Auction
 def stdAuction(R_0, R_T, G):
-    numAgents = len(R_0)
-    for w in range(numAgents):
-        R_Tn = [R_T[i] for i in range(numAgents) if G[w][i] > 0]
-        R_0n = [R_0[i] for i in range(numAgents) if G[w][i] > 0]
-        R_TnRange = [i for i in range(numAgents) if G[w][i] > 0]
+    num_agents = len(R_0)
+    for w in range(num_agents):
+        R_Tn = [R_T[i] for i in range(num_agents) if G[w][i] > 0]
+        R_0n = [R_0[i] for i in range(num_agents) if G[w][i] > 0]
+        R_TnRange = [i for i in range(num_agents) if G[w][i] > 0]
         numNbrs = len(R_Tn)
         Auction_Values = [[] for i in range(numNbrs)]
         for nbr, r_0n in enumerate(R_0n):
@@ -202,23 +221,27 @@ def stdAuction(R_0, R_T, G):
 
 ## Distributed Greedy Algorithm - 'Scalable Techniques for Autonomous Construction of a Paraboloidal Space Telescope in an Elliptic Orbit' - John Sabu, Mukherjee
 def checkIntersections(w, R_0, R_T, G_w):
-    ### w   - id of agent under consideration
-    ### R_0 - initial positions of all agents
-    ### R_T - final   positions of all agents
-    ### G_w - neighborhood of agent w
+    """
+    Check for path intersections (Greedy Algorithm).
 
-    N_int = []  ### list of neighbors that intersect
-    r_0w = R_0[w]  ### initial position of agent w
-    r_Tw = R_T[w]  ### final   position of agent w
+    Args:
+        w: id of agent under consideration
+        R_0: initial positions of all agents
+        R_T: final positions of all agents
+        G_w: neighborhood of agent w
+    """
+    N_int = []  # list of neighbors that intersect
+    r_0w = R_0[w]  # initial position of agent w
+    r_Tw = R_T[w]  # final   position of agent w
     for i, r_0i in enumerate(
         R_0
-    ):  ### i = id of agent i, r_0i = Initial position of agent i
-        if i in G_w:  ### if agent i is a neighbor of agent w
-            r_Ti = R_T[i]  ### final position of agent i
-            straightDist = calcDistance(r_Ti, r_0i) + calcDistance(
+    ):  # i = id of agent i, r_0i = Initial position of agent i
+        if i in G_w:  # if agent i is a neighbor of agent w
+            r_Ti = R_T[i]  # final position of agent i
+            straightDist = calc_distance(r_Ti, r_0i) + calc_distance(
                 r_Tw, r_0w
             )  ### sum of distances as calculated normally
-            crossedDist = calcDistance(r_Tw, r_0i) + calcDistance(
+            crossedDist = calc_distance(r_Tw, r_0i) + calc_distance(
                 r_Ti, r_0w
             )  ### sum of distances as calculated crossed
             if crossedDist < straightDist:
@@ -228,17 +251,18 @@ def checkIntersections(w, R_0, R_T, G_w):
 
 
 def greedy(R_0, R_T, G):
-    numAgents = len(R_0)
+    """Execute Distributed Greedy Algorithm."""
+    num_agents = len(R_0)
     R_T = R_T.copy()
     totInteractions = 0
     while True:
-        N_int = [[] for i in range(numAgents)]
-        bool_int = [False for i in range(numAgents)]
-        for w in range(numAgents):
+        N_int = [[] for i in range(num_agents)]
+        bool_int = [False for i in range(num_agents)]
+        for w in range(num_agents):
             bool_int[w], N_int[w] = checkIntersections(w, R_0, R_T, G[w])
         if not bool(np.sum(bool_int)):
             break
-        for w in range(numAgents):
+        for w in range(num_agents):
             ## --- BEGIN operation on agent w --- ##
             if bool_int[w]:
                 for i in N_int[w]:
@@ -261,8 +285,12 @@ def greedy(R_0, R_T, G):
     return R_T, totInteractions
 
 
-### Distributed Auction Algorithm - 'A Distributed Auction Algorithm for the Assignment Problem' - Zavlanos, Spesivtsev, Pappas
 def disAuction(R_0, R_T, G):
+    """
+    Execute Distributed Auction Algorithm.
+
+    Ref: 'A Distributed Auction Algorithm for the Assignment Problem' - Zavlanos, Spesivtsev, Pappas
+    """
     if not isConnected(G):
         return R_T, -1
 
@@ -270,25 +298,25 @@ def disAuction(R_0, R_T, G):
     G = G.copy()
     G = np.array(G, dtype=object)
     G = np.subtract(G, 1)
-    numAgents = len(R_0)
+    num_agents = len(R_0)
     beta = [genCost(i, R_T, False) for i in R_0]
-    p_prev = np.zeros((numAgents, numAgents))
-    p_next = np.zeros((numAgents, numAgents))
-    b_prev = np.zeros((numAgents, numAgents), dtype=int)
-    b_next = np.zeros((numAgents, numAgents), dtype=int)
-    a_prev = np.zeros(numAgents, dtype=int)
-    a_next = np.zeros(numAgents, dtype=int)
+    p_prev = np.zeros((num_agents, num_agents))
+    p_next = np.zeros((num_agents, num_agents))
+    b_prev = np.zeros((num_agents, num_agents), dtype=int)
+    b_next = np.zeros((num_agents, num_agents), dtype=int)
+    a_prev = np.zeros(num_agents, dtype=int)
+    a_next = np.zeros(num_agents, dtype=int)
     while len(a_prev) != len(set(a_prev)):
-        for w in range(numAgents):
-            for j in range(numAgents):
+        for w in range(num_agents):
+            for j in range(num_agents):
                 p_next[w][j] = np.max(
-                    [p_prev[k][j] for k in range(numAgents) if k in G[w]]
+                    [p_prev[k][j] for k in range(num_agents) if k in G[w]]
                 )
                 b_next[w][j] = int(
                     np.max(
                         [
                             b_prev[k][j]
-                            for k in range(numAgents)
+                            for k in range(num_agents)
                             if k in G[w] and p_prev[k][j] == p_next[w][j]
                         ]
                     )
@@ -299,14 +327,14 @@ def disAuction(R_0, R_T, G):
                 and b_next[w][a_prev[w]] != w
             ):
                 a_next[w] = np.argmax(
-                    [(beta[w][k] - p_next[w][k]) for k in range(numAgents)]
+                    [(beta[w][k] - p_next[w][k]) for k in range(num_agents)]
                 )
                 b_next[w][a_next[w]] = w
-                v_w = np.max([beta[w][k] - p_prev[w][k] for k in range(numAgents)])
+                v_w = np.max([beta[w][k] - p_prev[w][k] for k in range(num_agents)])
                 w_w = np.max(
                     [
                         beta[w][k] - p_prev[w][k]
-                        for k in range(numAgents)
+                        for k in range(num_agents)
                         if k != a_next[w]
                     ]
                 )
@@ -353,20 +381,20 @@ def cnsAuction(R_0, R_T, G):
     if not isConnected(G):
         return R_T
 
-    numAgents = len(R_0)
+    num_agents = len(R_0)
     c = [genCost(i, R_T, True) for i in R_0]
-    x = np.zeros((numAgents, numAgents))
-    y = np.zeros((numAgents, numAgents))
-    t = np.zeros((numAgents, numAgents))
-    z = np.zeros((numAgents, numAgents))
-    w = np.zeros((numAgents, numAgents))
-    J = [0 for i in range(numAgents)]
+    x = np.zeros((num_agents, num_agents))
+    y = np.zeros((num_agents, num_agents))
+    t = np.zeros((num_agents, num_agents))
+    z = np.zeros((num_agents, num_agents))
+    w = np.zeros((num_agents, num_agents))
+    J = [0 for i in range(num_agents)]
     while 0 in [(1 in x_i) for x_i in x]:
-        for w in range(numAgents):
+        for w in range(num_agents):
             x[w], y[w], J[w], w[w] = selectTask(x[w], y[w], J[w], c[w], w[w])
-        for w in range(numAgents):
+        for w in range(num_agents):
             x[w], y[w], z[w] = updateTask(w, x[w], y, z[w], J[w], G[w])
-        print(z)
+        logger.debug(z)
     return R_T
 
 
@@ -425,9 +453,9 @@ def functional_main():
         ]
     )
     Gs = [
-        genNeighbors("kNN", R_0, 4),
-        genNeighbors("kNN", R_0, [4, 5, 5, 6, 4, 5, 3, 2, 4, 5]),
-        genNeighbors("kNN", R_0, [2, 4, 4, 5, 3, 2, 2, 3, 3, 4]),
+        gen_neighbors("kNN", R_0, 4),
+        gen_neighbors("kNN", R_0, [4, 5, 5, 6, 4, 5, 3, 2, 4, 5]),
+        gen_neighbors("kNN", R_0, [2, 4, 4, 5, 3, 2, 2, 3, 3, 4]),
     ]
 
     for i in range(6):
@@ -487,7 +515,7 @@ def classed_main():
         [6, -1],
     ]
     R_0 = [np.array(r_0) for r_0 in R_0]
-    numAgents = len(R_0)
+    num_agents = len(R_0)
 
     R_Tn = [R_T]
     totInteractions = [0]
@@ -508,24 +536,24 @@ def classed_main():
         ]
     )
     Gs = [
-        genNeighbors("kNN", R_0, 4, idOffset=False),
-        genNeighbors("kNN", R_0, [4, 5, 5, 6, 4, 5, 3, 2, 4, 5], idOffset=False),
-        genNeighbors("kNN", R_0, [2, 4, 4, 5, 3, 2, 2, 3, 3, 4], idOffset=False),
+        gen_neighbors("kNN", R_0, 4, idOffset=False),
+        gen_neighbors("kNN", R_0, [4, 5, 5, 6, 4, 5, 3, 2, 4, 5], idOffset=False),
+        gen_neighbors("kNN", R_0, [2, 4, 4, 5, 3, 2, 2, 3, 3, 4], idOffset=False),
     ]
 
     for i in range(6):
         G = Gs[i % 3]
         if i < 3:
-            agents = [GreedyAgent(w, R_0[w], R_T[w], G[w]) for w in range(numAgents)]
+            agents = [GreedyAgent(w, R_0[w], R_T[w], G[w]) for w in range(num_agents)]
         else:
-            agents = [DisAucAgent(w, R_0[w], R_T[w], G[w]) for w in range(numAgents)]
+            agents = [DisAucAgent(w, R_0[w], R_T[w], G[w]) for w in range(num_agents)]
         totInteractions.append(0)
         complete = False
         if i >= 3 and not isConnected(G):
             complete = True
             totInteractions[-1] = -1
         while not complete:
-            for w in range(numAgents):
+            for w in range(num_agents):
                 if i < 3:
                     agents, agent_w, numInteractions = agents[w].greedySingleLoop(
                         agents

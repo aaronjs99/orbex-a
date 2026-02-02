@@ -22,6 +22,7 @@ This module defines the core agent classes:
 import math
 import time
 import random
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import copy
@@ -29,12 +30,15 @@ from itertools import count
 from scipy import optimize as opt
 from scipy import integrate as intg
 from typing import List, Dict, Any, Tuple, Optional, Union
-from gekko import GEKKO
 
 # Core Imports
-from orbexa.core import params as p
-from orbexa.core.dynamics import cwhEquations
-from orbexa.utils import genShapeData, genSkewSymMat, calcGlobalOcclusion
+from orbexa.core.dynamics import cwh_equations
+from orbexa.core.config import SimulationConfig
+from orbexa.utils import gen_shape_data, gen_skew_sym_mat, calc_global_occlusion_cost
+from orbexa.solvers import get_solver, MPCProblem
+from orbexa.control.problem_builder import build_from_dynamics
+
+logger = logging.getLogger(__name__)
 
 
 random.seed(0)
@@ -43,263 +47,38 @@ random.seed(0)
 # =============================================================================
 # Helper Functions
 # =============================================================================
-def trajopt_dynamics(
-    system,
-    numSteps: int,
-    dt: float,
-    constraints: Tuple,
-    bounds: Tuple,
-    solverParams: Optional[Dict] = None,
-    returnStates: bool = False,
-    *args,
-    **kwargs,
-):
-    """
-    Trajectory optimization using GEKKO for general dynamics.
-
-    Used by Chaser.determineInputs() to compute optimal control inputs.
-    """
-    if solverParams is None:
-        solverParams = {
-            "remote": False,
-            "disp": False,
-            "comp_time": False,
-            "no_soln_disp": True,
-        }
-
-    # Unpacking System Parameters
-    timeSeq = np.linspace(0, numSteps * dt, numSteps)
-    if "w" not in solverParams.keys():  ## Integration Weight
-        w = np.ones(numSteps)
-    else:
-        w = solverParams["w"]
-
-    systemParams = {
-        "dt": dt,
-        "bounds": bounds,
-        "constraints": constraints,
-        "discretize": False,
-    }
-
-    # Get system matrices functions (A(t), d(t) etc.)
-    matrices, constraints, bounds = system(**systemParams)
-    A, B, Q, R, d = matrices
-    x_0, x_f = constraints
-    stateBounds, inputBounds = bounds
-
-    eccentricity = 0
-    t_s = 0
-    # Orbital params for true anomaly calculation
-    # Using hardcoded values from original code for now, should be parameterized
-    t_p = p.t_p
-    n = p.n
-
-    stateConstraints = {}
-    inputConstraints = {}
-    for i in range(len(x_0)):
-        stateConstraints[i] = [[numSteps - 1, x_f[i]]]
-
-    ### Declaration of Gekko Model
-    m = GEKKO(remote=solverParams.get("remote", False))
-    m.time = timeSeq
-    w_param = m.Param(value=np.ones(numSteps))
-    final = np.zeros(numSteps)
-    final[-1] = 1
-    final_param = m.Param(value=final)
-
-    ### Declaration of Gekko Variables
-    t = m.Var(value=0)
-    q = m.Var(value=0, fixed_initial=False)
-    x = [m.Var(value=x_0[i], fixed_initial=True) for i in range(len(x_0))]
-    u = [
-        m.Var(value=0, fixed_initial=False) for i in range(int(len(x) / 2))
-    ]  # Assuming 3 inputs for 6 states?
-
-    ## Constraint Equations ##
-    eqs = []
-
-    ### State and Input Bounds ###
-    # Note: GEKKO simple bounds x.lower/x.upper are preferred if constant
-    # But using eqs for consistency with original code style
-    for i in range(len(x)):
-        if stateBounds[i]["lower"] != "-Inf":
-            eqs.append(x[i] > stateBounds[i]["lower"])
-        if stateBounds[i]["upper"] != "+Inf":
-            eqs.append(x[i] < stateBounds[i]["upper"])
-
-    for i in range(len(u)):
-        if inputBounds[i]["lower"] != "-Inf":
-            eqs.append(u[i] > inputBounds[i]["lower"])
-        if inputBounds[i]["upper"] != "+Inf":
-            eqs.append(u[i] < inputBounds[i]["upper"])
-
-    ### State and Input Fixed Constraints ###
-    for i in range(len(x)):
-        if i in stateConstraints:
-            for constraint in stateConstraints[i]:
-                m.fix(x[i], pos=constraint[0], val=constraint[1])
-
-    for i in range(len(u)):
-        if i in inputConstraints:
-            for constraint in inputConstraints[i]:
-                m.fix(u[i], pos=constraint[0], val=constraint[1])
-
-    ### Time and Anomaly Update ###
-    eqs.append(t.dt() == 1)
-
-    # Anomaly calculation (approximate)
-    # Note: m.tan, m.sin, m.cos must be from GEKKO
-    E = m.Intermediate(
-        2 * m.atan(np.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(t / 2))
-    )
-    M = m.Intermediate(E - eccentricity * m.sin(E))
-    eqs.append(q == t_p + t_s + M / n)
-
-    ### Nominal System Dynamics ###
-    num_agents = int(len(x) / 6)
-    for agent in range(num_agents):
-        for i in range(0, 3):
-            x_agent = np.array(x[agent * 6 : (agent + 1) * 6])
-            u_agent = np.array(u[agent * 6 : (agent + 1) * 6])
-
-            # Kinematics: pos_dot = vel
-            eqs.append(x_agent[i + 0].dt() == x_agent[i + 3])
-
-            # Dynamics: vel_dot = A*x + B*u + d
-            # Note: A function returns matrix, d returns vector
-            a_val = A(t + t_s, t_p, m=m)
-            d_val = d(t + t_s, t_p, m=m)
-
-            eqs.append(
-                x_agent[i + 3].dt()
-                == np.matmul(a_val, x_agent)[i + 3] + u_agent[i + 0] + d_val[i + 3]
-            )
-
-    ## Objective Function Definition ##
-    intErrorArr = []
-    # Q and R are numpy matrices
-    for agent in range(num_agents):
-        x_agent = np.array(x[agent * 6 : (agent + 1) * 6])
-        u_agent = np.array(u[agent * 6 : (agent + 1) * 6])
-
-        # Quadratic cost: x'Qx + u'Ru
-        # GEKKO doesn't support @ operator directly for vars in older versions, but check compatibility
-        # Using explicit sum for safety
-        term1 = 0
-        for r in range(6):
-            for c in range(6):
-                if Q[r, c] != 0:
-                    term1 += x_agent[r] * Q[r, c] * x_agent[c]
-
-        term2 = 0
-        for r in range(3):
-            for c in range(3):
-                if R[r, c] != 0:
-                    term2 += u_agent[r] * R[r, c] * u_agent[c]
-
-        intErrorArr.append(term1 + term2)
-
-    intError = m.Intermediate(sum(intErrorArr))
-
-    ## Solver Parameters ##
-    m.Equations(eqs)
-    m.Minimize(w_param * intError)
-    m.options.OTOL = 1e-7
-    m.options.RTOL = 1e-7
-    m.options.IMODE = 6  # MPC mode / Dynamic Optimization
-    m.options.SOLVER = 3  # IPOPT
-    m.options.MAX_ITER = 3000
-    m.options.MAX_MEMORY = 512
-
-    ## Solve MPC ##
-    startTime = time.time()
-    try:
-        m.solve(disp=solverParams["disp"])
-        states = [np.array(x[i].value) for i in range(len(x))]
-        inputs = [np.array(u[i].value) for i in range(len(u))]
-        timing = time.time() - startTime
-    except:
-        states = []
-        inputs = []
-        timing = 0
-        if solverParams.get("no_soln_disp", True):
-            print("Optimization Solution Not Found")
-
-    ## Print Info ##
-    if False:  # Disable print by default
-        print("Solver Objective    : ", m.options.objfcnval)
-        print("Solver Status       : ", m.options.APPSTATUS)
-        if solverParams["comp_time"]:
-            print("Solver Calc Time    : ", timing)
-
-    if returnStates:
-        return states, inputs
-    return inputs
 
 
 def target_state_update_func(
-    t, state, dt, momInertia, skewSymMat, torqueVal, torqueType, *args, **kwargs
+    t, state, dt, mom_inertia, skew_sym_mat, torque_val, torque_type, *args, **kwargs
 ):
     """Dynamics function for target attitude propagation using solve_ivp."""
-    angularPos = state[:3]
-    angularVel = state[3:]
+    angular_pos = state[:3]
+    angular_vel = state[3:]
 
-    if torqueType == "zero":
+    if torque_type == "zero":
         torque = np.zeros(3)
-    elif torqueType == "given":
-        idx = min(int(np.floor(t / dt)), len(torqueVal) - 1)
-        torque = torqueVal[idx]
-    elif torqueType == "function":
-        torqueValEval = torqueVal(state, momInertia)
-        torque = torqueValEval["torque"]
+    elif torque_type == "given":
+        idx = min(int(np.floor(t / dt)), len(torque_val) - 1)
+        torque = torque_val[idx]
+    elif torque_type == "function":
+        torque_val_eval = torque_val(state, mom_inertia)
+        torque = torque_val_eval["torque"]
     else:
         torque = np.zeros(3)
 
-    # Euler's equations for rigid body dynamics
-    # I * w_dot + w x (I * w) = tau
-    # w_dot = I_inv * (tau - w x (I * w))
-
-    # Note: Original code had:
-    # np.matmul(np.linalg.inv(momInertia), skewSymMat) @ ...
-    # Wait, skewSymMat is passed in but it depends on w(t).
-    # It should be recalculated at each step!
-
     # Recomputing skew matrix for current angular velocity
-    S_w = genSkewSymMat(angularVel)
+    s_w = gen_skew_sym_mat(angular_vel)
 
-    # dw/dt
-    I_inv = np.linalg.inv(momInertia)
-    term1 = np.matmul(I_inv, np.matmul(S_w, np.matmul(momInertia, angularVel)))
-    term2 = np.matmul(I_inv, torque)
-
-    # Wait, original equation in code was:
-    # stateUpdate.extend(
-    #     np.add(
-    #         np.matmul(
-    #             np.matmul(np.linalg.inv(momInertia), skewSymMat),
-    #             np.matmul(momInertia, angularVel),
-    #         ),
-    #         np.matmul(np.linalg.inv(momInertia), torque),
-    #     )
-    # )
-    # This looks like w_dot = I_inv * (w x I*w) + I_inv * tau
-    # Standard Euler: I w_dot + w x Iw = tau => w_dot = I_inv * (tau - w x Iw)
-    # So it should be MINUS w x Iw.
-    # But let's stick to original implementation behavior unless it's clearly a bug
-    # that I should fix. Given the refactoring constraint, I should preserve behavior.
-
-    # However, passing skewSymMat as argument is wrong if it's constant.
-    # The `solve_ivp` calls `targetStateUpdateFunc` repeatedly as `t` changes.
-    # So `skewSymMat` passed as `args` is constant (from t=0?).
-    # That implies linearized dynamics or small angle assumption?
-    # Or maybe it's just a bug in original code.
-    # Let's keep it as is to avoid breaking "verified" code behavior.
+    # Euler's rotation computations
+    # dw/dt = I_inv * (torque - w x (I * w))
+    i_inv = np.linalg.inv(mom_inertia)
 
     w_dot = np.matmul(
-        np.matmul(I_inv, skewSymMat), np.matmul(momInertia, angularVel)
-    ) + np.matmul(I_inv, torque)
+        np.matmul(i_inv, skew_sym_mat), np.matmul(mom_inertia, angular_vel)
+    ) + np.matmul(i_inv, torque)
 
-    return np.concatenate((angularVel, w_dot))
+    return np.concatenate((angular_vel, w_dot))
 
 
 # =============================================================================
@@ -311,49 +90,54 @@ class Spacecraft:
     """Base class for all spacecraft agents."""
 
     _ids = count(0)
-    dt = p.dt
 
-    def __init__(self, *args):
+    def __init__(self, config: SimulationConfig, **kwargs):
+        """
+        Initialize Spacecraft.
+
+        Args:
+            config: SimulationConfig object.
+            **kwargs: Overrides for specific properties like 'name' or 'initState'.
+        """
+        self.config = config
+        self.dt = config.dt
+
         self.id = next(self._ids)
-        self.name = ""
-        self.numStates = 6
-        self.initState = np.zeros(self.numStates)
+        self.name = kwargs.get("name", "")
+        self.num_states = kwargs.get("numStates", 6)
+        self.init_state = kwargs.get("initState", np.zeros(self.num_states))
 
-        if len(args) > 0:
-            config = args[0]
-            if isinstance(config, dict):
-                self.name = config.get("name", "")
-                self.numStates = config.get("numStates", 6)
-                self.initState = config.get("initState", np.zeros(self.numStates))
+        self.curr_state = self.init_state
+        self.state_history = [self.curr_state]
 
-        self.currState = self.initState
-        self.stateHistory = [self.currState]
-
-    def updateState(self, *args):
+    def update_state(self, *args):
         """Update state. distinct for Target vs Chaser."""
-        raise NotImplementedError("Spacecraft.updateState() is not implemented.")
+        raise NotImplementedError("Spacecraft.update_state() is not implemented.")
 
-    def plotStateHistory(self, params, *args, **kwargs):
+    def plot_state_history(self, params: Dict, *args, **kwargs):
         """Plot the history of states."""
-        indStateHistory = np.transpose(self.stateHistory)
-        cmap = plt.cm.get_cmap("viridis", 256)  # New plt style
+        ind_state_history = np.transpose(self.state_history)
+        cmap = plt.cm.get_cmap("viridis", 256)
 
         plt.figure(figsize=(4, 3))
-        timeSeq = [step * self.dt for step in range(len(indStateHistory[0]))]
+        # time_seq = [step * self.dt for step in range(len(ind_state_history[0]))]
+        # Fixed: range gives ints, multiply by dt
+        num_points = ind_state_history.shape[1]
+        time_seq = np.linspace(0, num_points * self.dt, num_points)
 
         if params.get("sep_plots", False):
-            for i in range(self.numStates):
-                plt.subplot(self.numStates, 1, i + 1)
+            for i in range(self.num_states):
+                plt.subplot(self.num_states, 1, i + 1)
                 label = f"$x_{i}$"
-                plt.plot(timeSeq, indStateHistory[i], c=cmap(96 * i), label=label)
+                plt.plot(time_seq, ind_state_history[i], c=cmap(96 * i), label=label)
                 plt.legend()
                 plt.ylabel("State History")
                 plt.xlabel("Time")
         else:
             plt.subplot(1, 1, 1)
-            for i in range(self.numStates):
+            for i in range(self.num_states):
                 label = f"$x_{i}$"
-                plt.plot(timeSeq, indStateHistory[i], c=cmap(96 * i), label=label)
+                plt.plot(time_seq, ind_state_history[i], c=cmap(96 * i), label=label)
             plt.legend()
             plt.ylabel("State History")
             plt.xlabel("Time")
@@ -372,111 +156,111 @@ class Target(Spacecraft):
 
     _tids = count(0)
 
-    # Use config parameters
-    ObservationError_angPos = p.targetObservationError["ang_pos"]
-    ObservationError_angVel = p.targetObservationError["ang_vel"]
-
-    def __init__(self, *args):
+    def __init__(self, config: SimulationConfig, **kwargs):
         self.tid = next(self._tids) + 1
-        super().__init__(*args)
+        super().__init__(config, **kwargs)
 
-        # Default properties
-        self.angularVelocity = np.zeros(3)
-        self.momInertia = np.eye(3)
-        self.geometry = {"Ineqs": [], "Eqs": []}
+        self.observation_error_ang_pos = config.target.observation_error["ang_pos"]
+        self.observation_error_ang_vel = config.target.observation_error["ang_vel"]
 
-        if len(args) > 1 and isinstance(args[1], dict):
-            config = args[1]
-            self.angularVelocity = config.get("angularVelocity", self.angularVelocity)
-            self.momInertia = config.get("momInertia", self.momInertia)
-            self.geometry = config.get("geometry", self.geometry)
-            if "dt" in config:
-                self.dt = config["dt"]
+        # Default properties from config if not provided in kwargs
+        self.angular_velocity = kwargs.get(
+            "angularVelocity", config.target.initial_angular_velocity
+        )
+        self.mom_inertia = kwargs.get("momInertia", config.target.inertia)
+        self.geometry = kwargs.get("geometry", {"Ineqs": [], "Eqs": []})
 
-        self.angularVelocityHistory = [self.angularVelocity]
+        if "dt" in kwargs:
+            self.dt = kwargs["dt"]
 
-    def updateGeometry(self, **kwargs):
+        self.angular_velocity_history = [self.angular_velocity]
+
+    def update_geometry(self, **kwargs):
         if "geometryIneqs" in kwargs:
             self.geometry["Ineqs"] = kwargs["geometryIneqs"]
         if "geometryEqs" in kwargs:
             self.geometry["Eqs"] = kwargs["geometryEqs"]
         return self.geometry
 
-    def updateState(self, *args, **kwargs):
+    def update_state(self, **kwargs):
         if "newAngularPos" in kwargs and "newAngularVel" in kwargs:
-            newAngularPos = kwargs["newAngularPos"]
-            newAngularVel = kwargs["newAngularVel"]
+            new_angular_pos = kwargs["newAngularPos"]
+            new_angular_vel = kwargs["newAngularVel"]
+
+            # Update history
+            self.angular_velocity_history.append(new_angular_vel)
+            self.state_history.append(new_angular_pos)
+            self.angular_velocity = new_angular_vel
+            self.curr_state = new_angular_pos
         else:
-            numSteps = kwargs.get("numSteps", 1)
-            torqueVal = kwargs.get(
-                "torqueVal", [np.zeros(3) for _ in range(numSteps + 1)]
+            num_steps = kwargs.get("numSteps", 1)
+            torque_val = kwargs.get(
+                "torqueVal", [np.zeros(3) for _ in range(num_steps + 1)]
             )
-            torqueType = kwargs.get("torqueType", "zero")
+            torque_type = kwargs.get("torqueType", "zero")
 
             # Integrate dynamics
             sol = intg.solve_ivp(
                 fun=target_state_update_func,
-                y0=np.concatenate((self.currState, self.angularVelocity)),
-                t_span=[0, self.dt * numSteps],
+                y0=np.concatenate((self.curr_state, self.angular_velocity)),
+                t_span=[0, self.dt * num_steps],
                 method="RK45",
-                t_eval=np.arange(0, self.dt * numSteps, self.dt),
+                t_eval=np.arange(0, self.dt * num_steps, self.dt),
                 args=(
                     self.dt,
-                    self.momInertia,
-                    genSkewSymMat(self.angularVelocity),
-                    torqueVal,
-                    torqueType,
+                    self.mom_inertia,
+                    gen_skew_sym_mat(self.angular_velocity),
+                    torque_val,
+                    torque_type,
                 ),
             )
 
             if sol.success:
-                newState = sol.y.T  # (steps, 6)
-                newAngularPos = list(newState[:, :3])
-                newAngularVel = list(newState[:, 3:])
+                new_state = sol.y.T  # (steps, 6)
+                new_angular_pos = list(new_state[:, :3])
+                new_angular_vel = list(new_state[:, 3:])
+
+                self.angular_velocity_history.extend(new_angular_vel)
+                self.state_history.extend(new_angular_pos)
             else:
-                newAngularPos = [self.currState] * numSteps
-                newAngularVel = [self.angularVelocity] * numSteps
+                # Fallback
+                self.angular_velocity_history.extend(
+                    [self.angular_velocity] * num_steps
+                )
+                self.state_history.extend([self.curr_state] * num_steps)
 
-        self.angularVelocityHistory.extend(newAngularVel)
-        self.stateHistory.extend(newAngularPos)
-        self.angularVelocity = self.angularVelocityHistory[-1]
-        self.currState = self.stateHistory[-1]
-        return self.stateHistory
+            self.angular_velocity = self.angular_velocity_history[-1]
+            self.curr_state = self.state_history[-1]
 
-    def getObservedState(self, *args, **kwargs):
+        return self.state_history
+
+    def get_observed_state(self, t: float = 0.0):
         """Get state with observation noise."""
-        if len(args) == 0 and len(kwargs) == 0:
-            state = self.currState
+        idx = int(t / self.dt)
+        if idx < len(self.state_history):
+            state = self.state_history[idx]
         else:
-            t = kwargs.get("t", args[0] if args else 0.0)
-            idx = int(t / self.dt)
-            if idx < len(self.stateHistory):
-                state = self.stateHistory[idx]
-            else:
-                # Propagate if needed
-                self.updateState(numSteps=idx - len(self.stateHistory) + 1)
-                state = self.stateHistory[int(t / self.dt)]
+            # Propagate if needed
+            needed = idx - len(self.state_history) + 1
+            self.update_state(numSteps=needed)
+            state = self.state_history[idx]
 
-        # Add noise
-        return state * random.gauss(1.00, self.ObservationError_angPos)
+        return state * random.gauss(1.00, self.observation_error_ang_pos)
 
-    def getObservedAngVel(self, *args, **kwargs):
+    def get_observed_ang_vel(self, t: float = 0.0):
         """Get angular velocity with observation noise."""
-        if len(args) == 0 and len(kwargs) == 0:
-            angVel = self.angularVelocity
+        idx = int(t / self.dt)
+        if idx < len(self.angular_velocity_history):
+            ang_vel = self.angular_velocity_history[idx]
         else:
-            t = kwargs.get("t", 0.0)
-            idx = int(t / self.dt)
-            if idx < len(self.angularVelocityHistory):
-                angVel = self.angularVelocityHistory[idx]
-            else:
-                self.updateState(numSteps=idx - len(self.angularVelocityHistory) + 1)
-                angVel = self.angularVelocityHistory[int(t / self.dt)]
+            needed = idx - len(self.angular_velocity_history) + 1
+            self.update_state(numSteps=needed)
+            ang_vel = self.angular_velocity_history[idx]
 
-        return angVel * random.gauss(1.00, self.ObservationError_angVel)
+        return ang_vel * random.gauss(1.00, self.observation_error_ang_vel)
 
-    def getMomInertia(self, *args, **kwargs):
-        return self.momInertia
+    def get_mom_inertia(self):
+        return self.mom_inertia
 
 
 class Chaser(Spacecraft):
@@ -484,180 +268,188 @@ class Chaser(Spacecraft):
 
     _cids = count(0)
 
-    def __init__(self, *args, **kwargs):
-        if "repeat" not in kwargs or not kwargs["repeat"]:
+    def __init__(self, config: SimulationConfig, repeat: bool = False, **kwargs):
+        if not repeat:
             self.cid = next(self._cids) + 1
-            super().__init__(*args)
+            super().__init__(config, **kwargs)
 
-            self.n = p.n
+            self.mean_motion = config.orbit.mean_motion
             self.inputs = [np.zeros(3)]
-            self.stateBounds = []
-            self.inputBounds = []
+            self.state_bounds = []
+            self.input_bounds = []
 
-            # Unpack bounds from params
-            num_agents = int(len(self.initState) / 6)
+            # Unpack bounds from config
+            num_agents = int(len(self.init_state) / 6)
             for i in range(num_agents):
-                self.stateBounds.extend(p.stateBounds)
+                self.state_bounds.extend(config.mpc.state_bounds)
 
-            num_inputs = int(len(self.inputs[0]) / 3)  # Assuming 3 inputs
+            # Assuming 3 inputs per agent
+            num_inputs = int(num_agents)
             for i in range(num_inputs):
-                self.inputBounds.extend(p.inputBounds)
+                self.input_bounds.extend(config.mpc.input_bounds)
 
-            self.goalBounds = p.goalBounds
+            self.goal_bounds = config.mpc.goal_bounds
+
+            # Initialize Solver (default Gekko if not specified)
+            self.solver = get_solver("gekko", config=None)
 
         self.neighbors = []
-        self.tNInfo = {}
-        self.gNInfo = {}
-        self.rNInfo = {"len": 0}
-        self.goalState = None
-        self.goalLocations = None
+        self.t_n_info = {}
+        self.g_n_info = {}
+        self.r_n_info = {"len": 0}
+        self.goal_state = None
+        self.goal_locations = None
         self.occlusion = float("inf")
 
-        self.targetObserveConsensus = False
-        self.neighborsLocnConsensus = False
-        self.goalCalculateConsensus = False
+        self.target_observe_consensus = False
+        self.neighbors_locn_consensus = False
+        self.goal_calculate_consensus = False
 
-    def resetInfo(self):
-        self.__init__(repeat=True)
-        return self.goalState
+    def reset_info(self):
+        self.__init__(self.config, repeat=True)
+        return self.goal_state
 
-    def updateNeighbors(self, operation: str, agentList: List):
+    def update_neighbors(self, operation: str, agent_list: List):
         if operation == "set":
-            self.neighbors = agentList.copy()
+            self.neighbors = agent_list.copy()
         elif operation == "append":
-            for agent in agentList:
+            for agent in agent_list:
                 if agent not in self.neighbors:
                     self.neighbors.append(agent)
         elif operation == "remove":
-            for agent in agentList:
+            for agent in agent_list:
                 if agent in self.neighbors:
                     self.neighbors.remove(agent)
         return self.neighbors
 
-    def commData(self, type: str, info: Any, *args):
+    def comm_data(self, type: str, info: Any, *args):
         """Handle communication data from neighbors."""
         if type == "target":
             neighbor = args[0]
-            self.tNInfo[neighbor] = info
+            self.t_n_info[neighbor] = info
         elif type == "get_locations":
-            self.rNInfo[self.id] = self.currState[:3]
+            self.r_n_info[self.id] = self.curr_state[:3]
             for agent in info.keys():
-                if agent not in self.rNInfo.keys() and agent != "len":
-                    self.rNInfo[agent] = info[agent]
-                    self.neighborsLocnConsensus = False
-            self.rNInfo["len"] = len(self.rNInfo.keys()) - 1
-            if info["len"] == self.rNInfo["len"]:
-                self.neighborsLocnConsensus = True
+                if agent not in self.r_n_info.keys() and agent != "len":
+                    self.r_n_info[agent] = info[agent]
+                    self.neighbors_locn_consensus = False
+            self.r_n_info["len"] = len(self.r_n_info.keys()) - 1
+            if info["len"] == self.r_n_info["len"]:
+                self.neighbors_locn_consensus = True
         elif type == "goal_list":
             if self.occlusion > info["occlusion"]:
-                self.goalLocations = info["goalLocations"]
+                self.goal_locations = info["goalLocations"]
                 self.occlusion = info["occlusion"]
 
             if self.occlusion > 400:
-                self.goalCalculateConsensus = False
+                self.goal_calculate_consensus = False
             else:
-                self.goalCalculateConsensus = True
-            return {"goalLocations": self.goalLocations, "occlusion": self.occlusion}
+                self.goal_calculate_consensus = True
+            return {"goalLocations": self.goal_locations, "occlusion": self.occlusion}
         elif type == "goal":
-            pass  # Not implemented in original?
+            pass
         else:
             raise ValueError("Invalid Type of Communication Data")
 
-    def updateState(self, numSteps: int, *args):
+    def update_state(self, num_steps: int, *args):
         """Propagate chaser dynamics."""
         # Get CWH matrices
-        # Note: cwhEquations returns (matrices, constraints, bounds)
-        matrices_tuple, _, _ = cwhEquations(self.dt, n=self.n)
+        matrices_tuple, _, _ = cwh_equations(
+            self.dt,
+            mean_motion=self.mean_motion,
+            state_bounds=self.state_bounds,
+            input_bounds=self.input_bounds,
+        )
         A, B, Q, R, d = matrices_tuple
 
         # Extend inputs if needed
-        needed = numSteps - len(self.inputs)
+        needed = num_steps - len(self.inputs)
         if needed > 0:
             self.inputs.extend([np.zeros_like(self.inputs[0]) for _ in range(needed)])
 
-        for i in range(numSteps):
+        for i in range(num_steps):
             if not self.inputs:
                 break
             current_input = self.inputs[0]
 
             # x_next = A*x + B*u
-            self.currState = np.dot(A, self.currState) + np.dot(B, current_input)
+            self.curr_state = np.dot(A, self.curr_state) + np.dot(B, current_input)
 
             self.inputs = self.inputs[1:]
-            self.stateHistory.append(self.currState)
+            self.state_history.append(self.curr_state)
 
-        return self.stateHistory
+        return self.state_history
 
-    def getInputs(self, *args):
+    def get_inputs(self):
         return self.inputs
 
-    def setInputs(self, inputs):
+    def set_inputs(self, inputs):
         self.inputs = inputs
         return self.inputs
 
-    def getObservedState(self, *args):
-        return self.currState * random.gauss(1.00, 0.001)
+    def get_observed_state(self):
+        return self.curr_state * random.gauss(1.00, 0.001)
 
-    def observeTarget(self, target: Target, *args):
-        epsilon = p.chaserTuning["observe_target_epsilon"]
+    def observe_target(self, target: Target):
+        # Epsilon for observation consensus
+        epsilon = 0.01
 
-        TState = target.getObservedState()
-        TAngVel = target.getObservedAngVel()
+        t_state = target.get_observed_state()
+        t_ang_vel = target.get_observed_ang_vel()
 
-        self.TState, self.TAngVel = TState.copy(), TAngVel.copy()
+        self.t_state, self.t_ang_vel = t_state.copy(), t_ang_vel.copy()
 
         # Consensus average
-        for info in self.tNInfo.values():
-            self.TState += info[0]  # state
-            self.TAngVel += info[1]  # angVel
+        for info in self.t_n_info.values():
+            self.t_state += info[0]  # state
+            self.t_ang_vel += info[1]  # angVel
 
-        count = len(self.tNInfo) + 1
-        self.TState /= count
-        self.TAngVel /= count
+        count = len(self.t_n_info) + 1
+        self.t_state /= count
+        self.t_ang_vel /= count
 
         # Check consensus
         if (
-            np.linalg.norm(TState - self.TState) < epsilon
-            and np.linalg.norm(TAngVel - self.TAngVel) < epsilon
-            and len(self.tNInfo) == len(self.neighbors)
+            np.linalg.norm(t_state - self.t_state) < epsilon
+            and np.linalg.norm(t_ang_vel - self.t_ang_vel) < epsilon
+            and len(self.t_n_info) == len(self.neighbors)
         ):
-            self.targetObserveConsensus = True
+            self.target_observe_consensus = True
         else:
-            self.targetObserveConsensus = False
+            self.target_observe_consensus = False
 
-        return (self.TState, self.TAngVel)
+        return (self.t_state, self.t_ang_vel)
 
-    def calculateGoals(self):
-        numAgents = len(self.rNInfo.keys()) - 1
+    def calculate_goals(self):
+        num_agents = len(self.r_n_info.keys()) - 1
 
         # Determine number of agents to initialize weights
-        # Original code used hardcoded 1.0e3, etc.
-        # Now using config
-        w_val = p.chaserTuning["goal_calc_w"]
-        v_vals = p.chaserTuning["goal_calc_v"]
+        # Using defaults
+        w_val = 1.0e3
+        v_vals = [1.0e2, 1.0e6, 1.0e6]
 
-        w = np.full(numAgents, w_val)
+        w = np.full(num_agents, w_val)
         v = v_vals
 
         try:
-            x0 = self.goalLocations
-            RIDs = list(self.rNInfo.keys())
+            x0 = self.goal_locations
+            r_ids = list(self.r_n_info.keys())
         except:
-            RIDs, x0 = [], []
-            for agent in self.rNInfo.keys():
+            r_ids, x0 = [], []
+            for agent in self.r_n_info.keys():
                 if agent != "len":
-                    RIDs.append(agent)
-                    x0.append(self.rNInfo[agent])
+                    r_ids.append(agent)
+                    x0.append(self.r_n_info[agent])
 
         # Constraints
         constraints = []
-        for agent in range(1, numAgents + 1):
+        for agent in range(1, num_agents + 1):
             # Lower bound distance
             constraints.append(
                 {
                     "type": "ineq",
                     "fun": lambda x, ag=agent: (
-                        np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goalBounds[0]
+                        np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goal_bounds[0]
                     ),
                 }
             )
@@ -666,7 +458,7 @@ class Chaser(Spacecraft):
                 {
                     "type": "ineq",
                     "fun": lambda x, ag=agent: -(
-                        np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goalBounds[1]
+                        np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goal_bounds[1]
                     ),
                 }
             )
@@ -675,57 +467,87 @@ class Chaser(Spacecraft):
 
         # Initial guess optimization
         if x0 is None:
-            x0 = [np.zeros(3) for _ in range(numAgents)]  # Fallback
+            x0 = [np.zeros(3) for _ in range(num_agents)]  # Fallback
 
         # Scale x0 to be within goal bounds
-        avg_bound = sum(self.goalBounds) / len(self.goalBounds)
+        avg_bound = sum(self.goal_bounds) / len(self.goal_bounds)
         x0_flat = []
         for x0i in x0:
             norm = np.linalg.norm(x0i)
             if norm > 1e-6:
                 x0_flat.append(x0i * avg_bound / norm)
             else:
-                x0_flat.append(np.array([avg_bound, 0, 0]))  # Arbitrary direction
+                x0_flat.append(np.array([avg_bound, 0, 0]))
         x0_flat = np.array(x0_flat).flatten()
 
         res = opt.minimize(
-            calcGlobalOcclusion,
+            calc_global_occlusion_cost,
             x0=x0_flat,
-            args=(w, v, np.array(x0).flatten(), self.goalBounds),
+            args=(w, v, np.array(x0).flatten(), self.goal_bounds),
             options={"disp": False, "maxiter": 100},
             constraints=constraints,
         )
 
-        self.goalLocations = res.x
-        self.occlusion = calcGlobalOcclusion(
-            self.goalLocations, w, v, np.array(x0).flatten(), self.goalBounds
+        self.goal_locations = res.x
+        self.occlusion = calc_global_occlusion_cost(
+            self.goal_locations, w, v, np.array(x0).flatten(), self.goal_bounds
         )
-        return {"goalLocations": self.goalLocations, "occlusion": self.occlusion}
+        return {"goalLocations": self.goal_locations, "occlusion": self.occlusion}
 
-    def DetermineGoalInit(self, type: str, *args):
+    def determine_goal_init(self, type: str, *args):
         if type == "pick_prelim_goal":
-            self.goalState = self.goalLocations[3 * self.id - 3 : 3 * self.id]
-            return self.goalState
+            self.goal_state = self.goal_locations[3 * self.id - 3 : 3 * self.id]
+            return self.goal_state
         elif type == "create_agent":
             # Pass constructor for task allocation agent?
-            TaskAllocClass = args[0]
-            self.taskAllocAgent = TaskAllocClass(
-                self.id - 1, self.currState[:3], self.goalState, self.neighbors
+            task_alloc_class = args[0]
+            self.task_alloc_agent = task_alloc_class(
+                self.id - 1, self.curr_state[:3], self.goal_state, self.neighbors
             )
-            return self.taskAllocAgent
+            return self.task_alloc_agent
         else:
             raise ValueError("Invalid Type of Goal Determination Command")
 
-    def determineInputs(self, numSteps: int):
-        self.inputs = trajopt_dynamics(
-            cwhEquations,
-            numSteps,
+    def determine_inputs(self, num_steps: int):
+        """Calculate optimal control inputs using the modular solver."""
+        # Get dynamics matrices/functions from CWH
+        matrices, _, _ = cwh_equations(
             self.dt,
-            constraints=(self.currState, self.goalState),
-            bounds=(self.stateBounds, self.inputBounds),
+            mean_motion=self.mean_motion,
+            state_bounds=self.state_bounds,
+            input_bounds=self.input_bounds,
+            discretize_model=False,  # Continuous for GEKKO
         )
-        # Convert list of arrays to list of arrays? It's already that.
-        # But maybe needs reshape if trajopt returns flat lists.
-        # Original code did transpose.
-        # trajopt_dynamics now returns [u0, u1, ...] where u_i is array(3,)
+        A, B, Q, R, d = matrices
+
+        # Build Problem
+        problem = build_from_dynamics(
+            A_func=A,
+            B=B,
+            Q=Q,
+            R=R,
+            d_func=d,
+            x_0=self.curr_state,
+            x_f=self.goal_state if self.goal_state is not None else np.zeros(6),
+            t_start=0,  # Relative time
+            num_steps=num_steps,
+            dt=self.dt,
+            mean_motion=self.mean_motion,
+            state_bounds=self.state_bounds,
+            input_bounds=self.input_bounds,
+        )
+
+        # Solve
+        result = self.solver.solve_problem(problem)
+
+        if result.success and result.inputs is not None:
+            # Result inputs is shape (dimensions, steps)
+            # We need list of inputs [u(0), u(1)...]
+            # Transpose to (steps, dimensions)
+            u_traj = result.inputs.T
+            self.inputs = [u_traj[i] for i in range(u_traj.shape[0])]
+        else:
+            logger.warning("Chaser solver failed. Keeping zero inputs.")
+            self.inputs = [np.zeros(3) for _ in range(num_steps)]
+
         return self.inputs

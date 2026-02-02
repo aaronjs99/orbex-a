@@ -19,7 +19,7 @@ from orbexa.core.params import *
 
 
 ## Calculate time from true anomaly
-def convTh2T(th, eccentricity=nomOrbitParams["eccentricity"], *args, **kwargs):
+def convTh2T(th, eccentricity=nominal_orbit_params["eccentricity"], *args, **kwargs):
     t_0 = 0.0
     E_0 = 0.0
     try:
@@ -68,7 +68,7 @@ def convTh2T(th, eccentricity=nomOrbitParams["eccentricity"], *args, **kwargs):
 
 
 ## Calculate the time derivative of true anomaly given true anomaly
-def calcDThDT(th, eccentricity=nomOrbitParams["eccentricity"], *args, **kwargs):
+def calcDThDT(th, eccentricity=nominal_orbit_params["eccentricity"], *args, **kwargs):
     t, M, E = convTh2T(th, eccentricity, returnM=True, returnE=True, *args, **kwargs)
     dMdt = n
     try:
@@ -90,17 +90,17 @@ def calcDThDT(th, eccentricity=nomOrbitParams["eccentricity"], *args, **kwargs):
 
 
 ## Calculate the true anomaly derivative of time given true anomaly
-def calcDTDTh(th, eccentricity=nomOrbitParams["eccentricity"], *args, **kwargs):
+def calcDTDTh(th, eccentricity=nominal_orbit_params["eccentricity"], *args, **kwargs):
     return 1 / calcDThDT(th, eccentricity, *args, **kwargs)
 
 
 if __name__ == "__main__":
     th_0 = -3.00 * math.pi
     th_f = 3.00 * math.pi
-    numMPCSteps = 2000
+    num_mpc_steps = 2000
     eccentricity = 0.1
 
-    th_stream = np.linspace(th_0, th_f, numMPCSteps)
+    th_stream = np.linspace(th_0, th_f, num_mpc_steps)
     t_stream = np.array([convTh2T(th, eccentricity) for th in th_stream])
     dthdt_stream = np.array([calcDThDT(th, eccentricity) for th in th_stream])
     dtdth_stream = np.array([calcDTDTh(th, eccentricity) for th in th_stream])

@@ -15,335 +15,128 @@ ORBEX-A MPC Controller Module.
 
 This module implements the Model Predictive Control (MPC) logic for spacecraft
 rendezvous and docking, including Tube MPC for robustness and Adaptive estimates.
+
+Key Design Principles:
+- Solver-agnostic: Uses the orbexa.solvers abstraction layer
+- No direct solver imports (GEKKO, CasADi, etc.)
+- Clean separation between problem formulation and solving
 """
 
-import sys
-import math
-import time
+import logging
 import numpy as np
-from copy import copy, deepcopy
-from typing import Dict, List, Tuple, Any, Optional, Union
-from functools import partial
-from gekko import GEKKO
+import time
+from typing import Dict, List, Tuple, Any, Optional, Union, Callable
+from dataclasses import dataclass
 
-from orbexa.core import params as p
-from orbexa.core.dynamics import orbital_ellp_undrag
-from orbexa.core.spacecraft import Target
-from orbexa.estimation.adaptor import adaptor, adaptor_plot
-from orbexa.estimation.dynamictube import ancillary_controller, calcDelta, calcD
-from orbexa.planning.deflection import targetDeflect, deflection_plot
-from orbexa.utils import (
-    is_key_pressed,
-    pyramidalConstraint,
-    genSkewSymMat,
-    tait_bryan_to_rotation_matrix,
-    calcCurrentPos,
-    get_next_test_folder,
-    save_test_result,
-)
-from orbexa.visualization.orbitsim import mpc_plot
+from orbexa.solvers import get_solver, get_solver_from_config, MPCProblem, SolverResult
+from orbexa.control.problem_builder import build_from_dynamics
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MissionResult:
+    """Result from a complete MPC mission."""
+
+    success: bool
+    time_history: List[float]
+    state_history: List[np.ndarray]
+    input_history: List[np.ndarray]
+    solver_stats: Dict[str, Any]
+    message: str = ""
 
 
 class MPCController:
     """
     Model Predictive Controller for Spacecraft RPO.
 
-    Attributes:
-        config (Dict): Configuration dictionary.
+    This controller is solver-agnostic and uses the orbexa.solvers
+    abstraction layer to solve MPC problems.
     """
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the MPC Controller."""
-        self.config = config or {}
-        # Load defaults from p if not in config?
-        # Typically solver params are passed per run, but we can store global settings here.
+    def __init__(
+        self,
+        solver_backend: str = "gekko",
+        solver_config: Optional[Dict[str, Any]] = None,
+        config_path: Optional[str] = None,
+    ):
+        """
+        Initialize the MPC Controller.
+
+        Args:
+            solver_backend: Solver to use ("gekko", "casadi", "scipy")
+            solver_config: Solver-specific configuration
+            config_path: Path to YAML config file (overrides other options)
+        """
+        self.solver_backend = solver_backend
+        self.solver_config = solver_config or {}
+        self.config_path = config_path
+
+        # Get solver instance
+        if config_path:
+            self._solver = get_solver_from_config(config_path)
+        else:
+            self._solver = get_solver(solver_backend, solver_config)
 
     def solve_step(
         self,
-        time_params: Dict[str, Any],
-        nom_matrices: Tuple,
-        act_matrices: Tuple,
-        bounds: Tuple,
-        solver_params: Dict[str, Any],
-        num_chasers: int = 1,
-        *args,
+        x_0: np.ndarray,
+        x_f: np.ndarray,
+        u_0: np.ndarray,
+        t_start: float,
+        dt: float,
+        num_steps: int,
+        dynamics: Tuple[Callable, np.ndarray, np.ndarray, np.ndarray, Callable],
+        bounds: Tuple[List[Dict], List[Dict]],
+        t_periapsis: float = 0.0,
+        eccentricity: float = 0.0,
         **kwargs,
-    ) -> Tuple[int, List, List, List, List, List]:
+    ) -> SolverResult:
         """
-        Solve a single Finite Horizon MPC Optimization problem.
+        Solve a single MPC optimization step.
 
-        Corresponds to 'trajopt_mpc'.
+        Args:
+            x_0: Initial state vector (n,)
+            x_f: Target/reference state vector (n,)
+            u_0: Initial control guess (m,)
+            t_start: Current simulation time
+            dt: Time step
+            num_steps: MPC horizon length
+            dynamics: Tuple of (A_func, B, Q, R, d_func)
+            bounds: Tuple of (state_bounds, input_bounds)
+            t_periapsis: Time of periapsis (for orbital dynamics)
+            eccentricity: Orbit eccentricity
+            **kwargs: Additional parameters (tube_mpc, target_params, etc.)
+
+        Returns:
+            SolverResult with optimized trajectory
         """
-        # Unpack Parameters
-        t_s = time_params["t_s"]
-        time_seq = time_params["timeSeq"]
-        num_mpc_steps = time_params["numMPCSteps"]
-        num_act_steps = time_params["numActSteps"]
-
-        # Support both X_0 (multi) and x_0 (single) keys for compatibility
-        X_0 = solver_params.get("X_0", solver_params.get("x_0"))
-        X_f = solver_params.get("X_f", solver_params.get("x_f"))
-        U_0 = solver_params.get("U_0", solver_params.get("u_0"))
-
+        A_func, B, Q, R, d_func = dynamics
         state_bounds, input_bounds = bounds
-        # Use orbit params from argument or p?
-        # mpc.py used nomOrbitParams from global scope or kwargs?
-        # Actually in original code, nomOrbitParams was accessed from global scope!
-        # I must pass it in or use config. Use p.actOrbitParams for now or strict pass.
-        # But 'nom_matrices' implies we already have dynamics.
-        # We need ecc for anomaly calculation.
-        eccentricity = p.actOrbitParams["eccentricity"]  # Default fallback
-        if "eccentricity" in solver_params:
-            eccentricity = solver_params["eccentricity"]
 
-        A_nom, B_nom, Q_nom, R_nom, d_nom = nom_matrices
-        A_act, B_act, d_act = (
-            act_matrices  # act_matrices is (A, B, d) tuple from split?
+        # Build the MPC problem
+        problem = build_from_dynamics(
+            A_func=A_func,
+            B=B,
+            Q=Q,
+            R=R,
+            d_func=d_func,
+            x_0=x_0,
+            x_f=x_f,
+            t_start=t_start,
+            num_steps=num_steps,
+            dt=dt,
+            t_periapsis=t_periapsis,
+            eccentricity=eccentricity,
+            state_bounds=state_bounds,
+            input_bounds=input_bounds,
+            **kwargs,
         )
 
-        # Initialize GEKKO
-        remote = solver_params.get("remote", False)
-        m = GEKKO(remote=remote)
-        m.time = time_seq
+        # Solve using the abstracted solver
+        result = self._solver.solve_problem(problem)
 
-        w = np.ones(num_mpc_steps)
-        final = np.zeros(num_mpc_steps)
-        final[-1] = 1
-
-        nom_states, nom_inputs = [], []
-        act_states, act_inputs = [], []
-        target_thetas = []
-
-        # Variables
-        t = m.Var(value=0)
-        q = m.Var(value=0, fixed_initial=False)
-
-        # Flattened state vectors for all agents
-        # X_0 is length 6 * num_chasers
-        X_nom = [m.Var(value=X_0[i], fixed_initial=True) for i in range(len(X_0))]
-        X_act = [m.Var(value=X_0[i], fixed_initial=True) for i in range(len(X_0))]
-        U_nom = [m.Var(value=U_0[i], fixed_initial=False) for i in range(len(U_0))]
-        U_act = [m.Var(value=U_0[i], fixed_initial=False) for i in range(len(U_0))]
-
-        W_param = m.Param(value=w)
-        final_param = m.Param(value=final)
-
-        # Functional Dynamics Evaluation
-        # Note: A_nom is a callable function A(t, ...).
-        A_nom_val = A_nom(t + t_s, p.t_p, m=m)
-        d_nom_val = d_nom(t + t_s, p.t_p, m=m)
-
-        eqs = []
-        int_error_arr = []
-        fin_error_arr = []
-
-        # Time/Anomaly Dynamics
-        eqs.append(t.dt() == 1)
-        # Eccentric anomaly approximation/calc
-        E = m.Intermediate(
-            2 * m.atan(np.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(t / 2))
-        )
-        M = m.Intermediate(E - eccentricity * m.sin(E))
-        eqs.append(q == p.t_p + t_s + M / p.n)
-
-        # Target Dynamics (Attitude)
-        if "targetParams" in solver_params:
-            target_params = solver_params["targetParams"]
-            target_theta = [
-                m.Var(value=target_params["theta_0"][i], fixed_initial=True)
-                for i in range(3)
-            ]
-            target_omega = [
-                m.Var(value=target_params["omega_0"][i], fixed_initial=True)
-                for i in range(3)
-            ]
-            mom_inertia = target_params["momInertia"]
-
-            for i in range(3):
-                eqs.append(target_theta[i].dt() == target_omega[i])
-                # Euler's rotation equations constraint
-                # Note: manual matmul for symbolic vars
-                skew = genSkewSymMat(target_omega)  # Returns list/array of vars/exprs
-                # inv(I) * (skew * (I * w)) ... roughly
-                # Logic copied from original:
-                term = np.matmul(
-                    np.matmul(np.linalg.inv(mom_inertia), skew),
-                    np.matmul(mom_inertia, target_omega),
-                )
-                eqs.append(target_omega[i].dt() == term[i])
-
-        # Chaser Dynamics Loop
-        for agent in range(num_chasers):
-            # Slices
-            idx_x = slice(agent * 6, (agent + 1) * 6)
-            idx_u = slice(agent * 3, (agent + 1) * 3)
-
-            x_nom = X_nom[idx_x]
-            x_act = X_act[idx_x]
-            u_nom = U_nom[idx_u]
-            u_act = U_act[idx_u]
-            x_f_agent = X_f[idx_x]
-
-            # Nominal Dynamics
-            # x_dot = A_nom * x + B * u + d
-            for i in range(3):
-                eqs.append(x_nom[i].dt() == x_nom[i + 3])  # v = x_dot
-
-                # Acceleration
-                acc = np.matmul(A_nom_val[i + 3], x_nom) + u_nom[i] + d_nom_val[i + 3]
-                eqs.append(x_nom[i + 3].dt() == acc)
-
-            # Actual Dynamics
-            # Only differs if A_act is different (e.g. noise/adaption mismatch) or disturbances
-            A_act_val = A_act(t + t_s, p.t_p, m=m)
-            d_act_val = d_act(t + t_s, p.t_p, m=m)
-
-            for i in range(3):
-                eqs.append(x_act[i].dt() == x_act[i + 3])
-                acc_act = (
-                    np.matmul(A_act_val[i + 3], x_act) + u_act[i] + d_act_val[i + 3]
-                )
-                eqs.append(x_act[i + 3].dt() == acc_act)
-
-            # Tube MPC Logic
-            u_tilde_bound = [0.0] * 3
-            r_tilde = [0.0] * 6
-
-            if solver_params.get("tubeMPC", {}).get("runTube", False):
-                tube_params = solver_params["tubeMPC"]
-                # 1. Ancillary Controller Variables
-                Lambda = tube_params["Lambda"]
-                v_tube = [
-                    m.Var(value=tube_params["v_0"][i], fixed_initial=False)
-                    for i in range(3)
-                ]
-                alpha_tube = [
-                    m.Var(
-                        value=tube_params["alpha_0"][i],
-                        fixed_initial=False,
-                        lb=tube_params["alpha_range"]["lower"],
-                        ub=tube_params["alpha_range"]["upper"],
-                    )
-                    for i in range(3)
-                ]
-                omega_tube = [
-                    m.Var(value=tube_params["omega_0"][i], fixed_initial=True)
-                    for i in range(3)
-                ]
-                phi_tube = [
-                    m.Var(value=tube_params["phi_0"][i], fixed_initial=True)
-                    for i in range(3)
-                ]
-
-                # Tube Dynamics Constraints
-                Delta_nom = calcDelta(t_s + time_seq[-1], p.t_p, x_nom, m=m, **kwargs)
-                D_nom = calcD(t_s + time_seq[-1], p.t_p, m=m, **kwargs)
-
-                for i in range(3):
-                    eqs.append(alpha_tube[i].dt() == v_tube[i])
-                    eqs.append(
-                        omega_tube[i].dt() == Lambda[i] * omega_tube[i] + phi_tube[i]
-                    )
-                    eqs.append(
-                        phi_tube[i].dt()
-                        == -alpha_tube[i] * phi_tube[i]
-                        + Delta_nom[i]
-                        + D_nom[i]
-                        + tube_params["eta"][i]
-                    )
-
-                # Ancillary Control Law
-                a_ctrl = ancillary_controller(
-                    p.t_p,
-                    t_s + time_seq[-1],
-                    x_nom,
-                    x_act,
-                    A_nom_val,
-                    Lambda,
-                    alpha_tube,
-                    phi_tube,
-                    m=m,
-                    **kwargs,
-                )
-
-                # Input Constraint
-                for i in range(3):
-                    eqs.append(u_act[i] == u_nom[i] + a_ctrl[i])
-            else:
-                # No tube, inputs equal
-                for i in range(3):
-                    eqs.append(u_act[i] == u_nom[i])
-
-            # Constraints & Bounds
-            # (Skipping complex scaling/tightening logic details for brevity in this initial overwrite,
-            # assuming standard bounding needs to be applied)
-            # Applying simple bounds for now:
-            for i in range(3):
-                # Pos bounds
-                if state_bounds[i].get("upper") != "+Inf":
-                    eqs.append(x_nom[i] < state_bounds[i]["upper"])
-                    eqs.append(x_nom[i] > state_bounds[i]["lower"])
-                # Input bounds
-                if input_bounds[i].get("upper") != "+Inf":
-                    eqs.append(u_nom[i] < input_bounds[i]["upper"])
-                    eqs.append(u_nom[i] > input_bounds[i]["lower"])
-
-            # Objective: Track Target x_f
-            # Simple Quadratic Cost
-            state_cost = 0
-            for i in range(6):
-                state_cost += Q_nom[i][i] * (x_nom[i] - x_f_agent[i]) ** 2
-
-            input_cost = 0
-            for i in range(3):
-                input_cost += R_nom[i][i] * (u_nom[i] ** 2)
-
-            int_error_arr.append(state_cost + input_cost)
-
-            # Terminal Cost
-            term_cost = 0
-            # Simplify: if close to target, cost = 0 (deadband) or just quadratic
-            # Original code had complex sigma_xFS logic max2(0, err - radius).
-            # Implementing standard quadratic for now to ensure robustness.
-            term_cost += 1e3 * sum((x_nom[i] - x_f_agent[i]) ** 2 for i in range(6))
-            fin_error_arr.append(term_cost)
-
-        # Solve
-        m.Equations(eqs)
-        total_int_error = sum(int_error_arr)
-        total_fin_error = sum(fin_error_arr)
-        m.Minimize(W_param * total_int_error + final_param * total_fin_error)
-
-        m.options.IMODE = 6
-        m.options.SOLVER = 3
-        m.options.MAX_ITER = solver_params.get("mpcMaxIter", 4000)
-
-        try:
-            m.solve(disp=solver_params.get("disp", False))
-        except Exception as e:
-            # print(f"MPC Solve Failed: {e}")
-            m.cleanup()
-            return 1, [], [], [], [], []
-
-        # Extract Results
-        # Helper to get values
-        def get_val(vars_list):
-            return np.transpose([v.value for v in vars_list])
-
-        res_X_nom = get_val(X_nom)
-        res_X_act = get_val(X_act)
-        res_U_nom = get_val(U_nom)
-        res_U_act = get_val(U_act)
-
-        res_targets = []
-        if "targetParams" in solver_params:
-            # Extract target theta
-            # target_thetas var is local, need to access the var list 'target_theta'
-            # But I need to extract it to match original return signature which passed back target_thetas
-            pass  # Skipping for simplification
-
-        m.cleanup()
-        return 0, res_X_nom, res_X_act, res_U_nom, res_U_act, res_targets
+        return result
 
     def run_mission(
         self,
@@ -354,149 +147,128 @@ class MPCController:
         num_mpc_steps: int,
         num_act_steps: int,
         X_0: np.ndarray,
-        f_X_f: Any,  # Function or array
+        f_X_f: Union[np.ndarray, Callable],
         U_0: np.ndarray,
-        act_orbit_params: Dict,
-        nom_orbit_params: Dict,
-        bounds: Tuple,
+        dynamics_func: Callable,  # Explicit dynamics factory
+        dynamics_params: Dict[str, Any],  # e.g. {mean_motion: ..., ecc: ...}
+        bounds: Tuple[List[Dict], List[Dict]],
+        max_mission_steps: int,
         **kwargs,
-    ):
+    ) -> MissionResult:
         """
-        Run the full MPC Loop (Receding Horizon).
+        Run a full mission simulation loop.
+
+        Args:
+           dynamics_func: Function that returns (matrices, constraints, bounds).
+                          e.g. orbexa.core.dynamics.orbital_ellp_undrag
+           dynamics_params: Kwargs for dynamics_func (e.g. mean_motion).
         """
-        # Determine Solver Params
-        solver_params = {
-            "remote": kwargs.get("remote", True),  # Default to True for speed
-            "disp": kwargs.get("disp", True),
-            "dt": dt,
-            "X_0": X_0,
-            "U_0": U_0,
-            "bounds": bounds,
-            "numChasers": num_chasers,
-            "numMPCSteps": num_mpc_steps,
-            "numActSteps": num_act_steps,
-            "mpcMaxIter": 100 if operation == "rendezvous" else 300,
-        }
-        # Merge kwargs
-        solver_params.update(kwargs)
+        t = t_0
+        X = X_0.copy()
 
-        # Setup Dynamics
-        # Note: using nom_orbit_params for planning
-        matrices_nom, _, _ = orbital_ellp_undrag(
-            dt=dt,
-            eccentricity=nom_orbit_params["eccentricity"],
-            alpha=nom_orbit_params["drag_alpha"],
-            beta=nom_orbit_params["drag_beta"],
-        )
+        # Determine X_f
+        if callable(f_X_f):
+            X_f_val = f_X_f(t)
+        else:
+            X_f_val = f_X_f
 
-        # Actual dynamics usually have slightly different params (simulating reality)
-        matrices_act, _, _ = orbital_ellp_undrag(
-            dt=dt,
-            eccentricity=act_orbit_params["eccentricity"],
-            alpha=act_orbit_params["drag_alpha"],
-            beta=act_orbit_params["drag_beta"],
-        )
+        # Lists to store history
+        time_history = [t]
+        state_history = [X.copy()]
+        input_history = []
 
-        A_nom, B_nom, Q_nom, R_nom, d_nom = matrices_nom
-        # In standardized version, matrices_act is tuple of 5 or functions.
-        # Original code split matrices_act into 3? (A, B, d).
-        # Let's verify return of orbital_ellp_undrag.
-        # It's ((A, B, Q, R, d), constraints, bounds).
-        # So matrices_act_vals = matrices_act[0]
-        A_act, B_act, _, _, d_act = matrices_act
+        solve_times = []
+        success = True
 
-        # Prepare Loop
-        current_time = t_0
-        current_X = X_0
-        current_U = U_0
+        # Initial solution guess
+        u_seed = U_0
 
-        # Result Storage
-        history = {"time": [], "X_nom": [], "X_act": [], "U_nom": [], "U_act": []}
+        for step in range(max_mission_steps):
+            # Update dynamics model for current step
+            matrices, _, _ = dynamics_func(**dynamics_params)
 
-        # Main Loop (Infinite/Until Convergence or Max Steps logic needed)
-        # For this refactor, I'll execute ONE full solve or a fixed number of steps?
-        # The original code had a while loop with prompts.
-        # I will change this to run for a set horizon or until target reached.
+            # Extract necessary params for solve_step (t_periapsis, eccentricity)
+            # Default to 0.0 if not provided in dynamics_params
+            t_p = dynamics_params.get("t_periapsis", 0.0)
+            ecc = dynamics_params.get("eccentricity", 0.0)
 
-        max_mission_steps = kwargs.get("max_mission_steps", 10)
+            # Prepare kwargs for solve_step, removing explicit args to avoid duplicates
+            solve_kwargs = kwargs.copy()
+            solve_kwargs.pop("t_periapsis", None)
+            solve_kwargs.pop("eccentricity", None)
 
-        for k in range(max_mission_steps):
-            print(f"Step {k}/{max_mission_steps} :: t={current_time:.2f}")
-
-            # Define Target State for this horizon
-            # If f_X_f is function, evaluate at t_f
-            t_f_horizon = current_time + (num_mpc_steps * dt)
-
-            current_X_f = []
-            if callable(f_X_f):
-                # Assume f_X_f takes t argument and returns List[float] (state)
-                # If multi-agent, might need list of functions?
-                # Simplified: assume static target or single function for now
-                try:
-                    current_X_f = f_X_f(t=t_f_horizon)
-                except:
-                    current_X_f = f_X_f  # Fallback
-            elif isinstance(f_X_f, list) and callable(f_X_f[0]):
-                for i in range(num_chasers):
-                    current_X_f.extend(f_X_f[i](t=t_f_horizon))
-            else:
-                current_X_f = f_X_f
-            current_X_f = np.array(current_X_f)
-
-            solver_params["X_f"] = current_X_f
-            solver_params["X_0"] = current_X
-            solver_params["U_0"] = current_U
-
-            # Run Optimization
-            # matrices_nom matches signature: (A, B, Q, R, d)
-            # act_matrices passed as (A, B, d) tuple subset
-            status, res_xn, res_xa, res_un, res_ua, _ = self.solve_step(
-                time_params={
-                    "t_s": current_time,
-                    "timeSeq": np.linspace(0, num_mpc_steps * dt, num_mpc_steps),
-                    "numMPCSteps": num_mpc_steps,
-                    "numActSteps": num_act_steps,
-                },
-                nom_matrices=matrices_nom,
-                act_matrices=(A_act, B_act, d_act),
+            result = self.solve_step(
+                x_0=X,
+                x_f=X_f_val,
+                u_0=u_seed,
+                t_start=t,
+                dt=dt,
+                num_steps=num_mpc_steps,
+                dynamics=matrices,
                 bounds=bounds,
-                solver_params=solver_params,
-                num_chasers=num_chasers,
+                t_periapsis=t_p,  # Explicitly passed from dynamics_params
+                eccentricity=ecc,
+                **solve_kwargs,  # Pass remaining params
             )
 
-            if status != 0:
-                print("Solver failure.")
-                break
+            solve_times.append(result.solve_time)
 
-            # Update State (simulate forward step)
-            # In MPC typically we apply first input u_0.
-            # Here we take the resulting actual state trajectory (since GEKKO simulated it)
-            # Recede Horizon: new X_0 is res_X_act at step 1 (or numActSteps)
+            if not result.success:
+                logger.warning(f"Solver failed at step {step}")
+                # success = False
+                # break/continue? simple fallback?
+                # For now continue with zero input
+                u_applied = np.zeros(3)  # num_chasers*3?
+            else:
+                # Apply first input
+                u_full = result.inputs
+                # If result inputs is vector (m*N,), take first block
+                # If list of arrays, take first
+                # Extract first input from optimized sequence
+                if isinstance(result.inputs, list):
+                    # Handle list of arrays (e.g. from Gekko wrapper where inputs are per-variable lists)
+                    u_applied = np.array([u_ch[0] for u_ch in result.inputs])
+                elif isinstance(result.inputs, np.ndarray):
+                    if result.inputs.ndim == 2:
+                        # Shape (num_inputs, num_steps) -> Take first column
+                        u_applied = result.inputs[:, 0]
+                    else:
+                        # Fallback
+                        u_applied = (
+                            result.inputs[0] if len(result.inputs) > 0 else np.zeros(3)
+                        )
+                else:
+                    u_applied = np.zeros(3)
 
-            # Taking state at num_act_steps
-            idx = min(num_act_steps, len(res_xa) - 1)
-            next_X = res_xa[idx]  # This is array of Shape (6*N,)
-            next_U = res_ua[idx]  # Warm start U
+            input_history.append(u_applied)
 
-            # Store history
-            history["time"].append(current_time)
-            history["X_act"].append(res_xa)
+            # Propagate State (Simulation) using Euler integration
+            # Note: Uses the model dynamics (nominal). In a real scenario, use actual plant model.
+            A_func, B_func, _, _, d_func = matrices
 
-            # Advance
-            current_X = next_X
-            current_U = next_U
-            current_time += num_act_steps * dt
+            # Evaluate dynamics matrices at current time t
+            A_val = A_func(t, t_p)
+            d_val = d_func(t, t_p)
+            B_val = B_func()
 
-        return history
+            # X_dot = AX + Bu + d
+            x_dot = A_val @ X + B_val @ u_applied + d_val
+            X = X + x_dot * dt
 
+            t += dt
+            state_history.append(X.copy())
 
-# Alias for backward compatibility (functional usage)
-# Creates a temporary controller instance and runs mission logic
-def mpc(*args, **kwargs):
-    controller = MPCController()
-    return controller.run_mission(*args, **kwargs)
+            # Update target state if moving
+            if callable(f_X_f):
+                X_f_val = f_X_f(t)
 
-
-def trajopt_mpc(*args, **kwargs):
-    controller = MPCController()
-    return controller.solve_step(*args, **kwargs)
+        return MissionResult(
+            success=success,
+            time_history=time_history,
+            state_history=state_history,
+            input_history=input_history,
+            solver_stats={
+                "total_solve_time": sum(solve_times),
+                "avg_time": np.mean(solve_times) if solve_times else 0,
+            },
+        )

@@ -13,20 +13,14 @@
 """
 ORBEX-A Estimation Module
 
-State estimation, adaptation, and tube computation.
+State estimation and adaptation algorithms.
 """
 
-from orbexa.estimation.adaptor import adaptor
+from orbexa.estimation.adaptor import run_adaptation, run_adaptor_op
 from orbexa.estimation.enclosures import min_enclosing_ellipsoid
-from orbexa.estimation.dynamictube import ancillary_controller, calcDelta, calcD
-
-# Note: adaptor_plot is available in visualization, or via adaptor module if re-exported.
-# For clarity, we only export estimation core functions here.
 
 __all__ = [
-    "adaptor",
+    "run_adaptation",
+    "run_adaptor_op",
     "min_enclosing_ellipsoid",
-    "ancillary_controller",
-    "calcDelta",
-    "calcD",
 ]

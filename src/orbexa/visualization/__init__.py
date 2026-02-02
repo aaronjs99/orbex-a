@@ -17,17 +17,17 @@ Orbit simulation, plotting, and 3D visualization.
 """
 
 from orbexa.visualization.orbitsim import (
-    mpc_plot,
-    adaptor_plot,
-    deflection_plot,
-    simulate,
-    orbitGenerator,
+    plot_mpc,
+    plot_adaptor,
+    plot_deflection,
+    create_animation_html,
+    plot_time_series,
 )
 
 __all__ = [
-    "mpc_plot",
-    "adaptor_plot",
-    "deflection_plot",
-    "simulate",
-    "orbitGenerator",
+    "plot_mpc",
+    "plot_adaptor",
+    "plot_deflection",
+    "create_animation_html",
+    "plot_time_series",
 ]

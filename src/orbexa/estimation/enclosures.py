@@ -96,8 +96,6 @@ def max_inscribed_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
 
 
 # Aliases
-minEnclosingEllipsoid = min_enclosing_ellipsoid
-maxInscribedEllipsoid = max_inscribed_ellipsoid
 
 
 if __name__ == "__main__":

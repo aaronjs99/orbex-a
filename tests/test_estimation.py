@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
-from orbexa.estimation.dynamictube import calcDelta, calcD
-from orbexa.estimation.adaptor import adaptor
+from orbexa.control.dynamictube import calc_delta, calc_d
+from orbexa.estimation.adaptor import run_adaptor_op
 
 # Check if Gekko available
 try:
@@ -19,13 +19,26 @@ class TestDynamicTube:
         m = GEKKO(remote=False)
         m.time = np.linspace(0, 1, 5)
 
-        # calcDelta(t, t_p, x_nom, m=m, ...)
+        # calc_delta(t, t_p, x_nom, m=m, ...)
         # It expects x_nom to be list of GEKKO vars or array
         # We'll just check if function exists and imports worked
-        assert callable(calcDelta)
-        assert callable(calcD)
+        assert callable(calc_delta)
+        assert callable(calc_d)
 
 
 class TestAdaptor:
     def test_adaptor_signature(self):
-        assert callable(adaptor)
+        assert callable(run_adaptor_op)
+
+    def test_gen_adaptor_data(self):
+        from orbexa.estimation.adaptor import gen_adaptor_data
+
+        assert callable(gen_adaptor_data)
+
+
+class TestEnclosures:
+    def test_enclosures_funcs(self):
+        from orbexa.estimation import enclosures
+
+        assert callable(enclosures.min_enclosing_ellipsoid)
+        assert callable(enclosures.max_inscribed_ellipsoid)

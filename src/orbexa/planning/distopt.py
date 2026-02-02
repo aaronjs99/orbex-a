@@ -13,12 +13,15 @@
 # PACKAGE IMPORTS
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
 from itertools import count
 from mpl_toolkits.mplot3d import Axes3D
 from scipy import optimize as opt
 
-from orbexa.utils import calcLocalOcclusion, calcGlobalOcclusion
-from orbexa.planning.taskalloc import genNeighbors
+from orbexa.utils import calc_local_occlusion_cost, calc_global_occlusion_cost
+from orbexa.planning.taskalloc import gen_neighbors
+
+logger = logging.getLogger(__name__)
 
 np.random.seed(0)
 
@@ -37,7 +40,7 @@ class DistOptAgent:
         self.allx = [x]  ### All States
         self.updateWV("only_neighbors")
 
-    def updateX(self, X, fun=calcLocalOcclusion, *args):
+    def update_x(self, X, fun=calc_local_occlusion_cost, *args):
         if len(args) == 0:
             args = [(self.w, self.v, X)]
         self.x = opt.minimize(
@@ -71,15 +74,15 @@ class DistOptAgent:
                 if i not in self.N and i != self.did:
                     self.w[i] = 0
 
-    def updateN(self, operation, agentList):
+    def update_n(self, operation, agent_list):
         if operation == "set":
-            self.G = agentList.copy()
+            self.G = agent_list.copy()
         elif operation == "append":
-            for agent in agentList:
+            for agent in agent_list:
                 if agent not in self.G:
                     self.G.append(agent)
         elif operation == "remove":
-            for agent in agentList:
+            for agent in agent_list:
                 if agent in self.G:
                     self.G.remove(agent)
         return self.G
@@ -106,17 +109,17 @@ if __name__ == "__main__":
         )
         for i in range(8)
     ]
-    numAgents = len(X)
+    num_agents = len(X)
     numStates = len(X[0])
     W = [
-        np.array([1.0 / numAgents for ego in range(numAgents)])
-        for agent in range(numAgents)
+        np.array([1.0 / num_agents for ego in range(num_agents)])
+        for agent in range(num_agents)
     ]
-    V = [5.0 for agent in range(numAgents)]
-    N = genNeighbors("maxDist", X, 40, idOffset=False)
-    agents = [DistOptAgent(X[i], W[i], V[i], N[i]) for i in range(numAgents)]
+    V = [5.0 for agent in range(num_agents)]
+    N = gen_neighbors("maxDist", X, 40, idOffset=False)
+    agents = [DistOptAgent(X[i], W[i], V[i], N[i]) for i in range(num_agents)]
 
-    print("Initial States: ", [agent.x for agent in agents])
+    logger.info(f"Initial States: {[agent.x for agent in agents]}")
 
     ax1 = plt.subplot(2, 2, 1)
     ax2 = plt.subplot(2, 2, 2)
@@ -126,13 +129,13 @@ if __name__ == "__main__":
     # Run Simulation
     for t in range(50):
         X_new = []
-        for j in range(numAgents):
-            x_j = agents[j].updateX(X)
+        for j in range(num_agents):
+            x_j = agents[j].update_x(X)
             X_new.append(x_j)
         X = X_new.copy()
 
     # Plot Results
-    for i in range(numAgents):
+    for i in range(num_agents):
         ax1.scatter(agents[i].allx[0][0], agents[i].allx[0][1], label="Agent " + str(i))
         ax1.plot(
             [agents[i].allx[j][0] for j in range(len(agents[i].allx))],
@@ -158,7 +161,7 @@ if __name__ == "__main__":
     # Plot Results in 3D
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    for i in range(numAgents):
+    for i in range(num_agents):
         ax.scatter(
             agents[i].allx[0][0],
             agents[i].allx[0][1],
@@ -174,4 +177,4 @@ if __name__ == "__main__":
     plt.legend()
     plt.show()
 
-    print("Final   States: ", [agent.x for agent in agents])
+    logger.info(f"Final States: {[agent.x for agent in agents]}")

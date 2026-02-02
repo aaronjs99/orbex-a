@@ -19,21 +19,23 @@ for robust MPC.
 
 import numpy as np
 from typing import List, Tuple, Any, Optional
-from gekko import GEKKO
 
-from orbexa.core import params as p
 from orbexa.core.dynamics import orbital_ellp_undrag
 
 
 def ancillary_controller(
+    t: float,
     t_p: float,
     t_f: float,
+    dt: float,
+    mean_motion: float,
     nom_state: np.ndarray,
     act_state: np.ndarray,
-    A_nom_val: np.ndarray,
-    Lambda: List[float],
+    lambda_gain: List[float],
     alpha: List[float],
     phi: List[float],
+    eccentricity_range: Tuple[float, float],
+    # Add other ranges if needed
     *args,
     **kwargs,
 ) -> np.ndarray:
@@ -41,36 +43,49 @@ def ancillary_controller(
     Calculate the ancillary control input to keep the actual system within the tube.
 
     Args:
-        t_p, t_f: Time parameters.
+        t: Current time.
+        t_p, t_f: Time parameters (periapsis, nominal prop time).
+        dt: Time step.
+        mean_motion: Mean motion.
         nom_state: Nominal state (from MPC).
         act_state: Actual state.
-        A_nom_val: Nominal A matrix value.
-        Lambda, alpha, phi: Tube controller gains.
+        lambda_gain (Lambda): Sliding mode gains.
+        alpha: Bandwidth.
+        phi: Boundary layer.
+        eccentricity_range: (min_ecc, max_ecc).
         **kwargs: Must contain 'm' (GEKKO model) and range params.
     """
     m = kwargs["m"]
+
+    # Retrieve nominal A matrix if provided, otherwise it must be computed or estimates used.
+    # In Tube MPC, A_nom_val usually comes from the nominal trajectory linearization.
+    A_nom_val = kwargs.get("A_nom_val")
+    if A_nom_val is None:
+        # If not provided, one might compute it using orbital_ellp_undrag locally
+        # or raise an error depending on design strictness.
+        pass
 
     r_tilde = np.array([act_state[i] - nom_state[i] for i in range(len(nom_state))])
     x_tilde = r_tilde[:3]
     v_tilde = r_tilde[3:]
 
-    s = [v_tilde[i] + Lambda[i] * x_tilde[i] for i in range(len(x_tilde))]
+    s = [v_tilde[i] + lambda_gain[i] * x_tilde[i] for i in range(len(x_tilde))]
 
-    # Sigmoid smooth approximation for sign/saturation?
-    # Original: s[i] / m.max2(s[i], phi[i]) -> logic seems like saturation 1/max(s, phi)?
-    # If s < phi, returns s/phi. If s > phi, returns s/s = 1.
-    # But max2(a,b) returns max. So if s < phi, result is s/phi. If s > phi, result is s/s=1.
-    # This is effectively sat(s/phi). Correct.
+    # Sigmoid smooth approximation for sign/saturation
+    # Using GEKKO max2 for saturation logic
     min_s_phi = [s[i] / m.max2(s[i], phi[i]) for i in range(len(s))]
 
     K = calc_delta(
         t_f,
         t_p,
         r_tilde,
+        dt=dt,
+        mean_motion=mean_motion,
         m=m,
-        e_range=kwargs.get("eRange"),
-        a_range=kwargs.get("aRange"),
-        b_range=kwargs.get("bRange"),
+        e_range=eccentricity_range,
+        # Default ranges if not provided?
+        a_range=kwargs.get("aRange", (0.0, 0.0)),  # Drag alpha
+        b_range=kwargs.get("bRange", (0.0, 0.0)),  # Drag beta
     )
 
     K += np.array([alpha[i] * phi[i] for i in range(3)])
@@ -78,7 +93,7 @@ def ancillary_controller(
     state_mod = np.array(
         [
             np.dot(A_nom_val[i + 3], r_tilde)
-            - Lambda[i] * v_tilde[i]
+            - lambda_gain[i] * v_tilde[i]
             - min_s_phi[i] * K[i]
             for i in range(3)
         ]
@@ -87,26 +102,31 @@ def ancillary_controller(
     return state_mod
 
 
-def calc_delta(t, t_p, x, *args, **kwargs):
+def calc_delta(
+    t: float, t_p: float, x: np.ndarray, dt: float, mean_motion: float, *args, **kwargs
+):
     """Calculate robust disturbance bound Delta."""
     m = kwargs["m"]
-    dt = p.dt
 
-    min_ecc, max_ecc = kwargs.get("eRange", (p.minEccentricity, p.maxEccentricity))
-    min_alpha, max_alpha = kwargs.get("aRange", (p.minDragAlpha, p.maxDragAlpha))
-    min_beta, max_beta = kwargs.get("bRange", (p.minDragBeta, p.maxDragBeta))
+    min_ecc, max_ecc = kwargs.get("e_range", (0.0, 0.0))
+    # Original used global params defaults.
+    # We must provide them now.
+
+    # Note: orbital_ellp_undrag signature changed to:
+    # orbital_ellp_undrag(dt, mean_motion, eccentricity, ...)
 
     A_list, Delta_list, Delta_norm = [], [], []
 
-    # Grid search for worst case
+    A_list, Delta_list, Delta_norm = [], [], []
+
+    # Grid search for worst case over eccentricity range.
+    # Drag parameters (alpha/beta) were present in legacy code but are currently unused/constant.
     for ecc in [min_ecc, max_ecc]:
-        for alpha in [min_alpha, max_alpha]:
-            for beta in [min_beta, max_beta]:
-                matrices, _, _ = orbital_ellp_undrag(
-                    dt, eccentricity=ecc, alpha=alpha, beta=beta
-                )
-                A_func, _, _, _, _ = matrices
-                A_list.append(np.array(A_func(t, t_p, m=m)))
+        matrices, _, _ = orbital_ellp_undrag(
+            dt=dt, mean_motion=mean_motion, eccentricity=ecc
+        )
+        A_func, _, _, _, _ = matrices
+        A_list.append(np.array(A_func(t, t_p, m=m)))
 
     for i, A_i in enumerate(A_list):
         for A_j in A_list[i + 1 :]:
@@ -114,31 +134,29 @@ def calc_delta(t, t_p, x, *args, **kwargs):
             Delta_list.append(Delta)
             Delta_norm.append(np.linalg.norm(Delta))
 
+    if not Delta_list:
+        return np.zeros(3)
+
     # Worst case difference
     Delta_worst = Delta_list[np.argmax(Delta_norm)]
     Delta_val = np.matmul(Delta_worst, x)
     return Delta_val[3:]
 
 
-def calc_d(t, t_p, *args, **kwargs):
+def calc_d(t: float, t_p: float, dt: float, mean_motion: float, *args, **kwargs):
     """Calculate worst case disturbance vector D."""
-    m = kwargs.get("m", None)  # Optional m
-    dt = p.dt
+    m = kwargs.get("m", None)
 
-    min_ecc, max_ecc = kwargs.get("eRange", (p.minEccentricity, p.maxEccentricity))
-    min_alpha, max_alpha = kwargs.get("aRange", (p.minDragAlpha, p.maxDragAlpha))
-    min_beta, max_beta = kwargs.get("bRange", (p.minDragBeta, p.maxDragBeta))
+    min_ecc, max_ecc = kwargs.get("e_range", (0.0, 0.0))
 
     d_list, D_list, D_norm = [], [], []
 
     for ecc in [min_ecc, max_ecc]:
-        for alpha in [min_alpha, max_alpha]:
-            for beta in [min_beta, max_beta]:
-                matrices, _, _ = orbital_ellp_undrag(
-                    dt, eccentricity=ecc, alpha=alpha, beta=beta
-                )
-                d_func = matrices[4]  # d is 5th element
-                d_list.append(d_func(t, t_p, m=m))
+        matrices, _, _ = orbital_ellp_undrag(
+            dt=dt, mean_motion=mean_motion, eccentricity=ecc
+        )
+        d_func = matrices[4]
+        d_list.append(d_func(t, t_p, m=m))
 
     for i, d_i in enumerate(d_list):
         for d_j in d_list[i + 1 :]:
@@ -153,6 +171,5 @@ def calc_d(t, t_p, *args, **kwargs):
     return D_worst[3:]
 
 
-# Aliases
-calcDelta = calc_delta
-calcD = calc_d
+# Aliases (Removed as requested by previous objective, but keeping robust naming)
+# calc_delta and calc_d are preferred.

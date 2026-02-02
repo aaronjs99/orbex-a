@@ -14,8 +14,11 @@
 import math
 import time
 import numpy as np
+import logging
 from gekko import GEKKO
 from functools import partial
+
+logger = logging.getLogger(__name__)
 
 try:
     from hyperopt import fmin, tpe, hp, STATUS_OK, STATUS_FAIL
@@ -27,38 +30,38 @@ except ImportError:
     STATUS_OK = "ok"
     STATUS_FAIL = "fail"
 
-import orbexa.core.params as p
+# import orbexa.core.params as p # Deprecated
 from orbexa.estimation.enclosures import min_enclosing_ellipsoid
 
 np.random.seed(1)
 
 
 # FUNCTION DEFINITIONS
-def calcShape(radius, target_shape, sphere_shape):
+def calc_shape(radius, target_shape, sphere_shape):
     kappa = math.exp(0.01 * radius) - 1
     shape = kappa * target_shape + (1 - kappa) * sphere_shape
     return shape
 
 
-def calcSingleObservation(r1, r2, R, shape):
+def calc_single_observation(r1, r2, R, shape):
     r12 = np.subtract(r1, r2)
     return np.sum([r12[i] ** 2 for i in range(len(r12))])
 
 
-def calcMutualObservation(theta_1, theta_2, phi_1, phi_2, *args, **kwargs):
+def calc_mutual_observation(theta_1, theta_2, phi_1, phi_2, *args, **kwargs):
     m = kwargs["m"]
     delTheta = theta_1 - theta_2
     delPhi = phi_1 - phi_2
     return (1 + m.cos(delTheta)) * (1 - m.sin(m.abs2(delPhi) / 4)) / 2
 
 
-def calcTotalLocalObservation(numChasers, r, R, shape):
+def calc_total_local_observation(num_chasers, r, R, shape):
     observation = 0.0
-    numDims = len(r) // numChasers
-    for j in range(numChasers):
-        for k in range(j + 1, numChasers):
+    numDims = len(r) // num_chasers
+    for j in range(num_chasers):
+        for k in range(j + 1, num_chasers):
             observation += (
-                calcSingleObservation(
+                calc_single_observation(
                     r[numDims * j : numDims * (j + 1)],
                     r[numDims * k : numDims * (k + 1)],
                     R,
@@ -69,11 +72,11 @@ def calcTotalLocalObservation(numChasers, r, R, shape):
     return observation
 
 
-def calcTotalCrossObservation(numChasers, r1, r2, R1, R2, shape):
+def calc_total_cross_observation(num_chasers, r1, r2, R1, R2, shape):
     observation = 0.0
-    numDims = len(r1) // numChasers
-    for i in range(numChasers):
-        observation -= calcSingleObservation(
+    numDims = len(r1) // num_chasers
+    for i in range(num_chasers):
+        observation -= calc_single_observation(
             r1[numDims * i : numDims * (i + 1)],
             r2[numDims * i : numDims * (i + 1)],
             R1,
@@ -82,24 +85,24 @@ def calcTotalCrossObservation(numChasers, r1, r2, R1, R2, shape):
     return observation
 
 
-def calcTotalMutualObservation(numChasers, theta, phi, R, shape):
+def calc_total_mutual_observation(num_chasers, theta, phi, R, shape):
     observation = 0.0
-    for i in range(numChasers):
-        for j in range(i + 1, numChasers):
+    for i in range(num_chasers):
+        for j in range(i + 1, num_chasers):
             observation -= (
-                calcMutualObservation(theta[i], theta[j], phi[i], phi[j], m=GEKKO())
+                calc_mutual_observation(theta[i], theta[j], phi[i], phi[j], m=GEKKO())
                 / np.sum(R) ** 2
             )
     return observation
 
 
-def observeOptimizer(
+def observe_optimizer(
     hyperopt_params,
     numDims=3,
     Q=[1.00 for i in range(5)],
     r_0=None,
     numLevels=3,
-    numChasers=1,
+    num_chasers=1,
     startRadii=[100.00, 100.00, 100.00],
     finalRadii=[1.00, 1.00, 1.00],
     target_shape=[],
@@ -109,8 +112,8 @@ def observeOptimizer(
     Rho_0 = hyperopt_params["Rho_0"]
     Q = hyperopt_params["Q"]
     if r_0 is None:
-        r_0 = [0.0 for dim in range(numDims * numChasers * 1)]
-        for chaser in range(numChasers):
+        r_0 = [0.0 for dim in range(numDims * num_chasers * 1)]
+        for chaser in range(num_chasers):
             r_0[0 + numDims * chaser + 0] = startRadii[0]
 
     m = GEKKO(remote=True)
@@ -129,9 +132,9 @@ def observeOptimizer(
                 Rho[level][dim] = m.Var(value=Rho_0[level][dim])
 
     # Generate theta_0 and phi_0 from r_0
-    theta_0 = [0.0 for chaser in range(numChasers)]
-    phi_0 = [0.0 for chaser in range(numChasers)]
-    for chaser in range(numChasers):
+    theta_0 = [0.0 for chaser in range(num_chasers)]
+    phi_0 = [0.0 for chaser in range(num_chasers)]
+    for chaser in range(num_chasers):
         if numDims == 2:
             theta_0[chaser] = math.atan2(
                 r_0[numDims * chaser + 1], r_0[numDims * chaser + 0]
@@ -146,43 +149,43 @@ def observeOptimizer(
             phi_0[chaser] = math.atan2(
                 r_0[numDims * chaser + 2], r_0[numDims * chaser + 0]
             )
-    theta = [m.Var() for i in range(numChasers * numLevels)]
-    phi = [m.Var() for i in range(numChasers * numLevels)]
-    # r = [m.Var() for i in range(numDims*numChasers*numLevels)]
-    r = [0 for i in range(numDims * numChasers * numLevels)]
+    theta = [m.Var() for i in range(num_chasers * numLevels)]
+    phi = [m.Var() for i in range(num_chasers * numLevels)]
+    # r = [m.Var() for i in range(numDims*num_chasers*numLevels)]
+    r = [0 for i in range(numDims * num_chasers * numLevels)]
     for level, rho in enumerate(Rho):
-        for chaser in range(numChasers):
+        for chaser in range(num_chasers):
             if level == 0:
                 # for dim in range(numDims):
-                #   r[numDims*numChasers*level + numDims*chaser + dim].lower = r_0[numDims*numChasers*level + numDims*chaser + dim] - 1e-3
-                #   r[numDims*numChasers*level + numDims*chaser + dim].upper = r_0[numDims*numChasers*level + numDims*chaser + dim] + 1e-3
-                m.Equation(theta[numChasers * level + chaser] == theta_0[chaser])
-                m.Equation(phi[numChasers * level + chaser] == phi_0[chaser])
-            # m.Equation(np.sum([(r[numDims*numChasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
+                #   r[numDims*num_chasers*level + numDims*chaser + dim].lower = r_0[numDims*num_chasers*level + numDims*chaser + dim] - 1e-3
+                #   r[numDims*num_chasers*level + numDims*chaser + dim].upper = r_0[numDims*num_chasers*level + numDims*chaser + dim] + 1e-3
+                m.Equation(theta[num_chasers * level + chaser] == theta_0[chaser])
+                m.Equation(phi[num_chasers * level + chaser] == phi_0[chaser])
+            # m.Equation(np.sum([(r[numDims*num_chasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
             #                    for dim in range(numDims)]) - 1**2 <  1e-3)
-            # m.Equation(np.sum([(r[numDims*numChasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
+            # m.Equation(np.sum([(r[numDims*num_chasers*level + numDims*chaser + dim]**2)/(rho[dim]**2)
             #                    for dim in range(numDims)]) - 1**2 > -1e-3)
             if numDims == 2:
-                r[numDims * numChasers * level + numDims * chaser + 0] = rho[0] * m.cos(
-                    theta[numChasers * level + chaser]
-                )
-                r[numDims * numChasers * level + numDims * chaser + 1] = rho[1] * m.sin(
-                    theta[numChasers * level + chaser]
-                )
+                r[numDims * num_chasers * level + numDims * chaser + 0] = rho[
+                    0
+                ] * m.cos(theta[num_chasers * level + chaser])
+                r[numDims * num_chasers * level + numDims * chaser + 1] = rho[
+                    1
+                ] * m.sin(theta[num_chasers * level + chaser])
             elif numDims == 3:
-                r[numDims * numChasers * level + numDims * chaser + 0] = (
+                r[numDims * num_chasers * level + numDims * chaser + 0] = (
                     rho[0]
-                    * m.sin(phi[numChasers * level + chaser])
-                    * m.cos(theta[numChasers * level + chaser])
+                    * m.sin(phi[num_chasers * level + chaser])
+                    * m.cos(theta[num_chasers * level + chaser])
                 )
-                r[numDims * numChasers * level + numDims * chaser + 1] = (
+                r[numDims * num_chasers * level + numDims * chaser + 1] = (
                     rho[1]
-                    * m.sin(phi[numChasers * level + chaser])
-                    * m.sin(theta[numChasers * level + chaser])
+                    * m.sin(phi[num_chasers * level + chaser])
+                    * m.sin(theta[num_chasers * level + chaser])
                 )
-                r[numDims * numChasers * level + numDims * chaser + 2] = rho[2] * m.cos(
-                    phi[numChasers * level + chaser]
-                )
+                r[numDims * num_chasers * level + numDims * chaser + 2] = rho[
+                    2
+                ] * m.cos(phi[num_chasers * level + chaser])
 
     for level in range(numLevels - 1):
         for dim in range(numDims):
@@ -190,9 +193,9 @@ def observeOptimizer(
 
     totLocalObs = [
         m.Intermediate(
-            calcTotalLocalObservation(
-                numChasers,
-                r[numDims * numChasers * i : numDims * numChasers * (i + 1)],
+            calc_total_local_observation(
+                num_chasers,
+                r[numDims * num_chasers * i : numDims * num_chasers * (i + 1)],
                 Rho[i],
                 target_shape,
             )
@@ -200,13 +203,13 @@ def observeOptimizer(
         for i in range(numLevels)
     ]
     finLocalObs = m.Intermediate(
-        calcTotalLocalObservation(
-            numChasers,
+        calc_total_local_observation(
+            num_chasers,
             r[
                 numDims
-                * numChasers
+                * num_chasers
                 * (numLevels - 1) : numDims
-                * numChasers
+                * num_chasers
                 * (numLevels - 0)
             ],
             Rho[numLevels - 1],
@@ -215,10 +218,10 @@ def observeOptimizer(
     )
     totCrossObs = [
         m.Intermediate(
-            calcTotalCrossObservation(
-                numChasers,
-                r[numDims * numChasers * (i + 0) : numDims * numChasers * (i + 1)],
-                r[numDims * numChasers * (i + 1) : numDims * numChasers * (i + 2)],
+            calc_total_cross_observation(
+                num_chasers,
+                r[numDims * num_chasers * (i + 0) : numDims * num_chasers * (i + 1)],
+                r[numDims * num_chasers * (i + 1) : numDims * num_chasers * (i + 2)],
                 Rho[i],
                 Rho[i + 1],
                 target_shape,
@@ -228,10 +231,10 @@ def observeOptimizer(
     ]
     totMutualObs = [
         m.Intermediate(
-            calcTotalMutualObservation(
-                numChasers,
-                theta[numChasers * i : numChasers * (i + 1)],
-                phi[numChasers * i : numChasers * (i + 1)],
+            calc_total_mutual_observation(
+                num_chasers,
+                theta[num_chasers * i : num_chasers * (i + 1)],
+                phi[num_chasers * i : num_chasers * (i + 1)],
                 Rho[i],
                 target_shape,
             )
@@ -278,34 +281,34 @@ def observeOptimizer(
         phi = [phi_i.value[0] for phi_i in phi]
         # r   = [ r_i     .value[0]                            for r_i in   r]
         for level in range(numLevels):
-            for chaser in range(numChasers):
+            for chaser in range(num_chasers):
                 if numDims == 2:
-                    r[numDims * numChasers * level + numDims * chaser + 0] = Rho[level][
-                        0
-                    ] * math.cos(theta[numChasers * level + chaser])
-                    r[numDims * numChasers * level + numDims * chaser + 1] = Rho[level][
-                        1
-                    ] * math.sin(theta[numChasers * level + chaser])
+                    r[numDims * num_chasers * level + numDims * chaser + 0] = Rho[
+                        level
+                    ][0] * math.cos(theta[num_chasers * level + chaser])
+                    r[numDims * num_chasers * level + numDims * chaser + 1] = Rho[
+                        level
+                    ][1] * math.sin(theta[num_chasers * level + chaser])
                 elif numDims == 3:
-                    r[numDims * numChasers * level + numDims * chaser + 0] = (
+                    r[numDims * num_chasers * level + numDims * chaser + 0] = (
                         Rho[level][0]
-                        * math.sin(phi[numChasers * level + chaser])
-                        * math.cos(theta[numChasers * level + chaser])
+                        * math.sin(phi[num_chasers * level + chaser])
+                        * math.cos(theta[num_chasers * level + chaser])
                     )
-                    r[numDims * numChasers * level + numDims * chaser + 1] = (
+                    r[numDims * num_chasers * level + numDims * chaser + 1] = (
                         Rho[level][1]
-                        * math.sin(phi[numChasers * level + chaser])
-                        * math.sin(theta[numChasers * level + chaser])
+                        * math.sin(phi[num_chasers * level + chaser])
+                        * math.sin(theta[num_chasers * level + chaser])
                     )
-                    r[numDims * numChasers * level + numDims * chaser + 2] = Rho[level][
-                        2
-                    ] * math.cos(phi[numChasers * level + chaser])
+                    r[numDims * num_chasers * level + numDims * chaser + 2] = Rho[
+                        level
+                    ][2] * math.cos(phi[num_chasers * level + chaser])
         observation = m.options.OBJFCNVAL
     except Exception as e:
-        print("!!! Failed to solve : ", str(e), " !!!")
+        logger.error(f"!!! Failed to solve : {e} !!!")
         status = STATUS_FAIL
         Rho = Rho_0
-        r = [0.0 for dim in range(numDims * numChasers * numLevels)]
+        r = [0.0 for dim in range(numDims * num_chasers * numLevels)]
         observation = 0.0
 
     m.cleanup()
@@ -328,14 +331,14 @@ if __name__ == "__main__":
     ]
     numDims = 3
     numLevels = 5
-    numChasers = 4
+    num_chasers = 4
     ## Initialize Initial and Final Radii
     targetPoints = []
-    for x in [p.targetLimit["r_T"], 0.0, -p.targetLimit["r_T"]]:
-        for y in [p.targetLimit["r_T"], 0.0, -p.targetLimit["r_T"]]:
-            for z in [p.targetLimit["l_T"], 0.0, -p.targetLimit["l_T"]]:
+    for x in [p.target_limit["r_T"], 0.0, -p.target_limit["r_T"]]:
+        for y in [p.target_limit["r_T"], 0.0, -p.target_limit["r_T"]]:
+            for z in [p.target_limit["l_T"], 0.0, -p.target_limit["l_T"]]:
                 if (x != 0.0 or y != 0.0 or z != 0.0) and not (
-                    x**2 + y**2 > p.targetLimit["r_T"] ** 2
+                    x**2 + y**2 > p.target_limit["r_T"] ** 2
                 ):
                     targetPoints.append([x, y, z])
     startRadii = [
@@ -349,7 +352,9 @@ if __name__ == "__main__":
             raise Exception("!!! Final radius is greater than start radius !!!")
         elif (
             finalRadii[dim]
-            <= [p.targetLimit["r_T"], p.targetLimit["r_T"], p.targetLimit["l_T"]][dim]
+            <= [p.target_limit["r_T"], p.target_limit["r_T"], p.target_limit["l_T"]][
+                dim
+            ]
         ):
             raise Exception(
                 "!!! Final radius is less than or equal to target limit !!!"
@@ -357,8 +362,8 @@ if __name__ == "__main__":
         elif startRadii[dim] <= 0:
             raise Exception("!!! Start radius is less than or equal to zero !!!")
     ## Initialize Initial Positions
-    r_0 = [0.0 for dim in range(numDims * numChasers * 1)]
-    for chaser in range(numChasers):
+    r_0 = [0.0 for dim in range(numDims * num_chasers * 1)]
+    for chaser in range(num_chasers):
         if numDims == 2:
             q = [np.random.uniform(0, 2 * math.pi)]
             f = [lambda q: math.cos(q[0]), lambda q: math.sin(q[0])]
@@ -370,7 +375,7 @@ if __name__ == "__main__":
                 lambda q: math.cos(q[1]),
             ]
         for dim in range(numDims):
-            r_0[numDims * numChasers * 0 + numDims * chaser + dim] = startRadii[
+            r_0[numDims * num_chasers * 0 + numDims * chaser + dim] = startRadii[
                 dim
             ] * f[dim](q)
     target_shape = []
@@ -391,12 +396,12 @@ if __name__ == "__main__":
         for i, Q_i in enumerate(Q_range)
     ]
     fn = partial(
-        observeOptimizer,
+        observe_optimizer,
         numDims=numDims,
         Q=Q,
         r_0=r_0,
         numLevels=numLevels,
-        numChasers=numChasers,
+        num_chasers=num_chasers,
         startRadii=startRadii,
         finalRadii=finalRadii,
     )
@@ -439,7 +444,7 @@ if __name__ == "__main__":
     print("Observation : ", observation)
     print()
     for rho in range(numLevels):
-        for chaser in range(numChasers):
+        for chaser in range(num_chasers):
             print(
                 "chaser[",
                 chaser,
@@ -447,7 +452,7 @@ if __name__ == "__main__":
                 rho,
                 " : ",
                 [
-                    r[numDims * numChasers * rho + numDims * chaser + dim]
+                    r[numDims * num_chasers * rho + numDims * chaser + dim]
                     for dim in range(numDims)
                 ],
             )
@@ -456,24 +461,25 @@ if __name__ == "__main__":
     x, y, z = [
         [
             [
-                r[numDims * numChasers * rho + numDims * chaser + dim]
+                r[numDims * num_chasers * rho + numDims * chaser + dim]
                 for rho in range(numLevels)
             ]
-            for chaser in range(numChasers)
+            for chaser in range(num_chasers)
         ]
         for dim in range(numDims)
     ]
 
     if numDims == 3:
-        from orbitsim import simulate
 
-        simulate(
+        from orbexa.visualization.orbitsim import create_animation_html
+
+        create_animation_html(
             "../plots/optimobserve.html",
             x,
             y,
             z,
-            labels=[chaser for chaser in range(numChasers)],
-            numAgents=numChasers,
+            labels=[chaser for chaser in range(num_chasers)],
+            num_agents=num_chasers,
             shape=[
                 {
                     "type": "ellipsoid",

@@ -11,32 +11,17 @@
 # ***********************************************************/
 
 """
-ORBEX-A Core Module
+ORBEX-A Simulation Module
 
-Core data structures, parameters, and orbital dynamics models.
+High-level simulation runners and control mode configurations.
 """
 
-from orbexa.core.dynamics import (
-    orbital_ellp_undrag,
-    orbital_circ_undrag,
-    cwh_equations,
-    orbital_params,
-    triple_integrator,
-)
-from orbexa.core.spacecraft import Spacecraft, Target, Chaser
-from orbexa.core.config import SimulationConfig
+from orbexa.simulation.modes import CONTROL_MODES, get_mode_config
+from orbexa.simulation.runner import run_simulation, run_all_modes
 
 __all__ = [
-    # Dynamics
-    "orbital_ellp_undrag",
-    "orbital_circ_undrag",
-    "cwh_equations",
-    "orbital_params",
-    "triple_integrator",
-    # Spacecraft
-    "Spacecraft",
-    "Target",
-    "Chaser",
-    # Config
-    "SimulationConfig",
+    "CONTROL_MODES",
+    "get_mode_config",
+    "run_simulation",
+    "run_all_modes",
 ]

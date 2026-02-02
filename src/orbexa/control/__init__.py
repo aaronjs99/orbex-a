@@ -14,12 +14,24 @@
 ORBEX-A Control Module
 
 MPC and control algorithms for spacecraft rendezvous.
+All control logic is solver-agnostic.
 """
 
-from orbexa.control.mpc import MPCController, trajopt_mpc, mpc
+from orbexa.control.mpc import MPCController, MissionResult
+from orbexa.control.problem_builder import (
+    ORBEXAProblemConfig,
+    build_mpc_problem,
+    build_from_dynamics,
+)
+from orbexa.control.dynamictube import ancillary_controller, calc_delta, calc_d
 
 __all__ = [
     "MPCController",
-    "trajopt_mpc",
-    "mpc",
+    "MissionResult",
+    "ORBEXAProblemConfig",
+    "build_mpc_problem",
+    "build_from_dynamics",
+    "ancillary_controller",
+    "calc_delta",
+    "calc_d",
 ]

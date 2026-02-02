@@ -20,63 +20,73 @@ This module provides various orbital dynamics models including:
 - Orbital parameter calculations
 
 All models support both continuous and discrete time representations.
+This module is strictly functional and stateless; all parameters must be passed
+as arguments.
 """
 
 import math
 import numpy as np
 from types import SimpleNamespace
-from typing import Tuple, List, Dict, Union, Any, Callable
+from typing import Tuple, List, Dict, Union, Any, Callable, Optional
 
-# Use core.params
-from orbexa.core import params as p
-from orbexa.utils import discretize, genSkewSymMat
+from orbexa.utils import discretize, gen_skew_sym_mat
 
 
 # =============================================================================
-# 1. Orbital Parameter Calculations
+# 1. Orbital Parameter Calculation
 # =============================================================================
-def orbital_params(
-    r_osc: np.ndarray, v_osc: np.ndarray, mu: float = p.mu
-) -> SimpleNamespace:
+def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNamespace:
     """
     Calculate orbital elements from state vectors.
 
     Args:
-        r_osc: Osculating position vector (3,).
-        v_osc: Osculating velocity vector (3,).
-        mu: Gravitational parameter.
+        r_osc (np.ndarray): Position vector (3,).
+        v_osc (np.ndarray): Velocity vector (3,).
+        mu (float): Standard gravitational parameter.
 
     Returns:
-        SimpleNamespace containing:
-            - r: Radius magnitude
-            - v: Velocity magnitude
-            - h: Angular momentum vector
-            - e: Eccentricity vector
-            - a: Semi-major axis
-            - E: Eccentric anomaly
-            - M: Mean anomaly
-            - q: True anomaly
+        SimpleNamespace: Object containing orbital elements:
+            - r (float): Range.
+            - v (float): Velocity magnitude.
+            - h (float): Specific angular momentum.
+            - e (float): Eccentricity.
+            - a (float): Semi-major axis.
+            - E (float): Eccentric anomaly (rad).
+            - M (float): Mean anomaly (rad).
+            - q (float): True anomaly (rad).
     """
+    h_vec = np.cross(r_osc, v_osc)
+    h = np.linalg.norm(h_vec)
     r = np.linalg.norm(r_osc)
     v = np.linalg.norm(v_osc)
 
-    # Angular momentum
-    h = np.cross(r_osc, v_osc)
-
     # Eccentricity vector
-    e = np.cross(v_osc, h) / mu - r_osc / r
+    e_vec = (np.cross(v_osc, h_vec) / mu) - (r_osc / r)
+    e = np.linalg.norm(e_vec)
 
-    # Semi-major axis (vis-viva equation)
-    a = 1 / (2 / r - v**2 / mu)
+    # Semi-major axis
+    energy = (v**2 / 2) - (mu / r)
+    if abs(energy) < 1e-10:
+        a = float("inf")
+    else:
+        a = -mu / (2 * energy)
 
-    # Eccentric anomaly
-    E = math.acos((1 - r / a) / np.linalg.norm(e))
+    # True Anomaly
+    if np.dot(r_osc, v_osc) >= 0:
+        q = np.arccos(np.dot(e_vec, r_osc) / (e * r))
+    else:
+        q = 2 * np.pi - np.arccos(np.dot(e_vec, r_osc) / (e * r))
 
-    # Mean anomaly (Kepler's Equation)
-    M = E - np.linalg.norm(e) * math.sin(E)
+    if np.isnan(q):
+        q = 0.0
 
-    # True anomaly
-    q = math.acos(np.dot(e, r_osc) / (np.linalg.norm(e) * r))
+    # Eccentric Anomaly
+    E = 2 * np.arctan(np.sqrt((1 - e) / (1 + e)) * np.tan(q / 2))
+
+    # Mean Anomaly
+    M = E - e * np.sin(E)
+
+    # Correct quadrant for q
     if np.dot(r_osc, v_osc) < 0:
         q = 2 * math.pi - q
 
@@ -87,8 +97,17 @@ def orbital_params(
 # 2. Clohessy-Wiltshire-Hill (CWH) Dynamics
 # =============================================================================
 def cwh_equations(
-    dt: float, n: float = p.n, discretize_model: bool = True, **kwargs
-) -> Tuple[Any, Any, Any]:
+    dt: float,
+    mean_motion: float,
+    state_bounds: Optional[List[Dict[str, Any]]] = None,
+    input_bounds: Optional[List[Dict[str, float]]] = None,
+    discretize_model: bool = True,
+    **kwargs,
+) -> Tuple[
+    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    Tuple[Optional[np.ndarray], Optional[np.ndarray]],
+    Tuple[Optional[List[Dict]], Optional[List[Dict]]],
+]:
     """
     Clohessy-Wiltshire-Hill (CWH) equations for relative orbital motion.
 
@@ -96,176 +115,239 @@ def cwh_equations(
     relative to a target in a circular orbit.
 
     Args:
-        dt: Time step.
-        n: Mean motion of the reference orbit.
-        discretize_model: Whether to return discrete matrices.
-        **kwargs: Additional arguments.
+        dt (float): Time step (seconds).
+        mean_motion (float): Mean motion of reference orbit (rad/s).
+        state_bounds (list, optional): List of state bound dicts.
+        input_bounds (list, optional): List of input bound dicts.
+        discretize_model (bool): Whether to discretize the model.
 
     Returns:
         tuple: (Matrices, Constraints, Bounds)
             - Matrices: (A, B, Q, R, d)
-            - Constraints: (x_0, x_f)
-            - Bounds: (stateBounds, inputBounds)
+            - Constraints: (x_0, x_f) (default zero initialization)
+            - Bounds: (state_bounds, input_bounds)
     """
+    n = mean_motion
+
     # Continuous State Matrix
     A = np.array(
         [
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-            [3 * n**2, 0.0, 0.0, 0.0, 2 * n, 0.0],
-            [0.0, 0.0, 0.0, -2 * n, 0.0, 0.0],
-            [0.0, 0.0, -(n**2), 0.0, 0.0, 0.0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+            [3 * n**2, 0, 0, 0, 2 * n, 0],
+            [0, 0, 0, -2 * n, 0, 0],
+            [0, 0, -(n**2), 0, 0, 0],
         ]
     )
 
     # Continuous Input Matrix
-    B = np.array(
-        [
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ]
-    )
+    B = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
-    # Default Costs
+    # Cost Matrices (Default Identity)
     Q = np.identity(6)
-    R = np.identity(3) * 10
-    d = np.zeros(6)  # Disturbance
+    R = np.identity(3)
+
+    # Disturbance (Zero)
+    d = np.zeros(6)
 
     if discretize_model:
-        A, B = discretize(dt, A, B)
+        A, B, _, _ = discretize(dt, A, B)
 
     matrices = (A, B, Q, R, d)
     constraints = (None, None)
-    bounds = (p.stateBounds, p.inputBounds)
+    bounds = (state_bounds, input_bounds)
 
     return matrices, constraints, bounds
 
 
 # =============================================================================
-# 3. Triple Integrator Dynamics
+# 3. Time-Varying Orbital Dynamics (Elliptical)
 # =============================================================================
-def triple_integrator(
-    dt: float, discretize_model: bool = True, **kwargs
-) -> Tuple[Any, Any, Any]:
+def orbital_ellp_undrag(
+    dt: float,
+    mean_motion: float,
+    eccentricity: float,
+    state_bounds: Optional[List[Dict[str, Any]]] = None,
+    input_bounds: Optional[List[Dict[str, float]]] = None,
+    *args,
+    **kwargs,
+) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
     """
-    Triple integrator dynamics model (jerk control).
+    Linear parameter-varying model for elliptical orbits without drag.
+
+    Returns functions for A(t) and B(t) as the system is time-varying.
 
     Args:
-        dt: Time step.
-        discretize_model: Whether to return discrete matrices.
-        **kwargs: Additional arguments.
+        dt (float): Time step.
+        mean_motion (float): Mean motion (rad/s).
+        eccentricity (float): Orbit eccentricity.
+        state_bounds (list, optional): State bounds.
+        input_bounds (list, optional): Input bounds.
+
+    Returns:
+        tuple: (matrices_funcs, constraints, bounds)
+            - matrices is a tuple of (A_func, B_func, Q, R, d_func)
+    """
+    rho = 1.0  # Density scaling factor
+
+    # Dynamics Functions (depend on true anomaly q)
+    def A_func(t: float, t_p: float, m=math, *args, **kwargs) -> Any:
+        # Calculate eccentric anomaly E and true anomaly q
+        # Assuming M = mean_motion * (t - t_p) for proper dimensional units if mean_motion is provided.
+        # This resolves the ambiguity in the legacy code regarding "t - t_tp" units.
+
+        M_val = mean_motion * (t - t_p)
+        enc_arg = M_val / 2.0
+
+        E_val = 2 * m.atan(
+            m.sqrt((1 - eccentricity) / (1 + eccentricity)) * m.tan(enc_arg)
+        )
+
+        q_val = 2 * m.atan(
+            m.sqrt((1 + eccentricity) / (1 - eccentricity)) * m.tan(E_val / 2)
+        )
+
+        # Denominators
+        den1 = (1 - eccentricity**2) ** 3
+        den2 = (1 - eccentricity**2) ** 1.5
+
+        coef_1 = mean_motion**2 * rho
+        coef_2 = mean_motion * rho**2
+
+        A_mat = [
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+            [
+                coef_1 * (3 + eccentricity * m.cos(q_val)) / den1,
+                coef_1 * (eccentricity * m.sin(q_val)) / den1,
+                0,
+                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+                2 * coef_2 / den2,
+                0,
+            ],
+            [
+                coef_1 * (eccentricity * m.sin(q_val)) / den1,
+                coef_1 * eccentricity * m.cos(q_val) / den1,
+                0,
+                -2 * coef_2 / den2,
+                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+                0,
+            ],
+            [
+                0,
+                0,
+                -coef_1 * (1) / den1,
+                0,
+                0,
+                coef_2 * (eccentricity * m.sin(q_val)) / den2,
+            ],
+        ]
+        return np.array(A_mat) if "m" not in kwargs else A_mat
+
+    def B_func(*args, **kwargs):
+        return np.array(
+            [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        )
+
+    def d_func(t, t_p, *args, **kwargs):
+        return np.zeros(6)
+
+    # Cost Matrices
+    Q = np.identity(6)
+    R = np.identity(3)
+
+    matrices = (A_func, B_func, Q, R, d_func)
+    constraints = (None, None)
+    bounds = (state_bounds, input_bounds)
+
+    return matrices, constraints, bounds
+
+
+# =============================================================================
+# 4. Circular Orbit Undamped Dynamics
+# =============================================================================
+def orbital_circ_undrag(
+    mean_motion: float,
+    state_bounds: Optional[List[Dict[str, Any]]] = None,
+    input_bounds: Optional[List[Dict[str, float]]] = None,
+    *args,
+    **kwargs,
+) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+    """
+    Dynamics model for circular orbits without drag.
+
+    Returns functions for A(t) and B(t), though they are constant here.
+    """
+
+    def A_func(*args, **kwargs):
+        return np.array(
+            [
+                [0, 0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 0, 1],
+                [3 * mean_motion**2, 0, 0, 0, 2 * mean_motion, 0],
+                [0, 0, 0, -2 * mean_motion, 0, 0],
+                [0, 0, -(mean_motion**2), 0, 0, 0],
+            ]
+        )
+
+    def B_func(*args, **kwargs):
+        return np.array(
+            [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        )
+
+    def d_func(*args, **kwargs):
+        return np.zeros(6)
+
+    Q = np.identity(6)
+    R = np.identity(3)
+
+    matrices = (A_func, B_func, Q, R, d_func)
+    constraints = (None, None)
+    bounds = (state_bounds, input_bounds)
+
+    return matrices, constraints, bounds
+
+
+# =============================================================================
+# 5. Triple Integrator Dynamics
+# =============================================================================
+def triple_integrator(dt: float, discretize_model: bool = True, **kwargs) -> Tuple[
+    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    Tuple[Optional[np.ndarray], Optional[np.ndarray]],
+    Tuple[None, None],
+]:
+    """
+    Simple triple integrator dynamics (snapshot model).
+
+    Args:
+        dt (float): Time step.
+        discretize_model (bool): Whether to return discrete matrices.
 
     Returns:
         tuple: (Matrices, Constraints, Bounds)
     """
     A = np.array(
         [
-            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [0, 0, 0, 1, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
         ]
     )
 
     B = np.array(
         [
-            [0.0, 0.0],
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-        ]
-    )
-
-    Q = np.identity(6)
-    R = np.identity(2)
-    d = np.zeros(6)
-
-    if discretize_model:
-        A, B = discretize(dt, A, B)
-
-    matrices = (A, B, Q, R, d)
-    constraints = (None, None)
-    bounds = (None, None)
-
-    return matrices, constraints, bounds
-
-
-# =============================================================================
-# 4. Elliptical Orbit Dynamics (Undamped)
-# =============================================================================
-def orbital_ellp_undrag(
-    *args, **kwargs
-) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
-    """
-    Linear parameter-varying model for elliptical orbits without drag.
-
-    Args:
-        *args: Variable arguments.
-        **kwargs: Must contain 'dt', 'bounds', 'constraints'.
-
-    Returns:
-        tuple: (A(t), B, Q, R, d(t)) - Functions of time or anomaly.
-    """
-    dt = kwargs["dt"]
-    constraints = kwargs.get("constraints", (None, None))
-    bounds = kwargs.get("bounds", (None, None))
-
-    # Dynamics Functions (depend on true anomaly q)
-    def A(t, t_p, *args, **kwargs):
-        m = kwargs.get("m", math)
-        ecc = p.actOrbitParams["eccentricity"]
-
-        # Calculate true anomaly q
-        E = 2 * m.atan(m.sqrt((1 - ecc) / (1 + ecc)) * m.tan((t - t_p) / 2))
-        M = E - ecc * m.sin(E)
-        q = M + p.q_p
-
-        # Radial distance (normalized)
-        rho = 1 + ecc * m.cos(q)
-
-        # State Matrix
-        A_mat = [
-            [0, 0, 0, 1, 0, 0],  # x_dot
-            [0, 0, 0, 0, 1, 0],  # y_dot
-            [0, 0, 0, 0, 0, 1],  # z_dot
-            [
-                p.n**2 * rho * (3 + ecc * m.cos(q)) / (1 - ecc**2) ** 3,
-                p.n**2 * rho * (ecc * m.sin(q)) / (1 - ecc**2) ** 3,
-                0,
-                p.n * rho**2 * (ecc * m.sin(q)) / (1 - ecc**2) ** 1.5,
-                2 * p.n * rho**2 / (1 - ecc**2) ** 1.5,
-                0,
-            ],  # x_ddot
-            [
-                p.n**2 * rho * (ecc * m.sin(q)) / (1 - ecc**2) ** 3,
-                p.n**2 * rho * ecc * m.cos(q) / (1 - ecc**2) ** 3,
-                0,
-                -2 * p.n * rho**2 / (1 - ecc**2) ** 1.5,
-                p.n * rho**2 * (ecc * m.sin(q)) / (1 - ecc**2) ** 1.5,
-                0,
-            ],  # y_ddot
-            [
-                0,
-                0,
-                -p.n**2 * rho * (1) / (1 - ecc**2) ** 3,
-                0,
-                0,
-                p.n * rho**2 * (ecc * m.sin(q)) / (1 - ecc**2) ** 1.5,
-            ],  # z_ddot
-        ]
-        return np.array(A_mat) if "m" not in kwargs else A_mat
-
-    B = np.array(
-        [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
             [0, 0, 0],
             [0, 0, 0],
             [0, 0, 0],
@@ -275,62 +357,15 @@ def orbital_ellp_undrag(
         ]
     )
 
-    Q = np.identity(6)
-    R = np.identity(3) * 1e-4
+    d = np.zeros(9)
+    Q = np.identity(9)
+    R = np.identity(3)
 
-    def d(t, t_p, *args, **kwargs):
-        # Disturbance vector (currently zero)
-        return [0.0] * 6
+    if discretize_model:
+        A, B, _, _ = discretize(dt, A, B)
 
-    return (A, B, Q, R, d), constraints, bounds
+    matrices = (A, B, Q, R, d)
+    constraints = (None, None)
+    bounds = (None, None)
 
-
-# =============================================================================
-# 5. Circular Orbit Dynamics (Undamped)
-# =============================================================================
-def orbital_circ_undrag(
-    *args, **kwargs
-) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
-    """
-    Dynamics model for circular orbits without drag.
-
-    Args:
-        *args: Variable arguments.
-        **kwargs: Must contain 'dt', 'bounds', 'constraints'.
-
-    Returns:
-        tuple: (A(t), B, Q, R, d(t))
-    """
-    dt = kwargs["dt"]
-    constraints = kwargs.get("constraints", (None, None))
-    bounds = kwargs.get("bounds", (None, None))
-
-    def A(t, *args, **kwargs):
-        return np.array(
-            [
-                [0, 0, 0, 1, 0, 0],
-                [0, 0, 0, 0, 1, 0],
-                [0, 0, 0, 0, 0, 1],
-                [3 * p.n**2, 0, 0, 0, 2 * p.n, 0],
-                [0, 0, 0, -2 * p.n, 0, 0],
-                [0, 0, -p.n**2, 0, 0, 0],
-            ]
-        )
-
-    B = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
-
-    Q = np.identity(6)
-    R = np.identity(3) * 1e-4
-
-    def d(t, *args, **kwargs):
-        return np.zeros(6)
-
-    return (A, B, Q, R, d), constraints, bounds
-
-
-# =============================================================================
-# Backward Compatibility Aliases
-# =============================================================================
-orbitalParams = orbital_params
-cwhEquations = cwh_equations
-tripleIntegrator = triple_integrator
+    return matrices, constraints, bounds

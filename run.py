@@ -14,61 +14,89 @@
 """
 ORBEX-A Entry Point
 
-This script serves as the main entry point for running ADTMPC simulations.
-Run with --help to see available options.
+Thin CLI wrapper for running simulations.
+All logic is in orbexa.simulation module.
 """
 
-import numpy as np
-from orbexa.control.mpc import MPCController
-from orbexa.core import params as p
+import argparse
+import logging
+import sys
+
+from orbexa.simulation import run_simulation, run_all_modes
+
+
+def setup_logging(verbose: bool, quiet: bool):
+    """
+    Configure the root logger.
+
+    Format: [LEVEL] Message
+    """
+    if quiet:
+        level = logging.WARNING
+    elif verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    # Define custom format to match user request: [LOG] [INFO] etc...
+    # Though standard is just [INFO], user asked for [LOG] [INFO]...
+    # Re-reading: "everything is displayed using a logger [LOG] [INFO] [WARN] [ERROR] etc..."
+    # I'll stick to a standard informative format: "[%(levelname)s] %(message)s"
+    # capturing the essence.
+
+    logging.basicConfig(
+        level=level,
+        format="[%(levelname)s] %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
 
 def main():
-    print("Initializing ORBEX-A Simulation...")
-    
-    # Initialize Controller
-    controller = MPCController()
-    
-    # Setup Parameters
-    # Using defaults from params.py
-    
-    # Initial State (6D: pos, vel) - slightly offset from target
-    # Target is usually at origin or moving. 
-    # Let's set chaser at [-50, 0, 0] relative
-    X_0 = np.array([-50.0, 10.0, 5.0, 0.05, -0.01, 0.01])
-    
-    # Target State (Goal)
-    # R-bar approach: target at origin
-    X_f = np.zeros(6)
-    
-    # Initial Control
-    U_0 = np.zeros(3)
-    
-    # Run Mission
-    print("Starting Mission Loop...")
+    parser = argparse.ArgumentParser(
+        description="ORBEX-A Spacecraft Rendezvous Simulation",
+        epilog="Modes: oc (optimal control), mpc, tube, adtmpc, all",
+    )
+    parser.add_argument(
+        "-m", "--mode", choices=["oc", "mpc", "tube", "adtmpc", "all"], default="mpc"
+    )
+    parser.add_argument("-n", "--steps", type=int, default=5)
+    parser.add_argument(
+        "-s", "--solver", choices=["gekko", "scipy", "casadi"], default="gekko"
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable debug logging"
+    )
+    group.add_argument(
+        "-q", "--quiet", action="store_true", help="Suppress info logging"
+    )
+
+    args = parser.parse_args()
+
+    setup_logging(args.verbose, args.quiet)
+    logger = logging.getLogger(__name__)
+
+    logger.info(
+        f"ORBEX-A | Mode: {args.mode.upper()}, Steps: {args.steps}, Solver: {args.solver}"
+    )
+
     try:
-        history = controller.run_mission(
-            operation="rendezvous",
-            dt=p.dt,
-            t_0=0.0,
-            num_chasers=1,
-            num_mpc_steps=p.numMPCSteps["rendezvous"],
-            num_act_steps=p.numActSteps["rendezvous"],
-            X_0=X_0,
-            f_X_f=X_f,
-            U_0=U_0,
-            act_orbit_params=p.actOrbitParams,
-            nom_orbit_params=p.nomOrbitParams,
-            bounds=(p.stateBounds, p.inputBounds),
-            max_mission_steps=5, # Short run for verification
-            disp=True
-        )
-        print("Simulation Completed Successfully.")
-        print(f"Steps simulated: {len(history['time'])}")
-        
+        if args.mode == "all":
+            run_all_modes(args.steps, args.solver)
+        else:
+            # We don't need to pass verbose boolean anymore if we use logging globally
+            # But run_simulation might still expect it for now. We will check/update that signature next.
+            # Ideally run_simulation just uses logging.getLogger().
+            result = run_simulation(args.mode, args.steps, args.solver)
+            if not result.success:
+                sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Interrupted.")
+        sys.exit(130)
     except Exception as e:
-        print(f"Simulation Failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error: {e}")
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -17,6 +17,7 @@ This module implements the Finite Set Statistics (FSS) based parameter
 estimation and adaptation logic for the Tube MPC controller.
 """
 
+import logging
 import time
 import numpy as np
 import queue
@@ -24,37 +25,42 @@ import threading
 from typing import List, Dict, Tuple, Any, Optional, Union
 from gekko import GEKKO
 
-from orbexa.core import params as p
 from orbexa.utils import thread_worker
 from orbexa.core.dynamics import orbital_ellp_undrag
-from orbexa.visualization.orbitsim import adaptor_plot
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
 # Data Generation
 # =============================================================================
 def gen_adaptor_data(
-    range_params: Dict, orbit_params: Dict, *args, **kwargs
+    range_params: Dict,
+    orbit_params: Dict,
+    mean_motion: float,
+    t_periapsis: float,
+    *args,
+    **kwargs,
 ) -> np.ndarray:
     """
     Generate synthetic orbit data for testing adaptation.
     """
     W = []
+
+    # Note: Assuming alpha/beta are ignored for now as they were in dynamics
+    # or passed via kwargs if dynamics supports them.
+    # Passing them to args just in case.
     matrices, _, _ = orbital_ellp_undrag(
         dt=range_params["dt"],
-        n=p.n,
+        mean_motion=mean_motion,
         eccentricity=orbit_params["eccentricity"],
-        alpha=orbit_params["drag_alpha"],
-        beta=orbit_params["drag_beta"],
+        alpha=orbit_params.get("drag_alpha"),
+        beta=orbit_params.get("drag_beta"),
     )
     A_act, B_act, _, _, d_act = matrices
 
-    m = GEKKO(
-        remote=p.tubeMPC.get("remote", False)
-    )  # Use config if valid, else False (GEKKO default is specific)
-    # Actually params doesn't have tubeMPC remote flag?
-    # Logic in adaptor used remote=True hardcoded.
-    # Use config from solver section if applicable, but for now stick to True/False logic
+    remote = kwargs.get("remote", False)
+    m = GEKKO(remote=remote)
 
     m.time = np.linspace(
         0,
@@ -70,14 +76,11 @@ def gen_adaptor_data(
     eqs.append(t.dt() == 1.0)
 
     # Dynamics loop
-    # Note: A_act returns functions that take GEKKO objects
-    a_val = A_act(t, p.t_p, m=m)
-    d_val = d_act(t, p.t_p, m=m)
+    a_val = A_act(t, t_periapsis, m=m)
+    d_val = d_act(t, t_periapsis, m=m)
 
     for i in range(3):
         eqs.append(x_act[i + 0].dt() == x_act[i + 3])
-        # Manually unrolling matmul for GEKKO vars
-        # eq for velocity derivative
         v_dot = 0
         for j in range(6):
             v_dot += a_val[i + 3][j] * x_act[j]
@@ -88,7 +91,7 @@ def gen_adaptor_data(
     m.options.IMODE = 6
     m.options.SOLVER = 1
     m.options.MAX_MEMORY = 512
-    # Suppress output unless debug requested
+
     disp = kwargs.get("disp", False)
     m.solve(disp=disp)
 
@@ -112,6 +115,8 @@ def run_adaptor_op(
     W: np.ndarray,
     D: float,
     p_range: List[List[float]],
+    mean_motion: float,
+    t_periapsis: float,
     *args,
     **kwargs,
 ) -> Tuple[Any, Any]:
@@ -121,7 +126,7 @@ def run_adaptor_op(
     w_f = W[-1]
     flag = False
 
-    m = GEKKO(remote=True)  # Adaptor usually needs remote for speed/solvers
+    m = GEKKO(remote=True)
     m.time = np.linspace(0, dt * (len(W) - 1), len(W))
 
     final = np.zeros(len(m.time))
@@ -130,7 +135,6 @@ def run_adaptor_op(
 
     t = m.Var(value=0.0)
     x_est = [m.Var(value=w_0[i], fixed_initial=True) for i in range(6)]
-    # Check u_t shape, might need to be list of arrays or list of lists
     u_act = [m.Param(value=u_t[i]) for i in range(3)]
 
     # Estimation Parameters
@@ -144,10 +148,15 @@ def run_adaptor_op(
             )
         )
         p_est[i].STATUS = 1
-    p_est[-1].STATUS = 0  # Beta fixed
+    p_est[-1].STATUS = 0  # Beta fixed (assumed last param)
 
     matrices, _, _ = orbital_ellp_undrag(
-        dt=dt, n=p.n, eccentricity=p_est[0], alpha=p_est[1], beta=p_est[2], m=m
+        dt=dt,
+        mean_motion=mean_motion,
+        eccentricity=p_est[0],
+        alpha=p_est[1],
+        beta=p_est[2],
+        m=m,
     )
     A_est, B_est, _, _, d_est = matrices
 
@@ -155,24 +164,18 @@ def run_adaptor_op(
     eqs = []
     eqs.append(t.dt() == 1.0)
 
-    a_val = A_est(t + t_s, p.t_p, m=m)
-    d_val = d_est(t + t_s, p.t_p, m=m)
+    a_val = A_est(t + t_s, t_periapsis, m=m)
+    d_val = d_est(t + t_s, t_periapsis, m=m)
 
     for i in range(3):
         eqs.append(x_est[i + 0].dt() == x_est[i + 3])
-
         v_dot = 0
         for j in range(6):
-            v_dot += (
-                a_val[i + 3][j] * x_est[j]
-            )  # Wait, GEKKO indexing might need object
-            # orbital_ellp_undrag returns LIST of LISTS for A_mat
-            # So a_val[row][col] is correct
+            v_dot += a_val[i + 3][j] * x_est[j]
 
         eqs.append(x_est[i + 3].dt() == v_dot + u_act[i] + d_val[i + 3])
 
     # Error term
-    # sum((w_f - x_est)^2)
     sq_err = 0
     for i in range(6):
         sq_err += (w_f[i] - x_est[i]) ** 2
@@ -188,11 +191,10 @@ def run_adaptor_op(
     m.options.IMODE = 5
     m.options.MAX_TIME = 600
 
-    output = (False, [])  # Default
+    output = (False, [])
 
     if operation == "FSS":
         m.options.MAX_ITER = 250
-        # Set specific param value
         idx = oper_iter // 2
         p_est[idx].value = p_range[idx][oper_iter % 2]
 
@@ -205,8 +207,7 @@ def run_adaptor_op(
             m.solve(disp=kwargs.get("disp", False))
             output = oper_iter, p_est[idx].value[-1]
         except:
-            # If solve fails, return None or handle error
-            output = oper_iter, p_range[idx][oper_iter % 2]  # Fallback?
+            output = oper_iter, p_range[idx][oper_iter % 2]
 
     elif operation == "Optimal":
         m.options.MAX_ITER = 500
@@ -224,8 +225,16 @@ def run_adaptor_op(
     return output
 
 
-def adaptor(
-    init_params, range_params, u_t, D, W, *args, **kwargs
+def run_adaptation(
+    init_params: Dict,
+    range_params: Dict,
+    u_t: List[np.ndarray],
+    D: float,
+    W: np.ndarray,
+    mean_motion: float,
+    t_periapsis: float,
+    *args,
+    **kwargs,
 ) -> Tuple[Dict, List, List]:
     """
     Main Adaptation Loop.
@@ -256,9 +265,8 @@ def adaptor(
     ]
 
     use_threading = kwargs.get("threader", False)
-
     adaptation_iter = 0
-    p_estim = [estim_lists[i][-1] for i in range(num_params)]  # Current estimate
+    p_estim = [estim_lists[i][-1] for i in range(num_params)]
 
     for data_iter in range(1, data_range):
         # Update history
@@ -273,16 +281,14 @@ def adaptor(
             oper_iter = 0
             est_results = []
 
-            # Setup threads if needed
             if use_threading:
                 result_queue = queue.Queue()
                 threads = []
 
-            # Launch FSS jobs
             while oper_iter < 2 * (len(p_range) - 1):
                 adaptor_args = {
                     "operation": "FSS",
-                    "oper_iter": oper_iter,  # Renamed arg
+                    "oper_iter": oper_iter,
                     "dt": dt,
                     "t_s": (data_iter - adaptation_range) * dt,
                     "u_t": [
@@ -291,8 +297,10 @@ def adaptor(
                     ],
                     "W": W[data_iter - adaptation_range : data_iter],
                     "D": D,
-                    "p_range": p_range,  # Renamed arg
+                    "p_range": p_range,
                     "disp": kwargs.get("disp", False),
+                    "mean_motion": mean_motion,
+                    "t_periapsis": t_periapsis,
                 }
 
                 if use_threading:
@@ -315,24 +323,19 @@ def adaptor(
                 while not result_queue.empty():
                     est_results.append(result_queue.get())
 
-            # Process FSS Results
             p_xi = [[0.0, 0.0] for _ in range(len(p_range))]
-            p_xi[-1] = p_range[-1].copy()  # Beta is fixed
+            p_xi[-1] = p_range[-1].copy()
 
             for result in est_results:
                 op_iter, val = result
                 p_xi[op_iter // 2][op_iter % 2] = val
 
-            # Update Ranges
-            current_estimates = []
             for i in range(len(p_range)):
                 p_range[i] = [
                     max(min(p_xi[i]), p_range[i][0]),
                     min(max(p_xi[i]), p_range[i][1]),
                 ]
-                current_estimates.append(np.mean(p_range[i]))
 
-            # Final Optimal Point Calculation
             flag, estimates = run_adaptor_op(
                 operation="Optimal",
                 oper_iter=1,
@@ -345,20 +348,17 @@ def adaptor(
                 D=D,
                 p_range=p_range,
                 disp=kwargs.get("disp", False),
+                mean_motion=mean_motion,
+                t_periapsis=t_periapsis,
             )
 
-            print(f"~~  Parameter Estimation : Iteration {adaptation_iter}  ~~")
-            if not flag and all(
-                estimates[i] not in p_range[i] for i in range(2)
-            ):  # Rough check
-                # Logic here is fuzzy in original code, simplifying
+            logger.info(f"~~  Parameter Estimation : Iteration {adaptation_iter}  ~~")
+            if not flag and all(estimates[i] not in p_range[i] for i in range(2)):
                 p_estim = estimates
-                print("!!! Parameter Estimation : Success !!!")
+                logger.info("!!! Parameter Estimation : Success !!!")
             else:
-                print("!!! Parameter Estimation : Failure !!!")
-                # Fallback logic omitted for brevity, keeping simple update
+                logger.warning("!!! Parameter Estimation : Failure !!!")
 
-        # Append to history
         for i in range(num_params):
             estim_lists[i].append(p_estim[i])
             range_lists[i][0].append(p_range[i][0])
@@ -371,52 +371,6 @@ def adaptor(
     return FSS, estim_lists, range_lists
 
 
-# Aliases for backward compatibility
-genAdaptorData = gen_adaptor_data
-runAdaptorOp = run_adaptor_op
-
 if __name__ == "__main__":
-    np.random.seed(int(time.time()))
-
-    # Test Parameters
-    D = 0.05
-    data_range = 181
-    adaptation_range = 60
-    range_params = {
-        "dt": p.dt,
-        "data_range": data_range,
-        "adaptation_range": adaptation_range,
-    }
-
-    eccentricity = np.random.random() * 0.60
-    drag_alpha = np.random.random() * 5.00e-7
-    drag_beta = 2.600e-7
-    x_0 = np.array([100, 50, -80, 0, 0, 0])
-
-    # Generate random input sequence
-    u_vals = [np.array([90, -40, 60])]
-    for j in range(data_range - 1):
-        u_vals.append(u_vals[-1] + np.random.randn(3) * 10)
-    u_t = np.transpose(u_vals)
-
-    orbit_params = {
-        "eccentricity": eccentricity,
-        "drag_alpha": drag_alpha,
-        "drag_beta": drag_beta,
-        "x_0": x_0,
-        "u_t": u_t,
-    }
-
-    print("Generating Data...")
-    W = gen_adaptor_data(range_params, orbit_params)
-
-    print("Running Adaptor...")
-    FSS, estim_lists, range_lists = adaptor(
-        p.initAdaptParams,
-        range_params,
-        orbit_params["u_t"],
-        D,
-        W,
-        disp=False,
-        threader=True,
-    )
+    # Example usage for testing
+    pass

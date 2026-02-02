@@ -16,6 +16,7 @@ Tests for core package imports and basic functionality.
 
 import pytest
 import numpy as np
+from orbexa.core.config import SimulationConfig
 
 
 class TestPackageImports:
@@ -28,21 +29,25 @@ class TestPackageImports:
         assert hasattr(orbexa, "__version__")
         assert orbexa.__version__ == "2.0.0"
 
-    def test_import_params(self):
-        """Test params module import."""
-        from orbexa import params
+    def test_import_config(self):
+        """Test new config module import."""
+        from orbexa.core import config
 
-        assert hasattr(params, "dt")
-        assert hasattr(params, "n")
-        assert hasattr(params, "actOrbitParams")
+        assert hasattr(config, "SimulationConfig")
+
+        cfg = config.SimulationConfig.load()
+        assert cfg.dt > 0
+        assert cfg.orbit.mean_motion > 0
 
     def test_import_dynamics(self):
         """Test dynamics module import."""
         from orbexa import dynamics
 
         assert hasattr(dynamics, "orbital_ellp_undrag")
-        assert hasattr(dynamics, "cwhEquations")
-        assert hasattr(dynamics, "orbitalParams")
+        assert hasattr(dynamics, "cwh_equations")
+        assert hasattr(dynamics, "orbital_params")
+        assert hasattr(dynamics, "orbital_circ_undrag")
+        assert hasattr(dynamics, "triple_integrator")
 
     def test_import_spacecraft(self):
         """Test spacecraft module import."""
@@ -58,7 +63,7 @@ class TestPackageImports:
 
         assert hasattr(utils, "discretize")
         assert hasattr(utils, "load_config")
-        assert hasattr(utils, "genSkewSymMat")
+        assert hasattr(utils, "gen_skew_sym_mat")
 
     def test_import_solvers(self):
         """Test solvers module import."""
@@ -69,22 +74,16 @@ class TestPackageImports:
         assert ScipySolver is not None
 
 
-class TestParams:
-    """Test parameters module."""
+class TestConfig:
+    """Test configuration module."""
+
+    def test_load_default(self):
+        config = SimulationConfig.load()
+        assert config.num_update_steps > 0
 
     def test_dt_positive(self):
-        """Test that dt is positive."""
-        from orbexa import params
-
-        assert params.dt > 0
-
-    def test_orbit_params(self):
-        """Test orbital parameters structure."""
-        from orbexa import params
-
-        assert "eccentricity" in params.actOrbitParams
-        assert "drag_alpha" in params.actOrbitParams
-        assert "drag_beta" in params.actOrbitParams
+        config = SimulationConfig.load()
+        assert config.dt > 0
 
 
 class TestDynamics:
@@ -92,9 +91,10 @@ class TestDynamics:
 
     def test_cwh_equations(self):
         """Test CWH equations return correct structure."""
-        from orbexa.core.dynamics import cwhEquations
+        from orbexa.core.dynamics import cwh_equations
 
-        matrices, constraints, bounds = cwhEquations(dt=0.1)
+        # Must pass mean_motion etc.
+        matrices, constraints, bounds = cwh_equations(dt=0.1, mean_motion=0.01)
         A, B, Q, R, d = matrices
         assert isinstance(A, np.ndarray) or callable(A)
 
@@ -102,7 +102,9 @@ class TestDynamics:
         """Test elliptical orbit dynamics."""
         from orbexa.core.dynamics import orbital_ellp_undrag
 
-        matrices, constraints, bounds = orbital_ellp_undrag(dt=0.1, eccentricity=0.1)
+        matrices, constraints, bounds = orbital_ellp_undrag(
+            dt=0.1, mean_motion=0.01, eccentricity=0.1
+        )
         A, B, Q, R, d = matrices
         assert callable(A)
 
@@ -116,27 +118,18 @@ class TestUtils:
 
         A = np.array([[0, 1], [-1, 0]])
         B = np.array([[0], [1]])
-        A_d, B_d = discretize(0.1, A, B)
+        A_d, B_d, _, _ = discretize(0.1, A, B)
         assert A_d.shape == (2, 2)
         assert B_d.shape == (2, 1)
 
     def test_gen_skew_sym_mat(self):
         """Test skew-symmetric matrix generation."""
-        from orbexa.utils import genSkewSymMat
+        from orbexa.utils import gen_skew_sym_mat
 
         v = [1, 2, 3]
-        S = genSkewSymMat(v)
+        S = gen_skew_sym_mat(v)
         assert S.shape == (3, 3)
-        # Skew-symmetric: S = -S^T
         np.testing.assert_array_almost_equal(S, -S.T)
-
-    def test_load_config(self):
-        """Test configuration loading."""
-        from orbexa.utils import load_config
-
-        config = load_config("config/default.yaml")
-        assert "sim" in config
-        assert "solver" in config
 
 
 class TestSolvers:
@@ -168,26 +161,27 @@ class TestSpacecraft:
     """Test spacecraft classes."""
 
     def test_spacecraft_init(self):
-        """Test Spacecraft initialization."""
+        """Test Spacecraft initialization with config."""
         from orbexa.core.spacecraft import Spacecraft
 
-        sc = Spacecraft()
-        assert sc.numStates == 6
+        config = SimulationConfig.load()
+        sc = Spacecraft(config)
+        assert sc.num_states == 6
 
     def test_target_init(self):
         """Test Target initialization."""
         from orbexa.core.spacecraft import Target
 
-        target = Target(
-            {"initState": np.zeros(6)},
-            {
-                "angularVelocity": np.array([0.1, 0.0, 0.0]),
-                "momInertia": np.eye(3) * 100,
-            },
-        )
-        assert hasattr(target, "angularVelocity")
-        assert hasattr(target, "momInertia")
+        config = SimulationConfig.load()
+        target = Target(config)
 
+        assert hasattr(target, "angular_velocity")
+        assert hasattr(target, "mom_inertia")
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    def test_chaser_init(self):
+        """Test Chaser initialization."""
+        from orbexa.core.spacecraft import Chaser
+
+        config = SimulationConfig.load()
+        chaser = Chaser(config)
+        assert chaser.mean_motion == config.orbit.mean_motion

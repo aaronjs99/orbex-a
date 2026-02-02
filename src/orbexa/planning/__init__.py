@@ -17,9 +17,9 @@ Mission planning, task allocation, and observation optimization.
 """
 
 from orbexa.planning.taskalloc import TaskAllocAgent
-from orbexa.planning.deflection import targetDeflect
+from orbexa.planning.deflection import target_deflect
 
 __all__ = [
     "TaskAllocAgent",
-    "targetDeflect",
+    "target_deflect",
 ]

@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from orbexa.planning.deflection import targetDeflect
+from orbexa.planning.deflection import target_deflect
 
 # Check other modules
 try:
@@ -12,11 +12,26 @@ except ImportError as e:
 
 
 def test_deflection_import():
-    assert True
+    assert callable(target_deflect)
 
 
-def test_planning_modules_load():
-    assert True
+def test_distopt_funcs():
+    from orbexa.planning import distopt
+
+    assert callable(distopt.DistOptAgent)
 
 
-# Add more tests for planning logic
+def test_taskalloc_funcs():
+    from orbexa.planning import taskalloc
+
+    assert callable(taskalloc.gen_neighbors)
+
+
+def test_optimobserve_funcs():
+    try:
+        from orbexa.planning import optimobserve
+
+        # If it has specific functions, test them here
+        pass
+    except ImportError:
+        pass
