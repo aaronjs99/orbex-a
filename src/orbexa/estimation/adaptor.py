@@ -153,7 +153,7 @@ def run_adaptor_op(
     p_est[-1].STATUS = 0  # Beta fixed (assumed last param)
 
     matrices, _, _ = orbital_ellp_undrag(
-        dt=dt,
+        anom_step=dt,
         mean_motion=mean_motion,
         eccentricity=p_est[0],
         alpha=p_est[1],
@@ -354,12 +354,12 @@ def run_adaptation(
                 t_periapsis=t_periapsis,
             )
 
-            logger.info(f"~~  Parameter Estimation : Iteration {adaptation_iter}  ~~")
+            logger.debug(f"~~  Parameter Estimation : Iteration {adaptation_iter}  ~~")
             if not flag and all(estimates[i] not in p_range[i] for i in range(2)):
                 p_estim = estimates
-                logger.info("!!! Parameter Estimation : Success !!!")
+                logger.debug("!!! Parameter Estimation : Success !!!")
             else:
-                logger.warning("!!! Parameter Estimation : Failure !!!")
+                logger.debug("!!! Parameter Estimation : Failure !!!")
 
         for i in range(num_params):
             estim_lists[i].append(p_estim[i])

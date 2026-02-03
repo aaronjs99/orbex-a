@@ -98,12 +98,35 @@ def run_simulation(
         bounds=(config.mpc.state_bounds, config.mpc.input_bounds),
         max_mission_steps=effective_steps,
         tube_mpc=(
-            {"enabled": mode_config.tube_mpc_enabled}
+            {
+                "enabled": mode_config.tube_mpc_enabled,
+                "lambda_gain": config.tube.sliding_gains,
+                "alpha": config.tube.bandwidth_0,
+                "phi": config.tube.boundary_layer_0,
+                "eccentricity_range": (
+                    config.tube.bandwidth_range["lower"],
+                    config.tube.bandwidth_range["upper"],
+                ),
+            }
             if mode_config.tube_mpc_enabled
             else None
         ),
         adaptive=(
-            {"enabled": mode_config.adaptive_enabled}
+            {
+                "enabled": mode_config.adaptive_enabled,
+                "init_params": {
+                    "eccentricity": [0.0, 0.0],
+                    "alpha": [config.tube.bandwidth_0[0], config.tube.bandwidth_0[0]],
+                    "beta": [0.0, 0.0],
+                },
+                "range_params": {
+                    "dt": config.anom_step,
+                    "data_range": 50,
+                    "adaptation_range": 10,
+                },
+                "u_t": [np.zeros(50).tolist(), np.zeros(50).tolist(), np.zeros(50).tolist()],
+                "D": 0.01,
+            }
             if mode_config.adaptive_enabled
             else None
         ),

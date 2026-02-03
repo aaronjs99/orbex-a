@@ -198,7 +198,14 @@ def orbital_ellp_undrag(
         q_val = kwargs.get("q")
 
         if q_val is None:
-            if eccentricity == 0.0:
+            # Handle both numeric and GEKKO variable eccentricity
+            try:
+                is_circular = (float(eccentricity) == 0.0)
+            except (TypeError, ValueError):
+                # GEKKO variable - assume non-circular for safety
+                is_circular = False
+            
+            if is_circular:
                 q_val = mean_motion * (t - t_p)
             else:
                 # Convert time to anomaly
