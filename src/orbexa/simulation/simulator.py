@@ -38,21 +38,25 @@ class MPCSeries:
     """Encapsulates time-series data for MPC plotting."""
 
     t: np.ndarray
-    pos: np.ndarray  # (N, 3)
-    vel: np.ndarray  # (N, 3)
-    u: Optional[np.ndarray] = None  # (N, 3)
+    position: np.ndarray  # (N, 3)
+    velocity: np.ndarray  # (N, 3)
+    control_input: Optional[np.ndarray] = None  # (N, 3)
     pos_ref1: Optional[np.ndarray] = None  # (N, 3)
     pos_ref2: Optional[np.ndarray] = None  # (N, 3)
 
     def slice(self, start: int) -> "MPCSeries":
-        sl = slice(start, None)
+        slice_index = slice(start, None)
         return MPCSeries(
-            t=self.t[sl],
-            pos=self.pos[sl],
-            vel=self.vel[sl],
-            u=self.u[sl] if self.u is not None else None,
-            pos_ref1=self.pos_ref1[sl] if self.pos_ref1 is not None else None,
-            pos_ref2=self.pos_ref2[sl] if self.pos_ref2 is not None else None,
+            t=self.t[slice_index],
+            position=self.position[slice_index],
+            velocity=self.velocity[slice_index],
+            control_input=(
+                self.control_input[slice_index]
+                if self.control_input is not None
+                else None
+            ),
+            pos_ref1=self.pos_ref1[slice_index] if self.pos_ref1 is not None else None,
+            pos_ref2=self.pos_ref2[slice_index] if self.pos_ref2 is not None else None,
         )
 
 
@@ -76,23 +80,23 @@ class PlotFlags:
 class TargetLimits:
     """Target geometric limits."""
 
-    r_T: float = 0.0
-    l_T: float = 0.0
+    target_radius: float = 0.0
+    target_height: float = 0.0
 
 
 @dataclass
 class MPCPlotConfig:
     """Configuration for MPC plotting."""
 
-    dt: float
-    t_periapsis: float = 0.0
+    anom_step: float
+    time_periapsis: float = 0.0
     dock_index: Optional[int] = None
     target_folder: Optional[Path] = None
     filename_sim: str = "mpc_test"
     target_limits: Optional[TargetLimits] = None
 
     @classmethod
-    def from_kwargs(cls, dt: float, **kwargs):
+    def from_kwargs(cls, anom_step: float, **kwargs):
         """Create config from legacy kwargs."""
         tf = kwargs.get("target_folder")
         if tf:
@@ -106,8 +110,9 @@ class MPCPlotConfig:
             )
 
         return cls(
-            dt=dt,
-            t_periapsis=kwargs.get("t_periapsis", 0.0),
+            anom_step=anom_step,
+            time_periapsis=kwargs.get("time_periapsis", 0.0)
+            or kwargs.get("t_periapsis", 0.0),
             dock_index=kwargs.get("dock_index"),
             target_folder=tf,
             filename_sim=kwargs.get("filename_sim", "mpc_test"),
@@ -123,43 +128,43 @@ def as_arrays(*seqs):
     return [np.asarray(s) for s in seqs]
 
 
-def split_state(state_arr: np.ndarray):
+def split_state(state_array: np.ndarray):
     """Split state array into position and velocity components."""
-    arr = np.asarray(state_arr)
-    if arr.size == 0:
+    array = np.asarray(state_array)
+    if array.size == 0:
         return np.array([]), np.array([])
 
     # If state is 1D (N,) where N>=6
-    if arr.ndim == 1:
-        if arr.shape[0] >= 6:
-            return arr[:3], arr[3:6]
-        return arr, np.array([])
+    if array.ndim == 1:
+        if array.shape[0] >= 6:
+            return array[:3], array[3:6]
+        return array, np.array([])
 
     # If state is 2D (N, M)
-    if arr.ndim == 2:
-        if arr.shape[1] >= 6:
-            return arr[:, :3], arr[:, 3:6]
-        if arr.shape[1] >= 3:
-            return arr[:, :3], np.array([])
+    if array.ndim == 2:
+        if array.shape[1] >= 6:
+            return array[:, :3], array[:, 3:6]
+        if array.shape[1] >= 3:
+            return array[:, :3], np.array([])
 
-    return arr, np.array([])
+    return array, np.array([])
 
 
-def norms(arr: np.ndarray) -> np.ndarray:
+def norms(array: np.ndarray) -> np.ndarray:
     """Compute norms of vectors in array. Expects (N,3) or (3,)."""
-    arr = np.asarray(arr)
-    if arr.size == 0:
+    array = np.asarray(array)
+    if array.size == 0:
         return np.array([])
 
-    if arr.ndim == 1:
-        if arr.shape != (3,):
-            raise ValueError(f"Expected (3,) for single vector, got {arr.shape}")
-        return np.array([np.linalg.norm(arr)])
+    if array.ndim == 1:
+        if array.shape != (3,):
+            raise ValueError(f"Expected (3,) for single vector, got {array.shape}")
+        return np.array([np.linalg.norm(array)])
 
-    if arr.shape[1] != 3:
-        raise ValueError(f"Expected (N,3) for vectors, got {arr.shape}")
+    if array.shape[1] != 3:
+        raise ValueError(f"Expected (N,3) for vectors, got {array.shape}")
 
-    return np.linalg.norm(arr, axis=1)
+    return np.linalg.norm(array, axis=1)
 
 
 def outpath(folder: Optional[Path], name: str) -> Optional[Path]:
@@ -381,6 +386,7 @@ def plot_time_series(
         return
 
     plt.figure(figsize=(10, 4 * total_rows))
+    cmap = plt.get_cmap("jet")
 
     # 1. State Plots
     for i in range(n_state_plots):
@@ -427,12 +433,22 @@ def plot_time_series(
         plt.subplot(total_rows, 1, current_row + 1)
 
         for i in range(len(control_inputs)):
+            u_vec = control_inputs[i]
+            # Handle mismatch
+            n_u = u_vec.shape[0]
+            n_t = t.shape[0]
+            t_plot = t
+            if n_u < n_t:
+                t_plot = t[:n_u]
+            elif n_u > n_t:
+                u_vec = u_vec[:n_t]
+
             label = labelU[i] if i < len(labelU) else f"$u_{i}$"
-            plt.plot(t, control_inputs[i], c=cmap(150 + 80 * i), label=label)
+            plt.plot(t_plot, u_vec, c=cmap(150 + 80 * i), label=label)
 
         plt.legend()
         plt.ylabel("Input")
-        plt.xlabel("Time")
+        plt.xlabel("Anomaly (rad)")
         current_row += 1
 
     # 3. Output Plots
@@ -440,8 +456,18 @@ def plot_time_series(
         plt.subplot(total_rows, 1, current_row + 1)
 
         for i in range(len(y_outputs)):
+            y_vec = y_outputs[i]
+            # Handle mismatch
+            n_y = y_vec.shape[0]
+            n_t = t.shape[0]
+            t_plot = t
+            if n_y < n_t:
+                t_plot = t[:n_y]
+            elif n_y > n_t:
+                y_vec = y_vec[:n_t]
+
             label = labelY[i] if i < len(labelY) else f"$y_{i}$"
-            plt.plot(t, y_outputs[i], c=cmap(180 + 96 * i), label=label)
+            plt.plot(t_plot, y_vec, c=cmap(180 + 96 * i), label=label)
 
         if cost_history is not None and (
             len(cost_history) > 0 if hasattr(cost_history, "__len__") else True
@@ -451,7 +477,7 @@ def plot_time_series(
 
         plt.legend()
         plt.ylabel("Output/Cost")
-        plt.xlabel("Time")
+        plt.xlabel("Anomaly (rad)")
         current_row += 1
 
     if save_path:
@@ -470,10 +496,6 @@ def plot_mpc(
     nom_states,
     nom_inputs,
     fin_states,
-    tgt_states,
-    x_f_list,
-    dt=None,
-    plot_flags=None,
     target_thetas=None,
     cfg: Optional[MPCPlotConfig] = None,
     *args,
@@ -485,9 +507,9 @@ def plot_mpc(
     """
     # 1. Compatibility Layer
     if cfg is None:
-        if dt is None:
-            dt = 0.1
-        cfg = MPCPlotConfig.from_kwargs(dt, **kwargs)
+        if anom_step is None:
+            anom_step = 0.1
+        cfg = MPCPlotConfig.from_kwargs(anom_step, **kwargs)
 
     if isinstance(plot_flags, dict):
         plot_flags = PlotFlags(**plot_flags)
@@ -513,9 +535,9 @@ def plot_mpc(
 
     # Computed Norms (moved inside logic or computed on fly)
     # 3. Time vector
-    t_start = cfg.t_periapsis
+    start_anom = cfg.time_periapsis
     steps = act_states.shape[0] if act_states.ndim > 1 else 0
-    t = np.linspace(t_start, t_start + (steps - 1) * cfg.dt, steps)
+    t = np.linspace(start_anom, start_anom + (steps - 1) * cfg.anom_step, steps)
 
     # 4. Docking Slice
     dock_index = cfg.dock_index
@@ -528,18 +550,18 @@ def plot_mpc(
     # Create Series
     act_series = MPCSeries(
         t=t,
-        pos=act_pos,
-        vel=act_vel,
-        u=act_u,
+        position=act_pos,
+        velocity=act_vel,
+        control_input=act_u,
         pos_ref1=fin_pos if fin_pos.size > 0 else None,
         pos_ref2=tgt_pos if tgt_pos.size > 0 else None,
     )
 
     nom_series = MPCSeries(
         t=t,
-        pos=nom_pos,
-        vel=nom_vel,
-        u=nom_u,
+        position=nom_pos,
+        velocity=nom_vel,
+        control_input=nom_u,
         pos_ref1=fin_pos if fin_pos.size > 0 else None,
         pos_ref2=tgt_pos if tgt_pos.size > 0 else None,
     )
@@ -548,19 +570,19 @@ def plot_mpc(
         if len(series.t) == 0:
             return
 
-        sx, sy, sz = series.pos.T
-        vx, vy, vz = series.vel.T
+        state_x, state_y, state_z = series.position.T
+        velocity_x, velocity_y, velocity_z = series.velocity.T
 
         u_list = []
         labelU = []
         # Conditional u logic
-        if series.u is not None and series.u.size > 0:
+        if series.control_input is not None and series.control_input.size > 0:
             # Safer check: ensure (N,3)
-            if series.u.ndim == 2 and series.u.shape[1] == 3:
-                ux, uy, uz = series.u.T
-                u_list = [ux, uy, uz]
+            if series.control_input.ndim == 2 and series.control_input.shape[1] == 3:
+                control_x, control_y, control_z = series.control_input.T
+                u_list = [control_x, control_y, control_z]
                 labelU = ["$u_X$", "$u_Y$", "$u_Z$"]
-                u_norm = norms(series.u)
+                u_norm = norms(series.control_input)
             else:
                 # If u is present but bad shape (could happen with legacy data), ignore or flatten?
                 # Ignoring to prevent crash.
@@ -568,7 +590,7 @@ def plot_mpc(
         else:
             u_norm = None
 
-        x1_list = (
+        ref_state_list_1 = (
             list(series.pos_ref1.T)
             if series.pos_ref1 is not None and series.pos_ref1.size > 0
             else []
@@ -581,7 +603,7 @@ def plot_mpc(
 
         labelX = ["$s_X$", "$s_Y$", "$s_Z$", "$v_X$", "$v_Y$", "$v_Z$"]
 
-        y_list = [norms(series.pos), norms(series.vel)]
+        y_list = [norms(series.position), norms(series.velocity)]
         labelY = ["$||s||$", "$||v||$"]
 
         if u_norm is not None:
@@ -591,11 +613,11 @@ def plot_mpc(
         labelX1 = ["$s_{X,F}$", "$s_{Y,F}$", "$s_{Z,F}$"]
         labelX2 = ["$s_{X,T}$", "$s_{Y,T}$", "$s_{Z,T}$"]
 
-        fname = f"{prefix}_states_{'docking' if is_docking else 'all_time'}.png"
-        spath = outpath(cfg.target_folder, fname) if do_save else None
+        file_name = f"{prefix}_states_{'docking' if is_docking else 'all_time'}.png"
+        save_path = outpath(cfg.target_folder, file_name) if do_save else None
 
-        fname = f"{prefix}_states_{'docking' if is_docking else 'all_time'}.png"
-        spath = outpath(cfg.target_folder, fname) if do_save else None
+        file_name = f"{prefix}_states_{'docking' if is_docking else 'all_time'}.png"
+        save_path = outpath(cfg.target_folder, file_name) if do_save else None
 
         # Logic: We split the plotting into 3 separate files if saving,
         # or combine them if just showing.
@@ -607,12 +629,12 @@ def plot_mpc(
             f_states = outpath(cfg.target_folder, f"{base_name}_states.png")
             plot_time_series(
                 series.t,
-                x=[sx, sy, sz, vx, vy, vz],
-                u=[],  # No inputs
-                y=[],  # No outputs
+                states=[state_x, state_y, state_z, velocity_x, velocity_y, velocity_z],
+                control_inputs=[],  # No inputs
+                y_outputs=[],  # No outputs
                 labelX=labelX,
-                x1=x1_list,
-                x2=x2_list,
+                states_ref1=ref_state_list_1,
+                states_ref2=x2_list,
                 labelX1=labelX1,
                 labelX2=labelX2,
                 save_path=f_states,
@@ -623,9 +645,9 @@ def plot_mpc(
             f_inputs = outpath(cfg.target_folder, f"{base_name}_inputs.png")
             plot_time_series(
                 series.t,
-                x=[],  # No states
-                u=u_list,
-                y=[],
+                states=[],  # No states
+                control_inputs=u_list,
+                y_outputs=[],
                 labelU=labelU,
                 save_path=f_inputs,
             )
@@ -634,7 +656,12 @@ def plot_mpc(
         if do_save:
             f_norms = outpath(cfg.target_folder, f"{base_name}_norms.png")
             plot_time_series(
-                series.t, x=[], u=[], y=y_list, labelY=labelY, save_path=f_norms
+                series.t,
+                states=[],
+                control_inputs=[],
+                y_outputs=y_list,
+                labelY=labelY,
+                save_path=f_norms,
             )
 
         # If not saving (show), we might spam windows.
@@ -643,11 +670,11 @@ def plot_mpc(
             # For show(), combined is better.
             plot_time_series(
                 series.t,
-                x=[sx, sy, sz, vx, vy, vz],
-                u=u_list,
-                y=y_list,
-                x1=x1_list,
-                x2=x2_list,
+                states=[state_x, state_y, state_z, velocity_x, velocity_y, velocity_z],
+                control_inputs=u_list,
+                y_outputs=y_list,
+                states_ref1=ref_state_list_1,
+                states_ref2=x2_list,
                 labelX=labelX,
                 labelU=labelU,
                 labelY=labelY,
@@ -718,8 +745,8 @@ def plot_mpc(
             return
 
         con1, con2, con12 = [], [], []
-        rT = cfg.target_limits.r_T
-        lT = cfg.target_limits.l_T
+        rT = cfg.target_limits.target_radius
+        lT = cfg.target_limits.target_height
 
         for i, time_step in enumerate(t):
             if i >= len(target_thetas):
@@ -738,8 +765,8 @@ def plot_mpc(
             con2.append(c2)
             con12.append(c12)
 
-        fname = f"constraints_{prefix}_states_all_time.png"
-        spath = outpath(cfg.target_folder, fname)
+        file_name = f"constraints_{prefix}_states_all_time.png"
+        save_path = outpath(cfg.target_folder, file_name)
 
         sXa, sYa, sZa = pos[:, 0], pos[:, 1], pos[:, 2]
 
@@ -748,12 +775,12 @@ def plot_mpc(
 
         plot_time_series(
             t[: len(con1)],
-            x=[sXa, sYa, sZa],
-            u=[],
-            y=[np.array(con1), np.array(con2), np.array(con12)],
+            states=[sXa, sYa, sZa],
+            control_inputs=[],
+            y_outputs=[np.array(con1), np.array(con2), np.array(con12)],
             labelX=["$s_X$", "$s_Y$", "$s_Z$"],
             labelY=labelY,
-            save_path=spath,
+            save_path=save_path,
         )
 
     if plot_flags.plot_act_con:

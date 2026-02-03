@@ -67,9 +67,9 @@ def run_simulation(
     controller = MPCController(solver_backend=solver)
 
     # Initial conditions from config or hardcoded for sample task
-    # X_0 = np.array([-50.0, 10.0, 5.0, 0.05, -0.01, 0.01])
-    state_0 = config.orbit.initial_conditions
-    state_f = np.zeros(6)
+    # initial_state = np.array([-50.0, 10.0, 5.0, 0.05, -0.01, 0.01])
+    initial_state = config.orbit.initial_conditions
+    target_state = np.zeros(6)
     control_input_0 = np.zeros(3)
 
     # OC uses single iteration
@@ -77,7 +77,7 @@ def run_simulation(
 
     # Prepare dynamics params
     dynamics_params = {
-        "dt": config.dt,
+        "anom_step": config.anom_step,
         "mean_motion": config.orbit.mean_motion,  # derived property
         "eccentricity": config.orbit.eccentricity,
         # "alpha": ? "beta": ? if using drag
@@ -85,13 +85,13 @@ def run_simulation(
 
     result = controller.run_mission(
         operation="rendezvous",
-        dt=config.dt,
-        t_0=0.0,
+        anom_step=config.anom_step,  # Use anomaly step anom_step
+        start_anom=0.0,
         num_chasers=1,
         num_mpc_steps=mode_config.num_mpc_steps,
         num_act_steps=mode_config.num_act_steps,
-        state_0=state_0,
-        f_state_f=state_f,
+        initial_state=initial_state,
+        target_state=target_state,
         control_input_0=control_input_0,
         dynamics_func=orbital_ellp_undrag,
         dynamics_params=dynamics_params,
@@ -108,13 +108,13 @@ def run_simulation(
             else None
         ),
         # Extra explicit kwargs for solver
-        t_periapsis=config.orbit.t_periapsis,
-        Q=config.mpc.Q,
-        R=config.mpc.R,
+        time_periapsis=config.orbit.time_periapsis,
+        state_cost_matrix=config.mpc.Q,
+        input_cost_matrix=config.mpc.R,
     )
 
     logger.info(f"Result: {'SUCCESS' if result.success else 'FAILED'}")
-    logger.info(f"Steps completed: {len(result.time_history)}")
+    logger.info(f"Steps completed: {len(result.anom_history)}")
     logger.info(f"Final state: {result.state_history[-1]}")
     logger.info(f"Total solve time: {result.solver_stats['total_solve_time']:.3f}s")
 
@@ -148,8 +148,8 @@ def run_all_modes(
     for mode in CONTROL_MODES:
         try:
             results[mode] = run_simulation(mode, max_steps, solver, config=config)
-        except Exception as e:
-            logger.error(f"  [{mode.upper()}] FAILED: {e}")
+        except Exception as exception:
+            logger.error(f"  [{mode.upper()}] FAILED: {exception}")
             logger.debug("Traceback:", exc_info=True)
             results[mode] = None
 
@@ -168,7 +168,7 @@ def _print_summary(results: Dict[str, Optional[MissionResult]]) -> None:
     for mode, result in results.items():
         if result:
             status = "OK" if result.success else "FAIL"
-            steps = len(result.time_history)
+            steps = len(result.anom_history)
             time_s = result.solver_stats["total_solve_time"]
             logger.info(f"{mode:<12} {status:<10} {steps:<8} {time_s:<10.3f}")
         else:

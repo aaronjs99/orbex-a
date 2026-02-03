@@ -39,10 +39,19 @@ class TestSolverBase:
         x_0 = np.zeros(2)
         x_f = np.array([1.0, 0.0])
 
-        problem = MPCProblem(A=A, B=B, Q=Q, R=R, x_0=x_0, x_f=x_f, num_steps=10, dt=0.1)
+        problem = MPCProblem(
+            dynamics_matrix=A,
+            input_matrix=B,
+            state_cost_matrix=Q,
+            input_cost_matrix=R,
+            initial_state=x_0,
+            final_state=x_f,
+            num_steps=10,
+            anom_step=0.1,
+        )
 
-        assert problem.num_states == 2
-        assert problem.num_inputs == 1
+        assert problem.dynamics_matrix.shape == (2, 2)
+        assert problem.input_matrix.shape == (2, 1)
         assert problem.num_steps == 10
 
     def test_solver_result_creation(self):

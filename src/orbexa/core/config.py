@@ -42,7 +42,7 @@ class OrbitConfig:
     eccentricity: float
     """Orbital eccentricity."""
 
-    t_periapsis: float
+    time_periapsis: float
     """Time of periapsis passage."""
 
     initial_conditions: np.ndarray
@@ -105,9 +105,8 @@ class SimulationConfig:
     """Main simulation configuration."""
 
     seed: int
-    dt: float
-    dtheta: float
-    total_time: int
+    anom_step: float
+    total_anom: float
     num_update_steps: int
     decoupled_mode: bool
 
@@ -119,8 +118,8 @@ class SimulationConfig:
     num_chasers: int
 
     @property
-    def iter_time(self) -> float:
-        return self.num_update_steps * self.dt
+    def iter_anomaly(self) -> float:
+        return self.num_update_steps * self.anom_step
 
     @classmethod
     def load(cls, path: str = "config/default.yaml") -> "SimulationConfig":
@@ -143,7 +142,7 @@ class SimulationConfig:
             mu=float(orbit_data["mu"]),
             semi_major_axis=float(orbit_data["semi_major_axis"]),
             eccentricity=float(orbit_data["eccentricity"]),
-            t_periapsis=float(orbit_data["t_periapsis"]),
+            time_periapsis=float(orbit_data["time_periapsis"]),
             initial_conditions=to_numpy(orbit_data["initial_conditions"]),
         )
 
@@ -184,9 +183,8 @@ class SimulationConfig:
 
         config = cls(
             seed=data["seed"],
-            dt=data["dt"],
-            dtheta=data.get("dtheta", 0.0),
-            total_time=data["total_time"],
+            anom_step=data["anom_step"],
+            total_anom=data["total_anom"],
             num_update_steps=data["num_update_steps"],
             decoupled_mode=data["decoupled_mode"],
             num_chasers=data["num_chasers"],

@@ -29,27 +29,27 @@ class MPCProblem:
     Defines an MPC optimization problem.
 
     Attributes:
-        A: State transition matrix (n x n) or callable A(t)
-        B: Input matrix (n x m)
-        Q: State cost matrix (n x n)
-        R: Input cost matrix (m x m)
-        x_0: Initial state (n,)
-        x_f: Final/reference state (n,)
+        dynamics_matrix: State transition matrix (n x n) or callable A(t)
+        input_matrix: Input matrix (n x m)
+        state_cost_matrix: State cost matrix (n x n)
+        input_cost_matrix: Input cost matrix (m x m)
+        initial_state: Initial state (n,)
+        final_state: Final/reference state (n,)
         num_steps: Number of MPC steps
-        dt: Time step
+        anom_step: True anomaly step size (independent variable)
         state_bounds: Optional state constraints
         input_bounds: Optional input constraints
         dynamics_type: "continuous" or "discrete"
     """
 
-    A: np.ndarray
-    B: np.ndarray
-    Q: np.ndarray
-    R: np.ndarray
-    x_0: np.ndarray
-    x_f: np.ndarray
+    dynamics_matrix: np.ndarray
+    input_matrix: np.ndarray
+    state_cost_matrix: np.ndarray
+    input_cost_matrix: np.ndarray
+    initial_state: np.ndarray
+    final_state: np.ndarray
     num_steps: int
-    dt: float
+    anom_step: float
     state_bounds: Optional[List[Dict[str, float]]] = None
     input_bounds: Optional[List[Dict[str, float]]] = None
     dynamics_type: str = "continuous"
@@ -57,11 +57,11 @@ class MPCProblem:
 
     @property
     def num_states(self) -> int:
-        return len(self.x_0)
+        return len(self.initial_state)
 
     @property
     def num_inputs(self) -> int:
-        return self.B.shape[1]
+        return self.input_matrix.shape[1]
 
 
 @dataclass
@@ -71,8 +71,8 @@ class SolverResult:
 
     Attributes:
         success: Whether optimization succeeded
-        states: State trajectory (n x T)
-        inputs: Input trajectory (m x T)
+        state_trajectory: State trajectory (n x T)
+        control_trajectory: Input trajectory (m x T)
         cost: Optimal cost value
         solve_time: Solver execution time in seconds
         message: Status message or error description
@@ -80,8 +80,8 @@ class SolverResult:
     """
 
     success: bool
-    states: Optional[np.ndarray] = None
-    inputs: Optional[np.ndarray] = None
+    state_trajectory: Optional[np.ndarray] = None
+    control_trajectory: Optional[np.ndarray] = None
     cost: Optional[float] = None
     solve_time: float = 0.0
     message: str = ""
@@ -157,7 +157,7 @@ class SolverBase(ABC):
         return result
 
     def _discretize(
-        self, A: np.ndarray, B: np.ndarray, dt: float
+        self, A: np.ndarray, B: np.ndarray, anom_step: float
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Discretize continuous-time system using matrix exponential.
@@ -165,7 +165,7 @@ class SolverBase(ABC):
         Args:
             A: Continuous state matrix
             B: Continuous input matrix
-            dt: Time step
+            anom_step: Independent variable step (time or anomaly)
 
         Returns:
             Tuple of (A_d, B_d) discrete matrices
@@ -176,7 +176,7 @@ class SolverBase(ABC):
         m = B.shape[1]
 
         # Build augmented matrix for discretization
-        em_upper = np.hstack([A, B]) * dt
+        em_upper = np.hstack([A, B]) * anom_step
         em_lower = np.zeros((m, n + m))
         em = np.vstack([em_upper, em_lower])
 

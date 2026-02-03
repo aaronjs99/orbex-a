@@ -1,6 +1,6 @@
 seed: 0
-dt: 0.10
-total_time: 100
+anom_step: 0.015707963 # pi/200
+total_anom: 3.1415926535
 num_update_steps: 200
 decoupled_mode: true
 num_chasers: 1
@@ -9,7 +9,7 @@ orbit:
   mu: 3.986004418e14
   semi_major_axis: 6678136.3
   eccentricity: 0.0
-  t_periapsis: 0.0
+  time_periapsis: 0.0
   initial_conditions: [-50.0, 10.0, 5.0, 0.05, -0.01, 0.01]
 
 mpc:
@@ -48,15 +48,14 @@ target:
   shape: "cylinder"
   center: [0.0, 0.0, 0.0]
   limits:
-    l_T: 0.6
-    r_T: 0.8
-    tolerance: 0.001
+    target_height: 0.6
+    target_radius: 0.8
+  tolerance: 0.001
   stop_time: 5.0
   discretize_dockers: true
-  tolerance: 0.001
   observation_error:
-    ang_pos: 4.0e-8
-    ang_vel: 4.0e-8
+    angular_position: 4.0e-8
+    angular_velocity: 4.0e-8
 
 tube:
   run_tube: true

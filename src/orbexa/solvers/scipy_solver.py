@@ -49,42 +49,44 @@ class ScipySolver(SolverBase):
 
         # Discretize if needed
         if problem.dynamics_type == "continuous":
-            self._A_d, self._B_d = self._discretize(problem.A, problem.B, problem.dt)
+            self._A_d, self._B_d = self._discretize(
+                problem.dynamics_matrix, problem.input_matrix, problem.anom_step
+            )
         else:
-            self._A_d, self._B_d = problem.A, problem.B
+            self._A_d, self._B_d = problem.dynamics_matrix, problem.input_matrix
 
         self._is_setup = True
 
     def _objective(self, z: np.ndarray) -> float:
         """Quadratic cost function."""
         p = self._problem
-        n, m, T = p.num_states, p.num_inputs, p.num_steps
+        num_states, num_inputs, num_steps = p.num_states, p.num_inputs, p.num_steps
 
-        states = z[: n * T].reshape(n, T)
-        inputs = z[n * T :].reshape(m, T)
+        states = z[: num_states * num_steps].reshape(num_states, num_steps)
+        inputs = z[num_states * num_steps :].reshape(num_inputs, num_steps)
 
         cost = 0.0
-        for t in range(T):
-            state_err = states[:, t] - p.x_f
-            cost += state_err @ p.Q @ state_err
-            cost += inputs[:, t] @ p.R @ inputs[:, t]
+        for t in range(num_steps):
+            state_err = states[:, t] - p.final_state
+            cost += state_err @ p.state_cost_matrix @ state_err
+            cost += inputs[:, t] @ p.input_cost_matrix @ inputs[:, t]
         return cost
 
     def _dynamics_constraint(self, z: np.ndarray) -> np.ndarray:
         """Equality constraints for discrete dynamics."""
         p = self._problem
-        n, m, T = p.num_states, p.num_inputs, p.num_steps
+        num_states, num_inputs, num_steps = p.num_states, p.num_inputs, p.num_steps
 
-        states = z[: n * T].reshape(n, T)
-        inputs = z[n * T :].reshape(m, T)
+        states = z[: num_states * num_steps].reshape(num_states, num_steps)
+        inputs = z[num_states * num_steps :].reshape(num_inputs, num_steps)
 
         constraints = []
 
         # Initial condition
-        constraints.extend(states[:, 0] - p.x_0)
+        constraints.extend(states[:, 0] - p.initial_state)
 
         # Dynamics: state_{t+1} = A*state_t + B*input_t
-        for t in range(T - 1):
+        for t in range(num_steps - 1):
             state_next = self._A_d @ states[:, t] + self._B_d @ inputs[:, t]
             constraints.extend(states[:, t + 1] - state_next)
 
@@ -98,17 +100,19 @@ class ScipySolver(SolverBase):
             )
 
         p = self._problem
-        n, m, T = p.num_states, p.num_inputs, p.num_steps
+        num_states, num_inputs, num_steps = p.num_states, p.num_inputs, p.num_steps
 
         # Initial guess
-        z0 = np.zeros(n * T + m * T)
-        for t in range(T):
-            z0[t * n : (t + 1) * n] = p.x_0  # Initialize states with x_0
+        z0 = np.zeros(num_states * num_steps + num_inputs * num_steps)
+        for t in range(num_steps):
+            z0[t * num_states : (t + 1) * num_states] = (
+                p.initial_state
+            )  # Initialize states with x_0
 
         # Build bounds
         bounds = []
-        for t in range(T):
-            for i in range(n):
+        for t in range(num_steps):
+            for i in range(num_states):
                 lb, ub = -np.inf, np.inf
                 if p.state_bounds and i < len(p.state_bounds):
                     if p.state_bounds[i].get("lower") not in ["-Inf", None]:
@@ -117,8 +121,8 @@ class ScipySolver(SolverBase):
                         ub = p.state_bounds[i]["upper"]
                 bounds.append((lb, ub))
 
-        for t in range(T):
-            for i in range(m):
+        for t in range(num_steps):
+            for i in range(num_inputs):
                 lb, ub = -np.inf, np.inf
                 if p.input_bounds and i < len(p.input_bounds):
                     if p.input_bounds[i].get("lower") not in ["-Inf", None]:
@@ -148,13 +152,17 @@ class ScipySolver(SolverBase):
             solve_time = time.time() - start_time
 
             if result.success:
-                states = result.x[: n * T].reshape(n, T)
-                inputs = result.x[n * T :].reshape(m, T)
+                states = result.x[: num_states * num_steps].reshape(
+                    num_states, num_steps
+                )
+                inputs = result.x[num_states * num_steps :].reshape(
+                    num_inputs, num_steps
+                )
 
                 return SolverResult(
                     success=True,
-                    states=states,
-                    inputs=inputs,
+                    state_trajectory=states,
+                    control_trajectory=inputs,
                     cost=result.fun,
                     solve_time=solve_time,
                     message="Optimization successful",

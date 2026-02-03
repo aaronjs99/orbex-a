@@ -97,7 +97,7 @@ def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNam
 # 2. Clohessy-Wiltshire-Hill (CWH) Dynamics
 # =============================================================================
 def cwh_equations(
-    dt: float,
+    anom_step: float,
     mean_motion: float,
     state_bounds: Optional[List[Dict[str, Any]]] = None,
     input_bounds: Optional[List[Dict[str, float]]] = None,
@@ -145,16 +145,16 @@ def cwh_equations(
     B = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
     # Cost Matrices (Default Identity)
-    Q = np.identity(6)
-    R = np.identity(3)
+    state_cost_matrix = np.identity(6)
+    input_cost_matrix = np.identity(3)
 
     # Disturbance (Zero)
     d = np.zeros(6)
 
     if discretize_model:
-        A, B, _, _ = discretize(dt, A, B)
+        A, B, _, _ = discretize(anom_step, A, B)
 
-    matrices = (A, B, Q, R, d)
+    matrices = (A, B, state_cost_matrix, input_cost_matrix, d)
     constraints = (None, None)
     bounds = (state_bounds, input_bounds)
 
@@ -165,7 +165,7 @@ def cwh_equations(
 # 3. Time-Varying Orbital Dynamics (Elliptical)
 # =============================================================================
 def orbital_ellp_undrag(
-    dt: float,
+    anom_step: float,
     mean_motion: float,
     eccentricity: float,
     state_bounds: Optional[List[Dict[str, Any]]] = None,
@@ -179,7 +179,7 @@ def orbital_ellp_undrag(
     Returns functions for A(t) and B(t) as the system is time-varying.
 
     Args:
-        dt (float): Time step.
+        anom_step (float): Anomaly step (step size in independent variable).
         mean_motion (float): Mean motion (rad/s).
         eccentricity (float): Orbit eccentricity.
         state_bounds (list, optional): State bounds.
@@ -260,10 +260,10 @@ def orbital_ellp_undrag(
         return np.zeros(6)
 
     # Cost Matrices
-    Q = np.identity(6)
-    R = np.identity(3)
+    state_cost_matrix = np.identity(6)
+    input_cost_matrix = np.identity(3)
 
-    matrices = (A_func, B_func, Q, R, d_func)
+    matrices = (A_func, B_func, state_cost_matrix, input_cost_matrix, d_func)
     constraints = (None, None)
     bounds = (state_bounds, input_bounds)
 
@@ -306,10 +306,10 @@ def orbital_circ_undrag(
     def d_func(*args, **kwargs):
         return np.zeros(6)
 
-    Q = np.identity(6)
-    R = np.identity(3)
+    state_cost_matrix = np.identity(6)
+    input_cost_matrix = np.identity(3)
 
-    matrices = (A_func, B_func, Q, R, d_func)
+    matrices = (A_func, B_func, state_cost_matrix, input_cost_matrix, d_func)
     constraints = (None, None)
     bounds = (state_bounds, input_bounds)
 
@@ -319,7 +319,9 @@ def orbital_circ_undrag(
 # =============================================================================
 # 5. Triple Integrator Dynamics
 # =============================================================================
-def triple_integrator(dt: float, discretize_model: bool = True, **kwargs) -> Tuple[
+def triple_integrator(
+    anom_step: float, discretize_model: bool = True, **kwargs
+) -> Tuple[
     Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     Tuple[Optional[np.ndarray], Optional[np.ndarray]],
     Tuple[None, None],
@@ -363,13 +365,13 @@ def triple_integrator(dt: float, discretize_model: bool = True, **kwargs) -> Tup
     )
 
     d = np.zeros(9)
-    Q = np.identity(9)
-    R = np.identity(3)
+    state_cost_matrix = np.identity(9)
+    input_cost_matrix = np.identity(3)
 
     if discretize_model:
-        A, B, _, _ = discretize(dt, A, B)
+        A, B, _, _ = discretize(anom_step, A, B)
 
-    matrices = (A, B, Q, R, d)
+    matrices = (A, B, state_cost_matrix, input_cost_matrix, d)
     constraints = (None, None)
     bounds = (None, None)
 

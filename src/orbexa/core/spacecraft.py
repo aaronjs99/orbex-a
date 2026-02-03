@@ -36,7 +36,7 @@ from orbexa.core.dynamics import cwh_equations
 from orbexa.core.config import SimulationConfig
 from orbexa.utils import gen_shape_data, gen_skew_sym_mat, calc_global_occlusion_cost
 from orbexa.solvers import get_solver, MPCProblem
-from orbexa.control.problem_builder import build_from_dynamics
+from orbexa.control.mpc_problem_builder import build_from_dynamics
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ class Spacecraft:
             **kwargs: Overrides for specific properties like 'name' or 'initState'.
         """
         self.config = config
-        self.dt = config.dt
+        self.anom_step = config.anom_step
 
         self.id = next(self._ids)
         self.name = kwargs.get("name", "")
@@ -160,8 +160,12 @@ class Target(Spacecraft):
         self.tid = next(self._tids) + 1
         super().__init__(config, **kwargs)
 
-        self.observation_error_ang_pos = config.target.observation_error["ang_pos"]
-        self.observation_error_ang_vel = config.target.observation_error["ang_vel"]
+        self.observation_error_ang_pos = config.target.observation_error[
+            "angular_position"
+        ]
+        self.observation_error_ang_vel = config.target.observation_error[
+            "angular_velocity"
+        ]
 
         # Default properties from config if not provided in kwargs
         self.angular_velocity = kwargs.get(
@@ -355,12 +359,12 @@ class Chaser(Spacecraft):
         """Propagate chaser dynamics."""
         # Get CWH matrices
         matrices_tuple, _, _ = cwh_equations(
-            self.dt,
+            self.anom_step,
             mean_motion=self.mean_motion,
             state_bounds=self.state_bounds,
             input_bounds=self.input_bounds,
         )
-        A, B, Q, R, d = matrices_tuple
+        A, B, state_cost_matrix, input_cost_matrix, d = matrices_tuple
 
         # Extend inputs if needed
         needed = num_steps - len(self.inputs)
@@ -512,7 +516,7 @@ class Chaser(Spacecraft):
         """Calculate optimal control inputs using the modular solver."""
         # Get dynamics matrices/functions from CWH
         matrices, _, _ = cwh_equations(
-            self.dt,
+            self.anom_step,
             mean_motion=self.mean_motion,
             state_bounds=self.state_bounds,
             input_bounds=self.input_bounds,
@@ -529,7 +533,7 @@ class Chaser(Spacecraft):
             d_func=d,
             x_0=self.curr_state,
             x_f=self.goal_state if self.goal_state is not None else np.zeros(6),
-            t_start=0,  # Relative time
+            start_anom=0,  # Relative time
             num_steps=num_steps,
             dt=self.dt,
             mean_motion=self.mean_motion,
@@ -540,11 +544,11 @@ class Chaser(Spacecraft):
         # Solve
         result = self.solver.solve_problem(problem)
 
-        if result.success and result.inputs is not None:
+        if result.success and result.control_trajectory is not None:
             # Result inputs is shape (dimensions, steps)
             # We need list of inputs [u(0), u(1)...]
             # Transpose to (steps, dimensions)
-            u_traj = result.inputs.T
+            u_traj = result.control_trajectory.T
             self.inputs = [u_traj[i] for i in range(u_traj.shape[0])]
         else:
             logger.warning("Chaser solver failed. Keeping zero inputs.")

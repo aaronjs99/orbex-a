@@ -1,5 +1,6 @@
-data/
-!data/paper/
+data/*
+!data/paper/*
+!data/plot_results.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

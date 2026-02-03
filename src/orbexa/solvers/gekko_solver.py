@@ -21,7 +21,7 @@ from typing import Dict, Any
 
 from gekko import GEKKO
 from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
-from orbexa.utils.anomaly import dt_dtheta
+from orbexa.utils.anomaly import dt_dq
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class GekkoSolver(SolverBase):
 
         # Unpack extra params
         extra = problem.extra_params
-        t_start = extra.get("t_start", 0.0)
-        t_periapsis = extra.get("t_periapsis", 0.0)
+        start_anom = extra.get("start_anom", 0.0)
+        time_periapsis = extra.get("time_periapsis", 0.0)
         eccentricity = extra.get("eccentricity", 0.0)
         mean_motion = extra.get("mean_motion", 0.0)
 
@@ -74,20 +74,19 @@ class GekkoSolver(SolverBase):
         tube_mpc = extra.get("tube_mpc")  # Dict or None
         if tube_mpc:
             # Tube MPC constraint tightening (if enabled)
-            # Note: For robust MPC, state bounds are typically tightened by the tube radius.
-            # In this version, we assume provided bounds are pre-tightened or handled externally.
-            # Placeholder for future tube MPC implementation
             if tube_mpc and tube_mpc.get("enabled", False):
                 logger.debug("Tube MPC enabled - bounds should be pre-tightened")
 
         solver = GEKKO(remote=self.remote)
-        solver.time = np.linspace(0, problem.num_steps * problem.dt, problem.num_steps)
+        solver.time = np.linspace(
+            0, problem.num_steps * problem.anom_step, problem.num_steps
+        )
 
-        n = problem.num_states
-        p = problem.num_inputs
+        num_states = problem.num_states
+        num_inputs = problem.num_inputs
 
         # --- Parameters ---
-        # Optimization weight (can be used for forgetting factors etc.)
+        # Optimization weight
         w_param = solver.Param(value=np.ones(problem.num_steps))
 
         # Final Step Indicator
@@ -98,26 +97,30 @@ class GekkoSolver(SolverBase):
         # --- Variables ---
         # State variables
         self._states = [
-            solver.Var(value=problem.x_0[i], fixed_initial=True) for i in range(n)
+            solver.Var(value=problem.initial_state[i], fixed_initial=True)
+            for i in range(num_states)
         ]
 
         # Input variables
-        self._inputs = [solver.Var(value=0, fixed_initial=False) for i in range(p)]
+        # Input variables
+        self._inputs = [
+            solver.Var(value=0, fixed_initial=False) for i in range(num_inputs)
+        ]
         # Initialize inputs with guess if provided
-        if "u_0" in extra and len(extra["u_0"]) == p:
-            for i in range(p):
+        if "u_0" in extra and len(extra["u_0"]) == num_inputs:
+            for i in range(num_inputs):
                 self._inputs[i].value = extra["u_0"][i]
 
         # --- Bounds ---
         if problem.state_bounds:
-            for i, bound in enumerate(problem.state_bounds[:n]):
+            for i, bound in enumerate(problem.state_bounds[:num_states]):
                 if bound.get("lower") not in ["-Inf", None, float("-inf")]:
                     self._states[i].lower = bound["lower"]
                 if bound.get("upper") not in ["+Inf", None, float("inf")]:
                     self._states[i].upper = bound["upper"]
 
         if problem.input_bounds:
-            for i, bound in enumerate(problem.input_bounds[:p]):
+            for i, bound in enumerate(problem.input_bounds[:num_inputs]):
                 if bound.get("lower") not in ["-Inf", None, float("-inf")]:
                     self._inputs[i].lower = bound["lower"]
                 if bound.get("upper") not in ["+Inf", None, float("inf")]:
@@ -129,21 +132,21 @@ class GekkoSolver(SolverBase):
         q_var = solver.Param(value=q_start + solver.time)
 
         # Time variable for LTV dynamics
-        t_var = solver.Var(value=t_start)
+        t_var = solver.Var(value=start_anom)
 
         # dTime/dAnomaly scaling
         use_scaling = extra.get("use_anomaly_scaling", False)
         if use_scaling:
-            dtdq_expr = dt_dtheta(
+            dt_dq_expr = dt_dq(
                 q_var,
                 eccentricity=eccentricity,
                 mean_motion=mean_motion,
-                t_periapsis=t_periapsis,
+                t_periapsis=time_periapsis,
                 solver=solver,
             )
-            solver.Equation(t_var.dt() == dtdq_expr)
+            solver.Equation(t_var.dt() == dt_dq_expr)
         else:
-            dtdq_expr = 1.0
+            dt_dq_expr = 1.0
             solver.Equation(t_var.dt() == 1.0)
 
         eqs = []
@@ -160,10 +163,10 @@ class GekkoSolver(SolverBase):
                 q_val = q_var
             elif eccentricity == 0.0:
                 # Circular orbit: q = n*(t - tp)
-                q_val = mean_motion * (t_var - t_periapsis)
+                q_val = mean_motion * (t_var - time_periapsis)
             else:
                 # Elliptical orbit: Need full conversion
-                enc_arg = (mean_motion * (t_var - t_periapsis)) / 2.0
+                enc_arg = (mean_motion * (t_var - time_periapsis)) / 2.0
                 E = solver.Intermediate(
                     2
                     * solver.atan(
@@ -182,27 +185,27 @@ class GekkoSolver(SolverBase):
                 # Evaluate dynamics matrices symbolically using either t or q
                 # orbital_ellp_undrag and similar factories support the 'solver' and 'q' keywords.
             try:
-                A_mat_expr = A_func(t_var, t_periapsis, solver=solver, q=q_val)
+                A_mat_expr = A_func(t_var, time_periapsis, solver=solver, q=q_val)
             except TypeError:
                 # Fallback for simple callables
                 A_mat_expr = A_func(t_var)
 
             # D func
             d_func = problem.extra_params.get("disturbance_callable")
-            d_vec_expr = np.zeros(n)
+            d_vec_expr = np.zeros(num_states)
             if callable(d_func):
-                d_vec_expr = d_func(t_var, t_periapsis, solver=solver, q=q_val)
+                d_vec_expr = d_func(t_var, time_periapsis, solver=solver, q=q_val)
             elif hasattr(problem, "d") and isinstance(problem.d, np.ndarray):
                 d_vec_expr = problem.d
 
             # X_dot = A(t)X + B(t)u + d(t)
             # Assuming constant B for now
-            B_mat = problem.B
+            B_mat = problem.input_matrix
 
-            for i in range(n):
+            for i in range(num_states):
                 # Manual matrix multiplication A*state
                 dot_A_state = 0
-                for j in range(n):
+                for j in range(num_states):
                     val = A_mat_expr[i][j]
                     if isinstance(val, (int, float)) and val == 0:
                         continue
@@ -210,24 +213,30 @@ class GekkoSolver(SolverBase):
 
                 # Manual matrix multiplication B*control_input
                 dot_B_control_input = 0
-                for k in range(p):
+                for k in range(num_inputs):
                     val = B_mat[i][k]
                     if val == 0:
                         continue
                     dot_B_control_input += val * self._inputs[k]
 
-                # state_dot_q = (A*state + B*u + d) * dtdq
+                # state_dot_q = (A*state + B*u + d) * dt_dq
                 eqs.append(
                     self._states[i].dt()
-                    == (dot_A_state + dot_B_control_input + d_vec_expr[i]) * dtdq_expr
+                    == (dot_A_state + dot_B_control_input + d_vec_expr[i]) * dt_dq_expr
                 )
 
         else:
             # Continuous LTI (Original Logic)
             # d_state = A * state + B * control_input
-            for i in range(n):
-                d_state = sum(problem.A[i, j] * self._states[j] for j in range(n))
-                d_state += sum(problem.B[i, j] * self._inputs[j] for j in range(p))
+            for i in range(num_states):
+                d_state = sum(
+                    problem.dynamics_matrix[i, j] * self._states[j]
+                    for j in range(num_states)
+                )
+                d_state += sum(
+                    problem.input_matrix[i, j] * self._inputs[j]
+                    for j in range(num_inputs)
+                )
                 eqs.append(self._states[i].dt() == d_state)
 
         # --- Objective ---
@@ -238,19 +247,23 @@ class GekkoSolver(SolverBase):
         # Or full matrix mult
 
         # State cost
-        for i in range(n):
-            for j in range(n):
-                if problem.Q[i, j] != 0:
-                    delta_state_i = self._states[i] - problem.x_f[i]
-                    delta_state_j = self._states[j] - problem.x_f[j]
-                    cost_terms.append(delta_state_i * problem.Q[i, j] * delta_state_j)
+        for i in range(num_states):
+            for j in range(num_states):
+                if problem.state_cost_matrix[i, j] != 0:
+                    delta_state_i = self._states[i] - problem.final_state[i]
+                    delta_state_j = self._states[j] - problem.final_state[j]
+                    cost_terms.append(
+                        delta_state_i * problem.state_cost_matrix[i, j] * delta_state_j
+                    )
 
         # Input cost
-        for i in range(p):
-            for j in range(p):
-                if problem.R[i, j] != 0:
+        for i in range(num_inputs):
+            for j in range(num_inputs):
+                if problem.input_cost_matrix[i, j] != 0:
                     cost_terms.append(
-                        self._inputs[i] * problem.R[i, j] * self._inputs[j]
+                        self._inputs[i]
+                        * problem.input_cost_matrix[i, j]
+                        * self._inputs[j]
                     )
 
         total_cost = solver.Intermediate(sum(cost_terms))
@@ -289,8 +302,8 @@ class GekkoSolver(SolverBase):
 
             return SolverResult(
                 success=True,
-                states=states,
-                inputs=inputs,
+                state_trajectory=states,
+                control_trajectory=inputs,
                 cost=cost,
                 solve_time=solve_time,
                 message="Optimization successful",

@@ -21,6 +21,7 @@ import numpy as np
 from scipy import optimize as opt
 
 from orbexa.utils import calc_global_occlusion_cost, calc_local_occlusion_cost
+from .task_allocation import TaskAllocationSystem
 
 logger = logging.getLogger(__name__)
 

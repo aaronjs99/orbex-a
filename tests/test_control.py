@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from orbexa.control.mpc import MPCController
+from orbexa.control.mpc_controller import MPCController
 from orbexa.solvers import SolverResult
 from orbexa.core.dynamics import orbital_ellp_undrag
 
@@ -14,7 +14,9 @@ def mpc_config():
 def dynamics_tuple():
     # Helper to generate matrices functions
     # orbital_ellp_undrag now requires explicit params
-    matrices, _, _ = orbital_ellp_undrag(dt=1.0, mean_motion=0.001, eccentricity=0.0)
+    matrices, _, _ = orbital_ellp_undrag(
+        anom_step=1.0, mean_motion=0.001, eccentricity=0.0
+    )
     return matrices
 
 
@@ -30,7 +32,7 @@ class TestMPCController:
         x_0 = np.zeros(6)
         x_f = np.zeros(6)
 
-        t_start = 0.0
+        start_anom = 0.0
         dt = 1.0
         num_steps = 5
 
@@ -46,7 +48,7 @@ class TestMPCController:
                 x_0=x_0,
                 x_f=x_f,
                 u_0=u_0,
-                t_start=t_start,
+                start_anom=start_anom,
                 dt=dt,
                 num_steps=num_steps,
                 dynamics=dynamics_tuple,
@@ -65,6 +67,6 @@ class TestMPCController:
                 pass
 
     def test_import_mpc(self):
-        from orbexa.control.mpc import MPCController
+        from orbexa.control.mpc_controller import MPCController
 
         assert MPCController is not None

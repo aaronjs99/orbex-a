@@ -66,68 +66,76 @@ class CasadiSolver(SolverBase):
 
         # Discretize if needed
         if problem.dynamics_type == "continuous":
-            A_d, B_d = self._discretize(problem.A, problem.B, problem.dt)
+            A_d, B_d = self._discretize(
+                problem.dynamics_matrix, problem.input_matrix, problem.anom_step
+            )
         else:
-            A_d, B_d = problem.A, problem.B
+            A_d, B_d = problem.dynamics_matrix, problem.input_matrix
 
-        n = problem.num_states
-        m = problem.num_inputs
-        T = problem.num_steps
+        num_states = problem.num_states
+        num_inputs = problem.num_inputs
+        num_steps = problem.num_steps
 
         opti = casadi.Opti()
 
         # Decision variables
-        self._X = opti.variable(n, T)
-        self._U = opti.variable(m, T)
+        self._states = opti.variable(num_states, num_steps)
+        self._controls = opti.variable(num_inputs, num_steps)
 
         # Parameters for matrices
-        A_p = opti.parameter(n, n)
-        B_p = opti.parameter(n, m)
-        Q_p = opti.parameter(n, n)
-        R_p = opti.parameter(m, m)
-        x0_p = opti.parameter(n)
-        xf_p = opti.parameter(n)
+        A_p = opti.parameter(num_states, num_states)
+        B_p = opti.parameter(num_states, num_inputs)
+        Q_p = opti.parameter(num_states, num_states)
+        R_p = opti.parameter(num_inputs, num_inputs)
+        x0_p = opti.parameter(num_states)
+        xf_p = opti.parameter(num_states)
 
         opti.set_value(A_p, A_d)
         opti.set_value(B_p, B_d)
-        opti.set_value(Q_p, problem.Q)
-        opti.set_value(R_p, problem.R)
-        opti.set_value(x0_p, problem.x_0)
-        opti.set_value(xf_p, problem.x_f)
+        opti.set_value(A_p, A_d)
+        opti.set_value(B_p, B_d)
+        opti.set_value(Q_p, problem.state_cost_matrix)
+        opti.set_value(R_p, problem.input_cost_matrix)
+        opti.set_value(x0_p, problem.initial_state)
+        opti.set_value(xf_p, problem.final_state)
 
         # Objective: sum of quadratic costs
         cost = 0
-        for t in range(T):
-            x_err = self._X[:, t] - xf_p
+        for t in range(num_steps):
+            x_err = self._states[:, t] - xf_p
             cost += casadi.mtimes(casadi.mtimes(x_err.T, Q_p), x_err)
-            cost += casadi.mtimes(casadi.mtimes(self._U[:, t].T, R_p), self._U[:, t])
+            cost += casadi.mtimes(
+                casadi.mtimes(self._controls[:, t].T, R_p), self._controls[:, t]
+            )
         opti.minimize(cost)
 
         # Dynamics constraints
-        for t in range(T - 1):
+        for t in range(num_steps - 1):
             opti.subject_to(
-                self._X[:, t + 1]
-                == casadi.mtimes(A_p, self._X[:, t]) + casadi.mtimes(B_p, self._U[:, t])
+                self._states[:, t + 1]
+                == casadi.mtimes(A_p, self._states[:, t])
+                + casadi.mtimes(B_p, self._controls[:, t])
             )
 
         # Initial condition
-        opti.subject_to(self._X[:, 0] == x0_p)
+        # Initial condition
+        opti.subject_to(self._states[:, 0] == x0_p)
 
         # State bounds
         if problem.state_bounds:
-            for i, bound in enumerate(problem.state_bounds[:n]):
+            for i, bound in enumerate(problem.state_bounds[:num_states]):
                 if bound.get("lower") not in ["-Inf", None]:
-                    opti.subject_to(self._X[i, :] >= bound["lower"])
+                    opti.subject_to(self._states[i, :] >= bound["lower"])
                 if bound.get("upper") not in ["+Inf", None]:
-                    opti.subject_to(self._X[i, :] <= bound["upper"])
+                    opti.subject_to(self._states[i, :] <= bound["upper"])
 
         # Input bounds
         if problem.input_bounds:
-            for i, bound in enumerate(problem.input_bounds[:m]):
+            for i, bound in enumerate(problem.input_bounds[:num_inputs]):
                 if bound.get("lower") not in ["-Inf", None]:
-                    opti.subject_to(self._U[i, :] >= bound["lower"])
+                    opti.subject_to(self._controls[i, :] >= bound["lower"])
                 if bound.get("upper") not in ["+Inf", None]:
-                    opti.subject_to(self._U[i, :] <= bound["upper"])
+                    opti.subject_to(self._controls[i, :] <= bound["upper"])
 
         # Solver options
         opts = {
@@ -158,14 +166,14 @@ class CasadiSolver(SolverBase):
             sol = self._opti.solve()
             solve_time = time.time() - start_time
 
-            states = np.array(sol.value(self._X))
-            inputs = np.array(sol.value(self._U))
+            states = np.array(sol.value(self._states))
+            inputs = np.array(sol.value(self._controls))
             cost = float(sol.value(self._opti.f))
 
             return SolverResult(
                 success=True,
-                states=states,
-                inputs=inputs,
+                state_trajectory=states,
+                control_trajectory=inputs,
                 cost=cost,
                 solve_time=solve_time,
                 message="Optimization successful",
@@ -184,7 +192,10 @@ class CasadiSolver(SolverBase):
 
     def cleanup(self) -> None:
         """Clean up CasADi problem."""
+
+    def cleanup(self) -> None:
+        """Clean up CasADi problem."""
         self._opti = None
-        self._X = None
-        self._U = None
+        self._states = None
+        self._controls = None
         self._is_setup = False

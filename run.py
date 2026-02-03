@@ -59,7 +59,7 @@ def main():
     parser.add_argument(
         "-m", "--mode", choices=["oc", "mpc", "tube", "adtmpc", "all"], default="mpc"
     )
-    parser.add_argument("-n", "--steps", type=int, default=5)
+    parser.add_argument("-n", "--steps", type=int, default=15)
     parser.add_argument(
         "-s", "--solver", choices=["gekko", "scipy", "casadi"], default="gekko"
     )

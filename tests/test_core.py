@@ -36,7 +36,7 @@ class TestPackageImports:
         assert hasattr(config, "SimulationConfig")
 
         cfg = config.SimulationConfig.load()
-        assert cfg.dt > 0
+        assert cfg.anom_step > 0
         assert cfg.orbit.mean_motion > 0
 
     def test_import_dynamics(self):
@@ -83,7 +83,7 @@ class TestConfig:
 
     def test_dt_positive(self):
         config = SimulationConfig.load()
-        assert config.dt > 0
+        assert config.anom_step > 0
 
 
 class TestDynamics:
@@ -94,7 +94,7 @@ class TestDynamics:
         from orbexa.core.dynamics import cwh_equations
 
         # Must pass mean_motion etc.
-        matrices, constraints, bounds = cwh_equations(dt=0.1, mean_motion=0.01)
+        matrices, constraints, bounds = cwh_equations(anom_step=0.1, mean_motion=0.01)
         A, B, Q, R, d = matrices
         assert isinstance(A, np.ndarray) or callable(A)
 
@@ -103,7 +103,7 @@ class TestDynamics:
         from orbexa.core.dynamics import orbital_ellp_undrag
 
         matrices, constraints, bounds = orbital_ellp_undrag(
-            dt=0.1, mean_motion=0.01, eccentricity=0.1
+            anom_step=0.1, mean_motion=0.01, eccentricity=0.1
         )
         A, B, Q, R, d = matrices
         assert callable(A)

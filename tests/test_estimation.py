@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from orbexa.control.dynamic_tube import calc_delta, calc_d
+from orbexa.control.dynamic_tube_model import calc_delta, calc_d
 from orbexa.estimation.adaptor import run_adaptor_op
 
 # Check if Gekko available
