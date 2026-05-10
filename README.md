@@ -16,6 +16,14 @@ GEKKO is the authoritative nonlinear solver path. SciPy/SLSQP is available only 
 
 ## Generate ADTMPC Mission Artifacts
 
+Simplest full run from the repository root:
+
+```bash
+python run.py --mission all --run-linearized --clean-generated
+```
+
+Equivalent console entry point:
+
 ```bash
 orbexa-generate-demo \
   --output results \
@@ -46,11 +54,25 @@ This writes:
 - editable run-note templates at `results/<session_id>/README.md` and `data/<session_id>/README.md`
 - symlinks `results/latest` and `data/latest` pointing at the newest generated session
 
-Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.mp4`, `trajectory.gif`, and diagnostics for actual/nominal trajectories, tube geometry, controls, physical and tube-tightened margins, SMID FSS widths, parameter beliefs, target roll/pitch/yaw, and multi-chaser spacing. Multi-agent runs also expose `results/<session_id>/demo.gif` as a symlink to `multi/nonlinear/trajectory.gif`.
+Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.mp4`, `trajectory.gif`, and diagnostics for actual/nominal trajectories, tube geometry, controls, physical and tube-tightened margins, SMID FSS widths, parameter estimates vs truth, target roll/pitch/yaw, and multi-chaser spacing. Multi-agent runs also expose `results/<session_id>/demo.gif` as a symlink to `multi/nonlinear/trajectory.gif`.
 
 Generated session artifacts stay out of git. The tracked repository preview is `assets/demo.gif`; refresh it intentionally from `results/latest/demo.gif` after a run when you want to update the README animation.
 
 The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive.
+
+`run.py` defaults to the ADTMPC mission workflow. Useful options:
+
+- `--mission single|multi|all`
+- `--steps N`
+- `--output results`
+- `--data-output data`
+- `--session-id NAME`
+- `--primary-solver gekko|scipy|casadi`
+- `--run-linearized`
+- `--linearized-steps N`
+- `--clean-generated`
+- `--from-data`
+- `--workflow legacy --mode mpc|tube|adtmpc|all` for older simulation modes
 
 Regenerate plots from saved data without rerunning solvers:
 
