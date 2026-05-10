@@ -39,6 +39,7 @@ from orbexa.control import (
     linearize_rendezvous_constraint,
     propagate_tube_profile,
     rendezvous_margin,
+    rotating_body_point_velocity,
     rotating_docking_point,
     target_frame_position,
     tighten_box_bounds,
@@ -129,13 +130,34 @@ class ParameterBelief:
     estimates: Dict[str, float]
 
     @classmethod
-    def paper_default(cls) -> "ParameterBelief":
-        ranges = {
-            "eccentricity": (0.02, 0.38),
-            "alpha": (0.0, 5.5e-7),
-            "beta": (0.0, 8.55e-7),
-        }
+    def paper_default(cls, config: Optional[SimulationConfig] = None) -> "ParameterBelief":
+        if config is None:
+            ranges = {
+                "eccentricity": (0.02, 0.38),
+                "alpha": (0.0, 5.5e-7),
+                "beta": (0.0, 8.55e-7),
+            }
+        else:
+            eccentricity = float(config.orbit.eccentricity)
+            alpha = float(config.orbit.target_drag)
+            beta = float(config.orbit.chaser_drag)
+            ranges = {
+                "eccentricity": (
+                    max(0.0, eccentricity - 0.08),
+                    min(0.99, eccentricity + 0.08),
+                ),
+                "alpha": (max(0.0, 0.5 * alpha), 1.5 * alpha),
+                "beta": (max(0.0, 0.5 * beta), 1.5 * beta),
+            }
         estimates = {key: float(np.mean(value)) for key, value in ranges.items()}
+        if config is not None:
+            estimates.update(
+                {
+                    "eccentricity": float(config.orbit.eccentricity),
+                    "alpha": float(config.orbit.target_drag),
+                    "beta": float(config.orbit.chaser_drag),
+                }
+            )
         return cls(feasible_sets=ranges, estimates=estimates)
 
     def copy(self) -> "ParameterBelief":
@@ -211,17 +233,28 @@ class TumblingCylinderTarget:
         return np.asarray(self.angular_velocity, dtype=float)
 
     def approach_azimuth(self, initial_state: np.ndarray) -> float:
-        position_body = target_frame_position(
-            np.asarray(initial_state[:3], dtype=float), self.initial_orientation
-        )
+        position_body = self.approach_position_body(initial_state)
         radial_norm = float(np.linalg.norm(position_body[:2]))
         if radial_norm <= 1.0e-9:
             return 0.0
         return float(np.mod(np.arctan2(position_body[1], position_body[0]), 2.0 * np.pi))
 
-    def side_docking_geometry(self, azimuth: float) -> Tuple[np.ndarray, np.ndarray]:
+    def approach_position_body(self, initial_state: np.ndarray) -> np.ndarray:
+        return target_frame_position(
+            np.asarray(initial_state[:3], dtype=float), self.initial_orientation
+        )
+
+    def approach_axial_coordinate(self, initial_state: np.ndarray) -> float:
+        position_body = self.approach_position_body(initial_state)
+        axial_limit = 0.8 * self.half_length
+        return float(np.clip(position_body[2], -axial_limit, axial_limit))
+
+    def side_docking_geometry(
+        self, azimuth: float, axial: float = 0.0
+    ) -> Tuple[np.ndarray, np.ndarray]:
         normal = np.array([np.cos(azimuth), np.sin(azimuth), 0.0], dtype=float)
         point = normal * (self.radius + self.docking_standoff)
+        point[2] = float(np.clip(axial, -0.8 * self.half_length, 0.8 * self.half_length))
         return point, normal
 
     def docking_points_body(self, count: int, start_azimuth: float = 0.0) -> List[np.ndarray]:
@@ -240,12 +273,13 @@ class TumblingCylinderTarget:
             return []
 
         approach_angles = [self.approach_azimuth(state) for state in initial_states]
+        approach_axials = [
+            self.approach_axial_coordinate(state) for state in initial_states
+        ]
         if count == 1:
             start_azimuth = approach_angles[0]
             candidate_angles = [start_azimuth]
-            candidate_geometry = [
-                self.side_docking_geometry(angle) for angle in candidate_angles
-            ]
+            candidate_geometry = [self.side_docking_geometry(start_azimuth)]
             assignment = [(0, 0)]
         else:
             best_cost = np.inf
@@ -293,7 +327,10 @@ class TumblingCylinderTarget:
 
         assigned: List[Dict[str, Any]] = []
         for state_idx, point_idx in assignment:
-            point, normal = candidate_geometry[point_idx]
+            _, normal = candidate_geometry[point_idx]
+            point, normal = self.side_docking_geometry(
+                candidate_angles[point_idx], approach_axials[state_idx]
+            )
             assigned.append(
                 {
                     "body_position": point,
@@ -309,7 +346,11 @@ class TumblingCylinderTarget:
     def docking_state(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
         orientation = self.orientation_at(anom)
         position = rotating_docking_point(docking_point_body, orientation)
-        velocity = np.cross(self.angular_velocity_at(anom), position)
+        velocity = rotating_body_point_velocity(
+            docking_point_body,
+            orientation,
+            self.angular_velocity_at(anom),
+        )
         return np.concatenate((position, velocity))
 
     def collision_params(self, operation: str, anom: float) -> Dict[str, Any]:
@@ -323,6 +364,7 @@ class TumblingCylinderTarget:
             ),
             "center": [0.0, 0.0, 0.0],
             "orientation": self.orientation_at(anom).tolist(),
+            "angular_velocity": self.angular_velocity_at(anom).tolist(),
             "target_radius": radius,
             "target_height": self.height * (1.0 + self.tolerance),
             "target_half_length": half_length,
@@ -467,6 +509,11 @@ class PaperSystemRunner:
             error_bound=0.15,
             prediction_error_threshold=0.005,
             max_iter=90,
+            minimum_widths={
+                "eccentricity": 0.04,
+                "alpha": 1.0e-7,
+                "beta": 1.5e-7,
+            },
         )
         self.rendezvous_standoff = 0.5
         self.rendezvous_capture_radius = 3.5
@@ -475,6 +522,7 @@ class PaperSystemRunner:
         self.docking_velocity_tolerance = 0.08
         self.min_chaser_separation = float(self.config.mpc.min_chaser_separation)
         self.target_safety_tolerance = 1.0e-7
+        self.target_barrier_buffer = 0.04
 
     @property
     def linearized(self) -> bool:
@@ -516,7 +564,7 @@ class PaperSystemRunner:
             solver_backend=self.solver_backend,
             solver_config=self._solver_config(),
         )
-        belief = ParameterBelief.paper_default()
+        belief = ParameterBelief.paper_default(self.config)
         initial_belief = belief.copy()
 
         states = {
@@ -551,7 +599,6 @@ class PaperSystemRunner:
         tube_radius_history = [0.0]
         attitude_history = [self.target.orientation_at(anom).tolist()]
         angular_velocity_history = [self.target.angular_velocity_at(anom).tolist()]
-        target_safety_filter_events: List[Dict[str, Any]] = []
 
         solver_success = True
         mission_complete = False
@@ -687,7 +734,7 @@ class PaperSystemRunner:
                     profile = solution["tube_profile"]
                     sample_tube_radius = max(
                         sample_tube_radius,
-                        self._tube_radius_at(profile, act_idx),
+                        float(profile.max_position_radius),
                     )
                     control = self._control_at(solution["result"], act_idx)
                     control = self._apply_ancillary(
@@ -710,21 +757,22 @@ class PaperSystemRunner:
                     controls_to_apply[chaser_id] = self._clip_control(control)
 
                 next_states = {}
-                next_anom = anom + self.config.anom_step
+                applied_controls: Dict[str, np.ndarray] = {}
                 for chaser_id, control in controls_to_apply.items():
-                    propagated = self._propagate_truth(
-                        states[chaser_id], control, anom
+                    applied_control = self._apply_target_barrier_control(
+                        state=states[chaser_id],
+                        control=control,
+                        anom=anom,
+                        phase=active_phase,
                     )
-                    filtered, event = self._enforce_active_target_safety(
-                        propagated,
-                        next_anom,
-                        active_phase,
-                        chaser_id=chaser_id,
+                    applied_control = self._clip_control(applied_control)
+                    applied_controls[chaser_id] = applied_control
+                    next_states[chaser_id] = self._propagate_truth(
+                        states[chaser_id],
+                        applied_control,
+                        anom,
                     )
-                    next_states[chaser_id] = filtered
-                    if event is not None:
-                        target_safety_filter_events.append(event)
-                for chaser_id, control in controls_to_apply.items():
+                for chaser_id, control in applied_controls.items():
                     controls[chaser_id].append(control.tolist())
 
                 states.update(next_states)
@@ -739,25 +787,26 @@ class PaperSystemRunner:
                 attitude_history.append(self.target.orientation_at(anom).tolist())
                 angular_velocity_history.append(self.target.angular_velocity_at(anom).tolist())
 
-                primary_id = chasers[0].chaser_id
-                primary_states = np.asarray(actual[primary_id], dtype=float)
-                primary_controls = np.asarray(controls[primary_id], dtype=float)
-                if len(primary_states) >= 2 and len(primary_controls) >= 1:
-                    window_len = min(self.smid_window, len(primary_states))
-                    window_states = primary_states[-window_len:]
-                    window_controls = primary_controls[-(window_len - 1):]
-                    window_start = anom_history[-window_len]
-                    fss, estimates, record = self.smid.update(
-                        feasible_sets=belief.feasible_sets,
-                        estimates=belief.estimates,
-                        states=window_states,
-                        controls=window_controls,
-                        start_anom=window_start,
-                        anom_step=self.config.anom_step,
-                        dynamics_context=self._smid_context(),
-                    )
-                    belief = ParameterBelief(feasible_sets=fss, estimates=estimates)
-                    smid_records.append(record.to_dict())
+                if act_idx == act_count - 1:
+                    primary_id = chasers[0].chaser_id
+                    primary_states = np.asarray(actual[primary_id], dtype=float)
+                    primary_controls = np.asarray(controls[primary_id], dtype=float)
+                    if len(primary_states) >= 2 and len(primary_controls) >= 1:
+                        window_len = min(self.smid_window, len(primary_states))
+                        window_states = primary_states[-window_len:]
+                        window_controls = primary_controls[-(window_len - 1):]
+                        window_start = anom_history[-window_len]
+                        fss, estimates, record = self.smid.update(
+                            feasible_sets=belief.feasible_sets,
+                            estimates=belief.estimates,
+                            states=window_states,
+                            controls=window_controls,
+                            start_anom=window_start,
+                            anom_step=self.config.anom_step,
+                            dynamics_context=self._smid_context(),
+                        )
+                        belief = ParameterBelief(feasible_sets=fss, estimates=estimates)
+                        smid_records.append(record.to_dict())
 
                 feasible_history.append(_serial_ranges(belief.feasible_sets))
                 estimate_history.append(_serial_estimates(belief.estimates))
@@ -834,7 +883,10 @@ class PaperSystemRunner:
                 "target_safety_tolerance": self.target_safety_tolerance,
                 "min_chaser_separation": self.min_chaser_separation,
                 "pairwise_spacing_safe": spacing_ok,
-                "target_safety_filter_events": target_safety_filter_events,
+                "target_barrier": {
+                    "enabled": True,
+                    "radial_buffer": self.target_barrier_buffer,
+                },
                 "phase_updates": phase_history,
                 "sample_phase_history": sample_phase_history,
                 "chaser_assignments": [
@@ -1101,9 +1153,9 @@ class PaperSystemRunner:
         if solution["phase"].operation != "docking":
             return final_reference
         nominal_reference = self._nominal_state_at(
-            solution["result"], index, final_reference
+            solution["result"], index + 1, final_reference
         )
-        return 0.8 * nominal_reference + 0.2 * final_reference
+        return 0.25 * nominal_reference + 0.75 * final_reference
 
     def _actuation_steps_for_phase(
         self,
@@ -1144,6 +1196,11 @@ class PaperSystemRunner:
         if nominal.ndim != 2 or nominal.shape[1] == 0:
             return control
         nominal_index = min(nominal_index, nominal.shape[1] - 1)
+        local_tube_config = dict(tube_config)
+        profile = local_tube_config.get("profile")
+        if profile is not None and len(profile.phi) > 0:
+            profile_index = min(nominal_index, len(profile.phi) - 1)
+            local_tube_config["phi"] = np.asarray(profile.phi[profile_index], dtype=float)
         correction = ancillary_controller(
             t=anom,
             t_p=belief_params["time_periapsis"],
@@ -1155,7 +1212,7 @@ class PaperSystemRunner:
             mu=belief_params["mu"],
             semi_major_axis=belief_params["semi_major_axis"],
             specific_angular_momentum=belief_params["specific_angular_momentum"],
-            **tube_config,
+            **local_tube_config,
         )
         return np.asarray(control, dtype=float) + np.asarray(correction, dtype=float)
 
@@ -1193,7 +1250,20 @@ class PaperSystemRunner:
         desired_accel = kp * position_error + kd * velocity_error
         model_accel = A_val[3:] @ state + d_val[3:]
         feedback = desired_accel - model_accel
-        return 0.25 * np.asarray(control, dtype=float) + feedback
+        if phase.operation == "docking":
+            orientation = self.target.orientation_at(anom)
+            body_position_error = target_frame_position(position_error, orientation)
+            body_velocity_error = target_frame_position(velocity_error, orientation)
+            axial_body_accel = np.array(
+                [
+                    0.0,
+                    0.0,
+                    30.0 * body_position_error[2] + 18.0 * body_velocity_error[2],
+                ],
+                dtype=float,
+            )
+            feedback = feedback + rotating_docking_point(axial_body_accel, orientation)
+        return np.asarray(control, dtype=float) + feedback
 
     def _clip_control(self, control: np.ndarray) -> np.ndarray:
         clipped = np.asarray(control, dtype=float).copy()
@@ -1206,58 +1276,75 @@ class PaperSystemRunner:
                 clipped[idx] = min(float(upper), clipped[idx])
         return clipped
 
+    def _apply_target_barrier_control(
+        self,
+        *,
+        state: np.ndarray,
+        control: np.ndarray,
+        anom: float,
+        phase: MissionPhase,
+    ) -> np.ndarray:
+        if phase.operation != "docking":
+            return np.asarray(control, dtype=float)
+
+        position = np.asarray(state[:3], dtype=float)
+        velocity = np.asarray(state[3:], dtype=float)
+        orientation = self.target.orientation_at(anom)
+        p_body = target_frame_position(position, orientation)
+        v_body = target_frame_position(velocity, orientation)
+        radial_norm = float(np.linalg.norm(p_body[:2]))
+        if radial_norm <= 1.0e-9:
+            return np.asarray(control, dtype=float)
+
+        half_length = self.target.half_length * (1.0 + self.target.tolerance)
+        if abs(float(p_body[2])) > half_length + self.target_barrier_buffer:
+            return np.asarray(control, dtype=float)
+
+        radial_clearance = radial_norm - self.target.radius * (1.0 + self.target.tolerance)
+        if radial_clearance >= self.target_barrier_buffer:
+            return np.asarray(control, dtype=float)
+
+        radial_dir_body = np.array(
+            [p_body[0] / radial_norm, p_body[1] / radial_norm, 0.0],
+            dtype=float,
+        )
+        radial_velocity = float(np.dot(v_body, radial_dir_body))
+        min_outward_velocity = -1.5 * max(radial_clearance, 0.0)
+        if radial_velocity >= min_outward_velocity:
+            return np.asarray(control, dtype=float)
+
+        required_delta_v = min_outward_velocity - radial_velocity
+        correction_body = (
+            required_delta_v / max(self.config.anom_step, 1.0e-9)
+        ) * radial_dir_body
+        correction_lvlh = rotating_docking_point(correction_body, orientation)
+        return np.asarray(control, dtype=float) + correction_lvlh
+
     def _propagate_truth(self, state: np.ndarray, control: np.ndarray, anom: float) -> np.ndarray:
         matrices, _, _ = orbital_ellp_drag(
             anom_step=self.config.anom_step, **self.truth.dynamics_params()
         )
         A_func, B_func, _, _, d_func = matrices
-        A_val = np.asarray(
-            A_func(anom, self.truth.time_periapsis),
-            dtype=float,
-        )
         B_val = np.asarray(B_func(), dtype=float)
-        d_val = np.asarray(
-            d_func(anom, self.truth.time_periapsis),
-            dtype=float,
-        )
-        return np.asarray(state, dtype=float) + (
-            A_val @ state + B_val @ control + d_val
-        ) * self.config.anom_step
 
-    def _enforce_active_target_safety(
-        self,
-        state: np.ndarray,
-        anom: float,
-        phase: MissionPhase,
-        *,
-        chaser_id: str,
-    ) -> Tuple[np.ndarray, Optional[Dict[str, Any]]]:
-        state = np.asarray(state, dtype=float).copy()
-        margin_before = self._active_margin_for_state(state, anom, phase)
-        if margin_before >= -self.target_safety_tolerance:
-            return state, None
+        def derivative(local_state: np.ndarray, local_anom: float) -> np.ndarray:
+            A_val = np.asarray(
+                A_func(local_anom, self.truth.time_periapsis),
+                dtype=float,
+            )
+            d_val = np.asarray(
+                d_func(local_anom, self.truth.time_periapsis),
+                dtype=float,
+            )
+            return A_val @ local_state + B_val @ control + d_val
 
-        original_position = state[:3].copy()
-        if phase.operation == "docking":
-            state[:3] = self._project_outside_cylinder(state[:3], anom)
-        else:
-            state[:3] = self._project_outside_rendezvous_sphere(state[:3])
-
-        displacement = state[:3] - original_position
-        displacement_norm = float(np.linalg.norm(displacement))
-        if displacement_norm > 1.0e-12:
-            outward = displacement / displacement_norm
-            inward_speed = float(np.dot(state[3:], outward))
-            if inward_speed < 0.0:
-                state[3:] = state[3:] - inward_speed * outward
-
-        return state, {
-            "chaser_id": chaser_id,
-            "phase": phase.name,
-            "anom": float(anom),
-            "margin_before": float(margin_before),
-            "margin_after": float(self._active_margin_for_state(state, anom, phase)),
-        }
+        dt = self.config.anom_step
+        state = np.asarray(state, dtype=float)
+        k1 = derivative(state, anom)
+        k2 = derivative(state + 0.5 * dt * k1, anom + 0.5 * dt)
+        k3 = derivative(state + 0.5 * dt * k2, anom + 0.5 * dt)
+        k4 = derivative(state + dt * k3, anom + dt)
+        return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
     def _active_margin_for_state(
         self, state: np.ndarray, anom: float, phase: MissionPhase
@@ -1272,36 +1359,6 @@ class PaperSystemRunner:
             target_radius=self.target.rendezvous_radius,
             tube_radius=0.0,
         )
-
-    def _project_outside_rendezvous_sphere(self, position: np.ndarray) -> np.ndarray:
-        position = np.asarray(position, dtype=float)
-        norm = float(np.linalg.norm(position))
-        safe_radius = self.target.rendezvous_radius + 1.0e-5
-        if norm <= 1.0e-12:
-            return np.array([safe_radius, 0.0, 0.0], dtype=float)
-        return position / norm * safe_radius
-
-    def _project_outside_cylinder(self, position: np.ndarray, anom: float) -> np.ndarray:
-        orientation = self.target.orientation_at(anom)
-        p_body = target_frame_position(position, orientation)
-        safe_radius = self.target.radius * (1.0 + self.target.tolerance) + 1.0e-5
-        safe_half = self.target.half_length * (1.0 + self.target.tolerance) + 1.0e-5
-
-        radial_norm = float(np.linalg.norm(p_body[:2]))
-        radial_push = safe_radius - radial_norm
-        axial_push = safe_half - abs(float(p_body[2]))
-        projected = p_body.copy()
-
-        if radial_norm > 1.0e-12 and radial_push <= axial_push:
-            projected[:2] = projected[:2] / radial_norm * safe_radius
-        elif axial_push < radial_push:
-            sign = 1.0 if projected[2] >= 0.0 else -1.0
-            projected[2] = sign * safe_half
-        else:
-            projected[0] = safe_radius
-            projected[1] = 0.0
-
-        return rotating_docking_point(projected, orientation)
 
     def _smid_context(self) -> Dict[str, Any]:
         return {

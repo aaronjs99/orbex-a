@@ -62,6 +62,48 @@ def rotating_docking_point(
     return rotation @ np.asarray(docking_point_body, dtype=float)
 
 
+def rotating_body_point_velocity(
+    body_point: np.ndarray, orientation: np.ndarray, orientation_rate: np.ndarray
+) -> np.ndarray:
+    """Derivative of ``R(roll, pitch, yaw) @ body_point`` for body-fixed points."""
+    roll, pitch, yaw = np.asarray(orientation, dtype=float)
+    roll_rate, pitch_rate, yaw_rate = np.asarray(orientation_rate, dtype=float)
+    cr, sr = np.cos(roll), np.sin(roll)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+
+    d_r_d_roll = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [-sr * sy + cr * sp * cy, -sr * cy - cr * sp * sy, -cr * cp],
+            [cr * sy + sr * sp * cy, cr * cy - sr * sp * sy, -sr * cp],
+        ],
+        dtype=float,
+    )
+    d_r_d_pitch = np.array(
+        [
+            [-sp * cy, sp * sy, cp],
+            [sr * cp * cy, -sr * cp * sy, sr * sp],
+            [-cr * cp * cy, cr * cp * sy, -cr * sp],
+        ],
+        dtype=float,
+    )
+    d_r_d_yaw = np.array(
+        [
+            [-cp * sy, -cp * cy, 0.0],
+            [cr * cy - sr * sp * sy, -cr * sy - sr * sp * cy, 0.0],
+            [sr * cy + cr * sp * sy, -sr * sy + cr * sp * cy, 0.0],
+        ],
+        dtype=float,
+    )
+    rotation_dot = (
+        roll_rate * d_r_d_roll
+        + pitch_rate * d_r_d_pitch
+        + yaw_rate * d_r_d_yaw
+    )
+    return rotation_dot @ np.asarray(body_point, dtype=float)
+
+
 def rendezvous_margin(
     position: np.ndarray, target_radius: float, tube_radius: float = 0.0
 ) -> float:

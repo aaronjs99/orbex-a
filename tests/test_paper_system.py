@@ -3,6 +3,7 @@ from unittest.mock import patch
 import numpy as np
 
 from orbexa.control.mpc_controller import MPCController
+from orbexa.control import rotating_body_point_velocity, rotating_docking_point
 from orbexa.core.config import SimulationConfig
 from orbexa.simulation.paper_system import PaperSystemRunner
 from orbexa.solvers import SolverResult
@@ -45,6 +46,7 @@ def test_config_drives_paper_target_geometry_and_single_assignment():
     assert runner.target.radius == 0.8
     assert runner.target.height == 0.6
     assert runner.target.half_length == 0.3
+    assert np.allclose(config.target.initial_angular_velocity, [-0.06, 0.15, -0.03])
     assert config.target.radius == runner.target.radius
     assert config.target.height == runner.target.height
     assert config.target.half_length == runner.target.half_length
@@ -58,7 +60,21 @@ def test_config_drives_paper_target_geometry_and_single_assignment():
     wrapped_error = np.mod(chaser.docking_azimuth - expected_azimuth + np.pi, 2.0 * np.pi) - np.pi
     assert np.isclose(wrapped_error, 0.0)
     assert np.isclose(np.linalg.norm(chaser.docking_point_body[:2]), 0.8 + config.target.docking_standoff)
-    assert np.isclose(chaser.docking_point_body[2], 0.0)
+    assert abs(chaser.docking_point_body[2]) <= 0.8 * config.target.half_length
+
+    eps = 1.0e-6
+    point = chaser.docking_point_body
+    orientation = runner.target.orientation_at(0.4)
+    finite_difference = (
+        rotating_docking_point(point, runner.target.orientation_at(0.4 + eps))
+        - rotating_docking_point(point, runner.target.orientation_at(0.4 - eps))
+    ) / (2.0 * eps)
+    analytic = rotating_body_point_velocity(
+        point,
+        orientation,
+        runner.target.angular_velocity_at(0.4),
+    )
+    assert np.allclose(analytic, finite_difference, atol=1.0e-8)
 
 
 def test_single_paper_system_keeps_truth_fixed_while_belief_smid_updates():
@@ -66,6 +82,7 @@ def test_single_paper_system_keeps_truth_fixed_while_belief_smid_updates():
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
+        actuation_steps=1,
         smid_window=2,
     )
 
@@ -84,6 +101,7 @@ def test_single_paper_system_keeps_truth_fixed_while_belief_smid_updates():
     assert result.metadata["max_mpc_updates"] == 2
     assert result.actual_trajectories["chaser_1"]
     assert result.nominal_trajectories["chaser_1"]
+    assert max(result.tube_radius_history) > 0.0
 
 
 def test_nonlinear_path_passes_rendezvous_and_docking_constraints_to_solver():
@@ -97,6 +115,7 @@ def test_nonlinear_path_passes_rendezvous_and_docking_constraints_to_solver():
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
+        actuation_steps=1,
         smid_window=2,
     )
 
@@ -117,6 +136,7 @@ def test_nonlinear_path_passes_rendezvous_and_docking_constraints_to_solver():
     assert operations[-1] == "docking"
     assert calls[0]["target_params"]["active_safety_model"] == "bounding_sphere"
     assert calls[-1]["target_params"]["active_safety_model"] == "rotating_cylinder_union"
+    assert calls[-1]["target_params"]["angular_velocity"] == [-0.06, 0.15, -0.03]
     assert all(call["target_params"]["tube_radius"] >= 0.0 for call in calls)
     assert len(result.sample_phase_history) == len(result.anom_history)
     assert result.sample_phase_history[-1] == "docking"
@@ -138,6 +158,7 @@ def test_multi_chaser_assignments_and_pairwise_constraints_are_executable():
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
+        actuation_steps=1,
         smid_window=2,
     )
 
@@ -156,7 +177,7 @@ def test_multi_chaser_assignments_and_pairwise_constraints_are_executable():
         normal = np.asarray(entry["docking_normal_body"], dtype=float)
         assert entry["docking_surface"] == "cylinder_side"
         assert np.isclose(np.linalg.norm(normal), 1.0)
-        assert np.isclose(point[2], 0.0)
+        assert abs(point[2]) <= 0.8 * runner.target.half_length
         assert np.linalg.norm(point[:2]) > runner.target.radius
     assert any(call.get("pairwise_constraints") for call in calls)
     assert result.pairwise_spacing[-1]
@@ -168,6 +189,7 @@ def test_renderer_and_from_data_regenerate_required_artifacts(tmp_path):
         solver_backend="scipy",
         approximation="linearized",
         horizon_steps=4,
+        actuation_steps=1,
         smid_window=2,
     )
 

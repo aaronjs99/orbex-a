@@ -50,6 +50,22 @@ class GekkoSolver(SolverBase):
         self._states = None
         self._inputs = None
 
+    @staticmethod
+    def _tait_bryan_rotation_expr(angles, solver):
+        """GEKKO-compatible version of the repository Tait-Bryan rotation."""
+        roll, pitch, yaw = angles
+        cr = solver.cos(roll)
+        sr = solver.sin(roll)
+        cp = solver.cos(pitch)
+        sp = solver.sin(pitch)
+        cy = solver.cos(yaw)
+        sy = solver.sin(yaw)
+        return [
+            [cp * cy, -cp * sy, sp],
+            [cr * sy + sr * sp * cy, cr * cy - sr * sp * sy, -sr * cp],
+            [sr * sy - cr * sp * cy, sr * cy + cr * sp * sy, cr * cp],
+        ]
+
     def setup(self, problem: MPCProblem) -> None:
         """
         Set up GEKKO optimization model.
@@ -175,13 +191,33 @@ class GekkoSolver(SolverBase):
             half_length = float(target_params.get("target_half_length", 0.0))
             tube_radius = float(target_params.get("tube_radius", 0.0))
             orientation = np.asarray(target_params.get("orientation", np.zeros(3)))
-            rotation = tait_bryan_to_rotation_matrix(orientation)
-            body_from_lvlh = rotation.T
+            angular_velocity = np.asarray(
+                target_params.get("angular_velocity", np.zeros(3)), dtype=float
+            )
+            if np.linalg.norm(angular_velocity) > 0.0:
+                angles = [
+                    solver.Param(
+                        value=orientation[i] + angular_velocity[i] * solver.time
+                    )
+                    for i in range(3)
+                ]
+                rotation = self._tait_bryan_rotation_expr(
+                    angles,
+                    solver,
+                )
+                body_from_lvlh = [
+                    [rotation[j][i] for j in range(3)] for i in range(3)
+                ]
+            else:
+                rotation = tait_bryan_to_rotation_matrix(orientation)
+                body_from_lvlh = rotation.T
 
             p_body = []
             for i in range(3):
                 p_body.append(
                     sum(body_from_lvlh[i, j] * self._states[j] for j in range(3))
+                    if isinstance(body_from_lvlh, np.ndarray)
+                    else sum(body_from_lvlh[i][j] * self._states[j] for j in range(3))
                 )
 
             radial_margin = (

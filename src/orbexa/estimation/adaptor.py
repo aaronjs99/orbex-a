@@ -25,6 +25,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Any, Optional, Union
 from gekko import GEKKO
+from scipy.optimize import least_squares
 
 from orbexa.utils import thread_worker
 from orbexa.core.dynamics import orbital_ellp_drag
@@ -454,6 +455,9 @@ class SMIDAdaptor:
         remote: bool = False,
         disp: bool = False,
         max_iter: int = 120,
+        time_series_prior_weight: float = 0.15,
+        time_series_update_gain: float = 1.0,
+        minimum_widths: Optional[Dict[str, float]] = None,
     ):
         self.parameter_keys = tuple(parameter_keys)
         self.error_bound = float(error_bound)
@@ -465,6 +469,11 @@ class SMIDAdaptor:
         self.remote = bool(remote)
         self.disp = bool(disp)
         self.max_iter = int(max_iter)
+        self.time_series_prior_weight = float(time_series_prior_weight)
+        self.time_series_update_gain = float(np.clip(time_series_update_gain, 0.0, 1.0))
+        self.minimum_widths = {
+            key: float(value) for key, value in (minimum_widths or {}).items()
+        }
         self.records: List[SMIDRecord] = []
 
     def update(
@@ -508,23 +517,46 @@ class SMIDAdaptor:
             parameters=estimates_before,
             dynamics_context=dynamics_context,
         )
+        ts_estimates, ts_error, ts_status = self._time_series_estimate(
+            feasible_sets=fss_before,
+            estimates=estimates_before,
+            states=states,
+            controls=controls,
+            start_anom=start_anom,
+            anom_step=anom_step,
+            dynamics_context=dynamics_context,
+        )
 
         if prediction_error <= self.prediction_error_threshold:
+            estimates_after = (
+                self._blend_estimates(
+                    estimates_before,
+                    ts_estimates,
+                    fss_before,
+                    self.time_series_update_gain,
+                )
+                if ts_status.startswith("ok")
+                else estimates_before
+            )
             record = self._record(
                 start_anom=start_anom,
                 states=states,
                 accepted=False,
-                reason="prediction_error_below_threshold",
+                reason=(
+                    "time_series_refined_below_threshold"
+                    if ts_status.startswith("ok")
+                    else "prediction_error_below_threshold"
+                ),
                 fss_before=fss_before,
                 fss_candidate=fss_before,
                 fss_after=fss_before,
                 estimates_before=estimates_before,
-                estimates_after=estimates_before,
+                estimates_after=estimates_after,
                 prediction_error=prediction_error,
-                verification_error=None,
-                solve_status={"trigger": "skipped"},
+                verification_error=ts_error if ts_status.startswith("ok") else None,
+                solve_status={"trigger": "skipped", "time_series": ts_status},
             )
-            return feasible_sets, estimates, record
+            return feasible_sets, estimates_after, record
 
         candidate: Dict[str, Tuple[float, float]] = {}
         solve_status: Dict[str, str] = {}
@@ -558,6 +590,7 @@ class SMIDAdaptor:
                 new_lower, new_upper = float(lower), float(upper)
                 solve_status[f"{key}_interval"] = "invalid_candidate_preserved"
             candidate[key] = (float(new_lower), float(new_upper))
+        candidate = self._apply_minimum_widths(candidate, fss_before)
 
         verified, verified_estimates, verification_error, verify_status = (
             self._verify_candidate(
@@ -570,15 +603,33 @@ class SMIDAdaptor:
             )
         )
         solve_status["verification"] = verify_status
+        solve_status["time_series"] = ts_status
 
         if verified and verification_error <= self.error_bound:
             accepted = True
             reason = "verified"
             fss_after = candidate
+            base_estimates = (
+                self._blend_estimates(
+                    estimates_before,
+                    ts_estimates,
+                    candidate,
+                    self.time_series_update_gain,
+                )
+                if ts_status.startswith("ok")
+                else verified_estimates
+            )
             estimates_after = {
                 key: float(np.clip(verified_estimates[key], *candidate[key]))
                 for key in self.parameter_keys
             }
+            for key in self.parameter_keys:
+                estimates_after[key] = float(
+                    np.clip(
+                        0.35 * estimates_after[key] + 0.65 * base_estimates[key],
+                        *candidate[key],
+                    )
+                )
         else:
             accepted = False
             reason = "verification_failed"
@@ -600,6 +651,40 @@ class SMIDAdaptor:
             solve_status=solve_status,
         )
         return fss_after, estimates_after, record
+
+    def _apply_minimum_widths(
+        self,
+        candidate: Dict[str, Tuple[float, float]],
+        previous: Dict[str, Tuple[float, float]],
+    ) -> Dict[str, Tuple[float, float]]:
+        adjusted = self._copy_ranges(candidate)
+        for key, min_width in self.minimum_widths.items():
+            if key not in adjusted or min_width <= 0.0:
+                continue
+            lower, upper = adjusted[key]
+            prev_lower, prev_upper = previous[key]
+            previous_width = max(float(prev_upper) - float(prev_lower), 0.0)
+            width_floor = min(float(min_width), previous_width)
+            if width_floor <= 0.0 or upper - lower >= width_floor:
+                continue
+            center = 0.5 * (lower + upper)
+            half_width = 0.5 * width_floor
+            center = float(np.clip(center, prev_lower + half_width, prev_upper - half_width))
+            adjusted[key] = (center - half_width, center + half_width)
+        return adjusted
+
+    def _blend_estimates(
+        self,
+        previous: Dict[str, float],
+        refined: Dict[str, float],
+        feasible_sets: Dict[str, Tuple[float, float]],
+        gain: float,
+    ) -> Dict[str, float]:
+        blended = {}
+        for key in self.parameter_keys:
+            value = (1.0 - gain) * float(previous[key]) + gain * float(refined[key])
+            blended[key] = float(np.clip(value, *feasible_sets[key]))
+        return blended
 
     def prediction_error(
         self,
@@ -626,6 +711,89 @@ class SMIDAdaptor:
                 A_val @ predicted + B_val @ controls[idx] + d_val
             ) * anom_step
         return float(np.linalg.norm(predicted - states[-1]))
+
+    def _time_series_estimate(
+        self,
+        *,
+        feasible_sets: Dict[str, Tuple[float, float]],
+        estimates: Dict[str, float],
+        states: np.ndarray,
+        controls: np.ndarray,
+        start_anom: float,
+        anom_step: float,
+        dynamics_context: Dict[str, Any],
+    ) -> Tuple[Dict[str, float], Optional[float], str]:
+        if len(states) < 2:
+            return estimates, None, "skipped:insufficient_window"
+
+        lower = np.array([feasible_sets[key][0] for key in self.parameter_keys], dtype=float)
+        upper = np.array([feasible_sets[key][1] for key in self.parameter_keys], dtype=float)
+        span = np.maximum(upper - lower, 1.0e-15)
+        z0 = np.array(
+            [
+                (float(estimates[key]) - lower[idx]) / span[idx]
+                for idx, key in enumerate(self.parameter_keys)
+            ],
+            dtype=float,
+        )
+        z0 = np.clip(z0, 0.0, 1.0)
+        residual_scale = max(self.error_bound, 1.0e-6)
+
+        def unpack(z):
+            values = lower + np.clip(z, 0.0, 1.0) * span
+            return {
+                key: float(values[idx]) for idx, key in enumerate(self.parameter_keys)
+            }
+
+        def residual(z):
+            parameter_values = unpack(z)
+            params = dict(dynamics_context)
+            params.update(parameter_values)
+            params["specific_angular_momentum"] = None
+            matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
+            A_func, B_func, _, _, d_func = matrices
+            B_val = np.asarray(B_func(), dtype=float)
+            pieces = []
+            for idx in range(len(states) - 1):
+                q_val = start_anom + idx * anom_step
+                A_val = np.asarray(
+                    A_func(q_val, params.get("time_periapsis", 0.0)),
+                    dtype=float,
+                )
+                d_val = np.asarray(
+                    d_func(q_val, params.get("time_periapsis", 0.0)),
+                    dtype=float,
+                )
+                predicted = states[idx] + (
+                    A_val @ states[idx] + B_val @ controls[idx] + d_val
+                ) * anom_step
+                error = np.asarray(states[idx + 1] - predicted, dtype=float)
+                pieces.append(error[:3] / residual_scale)
+                pieces.append(2.0 * error[3:] / residual_scale)
+            pieces.append(self.time_series_prior_weight * (np.asarray(z) - z0))
+            return np.concatenate(pieces)
+
+        try:
+            result = least_squares(
+                residual,
+                z0,
+                bounds=(np.zeros_like(z0), np.ones_like(z0)),
+                loss="soft_l1",
+                f_scale=1.0,
+                max_nfev=80,
+                xtol=1.0e-10,
+                ftol=1.0e-10,
+                gtol=1.0e-10,
+            )
+            refined = unpack(result.x)
+            rms_error = float(
+                np.sqrt(np.mean(np.square(residual(result.x)[:- len(z0)])))
+                * residual_scale
+            )
+            return refined, rms_error, f"ok:nfev={result.nfev}:cost={result.cost:.3e}"
+        except Exception as exc:
+            logger.debug("SMID time-series estimate failed: %s", exc)
+            return estimates, None, f"failed:{exc}"
 
     def _solve_parameter_bound(
         self,

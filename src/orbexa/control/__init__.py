@@ -40,6 +40,7 @@ from orbexa.control.constraints import (
     CylinderConstraint,
     collision_params_from_target_config,
     rendezvous_margin,
+    rotating_body_point_velocity,
     rotating_docking_point,
     target_frame_position,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "CylinderConstraint",
     "collision_params_from_target_config",
     "rendezvous_margin",
+    "rotating_body_point_velocity",
     "rotating_docking_point",
     "target_frame_position",
 ]
