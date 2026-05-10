@@ -47,7 +47,8 @@ def test_config_drives_adtmpc_target_geometry_and_single_assignment():
     assert runner.target.radius == 0.8
     assert runner.target.height == 0.6
     assert runner.target.half_length == 0.3
-    assert np.allclose(config.target.initial_angular_velocity, [-0.06, 0.15, -0.03])
+    assert config.num_chasers == 8
+    assert np.allclose(config.target.initial_angular_velocity, [-0.09, 0.225, -0.045])
     assert config.target.radius == runner.target.radius
     assert config.target.height == runner.target.height
     assert config.target.half_length == runner.target.half_length
@@ -61,6 +62,8 @@ def test_config_drives_adtmpc_target_geometry_and_single_assignment():
     wrapped_error = np.mod(chaser.docking_azimuth - expected_azimuth + np.pi, 2.0 * np.pi) - np.pi
     assert np.isclose(wrapped_error, 0.0)
     assert np.isclose(np.linalg.norm(chaser.docking_point_body[:2]), 0.8 + config.target.docking_standoff)
+    inflated_radius = runner.target.radius * (1.0 + runner.target.tolerance)
+    assert 0.0 < np.linalg.norm(chaser.docking_point_body[:2]) - inflated_radius < 0.01
     assert abs(chaser.docking_point_body[2]) <= 0.8 * config.target.half_length
 
     eps = 1.0e-6
@@ -140,7 +143,7 @@ def test_nonlinear_path_passes_rendezvous_and_docking_constraints_to_solver():
     assert operations[-1] == "docking"
     assert calls[0]["target_params"]["active_safety_model"] == "bounding_sphere"
     assert calls[-1]["target_params"]["active_safety_model"] == "rotating_cylinder_union"
-    assert calls[-1]["target_params"]["angular_velocity"] == [-0.06, 0.15, -0.03]
+    assert calls[-1]["target_params"]["angular_velocity"] == [-0.09, 0.225, -0.045]
     assert all(call["target_params"]["tube_radius"] >= 0.0 for call in calls)
     assert len(result.sample_phase_history) == len(result.anom_history)
     assert result.sample_phase_history[-1] == "docking"
@@ -171,11 +174,11 @@ def test_multi_chaser_assignments_and_pairwise_constraints_are_executable():
 
     assert not result.success
     assert result.metadata["mission_complete"] is False
-    assert len(result.actual_trajectories) == 3
+    assert len(result.actual_trajectories) == runner.config.num_chasers
     docking_points = list(result.docking_points.values())
-    assert len({tuple(point) for point in docking_points}) == 3
+    assert len({tuple(point) for point in docking_points}) == runner.config.num_chasers
     assignments = result.metadata["chaser_assignments"]
-    assert len({entry["docking_candidate_index"] for entry in assignments}) == 3
+    assert len({entry["docking_candidate_index"] for entry in assignments}) == runner.config.num_chasers
     for entry in assignments:
         point = np.asarray(entry["docking_point_body"], dtype=float)
         normal = np.asarray(entry["docking_normal_body"], dtype=float)

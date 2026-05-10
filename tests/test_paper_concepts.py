@@ -210,7 +210,7 @@ def _synthetic_smid_window():
     return context, np.asarray(states), np.asarray(controls), dt
 
 
-def test_real_smid_shrinks_verified_feasible_set():
+def test_real_smid_shrinks_verified_feasible_set_when_gate_allows():
     context, states, controls, dt = _synthetic_smid_window()
     initial_fss = {
         "eccentricity": (0.02, 0.38),
@@ -219,7 +219,11 @@ def test_real_smid_shrinks_verified_feasible_set():
     }
     estimates = {key: np.mean(value) for key, value in initial_fss.items()}
 
-    adaptor = SMIDAdaptor(error_bound=0.15, max_iter=90)
+    adaptor = SMIDAdaptor(
+        error_bound=0.15,
+        max_iter=90,
+        observability_unique_threshold=0.0,
+    )
     fss, updated_estimates, record = adaptor.update(
         feasible_sets=initial_fss,
         estimates=estimates,
@@ -262,3 +266,23 @@ def test_failed_smid_verification_preserves_previous_fss():
     assert not record.accepted
     assert fss == initial_fss
     assert updated_estimates == estimates
+
+
+def test_smid_observability_gate_rejects_collinear_drag_columns():
+    adaptor = SMIDAdaptor(observability_unique_threshold=0.1)
+    jacobian = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.2, 0.0, 0.0],
+            [0.0, 1.0, 2.0],
+            [0.0, 0.5, 1.0],
+        ],
+        dtype=float,
+    )
+
+    observable, diagnostics = adaptor._observable_parameter_mask(jacobian)
+
+    assert observable.tolist() == [True, False, False]
+    assert diagnostics["eccentricity"]["unique_ratio"] >= 0.9
+    assert diagnostics["alpha"]["unique_ratio"] < 0.1
+    assert diagnostics["beta"]["unique_ratio"] < 0.1

@@ -3,7 +3,7 @@ anom_step: 0.015707963 # pi/200
 total_anom: 3.1415926535
 num_update_steps: 200
 decoupled_mode: true
-num_chasers: 3
+num_chasers: 8
 
 orbit:
   mu: 3.986004418e14
@@ -43,7 +43,7 @@ mpc:
 
 target:
   initial_orientation: [0.0, 0.2, -0.1]
-  initial_angular_velocity: [-0.06, 0.15, -0.03]
+  initial_angular_velocity: [-0.09, 0.225, -0.045]
   inertia:
     - [800.0, 2.0, 5.0]
     - [4.0, 450.0, 3.0]
@@ -55,7 +55,7 @@ target:
     target_half_length: 0.3
     target_radius: 0.8
   tolerance: 0.001
-  docking_standoff: 0.12
+  docking_standoff: 0.005
   assignment_strategy: "cylinder_side_approach_hungarian"
   stop_time: 5.0
   discretize_dockers: true

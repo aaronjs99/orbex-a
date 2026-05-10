@@ -16,17 +16,18 @@ python -m pip install -e ".[casadi]"
 
 GEKKO/IPOPT remains the primary nonlinear path for paper missions. SciPy/SLSQP is only a secondary linearized comparison path.
 
-## Run the Paper System
+## Run ADTMPC Missions
 
 ```bash
-orbexa-generate-demo --output results/paper_system --data-output data/paper_system --steps 450 --mission all --primary-solver gekko --run-linearized --linearized-steps 20
+python run.py
 ```
 
 `--steps` is a maximum MPC update count, not a scripted trajectory length. The
 controller replans over a fixed horizon and applies only the first control
 command(s) before solving again. The nonlinear primary run is considered valid
 only when `mission_complete` and `success` are both true.
-Use `--linearized-steps` to cap optional SciPy/SLSQP comparison artifacts.
+Use `--run-linearized --linearized-steps N` only when you want capped optional
+SciPy/SLSQP comparison artifacts.
 
 Use `--from-data` to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID.
 
