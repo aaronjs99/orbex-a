@@ -1,9 +1,0 @@
-{
-  "python.defaultInterpreterPath": "C:\\Program Files\\Python39\\python.exe",
-  "ros.distro": "noetic",
-  "python.testing.pytestArgs": [
-    "."
-  ],
-  "python.testing.unittestEnabled": false,
-  "python.testing.pytestEnabled": true
-}

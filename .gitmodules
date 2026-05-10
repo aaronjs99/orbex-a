@@ -1,6 +1,0 @@
-[submodule "writing/uclamsthesis"]
-	path = writing/uclamsthesis
-	url = git@github.com:aaronjohnsabu1999/uclamsthesis.git
-[submodule "writing/tumbling-capture-atmpc"]
-	path = writing/tumbling-capture-atmpc
-	url = git@github.com:aaronjohnsabu1999/tumbling-capture-atmpc.git

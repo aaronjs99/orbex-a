@@ -1,0 +1,74 @@
+seed: 0
+anom_step: 0.015707963 # pi/200
+total_anom: 3.1415926535
+num_update_steps: 200
+decoupled_mode: true
+num_chasers: 8
+
+orbit:
+  mu: 3.986004418e14
+  semi_major_axis: 6678136.3
+  eccentricity: 0.18
+  target_drag: 2.0e-7
+  chaser_drag: 4.5e-7
+  time_periapsis: 0.0
+  initial_conditions: [-6.0, 1.4, 0.5, 0.02, -0.008, 0.004]
+
+mpc:
+  horizon_steps:
+    rendezvous: 80
+    docking: 40
+  actuation_steps:
+    rendezvous: 20
+    docking: 2
+  state_bounds:
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+  input_bounds:
+    - {lower: -100.0, upper: 100.0}
+    - {lower: -100.0, upper: 100.0}
+    - {lower: -100.0, upper: 100.0}
+  Q: [1, 1, 1, 1, 1, 1]
+  R: [0.0001, 0.0001, 0.0001]
+  min_chaser_separation: 0.35
+  force_bounds:
+    - {lower: -7000.0, upper: 7000.0}
+    - {lower: -7000.0, upper: 7000.0}
+    - {lower: -7000.0, upper: 7000.0}
+  goal_bounds: [425.0, 475.0]
+
+target:
+  initial_orientation: [0.0, 0.2, -0.1]
+  initial_angular_velocity: [-0.09, 0.225, -0.045]
+  inertia:
+    - [800.0, 2.0, 5.0]
+    - [4.0, 450.0, 3.0]
+    - [6.0, 8.0, 200.0]
+  shape: "cylinder"
+  center: [0.0, 0.0, 0.0]
+  limits:
+    target_height: 0.6
+    target_half_length: 0.3
+    target_radius: 0.8
+  tolerance: 0.001
+  docking_standoff: 0.005
+  assignment_strategy: "cylinder_side_approach_hungarian"
+  stop_time: 5.0
+  discretize_dockers: true
+  observation_error:
+    angular_position: 4.0e-8
+    angular_velocity: 4.0e-8
+
+tube:
+  run_tube: true
+  bandwidth_0: [0.25, 0.25, 0.25]
+  boundary_layer_0: [0.002, 0.002, 0.002]
+  convergence_rate: [0.1, 0.1, 0.1]
+  sliding_gains: [0.6, 0.6, 0.6]
+  bandwidth_range:
+    lower: 0.01
+    upper: 10.0

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "orbexa"
+version = "2.0.0"
+description = "Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC"
+authors = [
+  { name = "Aaron John Sabu", email = "aaronjs@g.ucla.edu" },
+  { name = "Brett T. Lopez", email = "btlopez@ucla.edu" },
+]
+license = { text = "GPL-2.0-only" }
+readme = "README.md"
+requires-python = ">=3.8"
+
+dependencies = [
+  "numpy",
+  "scipy",
+  "gekko",
+  "matplotlib",
+  "plotly",
+  "pyyaml",
+  "keyboard",
+]
+
+[project.optional-dependencies]
+casadi = ["casadi"]
+visualization = ["mayavi"]
+all = ["casadi", "mayavi"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+orbexa-generate-demo = "orbexa.cli.generate_demo:main"
+orbexa-plot-results = "orbexa.cli.plot_results:main"
+
+[project.urls]
+Homepage = "https://github.com/aaronjohnsabu1999/orbex-a"
+Documentation = "https://github.com/aaronjohnsabu1999/orbex-a/docs"
