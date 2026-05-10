@@ -1,13 +1,14 @@
 from unittest.mock import patch
+from pathlib import Path
 
 import numpy as np
 
 from orbexa.control.mpc_controller import MPCController
 from orbexa.control import rotating_body_point_velocity, rotating_docking_point
 from orbexa.core.config import SimulationConfig
-from orbexa.simulation.paper_system import PaperSystemRunner
+from orbexa.simulation.adtmpc_mission import ADTMPCMissionRunner
 from orbexa.solvers import SolverResult
-from orbexa.visualization.demo import DemoConfig, OrbexaDemo, PaperSystemRenderer
+from orbexa.visualization.demo import DemoConfig, OrbexaDemo, ADTMPCMissionRenderer
 
 
 def _fake_solve_step(
@@ -39,9 +40,9 @@ def _fake_solve_step(
     )
 
 
-def test_config_drives_paper_target_geometry_and_single_assignment():
+def test_config_drives_adtmpc_target_geometry_and_single_assignment():
     config = SimulationConfig.load()
-    runner = PaperSystemRunner(config=config)
+    runner = ADTMPCMissionRunner(config=config)
 
     assert runner.target.radius == 0.8
     assert runner.target.height == 0.6
@@ -77,8 +78,8 @@ def test_config_drives_paper_target_geometry_and_single_assignment():
     assert np.allclose(analytic, finite_difference, atol=1.0e-8)
 
 
-def test_single_paper_system_keeps_truth_fixed_while_belief_smid_updates():
-    runner = PaperSystemRunner(
+def test_single_adtmpc_mission_keeps_truth_fixed_while_belief_smid_updates():
+    runner = ADTMPCMissionRunner(
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
@@ -111,7 +112,7 @@ def test_nonlinear_path_passes_rendezvous_and_docking_constraints_to_solver():
         calls.append(kwargs)
         return _fake_solve_step(*args, **kwargs)
 
-    runner = PaperSystemRunner(
+    runner = ADTMPCMissionRunner(
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
@@ -154,7 +155,7 @@ def test_multi_chaser_assignments_and_pairwise_constraints_are_executable():
         calls.append(kwargs)
         return _fake_solve_step(*args, **kwargs)
 
-    runner = PaperSystemRunner(
+    runner = ADTMPCMissionRunner(
         solver_backend="gekko",
         approximation="nonlinear",
         horizon_steps=4,
@@ -185,7 +186,7 @@ def test_multi_chaser_assignments_and_pairwise_constraints_are_executable():
 
 
 def test_renderer_and_from_data_regenerate_required_artifacts(tmp_path):
-    runner = PaperSystemRunner(
+    runner = ADTMPCMissionRunner(
         solver_backend="scipy",
         approximation="linearized",
         horizon_steps=4,
@@ -196,26 +197,32 @@ def test_renderer_and_from_data_regenerate_required_artifacts(tmp_path):
     with patch.object(MPCController, "solve_step", _fake_solve_step):
         result = runner.run(mission="single", steps=1)
 
-    output_dir = tmp_path / "results" / "single" / "nonlinear"
-    data_dir = tmp_path / "data" / "single" / "nonlinear"
+    session_id = "test_session"
+    output_dir = tmp_path / "results" / session_id / "single" / "nonlinear"
+    data_dir = tmp_path / "data" / session_id / "single" / "nonlinear"
     data_file = runner.save_result(result, data_dir)
 
     with patch("orbexa.visualization.demo.shutil.which", return_value=None):
-        manifest = PaperSystemRenderer(output_dir).render(result, data_file=data_file)
+        manifest = ADTMPCMissionRenderer(output_dir).render(result, data_file=data_file)
 
     required = {
         "index.html",
         "trajectory.html",
+        "diagnostics.html",
+        "tube_trajectory.html",
         "trajectory.mp4",
+        "trajectory.gif",
         "mission_data.json",
         "actual_nominal_trajectories.png",
         "tube_geometry.png",
         "control_effort.png",
         "rendezvous_margin.png",
         "docking_cylinder_margin.png",
+        "tightened_rendezvous_margin.png",
+        "tightened_docking_cylinder_margin.png",
         "active_target_margin.png",
         "smid_fss_widths.png",
-        "parameter_estimates_vs_truth.png",
+        "parameter_beliefs.png",
         "target_attitude.png",
         "target_angular_velocity.png",
         "multi_chaser_spacing.png",
@@ -234,11 +241,61 @@ def test_renderer_and_from_data_regenerate_required_artifacts(tmp_path):
             DemoConfig(
                 output_dir=tmp_path / "results",
                 data_dir=tmp_path / "data",
+                session_id=session_id,
                 mission="single",
                 from_data=True,
             )
         ).run()
 
     assert manifests[0].output_dir == output_dir
+    assert (tmp_path / "results" / session_id / "README.md").exists()
+    assert (tmp_path / "data" / session_id / "README.md").exists()
     assert (output_dir / "index.html").exists()
     assert (data_dir / "mission_data.json").exists()
+
+    generated_results = tmp_path / "generated_results"
+    generated_data = tmp_path / "generated_data"
+    with patch.object(MPCController, "solve_step", _fake_solve_step), patch(
+        "orbexa.visualization.demo.shutil.which", return_value=None
+    ):
+        generated = OrbexaDemo(
+            DemoConfig(
+                output_dir=generated_results,
+                data_dir=generated_data,
+                session_id="fresh_session",
+                mission="single",
+                steps=1,
+                require_primary_success=False,
+            )
+        ).run()
+
+    assert generated[0].output_dir == generated_results / "fresh_session" / "single" / "nonlinear"
+    assert (generated_results / "latest").is_symlink()
+    assert (generated_data / "latest").is_symlink()
+
+    multi_results = tmp_path / "multi_results"
+    multi_data = tmp_path / "multi_data"
+    with patch.object(MPCController, "solve_step", _fake_solve_step), patch(
+        "orbexa.visualization.demo.shutil.which", return_value=None
+    ), patch.object(ADTMPCMissionRenderer, "_render_gif") as gif_render:
+        def write_fake_gif(result, manifest, *, speed_multiplier=2.0):
+            path = manifest.output_dir / "trajectory.gif"
+            path.write_bytes(b"GIF89a")
+            manifest.add(path)
+
+        gif_render.side_effect = write_fake_gif
+        OrbexaDemo(
+            DemoConfig(
+                output_dir=multi_results,
+                data_dir=multi_data,
+                session_id="multi_session",
+                mission="multi",
+                steps=1,
+                require_primary_success=False,
+            )
+        ).run()
+
+    demo_gif = multi_results / "multi_session" / "demo.gif"
+    assert demo_gif.is_symlink()
+    assert demo_gif.resolve() == (multi_results / "multi_session" / "multi" / "nonlinear" / "trajectory.gif").resolve()
+    assert "demo.gif" in (multi_results / "multi_session" / "README.md").read_text(encoding="utf-8")

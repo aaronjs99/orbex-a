@@ -1,8 +1,10 @@
 # ORBEX-A
 
-ORBEX-A implements the paper system from “Capturing Tumbling Objects in Orbit with Adaptive Tube Model Predictive Control”: elliptical relative dynamics with quadratic drag, nonlinear GEKKO/IPOPT MPC constraints, dynamic tubes, SMID feasible-set adaptation, tumbling-cylinder docking, and single/multi-chaser missions.
+![ORBEX-A multi-agent ADTMPC demo](assets/demo.gif)
 
-The paper workflow is the primary surface. Legacy `mpc`, `tube`, and `adtmpc` mode helpers are retained only as compatibility wrappers for older experiments.
+ORBEX-A implements adaptive dynamic tube MPC (ADTMPC) rendezvous and docking: elliptical relative dynamics with quadratic drag, nonlinear GEKKO/IPOPT target constraints, dynamic tubes, SMID feasible-set adaptation, tumbling-cylinder docking, and single/multi-chaser missions.
+
+The ADTMPC mission workflow is the primary surface. Legacy `mpc`, `tube`, and `adtmpc` mode helpers are retained only as compatibility wrappers for older experiments.
 
 ## Install
 
@@ -12,12 +14,12 @@ pip install -e .
 
 GEKKO is the authoritative nonlinear solver path. SciPy/SLSQP is available only for labeled linearized comparison runs.
 
-## Generate Paper-System Artifacts
+## Generate ADTMPC Mission Artifacts
 
 ```bash
 orbexa-generate-demo \
-  --output results/paper_system \
-  --data-output data/paper_system \
+  --output results \
+  --data-output data \
   --steps 450 \
   --mission all \
   --primary-solver gekko \
@@ -37,19 +39,25 @@ The optional SciPy/SLSQP linearized comparison is capped separately by
 
 This writes:
 
-- `results/paper_system/single/nonlinear/`
-- `results/paper_system/multi/nonlinear/`
+- `results/<session_id>/single/nonlinear/`
+- `results/<session_id>/multi/nonlinear/`
 - optional matching `linearized/` folders
-- raw mission JSON under `data/paper_system/`
+- raw mission JSON under `data/<session_id>/`
+- editable run-note templates at `results/<session_id>/README.md` and `data/<session_id>/README.md`
+- symlinks `results/latest` and `data/latest` pointing at the newest generated session
 
-Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `trajectory.mp4`, and diagnostics for actual/nominal trajectories, tube geometry, controls, rendezvous and docking margins, SMID FSS widths, parameter estimates vs truth, target attitude/angular velocity, and multi-chaser spacing.
+Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.mp4`, `trajectory.gif`, and diagnostics for actual/nominal trajectories, tube geometry, controls, physical and tube-tightened margins, SMID FSS widths, parameter beliefs, target roll/pitch/yaw, and multi-chaser spacing. Multi-agent runs also expose `results/<session_id>/demo.gif` as a symlink to `multi/nonlinear/trajectory.gif`.
+
+Generated session artifacts stay out of git. The tracked repository preview is `assets/demo.gif`; refresh it intentionally from `results/latest/demo.gif` after a run when you want to update the README animation.
+
+The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive.
 
 Regenerate plots from saved data without rerunning solvers:
 
 ```bash
 orbexa-generate-demo \
-  --output results/paper_system \
-  --data-output data/paper_system \
+  --output results \
+  --data-output data \
   --mission all \
   --run-linearized \
   --from-data

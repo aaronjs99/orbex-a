@@ -11,7 +11,7 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Console entrypoint for paper-system artifact generation."""
+"""Console entrypoint for ADTMPC mission artifact generation."""
 
 import os
 from pathlib import Path

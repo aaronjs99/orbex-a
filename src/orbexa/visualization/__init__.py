@@ -18,9 +18,8 @@ from orbexa.visualization.demo import (
     DemoManifest,
     MissionDemo,
     OrbexaDemo,
-    PaperDemoRenderer,
-    PaperSystemManifest,
-    PaperSystemRenderer,
+    ADTMPCMissionManifest,
+    ADTMPCMissionRenderer,
 )
 
 __all__ = [
@@ -28,7 +27,6 @@ __all__ = [
     "DemoManifest",
     "MissionDemo",
     "OrbexaDemo",
-    "PaperDemoRenderer",
-    "PaperSystemManifest",
-    "PaperSystemRenderer",
+    "ADTMPCMissionManifest",
+    "ADTMPCMissionRenderer",
 ]
