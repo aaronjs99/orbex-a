@@ -153,10 +153,19 @@ class PaperSystemRenderer:
             positions = np.asarray(states, dtype=float)[:, :3]
             ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], label=f"{chaser_id} actual")
             ax.scatter(positions[0, 0], positions[0, 1], positions[0, 2], s=18)
+            nominal_labeled = False
             for nominal in result.nominal_trajectories.get(chaser_id, []):
                 nom = np.asarray(nominal, dtype=float)
                 if nom.size:
-                    ax.plot(nom[:, 0], nom[:, 1], nom[:, 2], linestyle=":", alpha=0.45)
+                    ax.plot(
+                        nom[:, 0],
+                        nom[:, 1],
+                        nom[:, 2],
+                        linestyle=":",
+                        alpha=0.25,
+                        label=f"{chaser_id} nominal horizons" if not nominal_labeled else None,
+                    )
+                    nominal_labeled = True
         frame_index = max(0, len(result.anom_history) - 1)
         self._plot_rendezvous_sphere(ax, result)
         self._plot_target_cylinder(ax, result, frame_index=frame_index)
@@ -226,6 +235,7 @@ class PaperSystemRenderer:
             filename="target_attitude.png",
             values=result.target_attitude_history,
             ylabel="attitude",
+            labels=["roll", "pitch", "yaw"],
         )
         self._target_plot(
             result,
@@ -233,6 +243,7 @@ class PaperSystemRenderer:
             filename="target_angular_velocity.png",
             values=result.target_angular_velocity_history,
             ylabel="angular velocity",
+            labels=["roll rate", "pitch rate", "yaw rate"],
         )
         self._plot_spacing(result, manifest)
 
@@ -483,10 +494,11 @@ class PaperSystemRenderer:
         filename: str,
         values: Sequence[Sequence[float]],
         ylabel: str,
+        labels: Optional[Sequence[str]] = None,
     ) -> None:
         fig, ax = plt.subplots(figsize=(9, 4.8))
         arr = np.asarray(values, dtype=float)
-        labels = ["x", "y", "z"]
+        labels = list(labels or ["x", "y", "z"])
         for idx in range(min(arr.shape[1], 3)):
             ax.plot(result.anom_history[: len(arr)], arr[:, idx], label=labels[idx])
         ax.set_xlabel("true anomaly")
@@ -526,6 +538,7 @@ class PaperSystemRenderer:
                     name=f"{chaser_id} actual",
                 )
             )
+            nominal_labeled = False
             for idx, nominal in enumerate(result.nominal_trajectories.get(chaser_id, [])):
                 nom = np.asarray(nominal, dtype=float)
                 if nom.size:
@@ -535,10 +548,12 @@ class PaperSystemRenderer:
                             y=nom[:, 1],
                             z=nom[:, 2],
                             mode="lines",
-                            name=f"{chaser_id} nominal {idx}",
-                            opacity=0.35,
+                            name=f"{chaser_id} nominal horizons" if not nominal_labeled else f"{chaser_id} nominal",
+                            showlegend=not nominal_labeled,
+                            opacity=0.22,
                         )
                     )
+                    nominal_labeled = True
         frame_index = max(0, len(result.anom_history) - 1)
         cx, cy, cz = self._cylinder_mesh(result, frame_index)
         fig.add_trace(

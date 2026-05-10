@@ -284,7 +284,7 @@ def ancillary_controller(
 
     state_mod = np.array(
         [
-            np.dot(A_nom_val[i + 3], r_tilde)
+            -np.dot(A_nom_val[i + 3], r_tilde)
             - lambda_gain[i] * v_tilde[i]
             - sat_s_phi[i] * K[i]
             for i in range(3)

@@ -6,6 +6,7 @@ from orbexa.control.constraints import (
     rotating_docking_point,
 )
 from orbexa.control.dynamic_tube_model import (
+    ancillary_controller,
     calc_delta,
     input_tightening_from_profile,
     propagate_tube_profile,
@@ -129,6 +130,29 @@ def test_tube_profile_expands_with_larger_feasible_set():
     input_tightening = input_tightening_from_profile(wide, [0.1, 0.1, 0.1])
     assert input_tightening.shape == (3,)
     assert np.all(input_tightening >= 0.0)
+
+
+def test_ancillary_controller_cancels_nominal_error_dynamics():
+    a_nom = np.zeros((6, 6), dtype=float)
+    a_nom[3, 0] = 2.0
+    control = ancillary_controller(
+        t=0.0,
+        t_p=0.0,
+        t_f=0.1,
+        dt=0.1,
+        mean_motion=0.001,
+        nom_state=np.zeros(6),
+        act_state=np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        lambda_gain=[0.0, 0.0, 0.0],
+        alpha=[0.0, 0.0, 0.0],
+        phi=[1.0, 1.0, 1.0],
+        eccentricity_range=(0.0, 0.0),
+        aRange=(0.0, 0.0),
+        bRange=(0.0, 0.0),
+        A_nom_val=a_nom,
+    )
+
+    np.testing.assert_allclose(control, np.array([-2.0, 0.0, 0.0]))
 
 
 def test_linearized_constraints_match_nonlinear_margin_at_expansion_point():
