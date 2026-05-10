@@ -137,6 +137,7 @@ class ParameterBelief:
                 "alpha": (0.0, 5.5e-7),
                 "beta": (0.0, 8.55e-7),
             }
+            estimates = {key: float(np.mean(value)) for key, value in ranges.items()}
         else:
             eccentricity = float(config.orbit.eccentricity)
             alpha = float(config.orbit.target_drag)
@@ -149,15 +150,13 @@ class ParameterBelief:
                 "alpha": (max(0.0, 0.5 * alpha), 1.5 * alpha),
                 "beta": (max(0.0, 0.5 * beta), 1.5 * beta),
             }
-        estimates = {key: float(np.mean(value)) for key, value in ranges.items()}
-        if config is not None:
-            estimates.update(
-                {
-                    "eccentricity": float(config.orbit.eccentricity),
-                    "alpha": float(config.orbit.target_drag),
-                    "beta": float(config.orbit.chaser_drag),
-                }
-            )
+            # Start from a reproducible feasible point rather than the plant
+            # truth; SMID/time-series updates are responsible for adaptation.
+            rng = np.random.default_rng(int(config.seed))
+            estimates = {
+                key: float(rng.uniform(low=value[0], high=value[1]))
+                for key, value in ranges.items()
+            }
         return cls(feasible_sets=ranges, estimates=estimates)
 
     def copy(self) -> "ParameterBelief":

@@ -94,6 +94,9 @@ def test_single_adtmpc_mission_keeps_truth_fixed_while_belief_smid_updates():
     assert result.truth["alpha"] == 2.0e-7
     assert result.truth["beta"] == 4.5e-7
     assert result.initial_belief["feasible_sets"] != {}
+    for key, estimate in result.initial_belief["estimates"].items():
+        lower, upper = result.initial_belief["feasible_sets"][key]
+        assert lower <= estimate <= upper
     assert result.smid_records
     assert result.phase_history == ["rendezvous", "rendezvous"]
     assert result.sample_phase_history == ["rendezvous", "rendezvous", "rendezvous"]
@@ -222,7 +225,7 @@ def test_renderer_and_from_data_regenerate_required_artifacts(tmp_path):
         "tightened_docking_cylinder_margin.png",
         "active_target_margin.png",
         "smid_fss_widths.png",
-        "parameter_beliefs.png",
+        "parameter_estimates_vs_truth.png",
         "target_attitude.png",
         "target_angular_velocity.png",
         "multi_chaser_spacing.png",

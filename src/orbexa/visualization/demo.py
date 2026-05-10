@@ -110,7 +110,7 @@ class ADTMPCMissionManifest:
                 "tightened_docking_cylinder_margin.png",
                 "active_target_margin.png",
                 "smid_fss_widths.png",
-                "parameter_beliefs.png",
+                "parameter_estimates_vs_truth.png",
                 "target_attitude.png",
                 "target_angular_velocity.png",
                 "multi_chaser_spacing.png",
@@ -526,7 +526,7 @@ class ADTMPCMissionRenderer:
             axis.grid(True, alpha=0.25)
         axes[-1].set_xlabel("true anomaly")
         axes[0].legend(fontsize=8)
-        manifest.add(self._save_matplotlib(fig, "parameter_beliefs.png"))
+        manifest.add(self._save_matplotlib(fig, "parameter_estimates_vs_truth.png"))
 
     def _target_plot(
         self,
@@ -1049,7 +1049,7 @@ class ADTMPCMissionRenderer:
 <img src="tightened_docking_cylinder_margin.png" alt="Tube-tightened docking cylinder margin">
 <img src="active_target_margin.png" alt="Active target safety margin">
 <img src="smid_fss_widths.png" alt="SMID feasible-set widths">
-<img src="parameter_beliefs.png" alt="Parameter beliefs">
+<img src="parameter_estimates_vs_truth.png" alt="Parameter estimates vs truth">
 <img src="target_attitude.png" alt="Target attitude">
 <img src="target_angular_velocity.png" alt="Target angular velocity">
 <img src="multi_chaser_spacing.png" alt="Multi-chaser spacing">
