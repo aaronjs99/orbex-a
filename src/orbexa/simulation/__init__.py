@@ -17,12 +17,12 @@ High-level simulation runners and control mode configurations.
 """
 
 from orbexa.simulation.modes import CONTROL_MODES, get_mode_config
-from orbexa.simulation.paper_system import (
+from orbexa.simulation.adtmpc_mission import (
     ChaserConfig,
     MissionPhase,
-    PaperSystemResult,
-    PaperSystemRunner,
-    PaperTruth,
+    ADTMPCMissionResult,
+    ADTMPCMissionRunner,
+    OrbitalPlantTruth,
     ParameterBelief,
     TumblingCylinderTarget,
 )
@@ -33,9 +33,9 @@ __all__ = [
     "get_mode_config",
     "ChaserConfig",
     "MissionPhase",
-    "PaperSystemResult",
-    "PaperSystemRunner",
-    "PaperTruth",
+    "ADTMPCMissionResult",
+    "ADTMPCMissionRunner",
+    "OrbitalPlantTruth",
     "ParameterBelief",
     "TumblingCylinderTarget",
     "run_simulation",
