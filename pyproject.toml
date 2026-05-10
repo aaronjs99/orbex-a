@@ -19,6 +19,7 @@ dependencies = [
   "scipy",
   "gekko",
   "matplotlib",
+  "plotly",
   "pyyaml",
   "keyboard",
 ]
@@ -28,9 +29,12 @@ casadi = ["casadi"]
 visualization = ["mayavi"]
 all = ["casadi", "mayavi"]
 
-[tool.setuptools]
-packages = ["orbexa"]
-package-dir = { "" = "src" }
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+orbexa-generate-demo = "orbexa.cli.generate_demo:main"
+orbexa-plot-results = "orbexa.cli.plot_results:main"
 
 [project.urls]
 Homepage = "https://github.com/aaronjohnsabu1999/orbex-a"

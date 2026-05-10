@@ -6,17 +6,27 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu                                *
+# * Authors: Aaron John Sabu, Brett T. Lopez                *
 # * Contact: {aaronjs, btlopez}@ucla.edu                    *
 # *                                                         *
 # ***********************************************************/
 
-"""
-Setup script for ORBEX-A package.
-This file exists for compatibility with pip install -e in older pip versions.
-Configuration is in pyproject.toml.
+"""Compatibility imports for the retired demo-first module.
+
+The paper system now lives in :mod:`orbexa.simulation.paper_system`.  These
+aliases keep older imports from silently reaching the removed ablation code.
 """
 
-from setuptools import setup
+from orbexa.simulation.paper_system import (  # noqa: F401
+    ChaserConfig,
+    MissionPhase,
+    PaperSystemResult,
+    PaperSystemRunner,
+    PaperTruth,
+    ParameterBelief,
+    TumblingCylinderTarget,
+    load_paper_system_result,
+)
 
-setup()
+PaperMissionResult = PaperSystemResult
+PaperDemoRunner = PaperSystemRunner

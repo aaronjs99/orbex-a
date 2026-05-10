@@ -30,21 +30,25 @@ def test_distributed_optim_api():
 def test_task_allocation_api():
     from orbexa.planning import task_allocation
 
-    # Replace legacy "generate_neighbors" check with your new API surface.
-    # If you exposed run_demo as the main entrypoint, test that.
-    if hasattr(task_allocation, "run_demo"):
-        assert callable(task_allocation.run_demo)
-    else:
-        # Fallback: at least verify the module imported and has something public.
-        # You can tighten this once your task_allocation API stabilizes.
-        assert True
+    assert hasattr(task_allocation, "TaskAllocationSystem")
+    assert hasattr(task_allocation, "GreedySwapPolicy")
+    assert hasattr(task_allocation, "DistributedAuctionPolicy")
 
 
-def test_observation_funcs():
-    try:
-        from orbexa.planning import observation
+def test_observation_reward_increases_with_viewpoint_separation():
+    from orbexa.planning import observation
 
-        # If it has specific functions, test them here
-        pass
-    except ImportError:
-        pass
+    close = observation.calc_total_local_observation(
+        num_chasers=2,
+        r=np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0]),
+        R=np.ones(3),
+        shape=None,
+    )
+    spread = observation.calc_total_local_observation(
+        num_chasers=2,
+        r=np.array([0.0, 0.0, 0.0, 2.0, 0.0, 0.0]),
+        R=np.ones(3),
+        shape=None,
+    )
+
+    assert spread > close

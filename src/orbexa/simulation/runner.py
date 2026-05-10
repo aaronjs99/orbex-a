@@ -22,7 +22,7 @@ from typing import Dict, Optional
 
 from orbexa.control import MPCController, MissionResult
 from orbexa.core.config import SimulationConfig
-from orbexa.core.dynamics import orbital_ellp_undrag
+from orbexa.core.dynamics import orbital_ellp_drag
 from orbexa.simulation.modes import CONTROL_MODES, get_mode_config
 from orbexa.utils.io_utils import save_data, create_filename
 from dataclasses import asdict
@@ -75,13 +75,11 @@ def run_simulation(
     # OC uses single iteration
     effective_steps = 1 if mode == "oc" else max_steps
 
-    # Prepare dynamics params
-    dynamics_params = {
-        "anom_step": config.anom_step,
-        "mean_motion": config.orbit.mean_motion,  # derived property
-        "eccentricity": config.orbit.eccentricity,
-        # "alpha": ? "beta": ? if using drag
-    }
+    dynamics_params = config.dynamics_params()
+    adaptation_params = config.default_adaptation_params()
+    eccentricity_range = tuple(adaptation_params["eccentricity"])
+    target_drag_range = tuple(adaptation_params["alpha"])
+    chaser_drag_range = tuple(adaptation_params["beta"])
 
     result = controller.run_mission(
         operation="rendezvous",
@@ -93,32 +91,20 @@ def run_simulation(
         initial_state=initial_state,
         target_state=target_state,
         control_input_0=control_input_0,
-        dynamics_func=orbital_ellp_undrag,
+        dynamics_func=orbital_ellp_drag,
         dynamics_params=dynamics_params,
-        bounds=(config.mpc.state_bounds, config.mpc.input_bounds),
+        bounds=config.mpc.bounds(),
         max_mission_steps=effective_steps,
-        tube_mpc=(
-            {
-                "enabled": mode_config.tube_mpc_enabled,
-                "lambda_gain": config.tube.sliding_gains,
-                "alpha": config.tube.bandwidth_0,
-                "phi": config.tube.boundary_layer_0,
-                "eccentricity_range": (
-                    config.tube.bandwidth_range["lower"],
-                    config.tube.bandwidth_range["upper"],
-                ),
-            }
-            if mode_config.tube_mpc_enabled
-            else None
+        tube_mpc=config.tube.runtime_params(
+            enabled=mode_config.tube_mpc_enabled,
+            eccentricity_range=eccentricity_range,
+            target_drag_range=target_drag_range,
+            chaser_drag_range=chaser_drag_range,
         ),
         adaptive=(
             {
                 "enabled": mode_config.adaptive_enabled,
-                "init_params": {
-                    "eccentricity": [0.0, 0.0],
-                    "alpha": [config.tube.bandwidth_0[0], config.tube.bandwidth_0[0]],
-                    "beta": [0.0, 0.0],
-                },
+                "init_params": adaptation_params,
                 "range_params": {
                     "dt": config.anom_step,
                     "data_range": 50,
@@ -130,6 +116,7 @@ def run_simulation(
             if mode_config.adaptive_enabled
             else None
         ),
+        target_params=config.target.collision_params(operation="rendezvous"),
         # Extra explicit kwargs for solver
         time_periapsis=config.orbit.time_periapsis,
         state_cost_matrix=config.mpc.Q,

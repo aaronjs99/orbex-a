@@ -5,8 +5,8 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 
@@ -475,7 +475,7 @@ if __name__ == "__main__":
         from orbexa.visualization.orbitsim import create_animation_html
 
         create_animation_html(
-            "../plots/observation.html",
+            "../results/observation.html",
             x,
             y,
             z,

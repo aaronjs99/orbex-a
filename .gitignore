@@ -1,6 +1,5 @@
 data/*
 !data/paper/*
-!data/plot_results.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -88,3 +87,26 @@ dmypy.json
 # Logs
 logs/
 *.log
+
+# Generated plots and media files
+plots/*.html
+plots/*.png
+plots/*.mp4
+plots/*.webm
+plots/**/*.html
+plots/**/*.png
+plots/**/*.mp4
+plots/**/*.webm
+plots/Tests/**
+paper/*.pdf
+
+# Undergraduate simulation folder
+ug_thesis_space_sim/
+
+# Simulation outputs
+results/
+*.npz
+*.json
+
+# Temporary editor backup files
+*~

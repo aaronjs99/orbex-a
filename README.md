@@ -1,58 +1,79 @@
-# ORBEX-A: Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC
+# ORBEX-A
 
-**ORBEX-A** is a Python-based simulator for spacecraft performing cooperative orbital rendezvous and capture tasks. The system implements Adaptive Dynamic Tube Model Predictive Control (ADTMPC) for the capture of tumbling targets.
+ORBEX-A implements the paper system from “Capturing Tumbling Objects in Orbit with Adaptive Tube Model Predictive Control”: elliptical relative dynamics with quadratic drag, nonlinear GEKKO/IPOPT MPC constraints, dynamic tubes, SMID feasible-set adaptation, tumbling-cylinder docking, and single/multi-chaser missions.
 
-This repository contains simulation code, configuration files, visualizations, and evaluation data for the system described in the IEEE Aerospace Conference paper:  
-“Capturing Tumbling Objects in Orbit with Adaptive Tube Model Predictive Control” (Aaron John Sabu and Brett T Lopez).
+The paper workflow is the primary surface. Legacy `mpc`, `tube`, and `adtmpc` mode helpers are retained only as compatibility wrappers for older experiments.
 
-## Features
-
-- Introduction of Adaptive Tube-based MPC (ADTMPC)
-- Chaser-target orbital dynamics and estimation
-- Distributed task allocation and multi-agent coordination
-- High-resolution trajectory visualizations
-
-## File Structure
-
-```
-.
-├── config/                         # YAML-based configuration for scenarios
-├── paper/                          # Paper assets and figures
-├── src/
-│   └── orbexa/                     # Core simulation modules and MPC logic
-├── tests/                          # Automated test suite
-├── INSTALL.md                      # Detailed installation guide
-├── LICENSE                         # GPL-2.0 license
-├── README.md                       # Project documentation
-├── install_dependencies.sh         # Helper script for dependency installation
-├── pyproject.toml                  # Project metadata and dependencies
-├── requirements.txt                # Pip requirements file
-├── run.py                          # Entrypoint for running ADTMPC simulations
-└── setup.py                        # Legacy setup script
-```
-
-## Getting Started
-
-You can install dependencies and run a test scenario. For more detailed installation options (e.g., CasADi, Mayavi), see [INSTALL.md](INSTALL.md).
+## Install
 
 ```bash
-conda create -n orbexa python=3.9
-conda activate orbexa
 pip install -e .
-python run.py
 ```
 
-This will run a sample adaptive MPC simulation.
+GEKKO is the authoritative nonlinear solver path. SciPy/SLSQP is available only for labeled linearized comparison runs.
 
-## License
+## Generate Paper-System Artifacts
 
-GPLv2 License. See `LICENSE` for details.
+```bash
+orbexa-generate-demo \
+  --output results/paper_system \
+  --data-output data/paper_system \
+  --steps 450 \
+  --mission all \
+  --primary-solver gekko \
+  --secondary-solver scipy \
+  --run-linearized \
+  --linearized-steps 20 \
+  --clean-generated
+```
+
+Here `--steps` is the maximum number of receding-horizon MPC updates, not a
+scripted trajectory length. Each update solves a fixed-horizon OCP, applies the
+first configured control command(s), replans from the propagated plant state,
+and stops only when the rendezvous/docking goal is reached. Fresh nonlinear
+primary runs raise an error if the update limit is exhausted first.
+The optional SciPy/SLSQP linearized comparison is capped separately by
+`--linearized-steps` because it is not the authoritative nonlinear mission.
+
+This writes:
+
+- `results/paper_system/single/nonlinear/`
+- `results/paper_system/multi/nonlinear/`
+- optional matching `linearized/` folders
+- raw mission JSON under `data/paper_system/`
+
+Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `trajectory.mp4`, and diagnostics for actual/nominal trajectories, tube geometry, controls, rendezvous and docking margins, SMID FSS widths, parameter estimates vs truth, target attitude/angular velocity, and multi-chaser spacing.
+
+Regenerate plots from saved data without rerunning solvers:
+
+```bash
+orbexa-generate-demo \
+  --output results/paper_system \
+  --data-output data/paper_system \
+  --mission all \
+  --run-linearized \
+  --from-data
+```
+
+## Verify
+
+```bash
+python -m compileall -q src tests
+pytest -q
+```
+
+Generated plots, videos, JSON outputs, caches, and local paper PDFs are ignored by git.
+
+## Repository Layout
+
+Source code and CLIs live under `src/orbexa`. Generated data belongs under
+`data/`; rendered artifacts belong under `results/`. The old top-level
+`scripts/` wrapper is no longer needed because package console entry points are
+installed by `pip install -e .`.
 
 ## Citation
 
-If you use this work, please cite:
-
-```
+```bibtex
 @inproceedings{johnsabu2025orbexa,
   title={Capturing Tumbling Objects in Orbit with Adaptive Tube Model Predictive Control},
   author={Aaron John Sabu and Brett T. Lopez},
@@ -60,3 +81,7 @@ If you use this work, please cite:
   year={2025}
 }
 ```
+
+## License
+
+GPLv2. See `LICENSE`.

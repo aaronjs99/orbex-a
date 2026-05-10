@@ -5,8 +5,8 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 
@@ -31,8 +31,8 @@ Example:
 """
 
 __version__ = "2.0.0"
-__author__ = "Aaron John Sabu, Brett T. Lopez"
-__email__ = "aaronjs@ucla.edu, btlopez@ucla.edu"
+__author__ = "Aaron John Sabu"
+__email__ = "aaronjs@ucla.edu"
 
 # =============================================================================
 # Solver Module Exports (always available, no circular deps)

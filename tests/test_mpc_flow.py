@@ -1,9 +1,8 @@
 import unittest
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock
 import numpy as np
 
 from orbexa.simulation.runner import run_simulation
-from orbexa.control.mpc_controller import MissionResult
 
 
 class TestMPCFlow(unittest.TestCase):
@@ -11,34 +10,6 @@ class TestMPCFlow(unittest.TestCase):
     Tests to verify that the correct modules (MPC, Tube, Adaptor) are invoked
     based on the simulation mode.
     """
-
-    def setUp(self):
-        # Common mocks could go here, but doing per-test for clarity
-        pass
-
-    @patch("orbexa.control.mpc_controller.MPCController.run_mission")
-    def test_basic_mpc_flow(self, mock_run_mission):
-        """
-        Test 'mpc' mode:
-        - Should run MPC
-        - Should NOT run Ancillary Controller (Tube)
-        - Should NOT run Adaptor
-        """
-        # We need to spy on internal calls if they happen INSIDE run_mission.
-        # Ideally, we mock the imported functions in the mpc module.
-
-        # But wait, run_simulation instantiates MPCController and calls run_mission.
-        # The logic calling ancillary_controller should be INSIDE run_mission (or called by it).
-        # So we shouldn't mock run_mission if we want to test its internals,
-        # unless we are testing run_simulation's dispatch logic.
-
-        # ACTUALLY: The user wants to ensure "running mpc runs the mpc controller".
-        # "running tube mpc should run the tube on top of mpc".
-
-        # So we should run the real run_simulation and real MPCController.run_mission,
-        # but mock the `ancillary_controller` and `run_adaptation` functions
-        # to verify they are called.
-        pass
 
     @patch("orbexa.control.mpc_controller.ancillary_controller")
     @patch("orbexa.control.mpc_controller.run_adaptation")
