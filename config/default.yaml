@@ -34,6 +34,7 @@ mpc:
     - {lower: -100.0, upper: 100.0}
   Q: [1, 1, 1, 1, 1, 1]
   R: [0.0001, 0.0001, 0.0001]
+  min_chaser_separation: 0.35
   force_bounds:
     - {lower: -7000.0, upper: 7000.0}
     - {lower: -7000.0, upper: 7000.0}
@@ -51,8 +52,11 @@ target:
   center: [0.0, 0.0, 0.0]
   limits:
     target_height: 0.6
+    target_half_length: 0.3
     target_radius: 0.8
   tolerance: 0.001
+  docking_standoff: 0.12
+  assignment_strategy: "cylinder_side_approach_hungarian"
   stop_time: 5.0
   discretize_dockers: true
   observation_error:
