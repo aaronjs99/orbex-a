@@ -45,15 +45,15 @@ class TestMPCController:
 
         try:
             result = controller.solve_step(
-                x_0=x_0,
-                x_f=x_f,
-                u_0=u_0,
+                initial_state=x_0,
+                final_state=x_f,
+                control_input_0=u_0,
                 start_anom=start_anom,
-                dt=dt,
+                anom_step=dt,
                 num_steps=num_steps,
                 dynamics=dynamics_tuple,
                 bounds=bounds_tuple,
-                t_periapsis=0.0,
+                time_periapsis=0.0,
                 eccentricity=0.0,
             )
             assert isinstance(result, SolverResult)

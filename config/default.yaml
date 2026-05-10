@@ -3,14 +3,16 @@ anom_step: 0.015707963 # pi/200
 total_anom: 3.1415926535
 num_update_steps: 200
 decoupled_mode: true
-num_chasers: 1
+num_chasers: 3
 
 orbit:
   mu: 3.986004418e14
   semi_major_axis: 6678136.3
-  eccentricity: 0.0
+  eccentricity: 0.18
+  target_drag: 2.0e-7
+  chaser_drag: 4.5e-7
   time_periapsis: 0.0
-  initial_conditions: [-50.0, 10.0, 5.0, 0.05, -0.01, 0.01]
+  initial_conditions: [-6.0, 1.4, 0.5, 0.02, -0.008, 0.004]
 
 mpc:
   horizon_steps:
@@ -27,9 +29,9 @@ mpc:
     - {lower: "-Inf", upper: "+Inf"}
     - {lower: "-Inf", upper: "+Inf"}
   input_bounds:
-    - {lower: -0.1, upper: 0.1}
-    - {lower: -0.1, upper: 0.1}
-    - {lower: -0.1, upper: 0.1}
+    - {lower: -100.0, upper: 100.0}
+    - {lower: -100.0, upper: 100.0}
+    - {lower: -100.0, upper: 100.0}
   Q: [1, 1, 1, 1, 1, 1]
   R: [0.0001, 0.0001, 0.0001]
   force_bounds:
@@ -60,9 +62,9 @@ target:
 tube:
   run_tube: true
   bandwidth_0: [0.25, 0.25, 0.25]
-  boundary_layer_0: [0.5, 0.5, 0.5]
+  boundary_layer_0: [0.002, 0.002, 0.002]
   convergence_rate: [0.1, 0.1, 0.1]
-  sliding_gains: [60.0, 60.0, 60.0]
+  sliding_gains: [0.6, 0.6, 0.6]
   bandwidth_range:
     lower: 0.01
     upper: 10.0

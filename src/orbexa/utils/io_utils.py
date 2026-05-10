@@ -5,8 +5,8 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 

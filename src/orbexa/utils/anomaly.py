@@ -5,13 +5,12 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 # Constants
 TWO_PI = 2.0 * np.pi
@@ -151,6 +150,8 @@ def dt_dq(
 
 
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
     q_start = -1.5 * TWO_PI
     q_end = 1.5 * TWO_PI
     num_samples = 2000

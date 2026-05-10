@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # /***********************************************************
 # *                                                         *
 # * Copyright (c) 2026                                      *
@@ -10,5 +11,4 @@
 # *                                                         *
 # ***********************************************************/
 
-from orbexa.utils.math_utils import *
-from orbexa.utils.io_utils import *
+"""Command-line entrypoints for ORBEX-A."""

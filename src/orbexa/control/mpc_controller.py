@@ -31,7 +31,13 @@ from dataclasses import dataclass
 from orbexa.solvers import get_solver, get_solver_from_config, MPCProblem, SolverResult
 from orbexa.control.mpc_problem_builder import build_from_dynamics
 from orbexa.utils.anomaly import true_anomaly_to_time, dq_dt, dt_dq
-from orbexa.control.dynamic_tube_model import ancillary_controller
+from orbexa.control.dynamic_tube_model import (
+    ancillary_controller,
+    input_tightening_from_profile,
+    propagate_tube_profile,
+    tighten_box_bounds,
+    tighten_target_params,
+)
 from orbexa.estimation.adaptor import run_adaptation, run_adaptor_op
 
 logger = logging.getLogger(__name__)
@@ -116,6 +122,8 @@ class MPCController:
         """
         A_func, B, state_cost_matrix, input_cost_matrix, d_func = dynamics
         state_bounds, input_bounds = bounds
+        state_cost_matrix = kwargs.get("state_cost_matrix", state_cost_matrix)
+        input_cost_matrix = kwargs.get("input_cost_matrix", input_cost_matrix)
 
         # Prepare additional kwargs, avoiding duplicates for Q and R
         extra_kwargs = kwargs.copy()
@@ -217,6 +225,47 @@ class MPCController:
             solve_kwargs.pop("eccentricity", None)
             tube_config = solve_kwargs.pop("tube_mpc", None)
             adapt_config = solve_kwargs.pop("adaptive", None)
+            solve_bounds = bounds
+
+            if tube_config and tube_config.get("enabled"):
+                tube_profile = propagate_tube_profile(
+                    start_anom=anom,
+                    num_steps=num_mpc_steps,
+                    anom_step=anom_step,
+                    mean_motion=mean_motion,
+                    t_periapsis=time_periapsis,
+                    lambda_gain=tube_config["lambda_gain"],
+                    alpha=tube_config["alpha"],
+                    phi_0=tube_config["phi"],
+                    eccentricity_range=tube_config["eccentricity_range"],
+                    initial_error=np.zeros(6),
+                    eta=tube_config.get("eta", 0.0),
+                    aRange=tube_config.get("aRange", (0.0, 0.0)),
+                    bRange=tube_config.get("bRange", (0.0, 0.0)),
+                    mu=dynamics_params.get("mu", 3.986004418e14),
+                    semi_major_axis=dynamics_params.get("semi_major_axis"),
+                    specific_angular_momentum=dynamics_params.get(
+                        "specific_angular_momentum"
+                    ),
+                )
+                tube_config["profile"] = tube_profile
+                state_bounds, input_bounds = bounds
+                tightened_input_bounds = input_bounds
+                if tube_config.get("tighten_inputs", False):
+                    tightened_input_bounds = tighten_box_bounds(
+                        input_bounds,
+                        input_tightening_from_profile(
+                            tube_profile, tube_config["lambda_gain"]
+                        ),
+                    )
+                solve_bounds = (
+                    tighten_box_bounds(state_bounds, tube_profile.max_state_error),
+                    tightened_input_bounds,
+                )
+                if solve_kwargs.get("target_params"):
+                    solve_kwargs["target_params"] = tighten_target_params(
+                        solve_kwargs["target_params"], tube_profile
+                    )
 
             result = self.solve_step(
                 initial_state=state,
@@ -226,7 +275,7 @@ class MPCController:
                 anom_step=anom_step,
                 num_steps=num_mpc_steps,
                 dynamics=matrices,
-                bounds=bounds,
+                bounds=solve_bounds,
                 time_periapsis=time_periapsis,
                 eccentricity=eccentricity,
                 use_anomaly_scaling=False,  # No explicit scaling needed, solver uses A(q)
@@ -282,6 +331,13 @@ class MPCController:
                                 mean_motion=mean_motion,
                                 nom_state=x_nom,
                                 act_state=state,
+                                mu=dynamics_params.get("mu", 3.986004418e14),
+                                semi_major_axis=dynamics_params.get(
+                                    "semi_major_axis"
+                                ),
+                                specific_angular_momentum=dynamics_params.get(
+                                    "specific_angular_momentum"
+                                ),
                                 **tube_config,
                             )
                             applied_control += tube_control
@@ -292,8 +348,8 @@ class MPCController:
                 # matrices are A(q) etc.
                 A_func, B_func, _, _, d_func = matrices
                 # We assume A_func works with anom
-                A_val = A_func(anom, time_periapsis)
-                d_val = d_func(anom, time_periapsis)
+                A_val = np.asarray(A_func(anom, time_periapsis), dtype=float)
+                d_val = np.asarray(d_func(anom, time_periapsis), dtype=float)
                 B_val = B_func()
 
                 # State propagation: x_next = x + (Ax + Bu + d)*anom_step
@@ -312,12 +368,56 @@ class MPCController:
             # Adaptation
             if adapt_config and adapt_config.get("enabled"):
                 try:
-                    run_adaptation(
-                        W=np.array(state_history),
-                        t_periapsis=time_periapsis,
-                        mean_motion=mean_motion,
-                        **adapt_config,
-                    )
+                    range_params = adapt_config["range_params"]
+                    data_range = int(range_params["data_range"])
+                    adaptation_range = int(range_params["adaptation_range"])
+                    available = min(data_range, len(state_history))
+                    if available > adaptation_range and len(input_history) >= 1:
+                        recent_states = np.asarray(state_history[-available:])
+                        recent_inputs = np.asarray(input_history[-available:])
+                        if len(recent_inputs) < available:
+                            pad = np.repeat(
+                                recent_inputs[:1],
+                                available - len(recent_inputs),
+                                axis=0,
+                            )
+                            recent_inputs = np.vstack([pad, recent_inputs])
+
+                        runtime_adapt = dict(adapt_config)
+                        runtime_adapt["range_params"] = dict(range_params)
+                        runtime_adapt["range_params"]["data_range"] = available
+                        runtime_adapt["u_t"] = [
+                            recent_inputs[:, axis] for axis in range(3)
+                        ]
+
+                        fss, estimates, _ = run_adaptation(
+                            W=recent_states,
+                            t_periapsis=time_periapsis,
+                            mean_motion=mean_motion,
+                            mu=dynamics_params.get("mu", 3.986004418e14),
+                            semi_major_axis=dynamics_params.get("semi_major_axis"),
+                            specific_angular_momentum=dynamics_params.get(
+                                "specific_angular_momentum"
+                            ),
+                            **runtime_adapt,
+                        )
+
+                        adapt_config["init_params"] = fss
+                        keys = list(fss.keys())
+                        latest_estimates = [series[-1] for series in estimates]
+                        for idx, key in enumerate(keys):
+                            if key == "eccentricity":
+                                dynamics_params["eccentricity"] = latest_estimates[idx]
+                                if tube_config:
+                                    tube_config["eccentricity_range"] = tuple(fss[key])
+                            elif key == "alpha":
+                                dynamics_params["alpha"] = latest_estimates[idx]
+                                if tube_config:
+                                    tube_config["aRange"] = tuple(fss[key])
+                            elif key == "beta":
+                                dynamics_params["beta"] = latest_estimates[idx]
+                                if tube_config:
+                                    tube_config["bRange"] = tuple(fss[key])
                 except Exception as e:
                     # Suppress adaptation warnings - the core simulation still works
                     logger.debug(f"Adaptation skipped: {e}")

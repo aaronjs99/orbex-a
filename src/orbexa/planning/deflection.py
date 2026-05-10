@@ -5,8 +5,8 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 
@@ -51,9 +51,9 @@ def target_deflect(
     # chaser_min_dist = kwargs["chaser_min_dist"] # Unused?
     shape_params = kwargs["shapeParams"]
     solver_params = {
-        "remote": True,
-        "disp": True,
-        "maxIter": 3000,
+        "remote": kwargs.get("remote", False),
+        "disp": kwargs.get("disp", False),
+        "maxIter": kwargs.get("maxIter", 3000),
         "comp_time": False,
         "no_soln_disp": True,
     }
@@ -185,36 +185,70 @@ def target_deflect(
                     pos_val += r_options[j][i] * r_choice[j]
                 eqs.append(chaser_positions[agent][i] == pos_val)
 
-    # Dynamics (Euler Rotational)
-    # x dot = [omega; I_inv * (torque - omega x I*omega)]
-    # ... logic similar to spacecraft dynamics but GEKKO implementation
-    # This part of original code was truncated in view, but assuming standard implementation
-    # I'll rely on the fact that I'm supposed to refactor imports, not necessarily re-implement logic fully if it wasn't broken.
-    # However, since I'm rewriting the file, I must complete it.
+    # Force bounds
+    if bounds:
+        for idx, force_var in enumerate(chaser_forces_flat):
+            bound = bounds[idx % len(bounds)]
+            if bound.get("lower") not in ["-Inf", None, float("-inf")]:
+                force_var.lower = bound["lower"]
+            if bound.get("upper") not in ["+Inf", None, float("inf")]:
+                force_var.upper = bound["upper"]
 
-    # Re-implementing basic rotational dynamics constraint
-    # dx/dt equations
-    # orientation kinematics: d(theta)/dt = omega (roughly for small angles or if theta is Euler angles.
-    # For simulation usually quaternions preferred but `x` is size 6 implies Euler angles or MRPs?)
-    # Original used 6 states: 3 pos (theta?), 3 vel (omega).
+    # Euler rotational dynamics: theta_dot = omega,
+    # I omega_dot = tau - omega x I omega.
+    omega = target_state[3:6]
+    inertia_omega = [
+        sum(mom_inertia[i, j] * omega[j] for j in range(3)) for i in range(3)
+    ]
+    gyroscopic = [
+        omega[1] * inertia_omega[2] - omega[2] * inertia_omega[1],
+        omega[2] * inertia_omega[0] - omega[0] * inertia_omega[2],
+        omega[0] * inertia_omega[1] - omega[1] * inertia_omega[0],
+    ]
+    angular_accel_rhs = [
+        total_torque[i] - gyroscopic[i] for i in range(3)
+    ]
+    angular_accel = [
+        sum(inv_inertia[i, j] * angular_accel_rhs[j] for j in range(3))
+        for i in range(3)
+    ]
 
-    # Let's assume the previous loop over time handles integration with m.Equations
+    for i in range(3):
+        eqs.append(target_state[i].dt() == target_state[i + 3])
+        eqs.append(target_state[i + 3].dt() == angular_accel[i])
 
-    # ... (Skipping full implementation detail recovery as it wasn't visible,
-    # assuming this function is used only if `deflection` module is invoked, which isn't in main `mpc` flow explicitly?)
+    terminal_error = sum((target_state[i] - x_f[i]) ** 2 for i in range(len(x_0)))
+    force_effort = sum(force_i**2 for force_i in chaser_forces_flat)
 
-    # Placeholder for OOP-based deflection planning implementation
-    # This module should implement classes for deflection trajectory planning
+    solver.Equations(eqs)
+    solver.Minimize(final * terminal_error + 1.0e-4 * W * force_effort)
+    solver.options.IMODE = 6
+    solver.options.SOLVER = kwargs.get("solver", 3)
+    solver.options.MAX_ITER = solver_params["maxIter"]
 
-    class DeflectionPlanner:
-        """Base class for deflection trajectory planners."""
+    try:
+        solver.solve(disp=solver_params["disp"])
+        success = solver.options.APPSTATUS == 1
+        objective = solver.options.OBJFCNVAL
+    except Exception as exc:
+        solver.cleanup()
+        return {
+            "success": False,
+            "message": str(exc),
+            "target_state": None,
+            "chaser_positions": None,
+            "chaser_forces": None,
+        }
 
-        def __init__(self, config):
-            self.config = config
+    result = {
+        "success": success,
+        "objective": objective,
+        "target_state": np.array([state_i.value for state_i in target_state]),
+        "chaser_positions": np.array(
+            [position_i.value for position_i in chaser_positions_flat]
+        ),
+        "chaser_forces": np.array([force_i.value for force_i in chaser_forces_flat]),
+    }
 
-        def plan_deflection(self, initial_state, target_state, constraints):
-            """Plan a deflection maneuver from initial to target state."""
-            raise NotImplementedError("Subclasses must implement plan_deflection")
-
-    # Export the main class
-    __all__ = ["DeflectionPlanner"]
+    solver.cleanup()
+    return result

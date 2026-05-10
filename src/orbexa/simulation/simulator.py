@@ -5,8 +5,8 @@
 # * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
 # * University of California, Los Angeles                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Brett T. Lopez                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 
@@ -104,9 +104,10 @@ class MPCPlotConfig:
 
         tlimits = None
         if "target_limits" in kwargs:
+            target_limits = kwargs["target_limits"]
             tlimits = TargetLimits(
-                r_T=kwargs["target_limits"].get("r_T", 0.0),
-                l_T=kwargs["target_limits"].get("l_T", 0.0),
+                target_radius=target_limits.get("r_T", 0.0),
+                target_height=target_limits.get("l_T", 0.0),
             )
 
         return cls(
@@ -505,6 +506,11 @@ def plot_mpc(
     Plot MPC results including trajectories, inputs, and constraints.
     Supports both legacy kwargs and modern MPCPlotConfig.
     """
+    anom_step = kwargs.get("anom_step", kwargs.get("dt", 0.1))
+    plot_flags = kwargs.get("plot_flags")
+    tgt_states = kwargs.get("tgt_states", kwargs.get("target_states", np.empty((0, 6))))
+    x_f_list = kwargs.get("x_f_list", [])
+
     # 1. Compatibility Layer
     if cfg is None:
         if anom_step is None:
@@ -1033,7 +1039,7 @@ if __name__ == "__main__":
     if not remote:
         num_agents = 5
         X, Y, Z = generate_orbit(constants, timeSeq, num_agents)
-        fname = create_filename("../plots/", ".html")
+        fname = create_filename("../results/", ".html")
         create_animation_html(
             fname, X, Y, Z, [f"Agent {i+1}" for i in range(num_agents)]
         )

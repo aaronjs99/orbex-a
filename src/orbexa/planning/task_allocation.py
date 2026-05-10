@@ -5,8 +5,8 @@
 # * Dept. of Electrical Engineering                         *
 # * Indian Institute of Technology Bombay                   *
 # *                                                         *
-# * Authors: Aaron John Sabu, Dwaipayan Mukherjee           *
-# * Contact: aaronjs@ucla.edu, dm@ee.iitb.ac.in             *
+# * Authors: Aaron John Sabu                                *
+# * Contact: aaronjs@ucla.edu                               *
 # *                                                         *
 # ***********************************************************/
 

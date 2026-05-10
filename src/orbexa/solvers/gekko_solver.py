@@ -22,6 +22,7 @@ from typing import Dict, Any
 from gekko import GEKKO
 from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
 from orbexa.utils.anomaly import dt_dq
+from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class GekkoSolver(SolverBase):
         self.max_iter = self.config.get("max_iter", 3000)
         self.max_memory = self.config.get("max_memory", 512)
         self.solver_type = self.config.get("solver_type", 3)
-        self.disp = True
+        self.disp = self.config.get("disp", False)
         self._model = None
         self._states = None
         self._inputs = None
@@ -69,6 +70,7 @@ class GekkoSolver(SolverBase):
         time_periapsis = extra.get("time_periapsis", 0.0)
         eccentricity = extra.get("eccentricity", 0.0)
         mean_motion = extra.get("mean_motion", 0.0)
+        target_params = extra.get("target_params") or {}
 
         # Tube MPC params
         tube_mpc = extra.get("tube_mpc")  # Dict or None
@@ -78,9 +80,8 @@ class GekkoSolver(SolverBase):
                 logger.debug("Tube MPC enabled - bounds should be pre-tightened")
 
         solver = GEKKO(remote=self.remote)
-        solver.time = np.linspace(
-            0, problem.num_steps * problem.anom_step, problem.num_steps
-        )
+        horizon_end = max(problem.num_steps - 1, 0) * problem.anom_step
+        solver.time = np.linspace(0, horizon_end, problem.num_steps)
 
         num_states = problem.num_states
         num_inputs = problem.num_inputs
@@ -151,39 +152,90 @@ class GekkoSolver(SolverBase):
 
         eqs = []
 
+        # Paper-level obstacle constraints. GEKKO applies these vectorized over
+        # the horizon because each Var contains a trajectory over solver.time.
+        operation = target_params.get("operation")
+        if operation == "rendezvous":
+            radius = float(
+                target_params.get(
+                    "rendezvous_radius", target_params.get("target_radius", 0.0)
+                )
+            )
+            tube_radius = float(target_params.get("tube_radius", 0.0))
+            if radius > 0.0:
+                safe_radius = radius + tube_radius
+                eqs.append(
+                    self._states[0] ** 2
+                    + self._states[1] ** 2
+                    + self._states[2] ** 2
+                    >= safe_radius**2
+                )
+        elif operation == "docking" and target_params.get("shape") == "cylinder":
+            radius = float(target_params.get("target_radius", 0.0))
+            half_length = float(target_params.get("target_half_length", 0.0))
+            tube_radius = float(target_params.get("tube_radius", 0.0))
+            orientation = np.asarray(target_params.get("orientation", np.zeros(3)))
+            rotation = tait_bryan_to_rotation_matrix(orientation)
+            body_from_lvlh = rotation.T
+
+            p_body = []
+            for i in range(3):
+                p_body.append(
+                    sum(body_from_lvlh[i, j] * self._states[j] for j in range(3))
+                )
+
+            radial_margin = (
+                p_body[0] ** 2 + p_body[1] ** 2 - (radius + tube_radius) ** 2
+            )
+            axial_margin = solver.abs2(p_body[2]) - (half_length + tube_radius)
+            eqs.append(solver.max2(radial_margin, axial_margin) >= 0.0)
+
+        pairwise_constraints = extra.get("pairwise_constraints") or []
+        for constraint in pairwise_constraints:
+            min_separation = float(constraint.get("min_separation", 0.0))
+            reference_positions = np.asarray(
+                constraint.get("reference_positions", []), dtype=float
+            )
+            if min_separation <= 0.0 or reference_positions.size == 0:
+                continue
+            if reference_positions.ndim == 1:
+                reference_positions = np.repeat(
+                    reference_positions.reshape(1, 3),
+                    problem.num_steps,
+                    axis=0,
+                )
+            if reference_positions.shape[0] != problem.num_steps:
+                reference_positions = np.resize(
+                    reference_positions, (problem.num_steps, 3)
+                )
+            ref_x = solver.Param(value=reference_positions[:, 0])
+            ref_y = solver.Param(value=reference_positions[:, 1])
+            ref_z = solver.Param(value=reference_positions[:, 2])
+            eqs.append(
+                (self._states[0] - ref_x) ** 2
+                + (self._states[1] - ref_y) ** 2
+                + (self._states[2] - ref_z) ** 2
+                >= min_separation**2
+            )
+
         # Check if we have time-varying dynamics (callable A)
         if callable(problem.extra_params.get("dynamics_callable")):
             A_func = problem.extra_params["dynamics_callable"]
             # B and d might also be callables, or constant
             # For this implementation, we assume A is the main driver of complexity
 
-            # Anomaly Calculation
+            # Anomaly calculation. In the paper demo the independent variable
+            # is true anomaly directly unless explicit time/anomaly scaling is
+            # requested.
             if use_scaling:
                 # Use current anomaly variable directly
                 q_val = q_var
-            elif eccentricity == 0.0:
-                # Circular orbit: q = n*(t - tp)
-                q_val = mean_motion * (t_var - time_periapsis)
             else:
-                # Elliptical orbit: Need full conversion
-                enc_arg = (mean_motion * (t_var - time_periapsis)) / 2.0
-                E = solver.Intermediate(
-                    2
-                    * solver.atan(
-                        solver.sqrt((1 - eccentricity) / (1 + eccentricity))
-                        * solver.tan(enc_arg)
-                    )
-                )
-                q_val = solver.Intermediate(
-                    2
-                    * solver.atan(
-                        solver.sqrt((1 + eccentricity) / (1 - eccentricity))
-                        * solver.tan(E / 2)
-                    )
-                )
+                q_val = q_var
 
-                # Evaluate dynamics matrices symbolically using either t or q
-                # orbital_ellp_undrag and similar factories support the 'solver' and 'q' keywords.
+            # Evaluate dynamics matrices symbolically using either t or q.
+            # orbital_ellp_undrag and similar factories support the 'solver'
+            # and 'q' keywords.
             try:
                 A_mat_expr = A_func(t_var, time_periapsis, solver=solver, q=q_val)
             except TypeError:

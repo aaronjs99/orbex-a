@@ -1,88 +1,40 @@
-# ORBEX-A Installation Guide
+# ORBEX-A Installation
 
-## Quick Start
-
-```bash
-# Clone and install
-git clone https://github.com/aaronjohnsabu1999/orbex-a.git
-cd orbex-a
-pip install -e .
-
-# Verify
-python -c "import orbexa; print(orbexa.__version__)"
-```
-
-## Prerequisites
-
-- Python >= 3.8
-- pip >= 21.0
-
-## Installation Options
-
-### Option 1: Basic Install (GEKKO solver only)
-```bash
-pip install -e .
-```
-
-### Option 2: With CasADi Solver
-```bash
-pip install -e ".[casadi]"
-```
-
-### Option 3: With 3D Visualization (Mayavi)
-```bash
-pip install -e ".[visualization]"
-```
-
-### Option 4: Full Installation
-```bash
-pip install -e ".[all]"
-```
-
-### Option 5: Using Shell Script
-```bash
-chmod +x install_dependencies.sh
-./install_dependencies.sh           # Basic
-./install_dependencies.sh --casadi  # With CasADi
-./install_dependencies.sh --viz     # With Mayavi
-./install_dependencies.sh --full    # Everything (CasADi + Mayavi)
-```
-
-## Solver Configuration
-
-Edit `config/default.yaml` to switch between solvers:
-
-```yaml
-solver:
-  backend: "gekko"  # Options: "gekko", "casadi", "scipy"
-```
-
-## Conda Environment (Recommended)
+## Basic Install
 
 ```bash
-conda create -n orbexa python=3.9
-conda activate orbexa
-pip install -e .
+python -m pip install -e .
 ```
 
-## Troubleshooting
+The default install includes NumPy, SciPy, GEKKO, Matplotlib, Plotly, and PyYAML.
 
-### Mayavi Build Fails
-Mayavi requires VTK. On Ubuntu:
-```bash
-sudo apt-get install libvtk7-dev
-pip install vtk mayavi
-```
-
-### Keyboard Package Permission Error
-```bash
-sudo pip install keyboard
-# OR run scripts with sudo
-```
-
-## Running Simulations
+## Optional Solvers
 
 ```bash
-python run.py --help
-python run.py  # Default simulation
+python -m pip install -e ".[casadi]"
 ```
+
+GEKKO/IPOPT remains the primary nonlinear path for paper missions. SciPy/SLSQP is only a secondary linearized comparison path.
+
+## Run the Paper System
+
+```bash
+orbexa-generate-demo --output results/paper_system --data-output data/paper_system --steps 450 --mission all --primary-solver gekko --run-linearized --linearized-steps 20
+```
+
+`--steps` is a maximum MPC update count, not a scripted trajectory length. The
+controller replans over a fixed horizon and applies only the first control
+command(s) before solving again. The nonlinear primary run is considered valid
+only when `mission_complete` and `success` are both true.
+Use `--linearized-steps` to cap optional SciPy/SLSQP comparison artifacts.
+
+Use `--from-data` to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID.
+
+## Verify the Environment
+
+```bash
+python -m compileall -q src tests
+pytest -q
+```
+
+If MP4 generation is skipped, install `ffmpeg`; the renderer will still write all other artifacts.

@@ -26,10 +26,59 @@ as arguments.
 
 import math
 import numpy as np
+from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Tuple, List, Dict, Union, Any, Callable, Optional
+from typing import Tuple, List, Dict, Any, Callable, Optional
 
 from orbexa.utils import discretize, gen_skew_sym_mat
+
+
+@dataclass(frozen=True)
+class DynamicsModel:
+    """Typed wrapper for dynamics factories that still support tuple consumers."""
+
+    A: Callable
+    B: Callable
+    Q: np.ndarray
+    R: np.ndarray
+    d: Callable
+    state_bounds: Optional[List[Dict[str, Any]]] = None
+    input_bounds: Optional[List[Dict[str, float]]] = None
+    independent_variable: str = "true_anomaly"
+
+    def as_tuple(self) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+        return self.A, self.B, self.Q, self.R, self.d
+
+    def legacy_return(self):
+        return self.as_tuple(), (None, None), (self.state_bounds, self.input_bounds)
+
+
+def _backend(kwargs: Dict[str, Any]):
+    return kwargs.get("solver", kwargs.get("m", np))
+
+
+def _sqrt(backend, value):
+    return backend.sqrt(value) if hasattr(backend, "sqrt") else np.sqrt(value)
+
+
+def _exp(backend, value):
+    return backend.exp(value) if hasattr(backend, "exp") else np.exp(value)
+
+
+def _default_specific_angular_momentum(
+    backend,
+    *,
+    mean_motion: float,
+    eccentricity,
+    mu: float,
+    semi_major_axis: Optional[float],
+):
+    if semi_major_axis is None:
+        if mean_motion <= 0.0:
+            semi_major_axis = 1.0
+        else:
+            semi_major_axis = (mu / mean_motion**2) ** (1.0 / 3.0)
+    return _sqrt(backend, mu * semi_major_axis * (1.0 - eccentricity**2))
 
 
 # =============================================================================
@@ -164,117 +213,152 @@ def cwh_equations(
 # =============================================================================
 # 3. Time-Varying Orbital Dynamics (Elliptical)
 # =============================================================================
+def orbital_ellp_drag(
+    anom_step: Optional[float] = None,
+    mean_motion: float = 0.001,
+    eccentricity: float = 0.0,
+    state_bounds: Optional[List[Dict[str, Any]]] = None,
+    input_bounds: Optional[List[Dict[str, float]]] = None,
+    alpha: float = 0.0,
+    beta: float = 0.0,
+    mu: float = 3.986004418e14,
+    semi_major_axis: Optional[float] = None,
+    specific_angular_momentum: Optional[float] = None,
+    theta0: float = 0.0,
+    *args,
+    **kwargs,
+) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+    """
+    Extended Tschauner-Hempel dynamics with quadratic drag.
+
+    This implements the paper's Appendix B model with true anomaly as the
+    independent variable. The drag constants are ``alpha`` for the target and
+    ``beta`` for the chaser; zero values recover the no-drag model.
+    """
+    if anom_step is None:
+        anom_step = kwargs.get("dt")
+    if anom_step is None:
+        raise ValueError("anom_step is required for orbital_ellp_drag")
+
+    alpha = kwargs.get("drag_alpha", alpha)
+    beta = kwargs.get("drag_beta", beta)
+    specific_angular_momentum = kwargs.get("h", specific_angular_momentum)
+    specific_angular_momentum = kwargs.get(
+        "specific_angular_momentum", specific_angular_momentum
+    )
+    theta0 = kwargs.get("theta0", theta0)
+
+    def _orbit_radius_terms(q_val, local_kwargs):
+        solver = _backend(local_kwargs)
+        h_val = specific_angular_momentum
+        if h_val is None:
+            h_val = _default_specific_angular_momentum(
+                solver,
+                mean_motion=mean_motion,
+                eccentricity=eccentricity,
+                mu=mu,
+                semi_major_axis=semi_major_axis,
+            )
+
+        exp_term = _exp(solver, 2.0 * alpha * q_val)
+        denom = exp_term + eccentricity * solver.cos(q_val - theta0)
+        scale = h_val**2 * (1.0 + 4.0 * alpha**2) / mu
+        radius = scale / denom
+        denom_prime = 2.0 * alpha * exp_term - eccentricity * solver.sin(
+            q_val - theta0
+        )
+        radius_prime = -scale * denom_prime / denom**2
+        return radius, radius_prime, h_val
+
+    def A_func(t, t_p=0.0, *args, **kwargs):
+        """Evaluate the true-anomaly dynamics matrix."""
+        q_val = kwargs.get("q", t)
+        radius, radius_prime, h_val = _orbit_radius_terms(q_val, kwargs)
+        gamma = beta - alpha
+        radius_ratio = radius_prime / radius
+        gravity_curvature = 3.0 * radius * mu / h_val**2
+
+        A_mat = [
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            [-gamma * radius_ratio, gamma, 0.0, -gamma, 2.0, 0.0],
+            [
+                -gamma,
+                -gamma * radius_ratio + gravity_curvature,
+                0.0,
+                -2.0,
+                -gamma,
+                0.0,
+            ],
+            [0.0, 0.0, -1.0 - gamma * radius_ratio, 0.0, 0.0, gamma],
+        ]
+        return A_mat if "m" in kwargs else np.array(A_mat, dtype=object)
+
+    def B_func(*args, **kwargs):
+        return np.array(
+            [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            dtype=float,
+        )
+
+    def d_func(t, t_p=0.0, *args, **kwargs):
+        q_val = kwargs.get("q", t)
+        solver = _backend(kwargs)
+        radius, radius_prime, h_val = _orbit_radius_terms(q_val, kwargs)
+        gamma = beta - alpha
+        drag_disturbance = gamma * radius * _exp(solver, alpha * q_val) / _sqrt(
+            solver, h_val
+        )
+        values = [
+            0.0,
+            0.0,
+            0.0,
+            radius * drag_disturbance,
+            -radius_prime * drag_disturbance,
+            0.0,
+        ]
+        return values if "m" in kwargs else np.array(values, dtype=object)
+
+    state_cost_matrix = np.asarray(kwargs.get("state_cost_matrix", np.identity(6)))
+    input_cost_matrix = np.asarray(kwargs.get("input_cost_matrix", np.identity(3)))
+
+    model = DynamicsModel(
+        A=A_func,
+        B=B_func,
+        Q=state_cost_matrix,
+        R=input_cost_matrix,
+        d=d_func,
+        state_bounds=state_bounds,
+        input_bounds=input_bounds,
+    )
+    return model.legacy_return()
+
+
 def orbital_ellp_undrag(
-    anom_step: float,
-    mean_motion: float,
-    eccentricity: float,
+    anom_step: Optional[float] = None,
+    mean_motion: float = 0.001,
+    eccentricity: float = 0.0,
     state_bounds: Optional[List[Dict[str, Any]]] = None,
     input_bounds: Optional[List[Dict[str, float]]] = None,
     *args,
     **kwargs,
 ) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
-    """
-    Linear parameter-varying model for elliptical orbits without drag.
-
-    Returns functions for A(t) and B(t) as the system is time-varying.
-
-    Args:
-        anom_step (float): Anomaly step (step size in independent variable).
-        mean_motion (float): Mean motion (rad/s).
-        eccentricity (float): Orbit eccentricity.
-        state_bounds (list, optional): State bounds.
-        input_bounds (list, optional): Input bounds.
-
-    Returns:
-        tuple: (matrices_funcs, constraints, bounds)
-            - matrices is a tuple of (A_func, B_func, Q, R, d_func)
-    """
-    rho = 1.0  # Density scaling factor
-
-    # Dynamics Functions (depend on true anomaly q)
-    def A_func(t, t_p, *args, **kwargs):
-        """Evaluation of LTV matrix A at time t or anomaly q."""
-        solver = kwargs.get("solver", kwargs.get("m", np))
-        q_val = kwargs.get("q")
-
-        if q_val is None:
-            # Handle both numeric and GEKKO variable eccentricity
-            try:
-                is_circular = (float(eccentricity) == 0.0)
-            except (TypeError, ValueError):
-                # GEKKO variable - assume non-circular for safety
-                is_circular = False
-            
-            if is_circular:
-                q_val = mean_motion * (t - t_p)
-            else:
-                # Convert time to anomaly
-                M_val = mean_motion * (t - t_p)
-                enc_arg = M_val / 2.0
-                E_val = 2 * solver.atan(
-                    solver.sqrt((1 - eccentricity) / (1 + eccentricity))
-                    * solver.tan(enc_arg)
-                )
-                q_val = 2 * solver.atan(
-                    solver.sqrt((1 + eccentricity) / (1 - eccentricity))
-                    * solver.tan(E_val / 2)
-                )
-
-        # Denominators
-        den1 = (1 - eccentricity**2) ** 3
-        den2 = (1 - eccentricity**2) ** 1.5
-
-        coef_1 = mean_motion**2 * rho
-        coef_2 = mean_motion * rho**2
-
-        A_mat = [
-            [0, 0, 0, 1, 0, 0],
-            [0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 0, 1],
-            [
-                coef_1 * (3 + eccentricity * solver.cos(q_val)) / den1,
-                coef_1 * (eccentricity * solver.sin(q_val)) / den1,
-                0,
-                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
-                2 * coef_2 / den2,
-                0,
-            ],
-            [
-                coef_1 * (eccentricity * solver.sin(q_val)) / den1,
-                coef_1 * eccentricity * solver.cos(q_val) / den1,
-                0,
-                -2 * coef_2 / den2,
-                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
-                0,
-            ],
-            [
-                0,
-                0,
-                -coef_1 * (1) / den1,
-                0,
-                0,
-                coef_2 * (eccentricity * solver.sin(q_val)) / den2,
-            ],
-        ]
-        return np.array(A_mat) if "m" not in kwargs else A_mat
-
-    def B_func(*args, **kwargs):
-        return np.array(
-            [[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
-        )
-
-    def d_func(t, t_p, *args, **kwargs):
-        return np.zeros(6)
-
-    # Cost Matrices
-    state_cost_matrix = np.identity(6)
-    input_cost_matrix = np.identity(3)
-
-    matrices = (A_func, B_func, state_cost_matrix, input_cost_matrix, d_func)
-    constraints = (None, None)
-    bounds = (state_bounds, input_bounds)
-
-    return matrices, constraints, bounds
+    """Elliptical true-anomaly dynamics without differential drag."""
+    kwargs.pop("alpha", None)
+    kwargs.pop("beta", None)
+    kwargs.pop("drag_alpha", None)
+    kwargs.pop("drag_beta", None)
+    return orbital_ellp_drag(
+        anom_step=anom_step,
+        mean_motion=mean_motion,
+        eccentricity=eccentricity,
+        state_bounds=state_bounds,
+        input_bounds=input_bounds,
+        alpha=0.0,
+        beta=0.0,
+        *args,
+        **kwargs,
+    )
 
 
 # =============================================================================
