@@ -105,6 +105,7 @@ class MPCConfig:
     input_bounds: List[Dict[str, float]]
     force_bounds: List[Dict[str, float]]
     goal_bounds: List[float]
+    min_chaser_separation: float = 0.35
 
     Q: np.ndarray = field(default_factory=lambda: np.eye(6))
     R: np.ndarray = field(default_factory=lambda: np.eye(3) * 1e-4)
@@ -124,6 +125,8 @@ class TargetConfig:
     center: np.ndarray
     limits: Dict[str, float]
     tolerance: float
+    docking_standoff: float
+    assignment_strategy: str
     stop_time: float
     discretize_dockers: bool
 
@@ -134,10 +137,34 @@ class TargetConfig:
         return float(self.limits.get("target_radius", self.limits.get("r_T", 0.0)))
 
     @property
+    def height(self) -> float:
+        if "target_height" in self.limits:
+            return float(self.limits["target_height"])
+        if "target_half_length" in self.limits:
+            return 2.0 * float(self.limits["target_half_length"])
+        if "half_length" in self.limits:
+            return 2.0 * float(self.limits["half_length"])
+        if "l_T" in self.limits:
+            return 2.0 * float(self.limits["l_T"])
+        return 0.0
+
+    @property
     def half_length(self) -> float:
+        if "target_half_length" in self.limits:
+            return float(self.limits["target_half_length"])
+        if "half_length" in self.limits:
+            return float(self.limits["half_length"])
         if "l_T" in self.limits:
             return float(self.limits["l_T"])
-        return float(self.limits.get("target_height", 0.0)) / 2.0
+        return self.height / 2.0
+
+    @property
+    def bounding_sphere_radius(self) -> float:
+        return float(np.sqrt(self.radius**2 + self.half_length**2))
+
+    @property
+    def rendezvous_radius(self) -> float:
+        return self.bounding_sphere_radius * (1.0 + self.tolerance)
 
     def collision_params(self, operation: str = "rendezvous") -> Dict[str, Any]:
         """Translate target geometry into solver constraint parameters."""
@@ -149,8 +176,11 @@ class TargetConfig:
             "center": self.center,
             "orientation": self.initial_orientation,
             "target_radius": radius,
+            "target_height": self.height * (1.0 + self.tolerance),
             "target_half_length": half_length,
-            "rendezvous_radius": max(radius, half_length),
+            "rendezvous_radius": self.rendezvous_radius,
+            "docking_standoff": self.docking_standoff,
+            "assignment_strategy": self.assignment_strategy,
             "tube_radius": 0.0,
         }
 
@@ -259,6 +289,7 @@ class SimulationConfig:
             input_bounds=mpc_data["input_bounds"],
             force_bounds=mpc_data["force_bounds"],
             goal_bounds=mpc_data["goal_bounds"],
+            min_chaser_separation=float(mpc_data.get("min_chaser_separation", 0.35)),
             Q=_as_square_weight_matrix(mpc_data.get("Q", np.eye(6).tolist()), 6),
             R=_as_square_weight_matrix(
                 mpc_data.get("R", (np.eye(3) * 1e-4).tolist()), 3
@@ -274,6 +305,10 @@ class SimulationConfig:
             center=to_numpy(target_data["center"]),
             limits=target_data["limits"],
             tolerance=float(target_data.get("tolerance", 0.0)),
+            docking_standoff=float(target_data.get("docking_standoff", 0.12)),
+            assignment_strategy=target_data.get(
+                "assignment_strategy", "cylinder_side_approach_hungarian"
+            ),
             stop_time=target_data["stop_time"],
             discretize_dockers=target_data["discretize_dockers"],
             observation_error=target_data["observation_error"],

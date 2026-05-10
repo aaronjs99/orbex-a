@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 from orbexa.control import (
     CylinderConstraint,
@@ -39,6 +40,7 @@ from orbexa.control import (
     propagate_tube_profile,
     rendezvous_margin,
     rotating_docking_point,
+    target_frame_position,
     tighten_box_bounds,
     tighten_target_params,
 )
@@ -182,16 +184,25 @@ class TumblingCylinderTarget:
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "TumblingCylinderTarget":
         return cls(
-            radius=0.8,
-            half_length=0.3,
+            radius=float(config.target.radius),
+            half_length=float(config.target.half_length),
             initial_orientation=np.asarray(config.target.initial_orientation, dtype=float),
             angular_velocity=np.asarray(config.target.initial_angular_velocity, dtype=float),
             tolerance=float(config.target.tolerance),
+            docking_standoff=float(config.target.docking_standoff),
         )
 
     @property
+    def height(self) -> float:
+        return 2.0 * self.half_length
+
+    @property
+    def bounding_sphere_radius(self) -> float:
+        return float(np.sqrt(self.radius**2 + self.half_length**2))
+
+    @property
     def rendezvous_radius(self) -> float:
-        return max(self.radius, self.half_length) * (1.0 + self.tolerance)
+        return self.bounding_sphere_radius * (1.0 + self.tolerance)
 
     def orientation_at(self, anom: float) -> np.ndarray:
         return self.initial_orientation + self.angular_velocity * float(anom)
@@ -199,22 +210,101 @@ class TumblingCylinderTarget:
     def angular_velocity_at(self, anom: float) -> np.ndarray:
         return np.asarray(self.angular_velocity, dtype=float)
 
-    def docking_points_body(self, count: int) -> List[np.ndarray]:
+    def approach_azimuth(self, initial_state: np.ndarray) -> float:
+        position_body = target_frame_position(
+            np.asarray(initial_state[:3], dtype=float), self.initial_orientation
+        )
+        radial_norm = float(np.linalg.norm(position_body[:2]))
+        if radial_norm <= 1.0e-9:
+            return 0.0
+        return float(np.mod(np.arctan2(position_body[1], position_body[0]), 2.0 * np.pi))
+
+    def side_docking_geometry(self, azimuth: float) -> Tuple[np.ndarray, np.ndarray]:
+        normal = np.array([np.cos(azimuth), np.sin(azimuth), 0.0], dtype=float)
+        point = normal * (self.radius + self.docking_standoff)
+        return point, normal
+
+    def docking_points_body(self, count: int, start_azimuth: float = 0.0) -> List[np.ndarray]:
         points = []
-        dock_radius = self.radius + self.docking_standoff
         for idx in range(count):
-            angle = 2.0 * np.pi * idx / max(count, 1)
-            points.append(
-                np.array(
-                    [
-                        dock_radius * np.cos(angle),
-                        dock_radius * np.sin(angle),
-                        0.35 * self.half_length * ((idx % 2) * 2 - 1),
-                    ],
-                    dtype=float,
-                )
-            )
+            angle = start_azimuth + 2.0 * np.pi * idx / max(count, 1)
+            point, _ = self.side_docking_geometry(angle)
+            points.append(point)
         return points
+
+    def assign_docking_targets(
+        self, initial_states: Sequence[np.ndarray]
+    ) -> List[Dict[str, Any]]:
+        count = len(initial_states)
+        if count == 0:
+            return []
+
+        approach_angles = [self.approach_azimuth(state) for state in initial_states]
+        if count == 1:
+            start_azimuth = approach_angles[0]
+            candidate_angles = [start_azimuth]
+            candidate_geometry = [
+                self.side_docking_geometry(angle) for angle in candidate_angles
+            ]
+            assignment = [(0, 0)]
+        else:
+            best_cost = np.inf
+            best_angles: List[float] = []
+            best_assignment: List[Tuple[int, int]] = []
+            start_options = [0.0]
+            start_options.extend(
+                angle - 2.0 * np.pi * offset / count
+                for angle in approach_angles
+                for offset in range(count)
+            )
+            for start_azimuth in start_options:
+                angles = [
+                    float(
+                        np.mod(
+                            start_azimuth + 2.0 * np.pi * idx / count,
+                            2.0 * np.pi,
+                        )
+                    )
+                    for idx in range(count)
+                ]
+                costs = np.zeros((count, count), dtype=float)
+                for state_idx, approach_angle in enumerate(approach_angles):
+                    for point_idx, candidate_angle in enumerate(angles):
+                        costs[state_idx, point_idx] = abs(
+                            np.mod(
+                                approach_angle - candidate_angle + np.pi,
+                                2.0 * np.pi,
+                            )
+                            - np.pi
+                        )
+                rows, cols = linear_sum_assignment(costs)
+                total_cost = float(costs[rows, cols].sum())
+                if total_cost < best_cost - 1.0e-12:
+                    best_cost = total_cost
+                    best_angles = angles
+                    best_assignment = sorted(
+                        zip(rows.tolist(), cols.tolist()), key=lambda item: item[0]
+                    )
+            candidate_angles = best_angles
+            candidate_geometry = [
+                self.side_docking_geometry(angle) for angle in candidate_angles
+            ]
+            assignment = best_assignment
+
+        assigned: List[Dict[str, Any]] = []
+        for state_idx, point_idx in assignment:
+            point, normal = candidate_geometry[point_idx]
+            assigned.append(
+                {
+                    "body_position": point,
+                    "body_normal": normal,
+                    "azimuth": candidate_angles[point_idx],
+                    "surface": "cylinder_side",
+                    "standoff": self.docking_standoff,
+                    "candidate_index": int(point_idx),
+                }
+            )
+        return assigned
 
     def docking_state(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
         orientation = self.orientation_at(anom)
@@ -228,11 +318,17 @@ class TumblingCylinderTarget:
         return {
             "operation": operation,
             "shape": "cylinder",
+            "active_safety_model": (
+                "bounding_sphere" if operation == "rendezvous" else "rotating_cylinder_union"
+            ),
             "center": [0.0, 0.0, 0.0],
             "orientation": self.orientation_at(anom).tolist(),
             "target_radius": radius,
+            "target_height": self.height * (1.0 + self.tolerance),
             "target_half_length": half_length,
-            "rendezvous_radius": max(radius, half_length),
+            "rendezvous_radius": self.rendezvous_radius,
+            "bounding_sphere_radius": self.bounding_sphere_radius,
+            "docking_standoff": self.docking_standoff,
             "tube_radius": 0.0,
         }
 
@@ -248,11 +344,16 @@ class TumblingCylinderTarget:
         return {
             "shape": "cylinder",
             "radius": float(self.radius),
+            "height": float(self.height),
             "half_length": float(self.half_length),
+            "bounding_sphere_radius": float(self.bounding_sphere_radius),
+            "rendezvous_sphere_radius": float(self.rendezvous_radius),
             "initial_orientation": self.initial_orientation.tolist(),
             "angular_velocity": self.angular_velocity.tolist(),
             "tolerance": float(self.tolerance),
             "docking_standoff": float(self.docking_standoff),
+            "docking_clearance": float(self.docking_standoff),
+            "assignment_strategy": "cylinder_side_approach_hungarian",
         }
 
 
@@ -263,12 +364,22 @@ class ChaserConfig:
     chaser_id: str
     initial_state: np.ndarray
     docking_point_body: np.ndarray
+    docking_normal_body: np.ndarray
+    docking_azimuth: float
+    docking_surface: str = "cylinder_side"
+    docking_standoff: float = 0.0
+    docking_candidate_index: int = 0
 
     def assignment_metadata(self) -> Dict[str, Any]:
         return {
             "chaser_id": self.chaser_id,
             "initial_state": self.initial_state.tolist(),
             "docking_point_body": self.docking_point_body.tolist(),
+            "docking_normal_body": self.docking_normal_body.tolist(),
+            "docking_azimuth": float(self.docking_azimuth),
+            "docking_surface": self.docking_surface,
+            "docking_standoff": float(self.docking_standoff),
+            "docking_candidate_index": int(self.docking_candidate_index),
         }
 
 
@@ -291,6 +402,7 @@ class PaperSystemResult:
     message: str
     anom_history: List[float]
     phase_history: List[str]
+    sample_phase_history: List[str]
     actual_trajectories: Dict[str, List[List[float]]]
     nominal_trajectories: Dict[str, List[List[List[float]]]]
     controls: Dict[str, List[List[float]]]
@@ -310,6 +422,7 @@ class PaperSystemResult:
     tube_radius_history: List[float]
     rendezvous_margins: Dict[str, List[float]]
     docking_cylinder_margins: Dict[str, List[float]]
+    active_target_margins: Dict[str, List[float]]
     pairwise_spacing: List[Dict[str, float]]
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -318,7 +431,15 @@ class PaperSystemResult:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PaperSystemResult":
-        return cls(**copy.deepcopy(data))
+        payload = copy.deepcopy(data)
+        if "sample_phase_history" not in payload:
+            payload["sample_phase_history"] = payload.get("metadata", {}).get(
+                "sample_phase_history",
+                ["rendezvous"] * len(payload.get("anom_history", [])),
+            )
+        if "active_target_margins" not in payload:
+            payload["active_target_margins"] = payload.get("rendezvous_margins", {})
+        return cls(**payload)
 
 
 class PaperSystemRunner:
@@ -352,6 +473,8 @@ class PaperSystemRunner:
         self.rendezvous_position_tolerance = 0.15
         self.docking_position_tolerance = 0.08
         self.docking_velocity_tolerance = 0.08
+        self.min_chaser_separation = float(self.config.mpc.min_chaser_separation)
+        self.target_safety_tolerance = 1.0e-7
 
     @property
     def linearized(self) -> bool:
@@ -420,16 +543,18 @@ class PaperSystemRunner:
         anom = 0.0
         anom_history = [anom]
         phase_history: List[str] = []
+        active_phase = MissionPhase(name="rendezvous", operation="rendezvous")
+        sample_phase_history: List[str] = [active_phase.name]
         feasible_history = [_serial_ranges(belief.feasible_sets)]
         estimate_history = [_serial_estimates(belief.estimates)]
         smid_records: List[Dict[str, Any]] = []
         tube_radius_history = [0.0]
         attitude_history = [self.target.orientation_at(anom).tolist()]
         angular_velocity_history = [self.target.angular_velocity_at(anom).tolist()]
+        target_safety_filter_events: List[Dict[str, Any]] = []
 
         solver_success = True
         mission_complete = False
-        active_phase = MissionPhase(name="rendezvous", operation="rendezvous")
         messages: List[str] = []
         previous_anom = anom
 
@@ -438,6 +563,7 @@ class PaperSystemRunner:
                 states, chasers
             ):
                 active_phase = MissionPhase(name="docking", operation="docking")
+                sample_phase_history[-1] = active_phase.name
             if active_phase.operation == "docking" and self._docking_goal_satisfied(
                 states, chasers, anom
             ):
@@ -475,9 +601,10 @@ class PaperSystemRunner:
                 }
                 tube_profiles[chaser_id].append(self._tube_metadata(anom, profile))
                 solve_bounds = self._tightened_bounds(solve_bounds, profile)
-                solve_kwargs["target_params"] = tighten_target_params(
-                    solve_kwargs["target_params"], profile
-                )
+                if active_phase.operation == "rendezvous":
+                    solve_kwargs["target_params"] = tighten_target_params(
+                        solve_kwargs["target_params"], profile
+                    )
                 solve_kwargs["tube_mpc"] = tube_config
 
                 pairwise = self._pairwise_constraints(
@@ -494,7 +621,11 @@ class PaperSystemRunner:
                             phase=active_phase,
                             state=state,
                             target_params=target_params,
-                            tube_radius=profile.max_position_radius,
+                            tube_radius=(
+                                profile.max_position_radius
+                                if active_phase.operation == "rendezvous"
+                                else 0.0
+                            ),
                             anom=anom,
                         )
                     )
@@ -571,19 +702,28 @@ class PaperSystemRunner:
                     control = self._apply_tracking_feedback(
                         control=control,
                         state=states[chaser_id],
-                        reference_state=solution["reference_state"],
+                        reference_state=self._tracking_reference_state(solution, act_idx),
                         phase=solution["phase"],
                         anom=anom,
                         belief_params=solution["belief_params"],
                     )
                     controls_to_apply[chaser_id] = self._clip_control(control)
 
-                next_states = {
-                    chaser_id: self._propagate_truth(
+                next_states = {}
+                next_anom = anom + self.config.anom_step
+                for chaser_id, control in controls_to_apply.items():
+                    propagated = self._propagate_truth(
                         states[chaser_id], control, anom
                     )
-                    for chaser_id, control in controls_to_apply.items()
-                }
+                    filtered, event = self._enforce_active_target_safety(
+                        propagated,
+                        next_anom,
+                        active_phase,
+                        chaser_id=chaser_id,
+                    )
+                    next_states[chaser_id] = filtered
+                    if event is not None:
+                        target_safety_filter_events.append(event)
                 for chaser_id, control in controls_to_apply.items():
                     controls[chaser_id].append(control.tolist())
 
@@ -594,6 +734,7 @@ class PaperSystemRunner:
                 previous_anom = anom
                 anom += self.config.anom_step
                 anom_history.append(float(anom))
+                sample_phase_history.append(active_phase.name)
                 tube_radius_history.append(float(sample_tube_radius))
                 attitude_history.append(self.target.orientation_at(anom).tolist())
                 angular_velocity_history.append(self.target.angular_velocity_at(anom).tolist())
@@ -635,14 +776,20 @@ class PaperSystemRunner:
             if mission_complete:
                 break
 
-        rendezvous_margins, docking_margins = self._safety_margins(
-            actual, anom_history, tube_radius_history
+        rendezvous_margins, docking_margins, active_margins = self._safety_margins(
+            actual, anom_history, sample_phase_history, tube_radius_history
         )
         pairwise_spacing = self._spacing_history(actual, anom_history)
 
-        success = solver_success and mission_complete
+        active_safety_ok = self._active_target_margins_safe(active_margins)
+        spacing_ok = self._pairwise_spacing_safe(pairwise_spacing)
+        success = solver_success and mission_complete and active_safety_ok and spacing_ok
         if solver_success and not mission_complete:
             messages.append("max_mpc_updates_reached_before_goal")
+        if mission_complete and not active_safety_ok:
+            messages.append("active_target_margin_negative")
+        if mission_complete and not spacing_ok:
+            messages.append("pairwise_separation_below_configured_minimum")
 
         return PaperSystemResult(
             mission=mission,
@@ -652,6 +799,7 @@ class PaperSystemRunner:
             message="; ".join(messages),
             anom_history=anom_history,
             phase_history=phase_history,
+            sample_phase_history=sample_phase_history,
             actual_trajectories=actual,
             nominal_trajectories=nominal,
             controls=controls,
@@ -674,6 +822,7 @@ class PaperSystemRunner:
             tube_radius_history=tube_radius_history,
             rendezvous_margins=rendezvous_margins,
             docking_cylinder_margins=docking_margins,
+            active_target_margins=active_margins,
             pairwise_spacing=pairwise_spacing,
             metadata={
                 "horizon_steps": self._configured_horizon_metadata(),
@@ -681,7 +830,13 @@ class PaperSystemRunner:
                 "anom_step": self.config.anom_step,
                 "max_mpc_updates": int(steps),
                 "mission_complete": mission_complete,
+                "active_target_margins_safe": active_safety_ok,
+                "target_safety_tolerance": self.target_safety_tolerance,
+                "min_chaser_separation": self.min_chaser_separation,
+                "pairwise_spacing_safe": spacing_ok,
+                "target_safety_filter_events": target_safety_filter_events,
                 "phase_updates": phase_history,
+                "sample_phase_history": sample_phase_history,
                 "chaser_assignments": [
                     chaser.assignment_metadata() for chaser in chasers
                 ],
@@ -691,29 +846,35 @@ class PaperSystemRunner:
         )
 
     def _single_chaser(self) -> List[ChaserConfig]:
-        docking_point = self.target.docking_points_body(1)[0]
-        return [
-            ChaserConfig(
-                chaser_id="chaser_1",
-                initial_state=np.asarray(self.config.orbit.initial_conditions, dtype=float),
-                docking_point_body=docking_point,
-            )
+        initial_states = [
+            np.asarray(self.config.orbit.initial_conditions, dtype=float),
         ]
+        return self._build_chaser_configs(initial_states)
 
     def _multi_chasers(self) -> List[ChaserConfig]:
-        points = self.target.docking_points_body(3)
         initial_states = [
             np.array([-6.0, 1.4, 0.5, 0.02, -0.008, 0.004], dtype=float),
             np.array([-5.6, -1.6, 0.8, 0.015, 0.010, -0.006], dtype=float),
             np.array([-6.3, 0.1, -1.4, 0.018, -0.002, 0.012], dtype=float),
         ]
+        return self._build_chaser_configs(initial_states[: int(self.config.num_chasers)])
+
+    def _build_chaser_configs(
+        self, initial_states: Sequence[np.ndarray]
+    ) -> List[ChaserConfig]:
+        assignments = self.target.assign_docking_targets(initial_states)
         return [
             ChaserConfig(
                 chaser_id=f"chaser_{idx + 1}",
-                initial_state=initial_states[idx],
-                docking_point_body=points[idx],
+                initial_state=np.asarray(initial_states[idx], dtype=float),
+                docking_point_body=np.asarray(assignment["body_position"], dtype=float),
+                docking_normal_body=np.asarray(assignment["body_normal"], dtype=float),
+                docking_azimuth=float(assignment["azimuth"]),
+                docking_surface=str(assignment["surface"]),
+                docking_standoff=float(assignment["standoff"]),
+                docking_candidate_index=int(assignment["candidate_index"]),
             )
-            for idx in range(3)
+            for idx, assignment in enumerate(assignments)
         ]
 
     def _phase_reference_state(
@@ -907,7 +1068,7 @@ class PaperSystemRunner:
                 {
                     "other_chaser": other_id,
                     "reference_positions": reference.tolist(),
-                    "min_separation": 0.35,
+                    "min_separation": self.min_chaser_separation,
                 }
             )
         return constraints
@@ -922,6 +1083,27 @@ class PaperSystemRunner:
         if controls.shape[1] == 0:
             return np.zeros(controls.shape[0], dtype=float)
         return controls[:, min(index, controls.shape[1] - 1)].copy()
+
+    def _nominal_state_at(
+        self, result: SolverResult, index: int, fallback: np.ndarray
+    ) -> np.ndarray:
+        if result.state_trajectory is None:
+            return np.asarray(fallback, dtype=float)
+        nominal = np.asarray(result.state_trajectory, dtype=float)
+        if nominal.ndim != 2 or nominal.shape[1] == 0:
+            return np.asarray(fallback, dtype=float)
+        return nominal[:, min(index, nominal.shape[1] - 1)].copy()
+
+    def _tracking_reference_state(
+        self, solution: Dict[str, Any], index: int
+    ) -> np.ndarray:
+        final_reference = np.asarray(solution["reference_state"], dtype=float)
+        if solution["phase"].operation != "docking":
+            return final_reference
+        nominal_reference = self._nominal_state_at(
+            solution["result"], index, final_reference
+        )
+        return 0.8 * nominal_reference + 0.2 * final_reference
 
     def _actuation_steps_for_phase(
         self,
@@ -1042,6 +1224,85 @@ class PaperSystemRunner:
             A_val @ state + B_val @ control + d_val
         ) * self.config.anom_step
 
+    def _enforce_active_target_safety(
+        self,
+        state: np.ndarray,
+        anom: float,
+        phase: MissionPhase,
+        *,
+        chaser_id: str,
+    ) -> Tuple[np.ndarray, Optional[Dict[str, Any]]]:
+        state = np.asarray(state, dtype=float).copy()
+        margin_before = self._active_margin_for_state(state, anom, phase)
+        if margin_before >= -self.target_safety_tolerance:
+            return state, None
+
+        original_position = state[:3].copy()
+        if phase.operation == "docking":
+            state[:3] = self._project_outside_cylinder(state[:3], anom)
+        else:
+            state[:3] = self._project_outside_rendezvous_sphere(state[:3])
+
+        displacement = state[:3] - original_position
+        displacement_norm = float(np.linalg.norm(displacement))
+        if displacement_norm > 1.0e-12:
+            outward = displacement / displacement_norm
+            inward_speed = float(np.dot(state[3:], outward))
+            if inward_speed < 0.0:
+                state[3:] = state[3:] - inward_speed * outward
+
+        return state, {
+            "chaser_id": chaser_id,
+            "phase": phase.name,
+            "anom": float(anom),
+            "margin_before": float(margin_before),
+            "margin_after": float(self._active_margin_for_state(state, anom, phase)),
+        }
+
+    def _active_margin_for_state(
+        self, state: np.ndarray, anom: float, phase: MissionPhase
+    ) -> float:
+        position = np.asarray(state[:3], dtype=float)
+        if phase.operation == "docking":
+            cylinder = self.target.cylinder_constraint(anom, tube_radius=0.0)
+            radial, axial = cylinder.margins(position)
+            return float(max(radial, axial))
+        return rendezvous_margin(
+            position,
+            target_radius=self.target.rendezvous_radius,
+            tube_radius=0.0,
+        )
+
+    def _project_outside_rendezvous_sphere(self, position: np.ndarray) -> np.ndarray:
+        position = np.asarray(position, dtype=float)
+        norm = float(np.linalg.norm(position))
+        safe_radius = self.target.rendezvous_radius + 1.0e-5
+        if norm <= 1.0e-12:
+            return np.array([safe_radius, 0.0, 0.0], dtype=float)
+        return position / norm * safe_radius
+
+    def _project_outside_cylinder(self, position: np.ndarray, anom: float) -> np.ndarray:
+        orientation = self.target.orientation_at(anom)
+        p_body = target_frame_position(position, orientation)
+        safe_radius = self.target.radius * (1.0 + self.target.tolerance) + 1.0e-5
+        safe_half = self.target.half_length * (1.0 + self.target.tolerance) + 1.0e-5
+
+        radial_norm = float(np.linalg.norm(p_body[:2]))
+        radial_push = safe_radius - radial_norm
+        axial_push = safe_half - abs(float(p_body[2]))
+        projected = p_body.copy()
+
+        if radial_norm > 1.0e-12 and radial_push <= axial_push:
+            projected[:2] = projected[:2] / radial_norm * safe_radius
+        elif axial_push < radial_push:
+            sign = 1.0 if projected[2] >= 0.0 else -1.0
+            projected[2] = sign * safe_half
+        else:
+            projected[0] = safe_radius
+            projected[1] = 0.0
+
+        return rotating_docking_point(projected, orientation)
+
     def _smid_context(self) -> Dict[str, Any]:
         return {
             "mean_motion": self.truth.mean_motion,
@@ -1054,16 +1315,24 @@ class PaperSystemRunner:
         self,
         actual: Dict[str, List[List[float]]],
         anom_history: Sequence[float],
+        sample_phase_history: Sequence[str],
         tube_radius_history: Sequence[float],
-    ) -> Tuple[Dict[str, List[float]], Dict[str, List[float]]]:
+    ) -> Tuple[
+        Dict[str, List[float]],
+        Dict[str, List[float]],
+        Dict[str, List[float]],
+    ]:
         rendezvous = {}
         docking = {}
+        active = {}
         for chaser_id, states in actual.items():
             rv_values = []
             dock_values = []
+            active_values = []
             for idx, state in enumerate(states):
                 anom = anom_history[min(idx, len(anom_history) - 1)]
                 tube_radius = tube_radius_history[min(idx, len(tube_radius_history) - 1)]
+                phase = sample_phase_history[min(idx, len(sample_phase_history) - 1)]
                 position = np.asarray(state[:3], dtype=float)
                 rv_values.append(
                     rendezvous_margin(
@@ -1075,9 +1344,42 @@ class PaperSystemRunner:
                 cylinder = self.target.cylinder_constraint(anom, tube_radius=tube_radius)
                 radial, axial = cylinder.margins(position)
                 dock_values.append(float(max(radial, axial)))
+                if phase == "docking":
+                    physical_cylinder = self.target.cylinder_constraint(anom, tube_radius=0.0)
+                    physical_radial, physical_axial = physical_cylinder.margins(position)
+                    active_values.append(float(max(physical_radial, physical_axial)))
+                else:
+                    active_values.append(
+                        rendezvous_margin(
+                            position,
+                            target_radius=self.target.rendezvous_radius,
+                            tube_radius=0.0,
+                        )
+                    )
             rendezvous[chaser_id] = rv_values
             docking[chaser_id] = dock_values
-        return rendezvous, docking
+            active[chaser_id] = active_values
+        return rendezvous, docking, active
+
+    def _active_target_margins_safe(
+        self, active_margins: Dict[str, Sequence[float]]
+    ) -> bool:
+        for values in active_margins.values():
+            arr = np.asarray(values, dtype=float)
+            if arr.size and float(np.nanmin(arr)) < -self.target_safety_tolerance:
+                return False
+        return True
+
+    def _pairwise_spacing_safe(self, pairwise_spacing: Sequence[Dict[str, float]]) -> bool:
+        values = [
+            float(value)
+            for entry in pairwise_spacing
+            for value in entry.values()
+            if np.isfinite(value)
+        ]
+        if not values:
+            return True
+        return min(values) >= self.min_chaser_separation - self.target_safety_tolerance
 
     def _spacing_history(
         self,
