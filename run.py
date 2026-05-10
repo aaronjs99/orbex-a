@@ -55,7 +55,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="ORBEX-A ADTMPC mission runner",
         epilog=(
-            "Examples: python run.py --mission all --run-linearized; "
+            "Default: python run.py runs all ADTMPC nonlinear missions. "
+            "Examples: python run.py --run-linearized; "
             "python run.py --workflow legacy --mode mpc --steps 15"
         ),
     )

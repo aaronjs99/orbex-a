@@ -517,10 +517,19 @@ class ADTMPCMissionRenderer:
         keys = ["eccentricity", "alpha", "beta"]
         fig, axes = plt.subplots(len(keys), 1, figsize=(9, 8), sharex=True)
         for axis, key in zip(axes, keys):
+            count = min(
+                len(result.parameter_estimate_history),
+                len(result.feasible_set_history),
+                len(result.anom_history),
+            )
+            times = result.anom_history[:count]
             values = [
                 estimates[key] for estimates in result.parameter_estimate_history
-            ]
-            axis.plot(result.anom_history[: len(values)], values, label="belief")
+            ][:count]
+            lower = [feasible[key][0] for feasible in result.feasible_set_history[:count]]
+            upper = [feasible[key][1] for feasible in result.feasible_set_history[:count]]
+            axis.fill_between(times, lower, upper, alpha=0.16, label="feasible set")
+            axis.plot(times, values, label="belief")
             axis.axhline(result.truth[key], color="black", linestyle="--", linewidth=1.0, label="truth")
             axis.set_ylabel(key)
             axis.grid(True, alpha=0.25)

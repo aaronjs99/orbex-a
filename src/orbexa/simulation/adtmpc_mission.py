@@ -934,12 +934,49 @@ class ADTMPCMissionRunner:
         return self._build_chaser_configs(initial_states)
 
     def _multi_chasers(self) -> List[ChaserConfig]:
-        initial_states = [
-            np.array([-6.0, 1.4, 0.5, 0.02, -0.008, 0.004], dtype=float),
-            np.array([-5.6, -1.6, 0.8, 0.015, 0.010, -0.006], dtype=float),
-            np.array([-6.3, 0.1, -1.4, 0.018, -0.002, 0.012], dtype=float),
-        ]
-        return self._build_chaser_configs(initial_states[: int(self.config.num_chasers)])
+        return self._build_chaser_configs(
+            self._multi_initial_states(int(self.config.num_chasers))
+        )
+
+    def _multi_initial_states(self, count: int) -> List[np.ndarray]:
+        """Create deterministic far-field starts for a configurable chaser fleet."""
+        if count <= 0:
+            raise ValueError("num_chasers must be positive")
+
+        base_state = np.asarray(self.config.orbit.initial_conditions, dtype=float)
+        base_radius = max(float(np.linalg.norm(base_state[:2])), 5.5)
+        base_angle = float(np.arctan2(base_state[1], base_state[0]))
+        axial_span = max(abs(float(base_state[2])), 0.7)
+        inward_speed = max(float(np.linalg.norm(base_state[3:5])), 0.018)
+        axial_speed = max(abs(float(base_state[5])), 0.004)
+
+        states: List[np.ndarray] = []
+        golden_offset = np.pi * (3.0 - np.sqrt(5.0))
+        for idx in range(count):
+            angle = base_angle + 2.0 * np.pi * idx / count
+            radial = base_radius * (1.0 + 0.04 * np.sin(idx * golden_offset))
+            vertical_phase = angle + 0.5 * idx * golden_offset
+            position = np.array(
+                [
+                    radial * np.cos(angle),
+                    radial * np.sin(angle),
+                    axial_span * np.sin(vertical_phase),
+                ],
+                dtype=float,
+            )
+            radial_unit = position[:2] / max(float(np.linalg.norm(position[:2])), 1.0e-9)
+            tangential_unit = np.array([-radial_unit[1], radial_unit[0]], dtype=float)
+            velocity_xy = -inward_speed * radial_unit + 0.25 * inward_speed * tangential_unit
+            velocity = np.array(
+                [
+                    velocity_xy[0],
+                    velocity_xy[1],
+                    axial_speed * np.cos(vertical_phase),
+                ],
+                dtype=float,
+            )
+            states.append(np.concatenate([position, velocity]))
+        return states
 
     def _build_chaser_configs(
         self, initial_states: Sequence[np.ndarray]

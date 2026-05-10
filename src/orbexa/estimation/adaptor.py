@@ -458,6 +458,9 @@ class SMIDAdaptor:
         time_series_prior_weight: float = 0.15,
         time_series_update_gain: float = 1.0,
         minimum_widths: Optional[Dict[str, float]] = None,
+        observability_relative_threshold: float = 0.02,
+        observability_unique_threshold: float = 0.08,
+        observability_absolute_threshold: float = 1.0e-8,
     ):
         self.parameter_keys = tuple(parameter_keys)
         self.error_bound = float(error_bound)
@@ -474,6 +477,9 @@ class SMIDAdaptor:
         self.minimum_widths = {
             key: float(value) for key, value in (minimum_widths or {}).items()
         }
+        self.observability_relative_threshold = float(observability_relative_threshold)
+        self.observability_unique_threshold = float(observability_unique_threshold)
+        self.observability_absolute_threshold = float(observability_absolute_threshold)
         self.records: List[SMIDRecord] = []
 
     def update(
@@ -526,6 +532,7 @@ class SMIDAdaptor:
             anom_step=anom_step,
             dynamics_context=dynamics_context,
         )
+        held_keys = self._held_keys_from_status(ts_status)
 
         if prediction_error <= self.prediction_error_threshold:
             estimates_after = (
@@ -554,14 +561,24 @@ class SMIDAdaptor:
                 estimates_after=estimates_after,
                 prediction_error=prediction_error,
                 verification_error=ts_error if ts_status.startswith("ok") else None,
-                solve_status={"trigger": "skipped", "time_series": ts_status},
+                solve_status={
+                    "trigger": "skipped",
+                    "time_series": ts_status,
+                    "observability_held": ",".join(sorted(held_keys)) or "none",
+                },
             )
             return feasible_sets, estimates_after, record
 
         candidate: Dict[str, Tuple[float, float]] = {}
-        solve_status: Dict[str, str] = {}
+        solve_status: Dict[str, str] = {
+            "observability_held": ",".join(sorted(held_keys)) or "none"
+        }
         for key in self.parameter_keys:
             lower, upper = fss_before[key]
+            if key in held_keys:
+                candidate[key] = (float(lower), float(upper))
+                solve_status[f"{key}_interval"] = "observability_held_previous"
+                continue
             min_value, min_status = self._solve_parameter_bound(
                 key=key,
                 sense="min",
@@ -591,6 +608,8 @@ class SMIDAdaptor:
                 solve_status[f"{key}_interval"] = "invalid_candidate_preserved"
             candidate[key] = (float(new_lower), float(new_upper))
         candidate = self._apply_minimum_widths(candidate, fss_before)
+        for key in held_keys:
+            candidate[key] = fss_before[key]
 
         verified, verified_estimates, verification_error, verify_status = (
             self._verify_candidate(
@@ -630,6 +649,8 @@ class SMIDAdaptor:
                         *candidate[key],
                     )
                 )
+            for key in held_keys:
+                estimates_after[key] = estimates_before[key]
         else:
             accepted = False
             reason = "verification_failed"
@@ -723,6 +744,12 @@ class SMIDAdaptor:
         anom_step: float,
         dynamics_context: Dict[str, Any],
     ) -> Tuple[Dict[str, float], Optional[float], str]:
+        """Fit a point belief from the measured time series when data supports it.
+
+        The residual includes a small prior term for numerical regularization, but
+        observability is assessed only on the physical state residual.  This avoids
+        treating the prior itself as evidence that alpha/beta were identified.
+        """
         if len(states) < 2:
             return estimates, None, "skipped:insufficient_window"
 
@@ -786,14 +813,122 @@ class SMIDAdaptor:
                 gtol=1.0e-10,
             )
             refined = unpack(result.x)
+            data_residual = lambda z: residual(z)[:- len(z0)]
+            jacobian = self._finite_difference_jacobian(data_residual, result.x)
+            observable, observability = self._observable_parameter_mask(jacobian)
+            held = []
+            for idx, key in enumerate(self.parameter_keys):
+                if not observable[idx]:
+                    refined[key] = float(estimates[key])
+                    held.append(key)
             rms_error = float(
                 np.sqrt(np.mean(np.square(residual(result.x)[:- len(z0)])))
                 * residual_scale
             )
-            return refined, rms_error, f"ok:nfev={result.nfev}:cost={result.cost:.3e}"
+            held_text = ",".join(held) if held else "none"
+            score_text = ",".join(
+                (
+                    f"{key}={observability[key]['unique_ratio']:.2e}"
+                    f"/{observability[key]['column_norm']:.2e}"
+                )
+                for key in self.parameter_keys
+            )
+            return (
+                refined,
+                rms_error,
+                f"ok:nfev={result.nfev}:cost={result.cost:.3e}:held={held_text}:unique={score_text}",
+            )
         except Exception as exc:
             logger.debug("SMID time-series estimate failed: %s", exc)
             return estimates, None, f"failed:{exc}"
+
+    def _finite_difference_jacobian(self, residual, z: np.ndarray) -> np.ndarray:
+        z = np.asarray(z, dtype=float)
+        base = np.asarray(residual(z), dtype=float)
+        jacobian = np.zeros((len(base), len(z)), dtype=float)
+        step = 1.0e-4
+        for col in range(len(z)):
+            z_plus = z.copy()
+            z_minus = z.copy()
+            z_plus[col] = min(1.0, z_plus[col] + step)
+            z_minus[col] = max(0.0, z_minus[col] - step)
+            denom = z_plus[col] - z_minus[col]
+            if denom <= 0.0:
+                continue
+            jacobian[:, col] = (
+                np.asarray(residual(z_plus), dtype=float)
+                - np.asarray(residual(z_minus), dtype=float)
+            ) / denom
+        return jacobian
+
+    def _observable_parameter_mask(
+        self, jacobian: np.ndarray
+    ) -> Tuple[np.ndarray, Dict[str, Dict[str, float]]]:
+        """Return which parameters have usable sensitivity in the data window."""
+        jacobian = np.asarray(jacobian, dtype=float)
+        if jacobian.size == 0:
+            return (
+                np.zeros(len(self.parameter_keys), dtype=bool),
+                {
+                    key: {"column_norm": 0.0, "unique_ratio": 0.0}
+                    for key in self.parameter_keys
+                },
+            )
+
+        column_norms = np.linalg.norm(jacobian, axis=0)
+        max_norm = float(np.max(column_norms)) if len(column_norms) else 0.0
+        norm_floor = max(
+            self.observability_absolute_threshold,
+            self.observability_relative_threshold * max_norm,
+        )
+        observable = np.zeros(len(self.parameter_keys), dtype=bool)
+        diagnostics: Dict[str, Dict[str, float]] = {}
+
+        for idx, key in enumerate(self.parameter_keys):
+            column = jacobian[:, idx]
+            column_norm = float(column_norms[idx])
+            unique_ratio = 0.0
+            if column_norm >= norm_floor:
+                other_indices = [
+                    other_idx
+                    for other_idx in range(jacobian.shape[1])
+                    if other_idx != idx and column_norms[other_idx] >= norm_floor
+                ]
+                if other_indices:
+                    other_columns = jacobian[:, other_indices]
+                    u_matrix, singular_values, _ = np.linalg.svd(
+                        other_columns, full_matrices=False
+                    )
+                    rank_floor = (
+                        max(float(singular_values[0]) * 1.0e-10, 1.0e-14)
+                        if len(singular_values)
+                        else 0.0
+                    )
+                    rank = int(np.sum(singular_values > rank_floor))
+                    if rank:
+                        basis = u_matrix[:, :rank]
+                        unique_component = column - basis @ (basis.T @ column)
+                    else:
+                        unique_component = column
+                    unique_ratio = float(np.linalg.norm(unique_component) / column_norm)
+                else:
+                    unique_ratio = 1.0
+                observable[idx] = unique_ratio >= self.observability_unique_threshold
+            diagnostics[key] = {
+                "column_norm": column_norm,
+                "unique_ratio": unique_ratio,
+            }
+        return observable, diagnostics
+
+    def _held_keys_from_status(self, status: str) -> set:
+        for piece in str(status).split(":"):
+            if not piece.startswith("held="):
+                continue
+            held_text = piece.split("=", 1)[1]
+            if not held_text or held_text == "none":
+                return set()
+            return {key for key in held_text.split(",") if key in self.parameter_keys}
+        return set()
 
     def _solve_parameter_bound(
         self,

@@ -16,11 +16,15 @@ GEKKO is the authoritative nonlinear solver path. SciPy/SLSQP is available only 
 
 ## Generate ADTMPC Mission Artifacts
 
-Simplest full run from the repository root:
+Default full nonlinear run from the repository root:
 
 ```bash
-python run.py --mission all --run-linearized --clean-generated
+python run.py
 ```
+
+Add `--run-linearized` only when you want the optional SciPy/SLSQP comparison artifacts.
+The default YAML scenario uses 8 chasers for the multi-agent mission; change
+`num_chasers` in `config/default.yaml` to run a different fleet size.
 
 Equivalent console entry point:
 
@@ -31,9 +35,6 @@ orbexa-generate-demo \
   --steps 450 \
   --mission all \
   --primary-solver gekko \
-  --secondary-solver scipy \
-  --run-linearized \
-  --linearized-steps 20 \
   --clean-generated
 ```
 
@@ -42,14 +43,14 @@ scripted trajectory length. Each update solves a fixed-horizon OCP, applies the
 first configured control command(s), replans from the propagated plant state,
 and stops only when the rendezvous/docking goal is reached. Fresh nonlinear
 primary runs raise an error if the update limit is exhausted first.
-The optional SciPy/SLSQP linearized comparison is capped separately by
+If enabled, the optional SciPy/SLSQP linearized comparison is capped separately by
 `--linearized-steps` because it is not the authoritative nonlinear mission.
 
 This writes:
 
 - `results/<session_id>/single/nonlinear/`
 - `results/<session_id>/multi/nonlinear/`
-- optional matching `linearized/` folders
+- optional matching `linearized/` folders when `--run-linearized` is set
 - raw mission JSON under `data/<session_id>/`
 - editable run-note templates at `results/<session_id>/README.md` and `data/<session_id>/README.md`
 - symlinks `results/latest` and `data/latest` pointing at the newest generated session
@@ -58,7 +59,7 @@ Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `
 
 Generated session artifacts stay out of git. The tracked repository preview is `assets/demo.gif`; refresh it intentionally from `results/latest/demo.gif` after a run when you want to update the README animation.
 
-The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive.
+The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive. Parameter-estimate diagnostics show the point belief, truth, and the active feasible-set band; weak or collinear data windows hold unobservable parameters instead of forcing false alpha/beta updates.
 
 `run.py` defaults to the ADTMPC mission workflow. Useful options:
 
