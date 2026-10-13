@@ -16,7 +16,6 @@ ORBEX-A Simulation Module
 High-level simulation runners and control mode configurations.
 """
 
-from orbexa.simulation.modes import CONTROL_MODES, get_mode_config
 from orbexa.simulation.adtmpc_mission import (
     ChaserConfig,
     MissionPhase,
@@ -26,11 +25,8 @@ from orbexa.simulation.adtmpc_mission import (
     ParameterBelief,
     TumblingCylinderTarget,
 )
-from orbexa.simulation.runner import run_simulation, run_all_modes
 
 __all__ = [
-    "CONTROL_MODES",
-    "get_mode_config",
     "ChaserConfig",
     "MissionPhase",
     "ADTMPCMissionResult",
@@ -38,6 +34,4 @@ __all__ = [
     "OrbitalPlantTruth",
     "ParameterBelief",
     "TumblingCylinderTarget",
-    "run_simulation",
-    "run_all_modes",
 ]

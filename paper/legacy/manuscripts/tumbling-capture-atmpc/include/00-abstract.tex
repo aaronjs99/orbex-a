@@ -1,0 +1,16 @@
+\begin{abstract}
+There is a growing need for sophisticated rendezvous and docking guidance algorithms capable of capturing tumbling, noncooperative objects, e.g., space debris, before they collide with other satellites.
+In this paper, we address the problem of safely capturing and stabilizing tumbling objects despite the presence of parametric variations in the dynamics model.
+This capability entails sending a specialized spacecraft (referred to as the chaser) that attaches to a tumbling object (referred to as the target) to stabilize or deorbit the noncooperative asset.
+While rendezvous and docking with cooperative objects has been possible for several decades, advanced strategies for tumbling objects that account for uncertainties in the model parameters of either the chaser or target are still under development.
+We propose the use of adaptive dynamic tube model predictive control (ADTMPC) for trajectory planning of the chaser for rendezvous and docking with the target.
+Traditionally, the presence of model uncertainty requires the use of robust guidance techniques that are often conservative, leading to suboptimal performance.
+The main advantage of our approach is the ability to safely update the prediction model online -- leading to less conservative trajectories and behaviors -- without violating safety constraints that include time-varying collision constraints and other standard state or control constraints.
+The approach relies on computing a suitable robust tracking controller offline and combining it with a set membership identification algorithm that identifies the feasible set of parameters online rather than a single point estimate.
+Under mild assumptions, we guarantee the system will always satisfy the specified constraints even as the model is changing online.
+Moreover, our approach can incorporate predictions of how the closed-loop trajectory tracking performance will vary with the designed trajectory.
+This property, in essence, can be used to inform the guidance algorithm on which maneuvers can be executed without exciting the uncertain system dynamics.
+For the docking phase, we also propose an optimization-based procedure for computing the optimal docking position of the chaser on the target and the optimal application of propulsion to detumble the target.
+We first demonstrate our approach for a single chaser-target scenario where drag, inertial parameters, and orbit parameters are uncertain.
+A multi-chaser strategy is also explored.
+\end{abstract}

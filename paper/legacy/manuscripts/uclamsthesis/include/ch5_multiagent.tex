@@ -1,0 +1,48 @@
+\section{Extension to Multi-Chaser Systems}
+\label{sec:multi-agent}
+Although several uncontrollable objects in orbit are relatively small, some of the most concerning ones (with respect to the risk they pose to vital controllable systems) are large rocket bodies \cite{mcknight2021identifying}.
+A single chaser that may be as large as a conventional satellite may not be capable of providing sufficient thrust or leverage to detumble such an object.
+As a result, we propose the use of multiple chasers to simultaneously act on the target for tumble minimization and deorbiting.
+In the process of rendezvous and docking, such a multi-agent system will require additional constraints to prevent collisions between themselves.
+Moreover, for space debris that is much larger than the chaser, the docking of the chaser to the target decreases the degrees of freedom of the system due to thrusters in the direction of the target.
+This implies the need for multiple chasers in the scenario of multi-axis rotations and operations that follow detumbling such as deorbiting the target by directing it into a graveyard orbit.
+
+The separate implementation of the rendezvous and docking problem proposed in Section \ref{sec:chaser_ampc} for each chaser in a multi-agent context introduces the risk of collisions between chasers and the possibility of multiple chasers picking the same docking point.
+For the multi-agent problem, the sequential implementation of goal determination and allocation from a set of possible goal states followed by individual trajectory planning may be different in solution and hence in optimality from the combined problem of distributed optimal control.
+The first approach does not take into account the positions of other agents when planning individual trajectories, which could lead to collisions.
+As a result, we suggest the use of the combined problem of distributed optimal control where the same problem is solved by each chaser based on the initial state of all chasers and a common final state manifold.
+Moreover, the problem requires focusing on minimizing the total cost of the operation instead of the individual costs of each chaser.
+On the other hand, this brings up the possibility of resource depletion for individual chasers due to which the total control input for each chaser over time needs to be constrained.
+As a result, the multi-agent problem for rendezvous can be written as follows:
+\begin{align}
+    \min_{\boldsymbol{u}}\ \ J(\boldsymbol{r},\boldsymbol{u})=\sum_{i=1}^{N_C}\int_{\theta_0}^{\theta_f}\left(\boldsymbol{r}_i^TQ_i\boldsymbol{r}_i+\boldsymbol{u}_i^TR_i\boldsymbol{u}_i\right)d\theta
+\end{align}
+\addtocounter{equation}{-1}
+\vspace{-4ex}
+\begin{subequations}
+\begin{align}
+    \textrm{s.t. } & \boldsymbol{r}_i'=A(\theta)\boldsymbol{r}_i+B(\theta)\boldsymbol{u}_i+\boldsymbol{d}(\theta),\\
+    & \boldsymbol{r}_i(\theta_0)={\boldsymbol{r}}_{i,0},\quad h(\boldsymbol{r}_i(\theta_f))=0,\\
+    & \boldsymbol{r}(\theta)\in{\mathcal{C}}_{i,T}\cap{\mathcal{C}}_{i,j},\quad\boldsymbol{u}_i\in{\mathcal{U}}_i,\label{eqn:multi-agent-rendezvous}
+\end{align}
+\end{subequations}
+where $i,j\in[1,2,\ldots,N_C]$ and $j>i$.
+Here, while the chaser-target collision constraints, ${\mathcal{C}}_{i,T}$, can be expanded as explained in Section \ref{sec:time-varying-collision-constraints}, the inter-chaser collision constraints can be written as follows:
+\begin{align}
+    {\mathcal{C}}_{i,j}&=\{\boldsymbol{r}_i(\theta):||\boldsymbol{r}^P_{i}-\boldsymbol{r}^P_{j}||-\epsilon_{i,j}\},
+\end{align}
+where $\epsilon_{i,j}$ is predetermined based on the geometry of chasers $i$ and $j$. We replace the final state cost function with an equivalent final state constraint $h(\boldsymbol{r}_i(\theta_f))=0$ such that:
+\begin{align}
+    h(\boldsymbol{r}_i(\theta_f))&=\inf_{\rho\in{\mathcal{T}}_{\text{dock}}}\left(||\boldsymbol{r}_i(\theta_f)-\rho||\right),
+\end{align}
+where ${\mathcal{T}}_{\text{dock}}$ represents the set of docking points on the target.
+A similar multi-agent problem can be written for the docking problem by replacing the chaser-target collision constraint accordingly.
+
+\section{Summary}
+This chapter proposes the use of dynamic tubes to introduce robustness to the chaser trajectory planning problem.
+This subsequently leads to the modification of the control input of the chaser.
+The bounds on the convex constraints of the modified nominal system are shrunk to avoid infeasibility and, equivalently, the concave constraints are expanded to prevent collisions.
+Following this, the chapter discusses the extension of the proposed single-chaser rendezvous and docking problem to a multi-chaser scenario.
+It highlights the challenges and proposes a distributed optimal control approach for solving the problem.
+Such a multi-agent rendezvous and docking problem requires additional constraints to prevent collisions between chasers.
+The chapter also briefly discusses the selection of docking points given multiple agents.

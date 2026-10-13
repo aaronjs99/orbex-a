@@ -37,17 +37,10 @@ __email__ = "aaronjs@ucla.edu"
 # =============================================================================
 # Solver Module Exports (always available, no circular deps)
 # =============================================================================
-from orbexa.solvers import (
-    get_solver,
-    get_solver_from_config,
-    register_solver,
-    SolverBase,
-    SolverResult,
-    MPCProblem,
-    GekkoSolver,
-    ScipySolver,
-    SOLVER_REGISTRY,
-)
+_SOLVER_EXPORTS = {
+    "get_solver", "get_solver_from_config", "register_solver", "SolverBase",
+    "SolverResult", "MPCProblem", "GekkoSolver", "ScipySolver", "SOLVER_REGISTRY",
+}
 
 
 # =============================================================================
@@ -72,31 +65,17 @@ def discretize(A, B, dt):
 # =============================================================================
 def __getattr__(name):
     """Lazy load submodules to avoid circular imports."""
-    if name == "core":
-        from orbexa import core
+    from importlib import import_module
 
-        return core
-    elif name == "control":
-        from orbexa import control
-
-        return control
-    elif name == "estimation":
-        from orbexa import estimation
-
-        return estimation
-    elif name == "planning":
-        from orbexa import planning
-
-        return planning
-    elif name == "visualization":
-        from orbexa import visualization
-
-        return visualization
-    elif name == "utils":
-        from orbexa import utils
-
-        return utils
-    elif name == "params":
+    if name in _SOLVER_EXPORTS:
+        value = getattr(import_module(".solvers", __name__), name)
+        globals()[name] = value
+        return value
+    if name in ("core", "control", "solvers", "estimation", "planning", "visualization", "utils"):
+        module = import_module("." + name, __name__)
+        globals()[name] = module
+        return module
+    if name == "params":
         from orbexa.core import params
 
         return params

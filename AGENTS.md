@@ -17,8 +17,7 @@
 - Preserve user work in the tree. Do not revert unrelated changes or delete outputs unless the user explicitly asks.
 - Use subagents for broad discovery or parallel review when the task is wide enough to benefit from them, then integrate the findings into the main implementation.
 
-## Testing Standards
+## Repository maintenance
 
-- Pytests should be concept-level and vital. They should validate paper claims, architecture contracts, and end-to-end behavior on small deterministic scenarios.
-- Avoid tests that only check imports, signatures, or every small implementation detail unless that check protects an important public contract.
-- Good tests for this project include dynamics equivalence/invariants, collision constraint behavior, tube monotonicity, SMID range shrinkage, solver-agnostic MPC behavior, and multi-chaser assignment/cooperation concepts.
+- The maintainer does not keep test or validation infrastructure in this repository. Do not add or run it.
+- Preserve paper scope and runtime solver boundaries when simplifying the source tree.

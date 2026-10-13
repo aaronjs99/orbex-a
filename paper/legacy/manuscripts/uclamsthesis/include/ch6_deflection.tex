@@ -1,0 +1,80 @@
+\chapter{Target Deflection}
+\label{sec:target-deflection}
+Once the chaser has docked with the target at some position $\boldsymbol{d}$ with respect to the center of the target, any force $\boldsymbol{f}$ applied by the chaser thrusters translates to a torque $\boldsymbol{\tau}$ applied on the target as:
+\begin{align}
+    \boldsymbol{\tau} = \boldsymbol{d}\times\boldsymbol{f}.
+\end{align}
+In the multi-agent scenario (with $N_C$ chasers), the net torque acting on the target can be written as:
+\begin{align}
+    \boldsymbol{\tau} = \sum_{i=1}^{N_C}\boldsymbol{d}_{i}\times\boldsymbol{f}_{i}.
+\end{align}
+As a result, the dynamics of the target can be written using the Newton-Euler equations as follows:
+\begin{align}
+    \dot{\boldsymbol{\theta}}(t)&=\boldsymbol{\omega}(t),\\
+    I\dot{\boldsymbol{\omega}}(t)&=-\boldsymbol{\omega}(t)\times I\boldsymbol{\omega}(t)+\sum_{i=1}^{N_C}\boldsymbol{d}_{i}\times\boldsymbol{f}_{i}.
+\label{eqn:newton-euler-target-detumbling}
+\end{align}
+We draw motivation from \cite{liu2014in} in stating that the chaser-target system behaves as a compound satellite.
+As a result, the total moment of inertia of the system is determined by that of the target and that of the chaser and the position of the chaser with respect to the center of mass of the target.
+For simplicity, we will assume that this net moment of inertia is known.
+On the other hand, it is possible to calculate the net moment of inertia using the parallel axis theorem.
+
+This chapter focuses on calculating the optimal docking position and control input trajectory of the chaser(s) such that the final angular velocity of the target is zero while minimizing a cost function proportional to the net control input.
+The interaction of multiple chasers with the target is more complicated than the single-agent case since one agent interacting with the object could change the environment for all other agents.
+To simplify this issue, for the multi-agent scenario, we propose the simultaneous attachment of all chasers and the application of thrust so as to stop tumble only after all chasers have been attached to the target.\\
+Since the Newton-Euler equations are in the time domain, in this chapter, we retreat to the traditional form of representing, differentiating, and integrating variables with respect to time (note that the same operations have been performed with respect to true anomaly in previous chapters).
+
+\section{Calculation of Docking Points and Force Application}
+In order to calculate the docking points for each chaser $i\in[1,2,\ldots,N_C]$, we minimize the sum of the integral of forces applied by each chaser. This optimal control problem is governed by the Newton-Euler equations described above in Equation \ref{eqn:newton-euler-target-detumbling}. The moment of inertia and the initial angular velocity of the target are obtained from techniques such as polhode analysis as explained in Section \ref{sec:target-estimation}. Since the problem aims to stop the tumble of the target, the final angular velocity of the target is set to zero. Accounting for these constraints, the detumbling problem can be expressed as the following dynamic optimization problem:
+\begin{align}
+    \min_{\boldsymbol{d}_{i},\boldsymbol{f}_{i}}\ &J\left(\boldsymbol{f}_{i}(t),\boldsymbol{d}_{i},\boldsymbol{\theta}_T(t), \boldsymbol{\omega}_T(t)\right) =\int_{t_0}^{t_f}\sum_{i=1}^N||\boldsymbol{f}_{i}(t)||^2dt
+\end{align}
+\addtocounter{equation}{-1}
+\vspace{-4ex}
+\begin{subequations}
+\begin{align}
+    \textrm{s.t. } & \dot{\boldsymbol{\theta}}(t)=\boldsymbol{\omega}(t),\\
+    & I\dot{\boldsymbol{\omega}}(t)=-\boldsymbol{\omega}(t)\times I\boldsymbol{\omega}(t)+\sum_{i=1}^{N_C}\boldsymbol{d}_{i}\times\boldsymbol{f}_{i},\\
+    & \boldsymbol{\omega}(t_0)=\boldsymbol{\omega}_0,\quad\boldsymbol{\omega}(t_f)=0,\\
+    & \boldsymbol{f}_{i}\in{\mathcal{F}}_i,\\
+    & \boldsymbol{d}_C\in{\mathcal{G}}_T. \label{eqn:geometrical-constraint}
+\end{align}
+\end{subequations}
+Here, ${\mathcal{F}}_i$ represents the input bounds on chaser $i$ and ${\mathcal{G}}_T$ represents the geometrical constraint of the target on the docking point of the chaser. For example, if the target is a cylinder of radius $r_T$ and length $2l_T$ centered at the origin (assuming docking on the curved surface), the geometrical constraint in Equation \ref{eqn:geometrical-constraint} can be expanded as:
+\begin{align}
+    {\mathcal{G}}_T:={\mathcal{G}}_{T1}\cap{\mathcal{G}}_{T2},
+\end{align}
+where
+\begin{subequations}
+\begin{align}
+    {\mathcal{G}}_{T1}&:=\{\boldsymbol{d}_C\ |\ \boldsymbol{d}_{C,x}^2+\boldsymbol{d}_{C,y}^2=r_T^2\},\\
+    {\mathcal{G}}_{T2}&:=\{\boldsymbol{d}_C\ |\ |\boldsymbol{d}_{C,z}|<l_T\}.
+\end{align}
+\end{subequations}
+For the problem of calculating docking points, we ignore the rotation of the target. Instead, this rotation is considered in the formulation of the final state constraint for the docking trajectory problem as shown in Section \ref{sec:time-varying-final-state-constraint}.
+\section{Discretization of Docking Points}
+Due to the likelihood that specific points on the target (such as existing docking ports) will support docking better than others, we propose extending the above problem such that the docking position $\boldsymbol{d}_{i}$ lies in a discrete set of positions on the target.
+As a result, the continuous geometrical constraint on the position of the chaser given in Equation \ref{eqn:geometrical-constraint} turns into the following discretized constraint:
+\begin{align}
+    \boldsymbol{d}_{i}&\in\begin{bmatrix}
+        \boldsymbol{d}_{T_1}&\boldsymbol{d}_{T_2}&\ldots&\boldsymbol{d}_{T_j}&\ldots&\boldsymbol{d}_{T_M}
+    \end{bmatrix},
+\end{align}
+hence converting the problem to a mixed-integer nonlinear optimal control problem.
+To avoid the complexity involved in solving mixed-integer problems, we define the final position $\boldsymbol{d}_{i}$ for each chaser $i\in[1,2,\ldots,N]$ as follows:
+\begin{align}
+    o_{i,j}^2-o_{i,j}&=0\ \forall\ j\in[1, 2, \ldots, M],\\
+    \sum_{j=1}^Mo_{i,j}&=1,\\
+    \boldsymbol{d}_{i}&=\sum_{j=1}^Mo_{i,j}\boldsymbol{d}_{T_j},
+\end{align}
+following which we convert equalities to approximate inequalities for solver convergence such that, for some quantity $p$,
+\begin{align}
+    p&=0\iff\lim_{\epsilon\rightarrow0}|p|<\epsilon.
+\end{align}
+
+\section{Summary}
+This chapter provides insight into the optimal deflection of the target using the propulsion of the chaser following the docking maneuver.
+It discusses the mechanics behind applying torque to change the angular position and velocity of the target, either with a single agent or multiple agents.
+The Newton-Euler equations are employed to describe the dynamics of the target.
+Additionally, the chaser position is constrained to lie on the target which in turn determines the docking position for the previous maneuvers.
+The chapter finally proposes the discretization of these docking points based on existing feasible locations on the target.

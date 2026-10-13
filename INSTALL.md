@@ -7,6 +7,9 @@ python -m pip install -e .
 ```
 
 The default install includes NumPy, SciPy, GEKKO, Matplotlib, Plotly, and PyYAML.
+The source checkout's `python run.py --help` needs only Python and remains usable
+after the checkout is moved. Re-run the editable installation from the new
+location to update an existing installed console command.
 
 ## Optional Solvers
 
@@ -22,6 +25,13 @@ GEKKO/IPOPT remains the primary nonlinear path for paper missions. SciPy/SLSQP i
 python run.py
 ```
 
+Choose a scenario explicitly with `python run.py --config path/to/scenario.yaml`.
+The default scenario follows the checkout location, rather than the terminal's
+working directory. Output roots default to the checkout's `results/` and `data/`;
+use `--output` and `--data-output` to place generated files elsewhere.
+The same options, including `--fps`, logging, and diagnostic-run control, apply
+to `orbexa-generate-demo`.
+
 `--steps` is a maximum MPC update count, not a scripted trajectory length. The
 controller replans over a fixed horizon and applies only the first control
 command(s) before solving again. The nonlinear primary run is considered valid
@@ -29,13 +39,14 @@ only when `mission_complete` and `success` are both true.
 Use `--run-linearized --linearized-steps N` only when you want capped optional
 SciPy/SLSQP comparison artifacts.
 
-Use `--from-data` to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID.
+Use `orbexa-generate-demo --from-data` (or `python run.py --from-data`) to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID. This replaces the removed `orbexa-plot-results` command.
 
-## Verify the Environment
+If MP4 generation is skipped, install `ffmpeg`; the report shows the reason
+and provides a GIF instead of an empty MP4. Windows and cloud-mounted folders
+do not need symlink privileges: `latest.json` selects the latest saved session,
+and the session preview falls back to a copied GIF.
 
-```bash
-python -m compileall -q src tests
-pytest -q
-```
-
-If MP4 generation is skipped, install `ffmpeg`; the renderer will still write all other artifacts.
+Use a new `--session-id` for every fresh run. Existing sessions are protected.
+Saved rendering preflights the requested data and retains raw JSON and notes.
+`--clean-generated` removes the selected generated roots only; it rejects source,
+scenario inputs, overlapping roots, and invalid directories before deletion.

@@ -19,6 +19,7 @@ and support dependency injection.
 """
 
 import math
+from pathlib import Path
 import numpy as np
 import logging
 from dataclasses import dataclass, field
@@ -255,9 +256,13 @@ class SimulationConfig:
         }
 
     @classmethod
-    def load(cls, path: str = "config/default.yaml") -> "SimulationConfig":
+    def load(cls, path: Optional[str] = None) -> "SimulationConfig":
         """Load configuration from a YAML file."""
         logger.debug(f"Loading configuration from {path}")
+        if path is None:
+            path = Path(__file__).resolve().parents[3] / "config" / "default.yaml"
+            if not path.is_file():
+                raise FileNotFoundError("Default scenario is unavailable; supply a scenario YAML with --config PATH")
         data = load_config(path)
         if data is None:
             logger.error(f"Failed to load configuration from {path}")

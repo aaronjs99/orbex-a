@@ -18,6 +18,7 @@ import shutil
 import datetime
 import time
 import logging
+import tempfile
 from pathlib import Path
 from typing import Optional, Sequence, Union, Any, Tuple
 from queue import Queue
@@ -153,19 +154,33 @@ def save_data(filename: Union[str, Path], data: Any) -> bool:
     Returns:
         bool: True if success, False otherwise.
     """
+    temporary = None
     try:
         path = Path(filename)
+        # Serialize before touching the destination, so unsupported values cannot truncate it.
+        payload = json.dumps(convert_numpy_to_list(data), ensure_ascii=False, indent=2)
         path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Convert numpy types if needed
-        safe_data = convert_numpy_to_list(data)
-
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(safe_data, f, ensure_ascii=False, indent=2)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent,
+            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        temporary = None
         return True
-    except Exception as e:
-        logger.error(f"[io_utils] Error saving {filename}: {e}")
+    except Exception as error:
+        logger.error("[io_utils] Error saving %s: %s", filename, error)
         return False
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except OSError:
+                logger.warning("Could not remove incomplete save %s", temporary)
+
 
 
 def load_data(filename: Union[str, Path]) -> Any:

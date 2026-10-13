@@ -34,8 +34,8 @@ where = ["src"]
 
 [project.scripts]
 orbexa-generate-demo = "orbexa.cli.generate_demo:main"
-orbexa-plot-results = "orbexa.cli.plot_results:main"
+
 
 [project.urls]
-Homepage = "https://github.com/aaronjohnsabu1999/orbex-a"
-Documentation = "https://github.com/aaronjohnsabu1999/orbex-a/docs"
+Homepage = "https://github.com/aaronjs99/orbex-a"
+Documentation = "https://github.com/aaronjs99/orbex-a#readme"

@@ -111,9 +111,9 @@ class OrbitalPlantTruth:
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "OrbitalPlantTruth":
         return cls(
-            eccentricity=0.18,
-            alpha=2.0e-7,
-            beta=4.5e-7,
+            eccentricity=float(config.orbit.eccentricity),
+            alpha=float(config.orbit.target_drag),
+            beta=float(config.orbit.chaser_drag),
             mu=float(config.orbit.mu),
             semi_major_axis=float(config.orbit.semi_major_axis),
             mean_motion=float(config.orbit.mean_motion),
@@ -556,7 +556,8 @@ class ADTMPCMissionRunner:
             "schema": "orbexa.adtmpc_mission.v1",
             "result": result.to_dict(),
         }
-        save_data(path, payload)
+        if not save_data(path, payload):
+            raise OSError(f"Could not save mission data to {path}")
         return path
 
     @staticmethod

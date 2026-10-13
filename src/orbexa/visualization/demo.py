@@ -16,6 +16,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import tempfile
+from html import escape
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -23,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-_mpl_cache_dir = Path(os.environ.get("MPLCONFIGDIR", "/tmp/orbexa-matplotlib"))
+_mpl_cache_dir = Path(os.environ.get("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "orbexa-matplotlib")))
 _mpl_cache_dir.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(_mpl_cache_dir))
 
@@ -38,12 +41,18 @@ from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 from plotly.subplots import make_subplots
 
 from orbexa.control import rotating_docking_point
+from orbexa.core.config import SimulationConfig
+from orbexa.sessions import MissionSession, validate_session_id
 from orbexa.simulation.adtmpc_mission import (
     ADTMPCMissionResult,
     ADTMPCMissionRunner,
     load_adtmpc_mission_result,
 )
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.io_utils import save_data
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,7 @@ class DemoConfig:
     output_dir: Path = Path("results")
     data_dir: Path = Path("data")
     session_id: Optional[str] = None
+    config_path: Optional[Path] = None
     steps: int = 450
     """Maximum number of receding-horizon MPC updates."""
     mission: str = "all"
@@ -64,6 +74,18 @@ class DemoConfig:
     clean_generated: bool = False
     require_primary_success: bool = True
     fps: int = 8
+
+    def __post_init__(self) -> None:
+        for name in ("steps", "fps", "linearized_steps"):
+            value = getattr(self, name)
+            if name == "linearized_steps" and value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if self.mission not in ("single", "multi", "all"):
+            raise ValueError(f"Unknown mission: {self.mission}")
+        if self.session_id is not None:
+            validate_session_id(self.session_id, allow_latest=self.from_data)
 
 
 @dataclass
@@ -77,6 +99,7 @@ class ADTMPCMissionManifest:
     data_file: Optional[Path] = None
     artifacts: List[Path] = field(default_factory=list)
     artifact_labels: Dict[str, str] = field(default_factory=dict)
+    skipped_artifacts: Dict[str, str] = field(default_factory=dict)
 
     def add(self, path: Path, label: Optional[str] = None) -> Path:
         self.artifacts.append(path)
@@ -116,8 +139,11 @@ class ADTMPCMissionManifest:
                 "multi_chaser_spacing.png",
             ],
             "artifact_labels": dict(self.artifact_labels),
+            "skipped_artifacts": dict(self.skipped_artifacts),
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        payload["required_entries"] = [name for name in payload["required_entries"] if name not in self.skipped_artifacts]
+        if not save_data(path, payload):
+            raise OSError(f"Could not save artifact manifest to {path}")
         self.add(path)
         return path
 
@@ -867,8 +893,12 @@ class ADTMPCMissionRenderer:
     ) -> None:
         path = self.output_dir / "trajectory.mp4"
         if shutil.which("ffmpeg") is None:
-            path.write_bytes(b"")
-            manifest.add(path)
+            if path.is_file() and path.stat().st_size > 0:
+                manifest.add(path)
+            else:
+                reason = "FFmpeg is unavailable; the trajectory GIF remains available."
+                manifest.skipped_artifacts[path.name] = reason
+                logger.warning(reason)
             return
 
         positions_by_id = {
@@ -1013,13 +1043,16 @@ class ADTMPCMissionRenderer:
     ) -> None:
         rows = "\n".join(
             (
-                f"<tr><td>{chaser_id}</td><td>{len(states)}</td>"
+                f"<tr><td>{escape(str(chaser_id))}</td><td>{len(states)}</td>"
                 f"<td>{len(result.controls.get(chaser_id, []))}</td>"
                 f"<td>{sum(item['solve_time'] for item in result.solve_stats.get(chaser_id, [])):.3f}</td></tr>"
             )
             for chaser_id, states in result.actual_trajectories.items()
         )
-        title = f"ORBEX-A ADTMPC Mission: {result.mission} {result.approximation}"
+        title = escape(f"ORBEX-A ADTMPC Mission: {result.mission} {result.approximation}")
+        video = ('<video controls width="900" src="trajectory.mp4"></video>'
+                 if any(path.name == "trajectory.mp4" for path in manifest.artifacts)
+                 else '<p>MP4 unavailable. <a href="trajectory.gif">Watch the trajectory GIF.</a></p>')
         html = f"""<!doctype html>
 <html>
 <head>
@@ -1035,7 +1068,7 @@ class ADTMPCMissionRenderer:
 </head>
 <body>
 <h1>{title}</h1>
-<p>Solver: {result.solver_backend}. Success: {result.success}. {result.message}</p>
+<p>Solver: {escape(str(result.solver_backend))}. Success: {result.success}. {escape(str(result.message))}</p>
 <table>
 <tr><th>Chaser</th><th>State Samples</th><th>Controls</th><th>Solve Time (s)</th></tr>
 {rows}
@@ -1047,7 +1080,7 @@ class ADTMPCMissionRenderer:
 <h2>Interactive Diagnostics</h2>
 <iframe src="diagnostics.html" width="100%" height="900"></iframe>
 <h2>Video</h2>
-<video controls width="900" src="trajectory.mp4"></video>
+{video}
 <h2>Diagnostics</h2>
 <img src="actual_nominal_trajectories.png" alt="Actual and nominal trajectories">
 <img src="tube_geometry.png" alt="Tube geometry">
@@ -1084,18 +1117,31 @@ class OrbexaDemo:
         self.config = config
 
     def run(self) -> List[ADTMPCMissionManifest]:
-        output_dir = Path(self.config.output_dir)
-        data_dir = Path(self.config.data_dir)
         if self.config.from_data and self.config.clean_generated:
             raise ValueError("--from-data cannot be combined with --clean-generated")
-        if self.config.clean_generated:
-            clean_generated_outputs(output_dir, data_dir)
-
-        session_id = self._session_id()
-        output_session_dir = output_dir / session_id
-        data_session_dir = data_dir / session_id
-        if not self.config.from_data or output_session_dir.exists() or data_session_dir.exists():
-            self._write_run_readme(output_session_dir, data_session_dir, session_id)
+        session = MissionSession.select(
+            self.config.output_dir, self.config.data_dir,
+            session_id=self.config.session_id, from_data=self.config.from_data,
+            mission=self.config.mission, solver=self.config.primary_solver,
+        )
+        output_session_dir, data_session_dir = session.output_dir, session.data_dir
+        approximations = ["nonlinear", "linearized"] if self.config.run_linearized else ["nonlinear"]
+        session.preflight([(mission, approximation) for mission in self._missions() for approximation in approximations])
+        if self.config.from_data:
+            # Read every requested family before changing any rendered artifacts or notes.
+            self._saved_results = {}
+            for mission in self._missions():
+                for approximation in approximations:
+                    result = load_adtmpc_mission_result(data_session_dir / mission / approximation)
+                    if result.mission != mission or result.approximation != approximation:
+                        raise ValueError(f"Saved data does not match {mission}/{approximation}")
+                    self._saved_results[(mission, approximation)] = result
+        else:
+            self._mission_config = SimulationConfig.load(self.config.config_path)
+            if self.config.clean_generated:
+                clean_generated_outputs(session.output_root, session.data_root, scenario_path=self.config.config_path)
+            session.create()
+        self._write_run_readme(output_session_dir, data_session_dir, session.name)
 
         manifests: List[ADTMPCMissionManifest] = []
         for mission in self._missions():
@@ -1118,32 +1164,10 @@ class OrbexaDemo:
                         data_family_dir=data_session_dir / mission / "linearized",
                     )
                 )
+        self._link_session_demo_gif(output_session_dir)
         if not self.config.from_data:
-            self._link_session_demo_gif(output_session_dir)
-            self._replace_latest_link(output_dir, output_session_dir)
-            self._replace_latest_link(data_dir, data_session_dir)
+            session.publish()
         return manifests
-
-    def _session_id(self) -> str:
-        """Return the run/session folder name used under results and data roots."""
-        if self.config.session_id:
-            return self.config.session_id
-        if self.config.from_data:
-            return "latest"
-        mission = self.config.mission if self.config.mission != "all" else "all"
-        solver = self.config.primary_solver
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"{timestamp}_{mission}_{solver}_adtmpc"
-
-    def _replace_latest_link(self, root_dir: Path, target_dir: Path) -> None:
-        """Point ``root/latest`` at the newest generated session directory."""
-        root_dir.mkdir(parents=True, exist_ok=True)
-        link = root_dir / "latest"
-        if link.is_symlink() or link.is_file():
-            link.unlink()
-        elif link.exists():
-            shutil.rmtree(link)
-        link.symlink_to(target_dir.name, target_is_directory=True)
 
     def _write_run_readme(
         self, output_session_dir: Path, data_session_dir: Path, session_id: str
@@ -1205,8 +1229,12 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
         if link.is_symlink() or link.is_file():
             link.unlink()
         elif link.exists():
-            shutil.rmtree(link)
-        link.symlink_to(source.relative_to(output_session_dir))
+            logger.warning("Preserving existing directory at %s", link)
+            return
+        try:
+            link.symlink_to(source.relative_to(output_session_dir))
+        except OSError:
+            shutil.copy2(source, link)
 
     def _missions(self) -> List[str]:
         if self.config.mission == "all":
@@ -1223,7 +1251,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
         data_family_dir: Path,
     ) -> ADTMPCMissionManifest:
         if self.config.from_data:
-            result = load_adtmpc_mission_result(data_family_dir)
+            result = self._saved_results[(mission, approximation)]
             data_file = data_family_dir / "mission_data.json"
         else:
             runner_kwargs = {}
@@ -1233,6 +1261,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
                 if self.config.linearized_steps is not None:
                     run_steps = min(self.config.steps, int(self.config.linearized_steps))
             runner = ADTMPCMissionRunner(
+                config=self._mission_config,
                 solver_backend=solver_backend,
                 approximation=approximation,
                 **runner_kwargs,
@@ -1257,82 +1286,32 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
         )
 
 
-def clean_generated_outputs(output_dir: Path, data_dir: Path) -> None:
-    """Remove generated artifacts and old demo outputs by explicit request."""
-    candidates = [
-        Path(output_dir),
-        Path(data_dir),
-        Path("plots") / "demo",
-        Path("plots") / "adtmpc_mission",
-        Path("plots") / "from_data_smoke",
-        Path("data") / "mpc",
-        Path("data") / "tube",
-        Path("data") / "adtmpc",
-        Path(".pytest_cache"),
-        Path(".mypy_cache"),
-        Path(".ruff_cache"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            if candidate.is_dir():
-                shutil.rmtree(candidate)
-            else:
-                candidate.unlink()
+def clean_generated_outputs(output_dir: Path, data_dir: Path, *, scenario_path: Optional[Path] = None) -> None:
+    """Remove only the selected generated roots, rejecting source and overlapping paths."""
+    roots = [Path(output_dir).expanduser().resolve(), Path(data_dir).expanduser().resolve()]
+    checkout = Path(__file__).resolve().parents[3]
+    protected = [checkout / name for name in ("src", "config", "paper", "assets", ".git")]
+    for root in roots:
+        if root.exists() and not root.is_dir():
+            raise ValueError(f"Generated output root is not a directory: {root}")
+        if scenario_path is not None and root in Path(scenario_path).expanduser().resolve().parents:
+            raise ValueError(f"Refusing to clean the selected scenario YAML: {scenario_path}")
+        if root == Path(root.anchor) or root == Path.home() or root == checkout or root in checkout.parents:
+            raise ValueError(f"Refusing to clean protected folder: {root}")
+        if (root / ".git").exists() or any(
+            root == item or root in item.parents or item in root.parents for item in protected
+        ):
+            raise ValueError(f"Refusing to clean source folder: {root}")
+    if roots[0] == roots[1] or roots[0] in roots[1].parents or roots[1] in roots[0].parents:
+        raise ValueError("Generated output roots must not overlap")
+    for root in roots:
+        if root.is_dir():
+            shutil.rmtree(root)
 
 
-def main() -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Generate ORBEX-A ADTMPC mission artifacts")
-    parser.add_argument("--output", default="results")
-    parser.add_argument("--data-output", default="data")
-    parser.add_argument(
-        "--session-id",
-        default=None,
-        help="Session folder name under results/ and data/. Defaults to timestamp_mission_solver_adtmpc.",
-    )
-    parser.add_argument(
-        "--steps",
-        type=int,
-        default=450,
-        help="Maximum number of receding-horizon MPC updates",
-    )
-    parser.add_argument("--mission", default="all", choices=["single", "multi", "all"])
-    parser.add_argument("--primary-solver", default="gekko", choices=["gekko", "scipy", "casadi"])
-    parser.add_argument("--secondary-solver", default="scipy", choices=["gekko", "scipy", "casadi"])
-    parser.add_argument("--run-linearized", action="store_true")
-    parser.add_argument(
-        "--linearized-steps",
-        type=int,
-        default=20,
-        help="Maximum updates for optional linearized comparison artifacts",
-    )
-    parser.add_argument("--clean-generated", action="store_true")
-    parser.add_argument(
-        "--from-data",
-        action="store_true",
-        help="Regenerate plots from mission_data.json files in the output folders",
-    )
-    args = parser.parse_args()
-
-    config = DemoConfig(
-        output_dir=Path(args.output),
-        data_dir=Path(args.data_output),
-        session_id=args.session_id,
-        steps=args.steps,
-        mission=args.mission,
-        primary_solver=args.primary_solver,
-        secondary_solver=args.secondary_solver,
-        run_linearized=args.run_linearized,
-        linearized_steps=args.linearized_steps,
-        from_data=args.from_data,
-        clean_generated=args.clean_generated,
-    )
-    manifests = OrbexaDemo(config).run()
-    for manifest in manifests:
-        print(f"ADTMPC mission written to {manifest.output_dir}")
-        for artifact in manifest.artifacts:
-            print(artifact)
+def main() -> int:
+    from orbexa.cli.generate_demo import main as cli_main
+    return cli_main()
 
 
 DemoManifest = ADTMPCMissionManifest
@@ -1340,4 +1319,4 @@ MissionDemo = ADTMPCMissionResult
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
