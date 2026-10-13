@@ -290,7 +290,11 @@ class MPCController:
                 break
 
             # Actuations loop
-            act_count = min(num_act_steps, num_mpc_steps)
+            interval_controls = np.asarray(result.control_trajectory, dtype=float)
+            available_controls = (
+                interval_controls.shape[1] if interval_controls.ndim == 2 else 1
+            )
+            act_count = min(num_act_steps, available_controls)
 
             for act_idx in range(act_count):
                 # Extract input

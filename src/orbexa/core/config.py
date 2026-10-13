@@ -110,6 +110,11 @@ class MPCConfig:
 
     Q: np.ndarray = field(default_factory=lambda: np.eye(6))
     R: np.ndarray = field(default_factory=lambda: np.eye(3) * 1e-4)
+    terminal_cost_enabled: bool = True
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.terminal_cost_enabled, bool):
+            raise ValueError("mpc.terminal_cost_enabled must be a boolean")
 
     def bounds(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, float]]]:
         return self.state_bounds, self.input_bounds
@@ -299,6 +304,7 @@ class SimulationConfig:
             R=_as_square_weight_matrix(
                 mpc_data.get("R", (np.eye(3) * 1e-4).tolist()), 3
             ),
+            terminal_cost_enabled=mpc_data.get("terminal_cost_enabled", True),
         )
 
         target_data = data["target"]

@@ -68,7 +68,22 @@ Playable MP4 output requires FFmpeg. Without it, the report links to the GIF and
 
 Generated session artifacts stay out of git. Add a curated preview intentionally when a representative mission artifact is available.
 
-The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive. Parameter-estimate diagnostics show the point belief, truth, and the active feasible-set band; weak or collinear data windows hold unobservable parameters instead of forcing false alpha/beta updates.
+The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive. Parameter-estimate diagnostics show the point belief, truth, and the active feasible-set band. Weak or collinear data keep unidentifiable marginal intervals broad. Point estimates can still learn measurable parameter combinations, while preserving the prior along unsupported directions. Each emitted point estimate is checked against an RK4 replay of the measured state/control window; its prediction and fit errors are recorded separately from the candidate set's verification witness.
+
+Solver results contain `T` state samples, including the initial state, and
+`T - 1` control intervals. Control column `k` drives state `k` to state `k + 1`.
+Backend adapters normalize their grid conventions before returning results.
+The mission applies the optimized interval command and tube ancillary correction,
+followed by the existing input limits and docking target-safety filter.
+The default mission adds a local Riccati terminal penalty to account for regulation
+beyond its short prediction horizon. This uses the current belief and the configured
+state/input weights; set `mpc.terminal_cost_enabled: false` to disable it. The
+penalty adds to the existing endpoint state cost, giving an endpoint weight of
+`Q + P`, where `P` is the local Riccati matrix. It does not replace the stage cost.
+The local linear approximation is a performance aid, not a proof of nonlinear feasibility
+or physical safety. Mission completion and physical-margin checks still determine
+success. The docking safety filter measures velocity relative to the rotating
+target surface.
 
 `run.py` defaults to the ADTMPC mission workflow. Useful options:
 

@@ -45,6 +45,7 @@ from orbexa.control import (
     tighten_target_params,
 )
 from orbexa.core.config import SimulationConfig
+from orbexa.control.terminal_cost import local_terminal_cost
 from orbexa.core.dynamics import orbital_ellp_drag
 from orbexa.estimation.adaptor import SMIDAdaptor, SMIDRecord
 from orbexa.solvers import SolverResult
@@ -634,6 +635,7 @@ class ADTMPCMissionRunner:
             phase_history.append(active_phase.name)
             update_solutions: Dict[str, Dict[str, Any]] = {}
             predicted_terminal_states: Dict[str, np.ndarray] = {}
+            terminal_cost_matrix = None
 
             for chaser in chasers:
                 chaser_id = chaser.chaser_id
@@ -660,6 +662,16 @@ class ADTMPCMissionRunner:
                     "input_cost_matrix": self.config.mpc.R,
                     "target_params": target_params,
                 }
+                if self.config.mpc.terminal_cost_enabled:
+                    if terminal_cost_matrix is None:
+                        terminal_cost_matrix = local_terminal_cost(
+                            matrices[0](anom, belief_params["time_periapsis"]),
+                            matrices[1](),
+                            solve_kwargs["state_cost_matrix"],
+                            solve_kwargs["input_cost_matrix"],
+                            self.config.anom_step,
+                        )
+                    solve_kwargs["terminal_cost_matrix"] = terminal_cost_matrix
                 tube_profiles[chaser_id].append(self._tube_metadata(anom, profile))
                 solve_bounds = self._tightened_bounds(solve_bounds, profile)
                 if active_phase.operation == "rendezvous":
@@ -759,14 +771,6 @@ class ADTMPCMissionRunner:
                         belief_params=solution["belief_params"],
                         tube_config=solution["tube_config"],
                         nominal_index=act_idx,
-                    )
-                    control = self._apply_tracking_feedback(
-                        control=control,
-                        state=states[chaser_id],
-                        reference_state=self._tracking_reference_state(solution, act_idx),
-                        phase=solution["phase"],
-                        anom=anom,
-                        belief_params=solution["belief_params"],
                     )
                     controls_to_apply[chaser_id] = self._clip_control(control)
 
@@ -900,6 +904,7 @@ class ADTMPCMissionRunner:
             metadata={
                 "horizon_steps": self._configured_horizon_metadata(),
                 "actuation_steps": self.actuation_steps,
+                "terminal_cost_enabled": self.config.mpc.terminal_cost_enabled,
                 "anom_step": self.config.anom_step,
                 "max_mpc_updates": int(steps),
                 "mission_complete": mission_complete,
@@ -1204,27 +1209,6 @@ class ADTMPCMissionRunner:
             return np.zeros(controls.shape[0], dtype=float)
         return controls[:, min(index, controls.shape[1] - 1)].copy()
 
-    def _nominal_state_at(
-        self, result: SolverResult, index: int, fallback: np.ndarray
-    ) -> np.ndarray:
-        if result.state_trajectory is None:
-            return np.asarray(fallback, dtype=float)
-        nominal = np.asarray(result.state_trajectory, dtype=float)
-        if nominal.ndim != 2 or nominal.shape[1] == 0:
-            return np.asarray(fallback, dtype=float)
-        return nominal[:, min(index, nominal.shape[1] - 1)].copy()
-
-    def _tracking_reference_state(
-        self, solution: Dict[str, Any], index: int
-    ) -> np.ndarray:
-        final_reference = np.asarray(solution["reference_state"], dtype=float)
-        if solution["phase"].operation != "docking":
-            return final_reference
-        nominal_reference = self._nominal_state_at(
-            solution["result"], index + 1, final_reference
-        )
-        return 0.25 * nominal_reference + 0.75 * final_reference
-
     def _actuation_steps_for_phase(
         self,
         phase: MissionPhase,
@@ -1284,55 +1268,6 @@ class ADTMPCMissionRunner:
         )
         return np.asarray(control, dtype=float) + np.asarray(correction, dtype=float)
 
-    def _apply_tracking_feedback(
-        self,
-        *,
-        control: np.ndarray,
-        state: np.ndarray,
-        reference_state: np.ndarray,
-        phase: MissionPhase,
-        anom: float,
-        belief_params: Dict[str, float],
-    ) -> np.ndarray:
-        matrices, _, _ = orbital_ellp_drag(
-            anom_step=self.config.anom_step,
-            **belief_params,
-        )
-        A_func, _, _, _, d_func = matrices
-        A_val = np.asarray(
-            A_func(anom, belief_params["time_periapsis"]),
-            dtype=float,
-        )
-        d_val = np.asarray(
-            d_func(anom, belief_params["time_periapsis"]),
-            dtype=float,
-        )
-        state = np.asarray(state, dtype=float)
-        reference_state = np.asarray(reference_state, dtype=float)
-        position_error = reference_state[:3] - state[:3]
-        velocity_error = reference_state[3:] - state[3:]
-        if phase.operation == "docking":
-            kp, kd = 8.0, 8.0
-        else:
-            kp, kd = 5.0, 5.0
-        desired_accel = kp * position_error + kd * velocity_error
-        model_accel = A_val[3:] @ state + d_val[3:]
-        feedback = desired_accel - model_accel
-        if phase.operation == "docking":
-            orientation = self.target.orientation_at(anom)
-            body_position_error = target_frame_position(position_error, orientation)
-            body_velocity_error = target_frame_position(velocity_error, orientation)
-            axial_body_accel = np.array(
-                [
-                    0.0,
-                    0.0,
-                    30.0 * body_position_error[2] + 18.0 * body_velocity_error[2],
-                ],
-                dtype=float,
-            )
-            feedback = feedback + rotating_docking_point(axial_body_accel, orientation)
-        return np.asarray(control, dtype=float) + feedback
-
     def _clip_control(self, control: np.ndarray) -> np.ndarray:
         clipped = np.asarray(control, dtype=float).copy()
         for idx, bound in enumerate(self.config.mpc.input_bounds[: len(clipped)]):
@@ -1359,7 +1294,11 @@ class ADTMPCMissionRunner:
         velocity = np.asarray(state[3:], dtype=float)
         orientation = self.target.orientation_at(anom)
         p_body = target_frame_position(position, orientation)
-        v_body = target_frame_position(velocity, orientation)
+        rotation_velocity = rotating_body_point_velocity(
+            p_body, orientation, self.target.angular_velocity_at(anom)
+        )
+        # The barrier needs velocity relative to the rotating target surface.
+        v_body = target_frame_position(velocity - rotation_velocity, orientation)
         radial_norm = float(np.linalg.norm(p_body[:2]))
         if radial_norm <= 1.0e-9:
             return np.asarray(control, dtype=float)

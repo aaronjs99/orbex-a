@@ -78,6 +78,7 @@ class ORBEXAProblemConfig:
     # Target tracking
     target_params: Optional[Dict[str, Any]] = None
     affine_constraints: List[Any] = field(default_factory=list)
+    terminal_cost_matrix: Optional[np.ndarray] = None
 
 
 def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
@@ -199,6 +200,7 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
         input_bounds=config.input_bounds,
         dynamics_type="continuous",
         extra_params=extra_params,
+        terminal_cost_matrix=config.terminal_cost_matrix,
     )
 
 
@@ -211,7 +213,7 @@ def build_from_dynamics(
     initial_state: Optional[np.ndarray] = None,
     final_state: Optional[np.ndarray] = None,
     start_anom: float = 0.0,
-    num_steps: int = 1,
+    num_steps: int = 2,
     anom_step: Optional[float] = None,
     time_periapsis: float = 0.0,
     eccentricity: float = 0.0,
@@ -271,6 +273,7 @@ def build_from_dynamics(
         eccentricity=eccentricity,
         time_periapsis=time_periapsis,
         mean_motion=kwargs.get("mean_motion", 0.001),
+        terminal_cost_matrix=kwargs.get("terminal_cost_matrix"),
     )
 
     # Handle optional tube MPC

@@ -105,6 +105,9 @@ class ScipySolver(SolverBase):
             state_err = states[:, t] - p.final_state
             cost += state_err @ p.state_cost_matrix @ state_err
             cost += inputs[:, t] @ p.input_cost_matrix @ inputs[:, t]
+        if p.terminal_cost_matrix is not None:
+            terminal_error = states[:, -1] - p.final_state
+            cost += terminal_error @ p.terminal_cost_matrix @ terminal_error
         return cost
 
     def _affine_constraints_inputs(self, z: np.ndarray) -> np.ndarray:
@@ -210,7 +213,7 @@ class ScipySolver(SolverBase):
                 return SolverResult(
                     success=True,
                     state_trajectory=states,
-                    control_trajectory=inputs,
+                    control_trajectory=inputs[:, :-1],
                     cost=result.fun,
                     solve_time=solve_time,
                     message="Optimization successful",

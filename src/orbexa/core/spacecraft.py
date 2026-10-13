@@ -356,7 +356,9 @@ class Chaser(Spacecraft):
             raise ValueError("Invalid Type of Communication Data")
 
     def update_state(self, num_steps: int, *args):
-        """Propagate chaser dynamics."""
+        """Propagate exactly num_steps planned control intervals."""
+        if num_steps < 0 or num_steps > len(self.inputs):
+            raise ValueError("Requested propagation exceeds the available control intervals")
         # Get CWH matrices
         matrices_tuple, _, _ = cwh_equations(
             self.anom_step,
@@ -365,11 +367,6 @@ class Chaser(Spacecraft):
             input_bounds=self.input_bounds,
         )
         A, B, state_cost_matrix, input_cost_matrix, d = matrices_tuple
-
-        # Extend inputs if needed
-        needed = num_steps - len(self.inputs)
-        if needed > 0:
-            self.inputs.extend([np.zeros_like(self.inputs[0]) for _ in range(needed)])
 
         for i in range(num_steps):
             if not self.inputs:
@@ -513,7 +510,15 @@ class Chaser(Spacecraft):
             raise ValueError("Invalid Type of Goal Determination Command")
 
     def determine_inputs(self, num_steps: int):
-        """Calculate optimal control inputs using the modular solver."""
+        """Plan num_steps control intervals using num_steps + 1 state samples."""
+        if num_steps < 1:
+            raise ValueError("At least one control interval is required")
+        reference_state = np.zeros_like(self.curr_state, dtype=float)
+        if self.goal_state is not None:
+            goal = np.asarray(self.goal_state, dtype=float).reshape(-1)
+            if len(goal) not in (3, len(reference_state)):
+                raise ValueError("Chaser goal must contain a position or a complete state")
+            reference_state[: len(goal)] = goal
         # Get dynamics matrices/functions from CWH
         matrices, _, _ = cwh_equations(
             self.anom_step,
@@ -532,10 +537,10 @@ class Chaser(Spacecraft):
             R=R,
             d_func=d,
             x_0=self.curr_state,
-            x_f=self.goal_state if self.goal_state is not None else np.zeros(6),
+            x_f=reference_state,
             start_anom=0,  # Relative time
-            num_steps=num_steps,
-            dt=self.dt,
+            num_steps=num_steps + 1,
+            dt=self.anom_step,
             mean_motion=self.mean_motion,
             state_bounds=self.state_bounds,
             input_bounds=self.input_bounds,

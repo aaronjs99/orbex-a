@@ -35,11 +35,12 @@ class MPCProblem:
         input_cost_matrix: Input cost matrix (m x m)
         initial_state: Initial state (n,)
         final_state: Final/reference state (n,)
-        num_steps: Number of MPC steps
+        num_steps: Number of state samples, including the initial state
         anom_step: True anomaly step size (independent variable)
         state_bounds: Optional state constraints
         input_bounds: Optional input constraints
         dynamics_type: "continuous" or "discrete"
+        terminal_cost_matrix: Optional quadratic penalty on the final state error
     """
 
     dynamics_matrix: np.ndarray
@@ -54,6 +55,17 @@ class MPCProblem:
     input_bounds: Optional[List[Dict[str, float]]] = None
     dynamics_type: str = "continuous"
     extra_params: Dict[str, Any] = field(default_factory=dict)
+    terminal_cost_matrix: Optional[np.ndarray] = None
+
+    def __post_init__(self) -> None:
+        if self.num_steps < 2:
+            raise ValueError("MPC requires at least two state samples and one control interval")
+        if self.terminal_cost_matrix is not None:
+            self.terminal_cost_matrix = np.asarray(self.terminal_cost_matrix, dtype=float)
+            if self.terminal_cost_matrix.shape != (self.num_states, self.num_states):
+                raise ValueError("Terminal cost must have one row and column per state")
+            if not np.all(np.isfinite(self.terminal_cost_matrix)):
+                raise ValueError("Terminal cost must be finite")
 
     @property
     def num_states(self) -> int:
@@ -72,7 +84,8 @@ class SolverResult:
     Attributes:
         success: Whether optimization succeeded
         state_trajectory: State trajectory (n x T)
-        control_trajectory: Input trajectory (m x T)
+        control_trajectory: Interval inputs (m x (T-1)); column k drives
+            state_trajectory[:, k] to state_trajectory[:, k+1]
         cost: Optimal cost value
         solve_time: Solver execution time in seconds
         message: Status message or error description

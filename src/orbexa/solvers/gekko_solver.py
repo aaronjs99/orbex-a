@@ -145,7 +145,7 @@ class GekkoSolver(SolverBase):
 
         # --- Dynamics ---
         # Independent variable is anomaly (solver.time)
-        q_start = extra.get("q_0", 0.0)
+        q_start = extra.get("q_0", start_anom)
         q_var = solver.Param(value=q_start + solver.time)
 
         # Time variable for LTV dynamics
@@ -358,6 +358,16 @@ class GekkoSolver(SolverBase):
 
         solver.Equations(eqs)
         solver.Minimize(w_param * total_cost)
+        if problem.terminal_cost_matrix is not None:
+            terminal_error = [
+                self._states[i] - problem.final_state[i] for i in range(num_states)
+            ]
+            terminal_cost = sum(
+                terminal_error[i] * problem.terminal_cost_matrix[i, j] * terminal_error[j]
+                for i in range(num_states)
+                for j in range(num_states)
+            )
+            solver.Minimize(final_param * terminal_cost)
 
         # Solver settings
         solver.options.IMODE = 6  # MPC mode
@@ -386,6 +396,9 @@ class GekkoSolver(SolverBase):
             # Extract results
             states = np.array([state_i.value for state_i in self._states])
             inputs = np.array([input_i.value for input_i in self._inputs])
+            # GEKKO's initial node has no preceding integration interval.
+            # Node k+1 supplies the command for state k -> state k+1.
+            inputs = inputs[:, 1:]
             cost = self._model.options.objfcnval
 
             return SolverResult(

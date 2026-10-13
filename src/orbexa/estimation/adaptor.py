@@ -412,8 +412,11 @@ class SMIDRecord:
     estimates_before: Dict[str, float]
     estimates_after: Dict[str, float]
     prediction_error: float
+    # Terminal error of the candidate-set witness, not the returned point belief.
     verification_error: Optional[float]
     solve_status: Dict[str, str] = field(default_factory=dict)
+    point_prediction_error: Optional[float] = None
+    point_fit_error: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -432,6 +435,14 @@ class SMIDRecord:
                 if self.verification_error is None
                 else float(self.verification_error)
             ),
+            "point_prediction_error": (
+                None
+                if self.point_prediction_error is None
+                else float(self.point_prediction_error)
+            ),
+            "point_fit_error": (
+                None if self.point_fit_error is None else float(self.point_fit_error)
+            ),
             "solve_status": dict(self.solve_status),
         }
 
@@ -443,7 +454,8 @@ class SMIDAdaptor:
     The plant truth is not owned by this class.  It receives measured state and
     control windows, solves min/max feasible parameter bounds under the current
     FSS, verifies the candidate set against the terminal prediction error bound,
-    and returns either the verified candidate or the untouched previous belief.
+    and verifies the emitted point belief separately. Point updates stay in the
+    observable parameter subspace; unidentifiable marginal intervals stay fixed.
     """
 
     def __init__(
@@ -511,6 +523,7 @@ class SMIDAdaptor:
                 estimates_after=estimates_before,
                 prediction_error=0.0,
                 verification_error=None,
+                point_prediction_error=0.0,
                 solve_status={},
             )
             return feasible_sets, estimates, record
@@ -523,7 +536,7 @@ class SMIDAdaptor:
             parameters=estimates_before,
             dynamics_context=dynamics_context,
         )
-        ts_estimates, ts_error, ts_status = self._time_series_estimate(
+        ts_estimates, _, ts_status = self._time_series_estimate(
             feasible_sets=fss_before,
             estimates=estimates_before,
             states=states,
@@ -535,36 +548,55 @@ class SMIDAdaptor:
         held_keys = self._held_keys_from_status(ts_status)
 
         if prediction_error <= self.prediction_error_threshold:
-            estimates_after = (
-                self._blend_estimates(
-                    estimates_before,
-                    ts_estimates,
-                    fss_before,
-                    self.time_series_update_gain,
-                )
-                if ts_status.startswith("ok")
-                else estimates_before
+            proposed = ts_estimates if ts_status.startswith("ok") else estimates_before
+            point = self._blend_estimates(
+                estimates_before, proposed, fss_before, self.time_series_update_gain
             )
+            point_ok, point_prediction_error, point_fit_error = self._point_metrics(
+                parameters=point or estimates_before,
+                states=states,
+                controls=controls,
+                start_anom=start_anom,
+                anom_step=anom_step,
+                dynamics_context=dynamics_context,
+            )
+            point_ok = point is not None and point_ok
+            estimates_after = point if point_ok else estimates_before
+            reason = (
+                "time_series_refined_below_threshold"
+                if point_ok and ts_status.startswith("ok")
+                else "prediction_error_below_threshold"
+                if point_ok
+                else "point_verification_failed"
+            )
+            if not point_ok:
+                _, point_prediction_error, point_fit_error = self._point_metrics(
+                    parameters=estimates_before,
+                    states=states,
+                    controls=controls,
+                    start_anom=start_anom,
+                    anom_step=anom_step,
+                    dynamics_context=dynamics_context,
+                )
             record = self._record(
                 start_anom=start_anom,
                 states=states,
                 accepted=False,
-                reason=(
-                    "time_series_refined_below_threshold"
-                    if ts_status.startswith("ok")
-                    else "prediction_error_below_threshold"
-                ),
+                reason=reason,
                 fss_before=fss_before,
                 fss_candidate=fss_before,
                 fss_after=fss_before,
                 estimates_before=estimates_before,
                 estimates_after=estimates_after,
                 prediction_error=prediction_error,
-                verification_error=ts_error if ts_status.startswith("ok") else None,
+                verification_error=None,
+                point_prediction_error=point_prediction_error,
+                point_fit_error=point_fit_error,
                 solve_status={
                     "trigger": "skipped",
                     "time_series": ts_status,
                     "observability_held": ",".join(sorted(held_keys)) or "none",
+                    "point_update": "verified" if point_ok else "previous_preserved",
                 },
             )
             return feasible_sets, estimates_after, record
@@ -611,7 +643,7 @@ class SMIDAdaptor:
         for key in held_keys:
             candidate[key] = fss_before[key]
 
-        verified, verified_estimates, verification_error, verify_status = (
+        verified, _, verification_error, verify_status = (
             self._verify_candidate(
                 feasible_sets=candidate,
                 states=states,
@@ -625,37 +657,43 @@ class SMIDAdaptor:
         solve_status["time_series"] = ts_status
 
         if verified and verification_error <= self.error_bound:
-            accepted = True
-            reason = "verified"
-            fss_after = candidate
-            base_estimates = (
-                self._blend_estimates(
-                    estimates_before,
-                    ts_estimates,
-                    candidate,
-                    self.time_series_update_gain,
-                )
-                if ts_status.startswith("ok")
-                else verified_estimates
+            proposed = ts_estimates if ts_status.startswith("ok") else estimates_before
+            point = self._blend_estimates(
+                estimates_before, proposed, candidate, self.time_series_update_gain
             )
-            estimates_after = {
-                key: float(np.clip(verified_estimates[key], *candidate[key]))
-                for key in self.parameter_keys
-            }
-            for key in self.parameter_keys:
-                estimates_after[key] = float(
-                    np.clip(
-                        0.35 * estimates_after[key] + 0.65 * base_estimates[key],
-                        *candidate[key],
-                    )
-                )
-            for key in held_keys:
-                estimates_after[key] = estimates_before[key]
+            point_ok, point_prediction_error, point_fit_error = self._point_metrics(
+                parameters=point or estimates_before,
+                states=states,
+                controls=controls,
+                start_anom=start_anom,
+                anom_step=anom_step,
+                dynamics_context=dynamics_context,
+            )
+            accepted = point is not None and point_ok
+            reason = "verified" if accepted else "point_verification_failed"
+            fss_after = candidate if accepted else fss_before
+            estimates_after = point if accepted else estimates_before
+            solve_status["point_update"] = (
+                "verified"
+                if accepted
+                else f"previous_preserved:prediction={point_prediction_error:.6e}:fit={point_fit_error:.6e}"
+            )
         else:
             accepted = False
             reason = "verification_failed"
             fss_after = fss_before
             estimates_after = estimates_before
+            solve_status["point_update"] = "previous_preserved:set_verification_failed"
+
+        if not accepted:
+            _, point_prediction_error, point_fit_error = self._point_metrics(
+                parameters=estimates_before,
+                states=states,
+                controls=controls,
+                start_anom=start_anom,
+                anom_step=anom_step,
+                dynamics_context=dynamics_context,
+            )
 
         record = self._record(
             start_anom=start_anom,
@@ -669,6 +707,8 @@ class SMIDAdaptor:
             estimates_after=estimates_after,
             prediction_error=prediction_error,
             verification_error=verification_error,
+            point_prediction_error=point_prediction_error,
+            point_fit_error=point_fit_error,
             solve_status=solve_status,
         )
         return fss_after, estimates_after, record
@@ -700,12 +740,119 @@ class SMIDAdaptor:
         refined: Dict[str, float],
         feasible_sets: Dict[str, Tuple[float, float]],
         gain: float,
-    ) -> Dict[str, float]:
-        blended = {}
+    ) -> Optional[Dict[str, float]]:
+        """Scale one update direction to the box without changing its nullspace."""
+        lower_step, upper_step = 0.0, float(np.clip(gain, 0.0, 1.0))
         for key in self.parameter_keys:
-            value = (1.0 - gain) * float(previous[key]) + gain * float(refined[key])
-            blended[key] = float(np.clip(value, *feasible_sets[key]))
+            start = float(previous[key])
+            delta = float(refined[key]) - start
+            lower, upper = feasible_sets[key]
+            if not np.all(np.isfinite((start, delta, lower, upper))):
+                return None
+            if delta == 0.0:
+                if not lower <= start <= upper:
+                    return None
+                continue
+            endpoints = sorted(((lower - start) / delta, (upper - start) / delta))
+            lower_step = max(lower_step, endpoints[0])
+            upper_step = min(upper_step, endpoints[1])
+        if not np.isfinite(upper_step) or lower_step > upper_step:
+            return None
+        if upper_step > lower_step:
+            upper_step = float(np.nextafter(upper_step, lower_step))
+        blended = {
+            key: float(previous[key])
+            + upper_step * (float(refined[key]) - float(previous[key]))
+            for key in self.parameter_keys
+        }
+        if any(not feasible_sets[key][0] <= blended[key] <= feasible_sets[key][1]
+               for key in self.parameter_keys):
+            return None
         return blended
+
+    @staticmethod
+    def _rk4_step(
+        state: np.ndarray,
+        control: np.ndarray,
+        *,
+        anom: float,
+        anom_step: float,
+        matrices,
+        time_periapsis: float,
+    ) -> np.ndarray:
+        """Propagate one recorded constant-input interval like the mission plant."""
+        A_func, B_func, _, _, d_func = matrices
+        B_val = np.asarray(B_func(), dtype=float)
+        state = np.asarray(state, dtype=float)
+        control = np.asarray(control, dtype=float)
+
+        def derivative(local_state, local_anom):
+            A_val = np.asarray(A_func(local_anom, time_periapsis), dtype=float)
+            d_val = np.asarray(d_func(local_anom, time_periapsis), dtype=float)
+            return A_val @ local_state + B_val @ control + d_val
+
+        k1 = derivative(state, anom)
+        k2 = derivative(state + 0.5 * anom_step * k1, anom + 0.5 * anom_step)
+        k3 = derivative(state + 0.5 * anom_step * k2, anom + 0.5 * anom_step)
+        k4 = derivative(state + anom_step * k3, anom + anom_step)
+        return state + (anom_step / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+
+    def _state_residuals(
+        self,
+        *,
+        states: np.ndarray,
+        controls: np.ndarray,
+        start_anom: float,
+        anom_step: float,
+        parameters: Dict[str, float],
+        dynamics_context: Dict[str, Any],
+    ) -> np.ndarray:
+        """Weighted physical one-step residuals, excluding the regularizing prior."""
+        params = dict(dynamics_context)
+        params.update(parameters)
+        params["specific_angular_momentum"] = None
+        matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
+        pieces = []
+        for idx in range(len(states) - 1):
+            predicted = self._rk4_step(
+                states[idx], controls[idx],
+                anom=start_anom + idx * anom_step,
+                anom_step=anom_step, matrices=matrices,
+                time_periapsis=params.get("time_periapsis", 0.0),
+            )
+            error = np.asarray(states[idx + 1] - predicted, dtype=float)
+            pieces.extend((error[:3], 2.0 * error[3:]))
+        return np.concatenate(pieces) if pieces else np.empty(0, dtype=float)
+
+    def _point_metrics(
+        self,
+        *,
+        parameters: Dict[str, float],
+        states: np.ndarray,
+        controls: np.ndarray,
+        start_anom: float,
+        anom_step: float,
+        dynamics_context: Dict[str, Any],
+    ) -> Tuple[bool, float, float]:
+        """Verify the actual point returned to MPC, independently of a set witness."""
+        point_prediction_error = self.prediction_error(
+            parameters=parameters, states=states, controls=controls,
+            start_anom=start_anom, anom_step=anom_step,
+            dynamics_context=dynamics_context,
+        )
+        residual = self._state_residuals(
+            parameters=parameters, states=states, controls=controls,
+            start_anom=start_anom, anom_step=anom_step,
+            dynamics_context=dynamics_context,
+        )
+        point_fit_error = float(np.sqrt(np.mean(np.square(residual))))
+        valid = bool(
+            np.isfinite(point_prediction_error)
+            and np.isfinite(point_fit_error)
+            and point_prediction_error <= self.error_bound
+            and point_fit_error <= self.error_bound
+        )
+        return valid, point_prediction_error, point_fit_error
 
     def prediction_error(
         self,
@@ -721,16 +868,14 @@ class SMIDAdaptor:
         params = dict(dynamics_context)
         params.update(parameters)
         params["specific_angular_momentum"] = None
+        matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
         for idx in range(len(states) - 1):
-            matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
-            A_func, B_func, _, _, d_func = matrices
-            q_val = start_anom + idx * anom_step
-            A_val = np.asarray(A_func(q_val, params.get("time_periapsis", 0.0)), dtype=float)
-            B_val = np.asarray(B_func(), dtype=float)
-            d_val = np.asarray(d_func(q_val, params.get("time_periapsis", 0.0)), dtype=float)
-            predicted = predicted + (
-                A_val @ predicted + B_val @ controls[idx] + d_val
-            ) * anom_step
+            predicted = self._rk4_step(
+                predicted, controls[idx],
+                anom=start_anom + idx * anom_step,
+                anom_step=anom_step, matrices=matrices,
+                time_periapsis=params.get("time_periapsis", 0.0),
+            )
         return float(np.linalg.norm(predicted - states[-1]))
 
     def _time_series_estimate(
@@ -755,10 +900,11 @@ class SMIDAdaptor:
 
         lower = np.array([feasible_sets[key][0] for key in self.parameter_keys], dtype=float)
         upper = np.array([feasible_sets[key][1] for key in self.parameter_keys], dtype=float)
-        span = np.maximum(upper - lower, 1.0e-15)
+        span = upper - lower
+        scale = np.where(span > 0.0, span, 1.0)
         z0 = np.array(
             [
-                (float(estimates[key]) - lower[idx]) / span[idx]
+                (float(estimates[key]) - lower[idx]) / scale[idx]
                 for idx, key in enumerate(self.parameter_keys)
             ],
             dtype=float,
@@ -767,38 +913,19 @@ class SMIDAdaptor:
         residual_scale = max(self.error_bound, 1.0e-6)
 
         def unpack(z):
-            values = lower + np.clip(z, 0.0, 1.0) * span
+            values = lower + np.asarray(z, dtype=float) * span
             return {
                 key: float(values[idx]) for idx, key in enumerate(self.parameter_keys)
             }
 
         def residual(z):
-            parameter_values = unpack(z)
-            params = dict(dynamics_context)
-            params.update(parameter_values)
-            params["specific_angular_momentum"] = None
-            matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
-            A_func, B_func, _, _, d_func = matrices
-            B_val = np.asarray(B_func(), dtype=float)
-            pieces = []
-            for idx in range(len(states) - 1):
-                q_val = start_anom + idx * anom_step
-                A_val = np.asarray(
-                    A_func(q_val, params.get("time_periapsis", 0.0)),
-                    dtype=float,
-                )
-                d_val = np.asarray(
-                    d_func(q_val, params.get("time_periapsis", 0.0)),
-                    dtype=float,
-                )
-                predicted = states[idx] + (
-                    A_val @ states[idx] + B_val @ controls[idx] + d_val
-                ) * anom_step
-                error = np.asarray(states[idx + 1] - predicted, dtype=float)
-                pieces.append(error[:3] / residual_scale)
-                pieces.append(2.0 * error[3:] / residual_scale)
-            pieces.append(self.time_series_prior_weight * (np.asarray(z) - z0))
-            return np.concatenate(pieces)
+            data_error = self._state_residuals(
+                parameters=unpack(z), states=states, controls=controls,
+                start_anom=start_anom, anom_step=anom_step,
+                dynamics_context=dynamics_context,
+            )
+            prior_error = self.time_series_prior_weight * (np.asarray(z) - z0)
+            return np.concatenate((data_error / residual_scale, prior_error))
 
         try:
             result = least_squares(
@@ -812,17 +939,31 @@ class SMIDAdaptor:
                 ftol=1.0e-10,
                 gtol=1.0e-10,
             )
-            refined = unpack(result.x)
             data_residual = lambda z: residual(z)[:- len(z0)]
             jacobian = self._finite_difference_jacobian(data_residual, result.x)
             observable, observability = self._observable_parameter_mask(jacobian)
-            held = []
-            for idx, key in enumerate(self.parameter_keys):
-                if not observable[idx]:
-                    refined[key] = float(estimates[key])
-                    held.append(key)
+            # Individual coefficients can be confounded while a combination such
+            # as beta-alpha is observable. Preserve the prior's numerical nullspace
+            # rather than discarding every component in an identifiable direction.
+            _, singular_values, right_vectors = np.linalg.svd(jacobian, full_matrices=False)
+            rank_floor = max(
+                self.observability_absolute_threshold,
+                self.observability_relative_threshold * float(singular_values[0]),
+            )
+            basis = right_vectors[singular_values > rank_floor].T
+            projected_step = basis @ (basis.T @ (result.x - z0))
+            refined = self._blend_estimates(
+                estimates, unpack(z0 + projected_step), feasible_sets, 1.0
+            )
+            if refined is None:
+                return estimates, None, "failed:projected_step_outside_feasible_sets"
+            held = [key for idx, key in enumerate(self.parameter_keys) if not observable[idx]]
+            projected_z = np.array(
+                [(refined[key] - lower[idx]) / scale[idx]
+                 for idx, key in enumerate(self.parameter_keys)], dtype=float
+            )
             rms_error = float(
-                np.sqrt(np.mean(np.square(residual(result.x)[:- len(z0)])))
+                np.sqrt(np.mean(np.square(data_residual(projected_z))))
                 * residual_scale
             )
             held_text = ",".join(held) if held else "none"
@@ -836,7 +977,9 @@ class SMIDAdaptor:
             return (
                 refined,
                 rms_error,
-                f"ok:nfev={result.nfev}:cost={result.cost:.3e}:held={held_text}:unique={score_text}",
+                f"ok:nfev={result.nfev}:optimizer_cost={result.cost:.3e}:"
+                f"fit_rms={rms_error:.6e}:observable_rank={basis.shape[1]}:"
+                f"held={held_text}:unique={score_text}",
             )
         except Exception as exc:
             logger.debug("SMID time-series estimate failed: %s", exc)
@@ -1036,7 +1179,10 @@ class SMIDAdaptor:
             solver.Var(value=float(states[0, i]), fixed_initial=True)
             for i in range(6)
         ]
-        u_param = [solver.Param(value=controls[:, i]) for i in range(3)]
+        # GEKKO node k+1 drives recorded interval k; the initial node has no
+        # preceding interval. Keep the numerical predictors interval-aligned.
+        nodal_controls = np.vstack((controls[:1], controls))
+        u_param = [solver.Param(value=nodal_controls[:, i]) for i in range(3)]
 
         p_vars = {}
         for key in self.parameter_keys:
@@ -1089,6 +1235,8 @@ class SMIDAdaptor:
         prediction_error: float,
         verification_error: Optional[float],
         solve_status: Dict[str, str],
+        point_prediction_error: Optional[float] = None,
+        point_fit_error: Optional[float] = None,
     ) -> SMIDRecord:
         record = SMIDRecord(
             start_anom=float(start_anom),
@@ -1102,22 +1250,25 @@ class SMIDAdaptor:
             estimates_after={key: float(value) for key, value in estimates_after.items()},
             prediction_error=float(prediction_error),
             verification_error=verification_error,
+            point_prediction_error=point_prediction_error,
+            point_fit_error=point_fit_error,
             solve_status=solve_status,
         )
         self.records.append(record)
         return record
 
     def _normalize_controls(self, controls: np.ndarray, length: int) -> np.ndarray:
+        """Require the recorded input for every state-to-state interval."""
+        intervals = max(length - 1, 0)
         if controls.size == 0:
-            return np.zeros((length, 3), dtype=float)
+            if intervals:
+                raise ValueError("SMID requires one recorded control per state interval")
+            return np.empty((0, 3), dtype=float)
         if controls.ndim == 1:
             controls = controls.reshape(1, -1)
-        if controls.shape[1] != 3:
-            raise ValueError("SMID controls must have shape (N, 3)")
-        if controls.shape[0] < length:
-            pad = np.repeat(controls[-1:, :], length - controls.shape[0], axis=0)
-            controls = np.vstack((controls, pad))
-        return controls[:length]
+        if controls.ndim != 2 or controls.shape != (intervals, 3):
+            raise ValueError("SMID controls must have shape (number of states - 1, 3)")
+        return controls.copy()
 
     def _copy_ranges(
         self, ranges: Dict[str, Tuple[float, float]]

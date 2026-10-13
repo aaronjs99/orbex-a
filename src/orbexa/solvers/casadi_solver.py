@@ -107,6 +107,11 @@ class CasadiSolver(SolverBase):
             cost += casadi.mtimes(
                 casadi.mtimes(self._controls[:, t].T, R_p), self._controls[:, t]
             )
+        if problem.terminal_cost_matrix is not None:
+            terminal_error = self._states[:, -1] - xf_p
+            cost += casadi.mtimes(
+                [terminal_error.T, problem.terminal_cost_matrix, terminal_error]
+            )
         opti.minimize(cost)
 
         # Dynamics constraints
@@ -166,14 +171,18 @@ class CasadiSolver(SolverBase):
             sol = self._opti.solve()
             solve_time = time.time() - start_time
 
-            states = np.array(sol.value(self._states))
-            inputs = np.array(sol.value(self._controls))
+            states = np.asarray(sol.value(self._states)).reshape(
+                self._problem.num_states, self._problem.num_steps
+            )
+            inputs = np.asarray(sol.value(self._controls)).reshape(
+                self._problem.num_inputs, self._problem.num_steps
+            )
             cost = float(sol.value(self._opti.f))
 
             return SolverResult(
                 success=True,
                 state_trajectory=states,
-                control_trajectory=inputs,
+                control_trajectory=inputs[:, :-1],
                 cost=cost,
                 solve_time=solve_time,
                 message="Optimization successful",
