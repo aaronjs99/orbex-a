@@ -1,8 +1,24 @@
 # ORBEX-A
 
-ORBEX-A implements adaptive dynamic tube MPC (ADTMPC) rendezvous and docking: elliptical relative dynamics with quadratic drag, nonlinear GEKKO/IPOPT target constraints, dynamic tubes, SMID feasible-set adaptation, tumbling-cylinder docking, and single/multi-chaser missions.
+ORBEX-A implements adaptive dynamic tube MPC (ADTMPC) for compact multi-chaser
+deployment and rendezvous with an uncontrolled spacecraft. The physical mission
+continues through finite-reach attachment, external-thruster detumbling and
+finite-burn orbital lowering to a descending entry interface. Elliptical relative
+dynamics, quadratic drag, nonlinear GEKKO/IPOPT geometry, adaptive uncertainty
+sets and held-feedback dynamic tubes remain the approach controller.
 
-The ADTMPC mission workflow is the sole public execution surface.
+The implementation separates dynamics, uncertainty, planning, continuous-motion
+admission, terminal tracking, spacecraft attitude, contact gates, propulsion and
+recorded-data presentation. The mathematical claims and their assumptions are
+collected in [the theory](docs/theory.md).
+
+The approach plant is the paper's analytical relative-motion approximation.
+An independent Cartesian SI dynamics service includes nonlinear central gravity,
+full vector quadratic drag and optional J2. Its discrepancy replay identifies
+model bias outside the representative approach's declared allowance; the saved
+approach certificates therefore qualify the analytical model. See
+[orbital model fidelity](docs/dynamics-fidelity.md) for the equations, measured
+differences and the assumptions required before using a richer truth plant.
 
 `python run.py --help` works directly from a source checkout, including after
 moving the folder, without installing the package or its numerical dependencies.
@@ -17,6 +33,89 @@ pip install -e .
 
 ADTMPC missions use the coupled nonlinear GEKKO/IPOPT controller. Ordinary MPC
 and other solver adapters remain available through the Python API.
+
+## Complete physical mission
+
+Install continuously validated flow, local Studio and MP4 dependencies:
+
+```bash
+python -m pip install -e ".[certification,studio,video]"
+```
+
+Run a new compact eight-bus mission using the explicit representative prior and
+sensing/model envelopes in [config](config/README.md):
+
+```bash
+orbexa-run-mission --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --output-dir ../orbexa-output/physical-eight --steps 550
+```
+
+This is an actual nonlinear optimization run. The update cap is a resource bound;
+it does not imply success. The physical target obeys quaternion/Euler rigid-body
+dynamics in seconds with gravity-gradient torque. Each bus has a finite volume,
+starts in a common compact region, and tracks its assigned rotating COM goal.
+Every admitted translational feedback hold is enclosed continuously under the
+declared bounds before the fleet commits it. A failed solve or unresolved hold
+is retained as a failed mission rather than being labeled unreachable.
+
+An unfinished saved approach can be numerically restarted with the same physical
+configuration, prior, bounds and target domain:
+
+```bash
+orbexa-run-mission --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --resume ../orbexa-output/physical-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
+```
+
+The cap now counts additional updates. The original states, tubes, beliefs and
+exact proof clock persist; unavailable warm plans and dense adaptation history
+reset explicitly. Older records need identified frozen-source context through
+`--source-context`. This [numerical restart](docs/mission-checkpoint.md) is separate
+from certified backup control after a solver failure.
+
+After approach completion, the runner conservatively debits translation fuel,
+replays bounded chaser attitude control, and supplies those actual attitudes and
+remaining tanks to attachment, detumbling and deorbit. Completed stages are saved
+immediately in a new directory. The entry endpoint is a modeled handoff at
+120 km altitude; atmospheric breakup and disposal compliance require separate
+models and evidence.
+
+An already saved physical COM approach can be completed without repeating MPC:
+
+```bash
+orbexa-complete-mission ../orbexa-output/approach/mission_data.json --output-dir ../orbexa-output/completed-eight --input-component-bound 100
+```
+
+When a verified physical terminal window follows that exact approach, add
+`--terminal-execution ../orbexa-output/terminal/terminal-result.json.gz`.
+`PhysicalTerminalHandoff` binds the source record, original endpoint, exact clock
+and every held-flow/geometry proof before exposing the actual terminal endpoint.
+Attitude replay and propellant accounting include that extension. Capture uses
+its final reference-centered enclosure; the original MPC history remains intact.
+
+The input bound must cover **every actual held command**, including ancillary
+feedback. The default completion path controls chaser attitude; ideal exact
+matching requires the explicit `--assume-attitude-matched` option. A 5 mm COM
+standoff cannot fit a 0.15 m bus and is refused. The physical profile uses a
+0.165 m COM standoff, 0.16 m gripper offset and a 10 mm capture stroke.
+
+See [physical lifecycle](docs/mission-lifecycle.md),
+[chaser attitude](docs/chaser-attitude.md),
+[continuous safety](docs/continuous-safety.md),
+[terminal tracking and backup](docs/terminal-tracking.md), and
+[derived physical terminal bounds](docs/physical-terminal.md).
+
+## Mission Studio
+
+`MissionStudio` exports explicitly selected saved missions into a local browser
+workspace: a black-space 3D replay, synchronized goal/tube/reserve charts,
+camera controls, finite-body envelopes, recorded video, mathematical documents
+and a separate two-view post-capture replay. `LifecycleRenderer` produces
+scientific plots, GIF and MP4 from the same SI state records. Browser video
+export stays on the local computer. No controller is run inside the viewer.
+
+The renderer, equation fonts and licenses are included in the package, so the
+Studio needs no third-party network requests. Serve the exported directory with
+an ordinary local HTTP server; open its `studio/` page. Raw source hashes,
+sample identities, modeled assumptions, failed outcomes and synthetic fixtures
+remain visible. Generated evidence belongs outside this checkout.
 
 ## Generate ADTMPC Mission Artifacts
 
@@ -88,9 +187,8 @@ links to the GIF and `manifest.json` records why MP4 was skipped.
 Generated session artifacts stay out of git. Add a curated preview intentionally when a representative mission artifact is available.
 
 Physical constraint margins concern the actual vehicle. Tube-expanded margins
-concern each persistent nominal center and its own matched-node tube. The older
-cylinder constraint value combines radial squared and axial linear margins;
-its sign indicates exclusion and its magnitude is not a clearance in meters.
+concern each persistent nominal center and its own matched-node tube. The
+cylinder constraint values use radial and axial length margins in meters.
 Parameter plots distinguish point estimates from the retained uncertainty box.
 Local optimization may update a point estimate; only the outward-rounded interval
 RK4 membership contractor removes parameter values. Unprocessed boxes are retained
@@ -108,23 +206,33 @@ exclusion. Fleet planning constrains contemporaneous nominal paths and both tube
 
 Moving-reference preview is enabled by default. State previews have shape
 `(n, T)` and feedforward previews `(m, T - 1)`. Near docking, the solver enforces
-a terminal set around the future reference. Completion requires nominal position
-error plus the whole position-tube radius to fit 2 mm, and nominal velocity error
-plus its full envelope to fit 0.08 m/rad, at five consecutive outer endpoints.
-The requested goal remains the configured 5 mm standoff. A local Riccati terminal
-penalty aids performance; it does not prove nonlinear terminal invariance.
+a terminal set around the future reference. Completion requires the exact
+whole-box norm `norm(abs(nominal position error) + Omega)` to fit 2 mm, and
+`norm(abs(nominal velocity error) + Phi + Lambda*Omega)` to fit 0.08 m/rad,
+at five consecutive outer endpoints.
+The paper demo's requested goal remains its configured 5 mm point/COM standoff;
+the finite-bus physical profile explicitly selects 0.165 m. A local Riccati
+terminal penalty aids performance. The separate reference-centered terminal
+controller requires a valid derived bound certificate and real entry membership;
+ordinary MPC dwell does not establish its invariant-set conditions.
 
 The physical-coordinate model uses meters, derivatives per true anomaly, and
 anomaly-acceleration inputs. Physical acceleration increments are `qdot² * u`;
-there is no mass/thruster-force actuator model. The default
+the approach itself does not integrate mass/nozzle dynamics. The complete runner
+checks a conservative force/fuel allowance and separately propagates bounded
+attitude and post-latch propulsion. The default
 orbit now has a 300 km perigee at eccentricity 0.18. Its analytical quadratic-drag
 approximation and prescribed Euler target motion are explicitly limited models.
 See [the derivation and focused literature review](docs/adtmpc-design.md) for frame
 conventions, moving-goal/obstacle distinctions, and evidence boundaries.
 
 Nonlinear geometry is constrained at prediction nodes and checked more densely
-during execution. Sampled simulation results do not establish continuous-time
-safety, recursive feasibility, physical capture, or a fully realistic atmosphere.
+during execution. Continuous held-flow admission and stored backup continuation
+are explicit services with stricter assumptions and entry conditions; sampled
+simulation alone does not establish them. Neither service guarantees that every
+nonlinear performance optimization will be feasible. Physical latch loads,
+uncertain release/navigation and atmospheric demise remain separate engineering
+questions.
 Saved-data mission rendering requires the current physical model and coupled
 controller metadata. Retired runs remain in external recovery archives.
 

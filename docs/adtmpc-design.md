@@ -1,5 +1,10 @@
 # ADTMPC tracking, docking, and physical-coordinate contract
 
+The complete current derivation is in [Mathematical foundations](theory.md),
+with a [line-by-line audit](theory-audit.md) and [research review](research-review.md).
+The current tube model is `held-ancillary-bounded-v1`: its forcing includes a
+derived hold correction and its terminal tests use exact component-box norms.
+
 ## Verdict
 
 The earlier mission's successful physical-clearance samples did not establish
@@ -62,6 +67,13 @@ Phi' = -kappa Phi + w
 Omega' = -Lambda Omega + Phi
 ```
 
+Here `w` includes both nominal-model uncertainty and the derived hold forcing.
+The earlier continuous-feedback-only interpretation does not cover a held
+ancillary input. The current comparison bounds changes in cancellation, sliding
+feedback and damping plus both uncertain-error terms; the optimizer and executor
+share the solved forcing, stage peaks and complete reserve. See theory equations
+(10)–(13) for the construction and its explicit continuous-model assumptions.
+
 Uncertainty is evaluated on an enclosure of the nominal trajectory over each
 held-input interval. Interval forward differentiation and a mean-value bound
 cover nonlinear eccentricity and drag dependence throughout the parameter box;
@@ -84,12 +96,16 @@ defines the moving exclusion set. Both must use the same attitude trajectory,
 frame, clock, and geometry. The desired reference is never shifted outward to
 make success depend on the actual vehicle occupying the inward tube edge.
 
-For terminal acceptance, the nominal position error plus the Euclidean radius
-of Omega must fit the position tolerance. The nominal velocity error plus the
-Euclidean radius of `Phi + Lambda Omega` must fit the velocity tolerance. A
+For terminal acceptance, `norm(abs(nominal position error) + Omega)` must fit
+the position tolerance. The velocity counterpart uses component half-widths
+`Phi + Lambda Omega`. These exact box bounds remove the triangle inequality's
+avoidable conservatism. Terminal squared constraints are normalized by the
+squared physical tolerance before numerical residual acceptance. A
 nonzero symmetric free-flight tube centered on a solid target's surface cannot
-lie wholly outside that target. The default goal is consequently a specified
-5 mm standoff; physical capture/contact requires a separate model and transition.
+lie wholly outside that target. The paper demonstration uses a specified 5 mm
+point/COM standoff. The finite-bus physical profile instead uses a 165 mm COM
+standoff for a 150 mm bounding radius and a separate qualified
+[attachment transition](mission-lifecycle.md).
 
 ## Focused literature review and implementation implications
 
@@ -111,15 +127,21 @@ needs a sharper comparison and a proof or an explicitly experimental scope.
 
 ## Evidence limits
 
-GEKKO checks nonlinear geometry at prediction nodes. Runtime checks containment,
-clearance, and separation at the configured feedback substeps. These observations
-do not establish continuous-time obstacle avoidance or recursive feasibility.
-The local terminal Riccati penalty is a performance aid. The terminal region
-implemented here is an admissibility and acceptance set, not a proved invariant
-set for the complete nonlinear moving-target system.
+GEKKO checks nonlinear geometry at prediction nodes. Ordinary runtime checks
+containment, clearance, and separation at the configured feedback substeps.
+Those observations alone do not establish continuous-time obstacle avoidance.
+The physical workflow additionally admits every held command through the
+[validated-flow guard](continuous-safety.md), under its declared bounds.
+The local terminal Riccati penalty is a performance aid. Endpoint dwell and the
+separate [invariant terminal construction](physical-terminal.md) have different
+entry conditions; neither proves feasibility of every subsequent performance NLP.
 
 The optimizer's outer RK4 step and the nominal center's smaller runtime RK4
-steps have a recorded numerical difference. Results report that difference and
-the configured numerical reserve. A platform-independent interval integration
-certificate, actuator dynamics, sensed target uncertainty, torque-free attitude,
-and physical capture remain separate fidelity/guarantee extensions.
+steps have a recorded componentwise numerical difference. Runtime keeps its own
+persistent center and tube; it does not claim enclosure transfer by taking a
+maximum of unrelated widths. Results report that difference and
+the configured numerical reserve. Continuous-flow certificates, physical rigid
+target attitude, bounded chaser attitude control, and attachment/detumbling/deorbit
+now have separate modules and evidence. Their explicit assumptions remain
+necessary: numerical replay does not establish measured sensing accuracy,
+valve/pressure dynamics, contact mechanics, or fidelity to a particular object.

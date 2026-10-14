@@ -97,6 +97,9 @@ ug_thesis_space_sim/
 results/
 *.npz
 *.json
+!config/physical-prior.json
+!config/physical-admission.json
+!scripts/visualization/studio/vendor/manifest.json
 
 # Temporary editor backup files
 *~

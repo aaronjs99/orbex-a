@@ -51,7 +51,11 @@ class MissionAdaptation:
     """Only interval contraction can remove values from the parameter box."""
 
     def __init__(self, config: SimulationConfig, truth: OrbitalPlantTruth,
-                 point_estimator: PointEstimator, initial_state: np.ndarray, initial_anomaly: float = 0.0):
+                 point_estimator: PointEstimator, initial_state: np.ndarray, initial_anomaly: float = 0.0,
+                 *, mode: str = 'adaptive'):
+        if mode not in ('adaptive', 'frozen'):
+            raise ValueError("mode must be 'adaptive' or 'frozen'")
+        self.mode = mode
         self.config = config
         self.truth = truth
         self.point_estimator = point_estimator
@@ -75,6 +79,8 @@ class MissionAdaptation:
     def update(self, belief: ParameterBelief, update_index: int, dense_anom_step: float,
                *, eligible: bool = True) -> AdaptationOutcome:
         outcome = AdaptationOutcome()
+        if self.mode == 'frozen':
+            return outcome
         if not eligible or len(self.states) != self.window_intervals + 1:
             return outcome
         states, controls = np.asarray(self.states), np.asarray(self.controls)

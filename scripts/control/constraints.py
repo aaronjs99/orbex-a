@@ -33,13 +33,14 @@ class CylinderConstraint:
     tube_radius: float = 0.0
 
     def margins(self, position: np.ndarray) -> Tuple[float, float]:
-        """Return radial and axial margins; safe when either value is nonnegative."""
+        """Return length-valued radial/axial margins in metres.
+
+        The maximum is an exclusion margin, with safety when nonnegative. It
+        equals penetration depth inside the finite cylinder; outside a rim it
+        is a conservative distance rather than the Euclidean signed distance.
+        """
         p_body = target_frame_position(position, self.orientation)
-        radial_margin = (
-            p_body[0] ** 2
-            + p_body[1] ** 2
-            - (self.radius + self.tube_radius) ** 2
-        )
+        radial_margin = np.hypot(p_body[0], p_body[1]) - (self.radius + self.tube_radius)
         axial_margin = abs(p_body[2]) - (self.half_length + self.tube_radius)
         return float(radial_margin), float(axial_margin)
 
@@ -50,7 +51,15 @@ class CylinderConstraint:
 
 def target_frame_position(position: np.ndarray, orientation: np.ndarray) -> np.ndarray:
     """Express an LVLH-frame position in the rotating target body frame."""
-    rotation = tait_bryan_to_rotation_matrix(np.asarray(orientation, dtype=float))
+    value = np.asarray(orientation, dtype=float)
+    if value.shape == (3, 3):
+        if (not np.all(np.isfinite(value)) or
+                not np.allclose(value.T @ value, np.eye(3), atol=1e-10, rtol=0) or
+                not np.isclose(np.linalg.det(value), 1.0, atol=1e-10, rtol=0)):
+            raise ValueError("Target rotation matrix must be finite and proper")
+        rotation = value
+    else:
+        rotation = tait_bryan_to_rotation_matrix(value)
     return rotation.T @ np.asarray(position, dtype=float)
 
 

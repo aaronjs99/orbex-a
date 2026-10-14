@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ORBEX-A · Mission Studio</title>
+  <link rel="stylesheet" href="studio.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/"}}</script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="./"><strong>ORBEX-A</strong><span>Mission Studio</span></a>
+    <nav role="tablist" aria-label="Workspace">
+      <button role="tab" aria-selected="true" aria-controls="replay" id="tab-replay">Replay</button>
+      <button role="tab" aria-selected="false" aria-controls="lifecycle" id="tab-lifecycle">After capture</button>
+      <button role="tab" aria-selected="false" aria-controls="videos" id="tab-videos">Videos</button>
+      <button role="tab" aria-selected="false" aria-controls="evidence" id="tab-evidence">Evidence</button>
+      <button role="tab" aria-selected="false" aria-controls="theory" id="tab-theory">Theory</button>
+    </nav>
+    <div class="header-actions"><label for="scenario">Scenario</label><select id="scenario" aria-label="Saved mission scenario"><option>Loading…</option></select><a id="download" download>Download data</a></div>
+  </header>
+  <main>
+    <div class="mission-heading"><div><h1 id="mission-title">Recorded missions</h1><p id="mission-subtitle">Loading saved numerical evidence…</p></div><span id="outcome" role="status"></span></div>
+    <div id="error" role="alert" hidden></div>
+    <section id="replay" class="workspace-panel" role="tabpanel" aria-labelledby="tab-replay">
+      <div class="replay-workspace">
+        <div id="viewport" class="viewport" aria-label="3D recorded mission viewport">
+          <div class="viewport-toolbar"><label class="sr-only" for="camera">Camera view</label><select id="camera"><option value="overview">Overview</option><option value="docking">Docking close-up</option><option value="top">Orbit normal view</option><option value="follow">Follow selected chaser</option></select><label class="toggle"><input id="paths" type="checkbox" checked>Paths</label><label class="toggle"><input id="tubes" type="checkbox" checked>Tubes</label><label class="toggle"><input id="grid" type="checkbox">Grid</label><label class="toggle"><input id="envelope" type="checkbox">Envelope</label><button id="fullscreen" aria-label="Toggle fullscreen viewport" title="Full screen"><svg viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></div>
+          <div class="viewport-key"><span><i class="actual-key"></i>Actual</span><span><i class="nominal-key"></i>Nominal</span><span><i class="goal-key"></i>COM goal</span></div>
+          <div class="frame-note">Physical LVLH · meters<br>X −transverse · Y radial · Z orbit normal</div>
+          <div id="scene-error" class="scene-message" hidden></div>
+          <div class="scene-help">Drag to orbit · scroll to zoom · select a chaser</div>
+        </div>
+        <aside class="inspector" aria-label="Selected chaser measurements">
+          <h2 id="chaser-title">Chaser</h2><label class="sr-only" for="chaser">Selected chaser</label><select id="chaser"></select>
+          <dl><div><dt>Goal distance</dt><dd id="metric-goal">—</dd></div><div><dt>Tube radius</dt><dd id="metric-tube">—</dd></div><div><dt>Position occupancy</dt><dd id="metric-occupancy">—</dd></div><div><dt>Sliding occupancy</dt><dd id="metric-sliding">—</dd></div><div><dt>Input reserve ratio</dt><dd id="metric-reserve">—</dd></div><div><dt>Phase</dt><dd id="metric-phase">—</dd></div></dl>
+          <p class="inspector-note">Measurements at the selected recorded node. Occupancy 1 is the tube boundary. Reserve covers the preceding interval.</p>
+          <dl class="record-details"><div><dt>Recorded node</dt><dd id="node-label">—</dd></div><div><dt>Elapsed time</dt><dd id="elapsed-label">—</dd></div><div><dt>Chasers</dt><dd id="count-label">—</dd></div></dl>
+        </aside>
+      </div>
+      <div class="transport"><div class="transport-buttons"><button id="first" aria-label="First recorded sample" title="First sample"><svg viewBox="0 0 24 24"><path d="M5 5v14M19 5 8 12l11 7Z"/></svg></button><button id="previous" aria-label="Previous recorded sample" title="Previous sample"><svg viewBox="0 0 24 24"><path d="m16 5-11 7 11 7Z"/></svg></button><button id="play" class="primary" aria-label="Play recorded mission" title="Play or pause (Space)"><svg viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z"/></svg></button><button id="next" aria-label="Next recorded sample" title="Next sample"><svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></svg></button><button id="last" aria-label="Last recorded sample" title="Last sample"><svg viewBox="0 0 24 24"><path d="M19 5v14M5 5l11 7-11 7Z"/></svg></button></div><div class="timeline"><label class="sr-only" for="scrub">Recorded mission sample</label><input id="scrub" type="range" min="0" max="1" value="0" step="1"><div><span id="timeline-start">0</span><span id="timeline-end">—</span></div></div><div class="clock"><span>True anomaly · rad</span><output id="anomaly">—</output></div><label class="sr-only" for="speed">Playback speed</label><select id="speed" title="Multiplier of recorded physical elapsed time"><option value="10">10×</option><option value="40" selected>40×</option><option value="100">100×</option><option value="200">200×</option></select></div>
+      <div class="chart-band"><div id="goal-chart" class="chart"></div><div id="occupancy-chart" class="chart"></div><div id="reserve-chart" class="chart"></div></div>
+      <p class="sample-note" id="sample-note">Recorded nodes only. Colored hull dots are assigned surface points; the orange markers are chaser COM goals. The representative cylindrical hull follows the modeled contact surface; select Envelope to inspect collision inflation. Paths include later nodes; stars and vehicle glyphs are visual aids.</p>
+      <div class="replay-actions"><span id="export-status" role="status">Export this camera view as a 20 second video.</span><button id="export-scene">Export scene video</button><button id="cancel-export" hidden>Cancel export</button></div>
+    </section>
+    <section id="videos" class="workspace-panel media-panel" role="tabpanel" aria-labelledby="tab-videos" hidden><div class="section-title"><div><h2>Mission video</h2><p>Rendered from the same saved mission. Video playback has its own timeline.</p></div><a id="video-download" download>Download MP4</a></div><video id="mission-video" controls playsinline preload="metadata"></video><p id="video-unavailable" hidden>No MP4 was recorded for this mission. The numerical replay remains available.</p></section>
+    <section id="evidence" class="workspace-panel evidence-panel" role="tabpanel" aria-labelledby="tab-evidence" hidden><h2>Recorded evidence</h2><p id="scope-text"></p><div class="evidence-links"><a id="family-evidence">Open mission plots &amp; diagnostics</a><a href="../evidence.html">Open complete evidence gallery</a><a id="raw-evidence" download>Download raw mission data</a></div><dl id="provenance"></dl><h3>Display notes</h3><ul id="dataset-notes"></ul><p>Substeps and chasers share a simulation history; they are not independent statistical trials. Successful simulation does not establish physical capture or flight readiness.</p></section>
+    <section id="theory" class="workspace-panel theory-panel" role="tabpanel" aria-labelledby="tab-theory" hidden><div class="section-title"><div><h2>Theory &amp; mathematical audit</h2><p>Definitions, derivations, source correspondence and the conditions behind each claim.</p></div><label class="sr-only" for="theory-select">Theory document</label><select id="theory-select"></select><a id="theory-open" target="_blank" rel="noopener">Open document</a></div><iframe id="theory-frame" title="ORBEX-A theory document" sandbox="allow-scripts allow-same-origin allow-popups"></iframe></section>
+    <section id="lifecycle" class="workspace-panel" role="tabpanel" aria-labelledby="tab-lifecycle" hidden><p id="lifecycle-unavailable">No post-capture history is attached to this saved approach.</p><iframe id="lifecycle-frame" title="Recorded attachment, detumbling and orbital delivery" sandbox="allow-scripts allow-same-origin allow-downloads" hidden></iframe></section>
+  </main>
+  <footer><span id="footer-outcome">Saved model evidence</span><span id="footer-clock">Recorded replay</span></footer>
+</body>
+</html>

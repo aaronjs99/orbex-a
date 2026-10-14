@@ -60,9 +60,16 @@ class ADTMPCMissionRunner:
                 controller_factory=controller_factory, horizon_steps=horizon_steps,
                 actuation_steps=actuation_steps, solver_backend=solver_backend, approximation=approximation)
 
-    def run(self, *, mission: str, steps: int) -> ADTMPCMissionResult:
+    def run(self, *, mission: str, steps: int, checkpoint=None) -> ADTMPCMissionResult:
         from orbexa.simulation.coupled_mission import CoupledTubeMission
-        return CoupledTubeMission(self.scenario).run(mission=mission, steps=steps)
+        return CoupledTubeMission(self.scenario).run(mission=mission, steps=steps, checkpoint=checkpoint)
+
+    def resume(self, checkpoint, *, steps: int) -> ADTMPCMissionResult:
+        """Continue an unfinished saved mission for additional numerical updates."""
+        from orbexa.simulation.mission_checkpoint import MissionCheckpoint
+        if not isinstance(checkpoint, MissionCheckpoint):
+            raise TypeError('Provide a source-qualified MissionCheckpoint')
+        return self.run(mission=checkpoint.mission, steps=steps, checkpoint=checkpoint)
 
     def save_result(self, result: ADTMPCMissionResult, output_dir: Path) -> Path:
         return MissionResultStore.save(result, output_dir)

@@ -28,7 +28,6 @@ from orbexa.simulation.coupled_execution import DenseFeedbackExecutor
 from orbexa.simulation.coupled_planning import CoupledMissionPlanner
 from orbexa.simulation.coupled_state import CoupledMissionState
 from orbexa.simulation.integration import rk4_step  # Compatibility import.
-from orbexa.simulation.mission_models import MissionPhase
 from orbexa.simulation.mission_recording import MissionRecorder
 from orbexa.simulation.mission_result import ADTMPCMissionResult
 from orbexa.simulation.mission_scenario import ControllerFactory, MissionScenario
@@ -52,29 +51,49 @@ class CoupledTubeMission:
         self.config = self.scenario.config
         self.scenario.require_coupled_execution()
 
-    def run(self, *, mission: str, steps: int) -> ADTMPCMissionResult:
+    def run(self, *, mission: str, steps: int, checkpoint=None) -> ADTMPCMissionResult:
         if mission not in ('single', 'multi'):
             raise ValueError(f'Unknown ADTMPC mission: {mission}')
         if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)) or steps < 1:
             raise ValueError('steps must be a positive integer number of MPC updates')
         scenario, cfg = self.scenario, self.config
-        chasers = scenario.fleet.chasers(mission)
-        state = CoupledMissionState.initialize(chasers, cfg)
+        if checkpoint is not None:
+            from orbexa.simulation.mission_checkpoint import MissionCheckpoint
+            if not isinstance(checkpoint, MissionCheckpoint):
+                raise TypeError('Provide a source-qualified MissionCheckpoint')
+            checkpoint.validate_scenario(scenario, mission)
+            chasers, state, belief, phase, dwell = checkpoint.restore(scenario)
+            recorder = MissionRecorder.from_checkpoint(scenario, chasers, state, belief, checkpoint)
+            update_offset = checkpoint.committed_updates
+        else:
+            chasers = scenario.fleet.chasers(mission)
+            state = CoupledMissionState.initialize(chasers, cfg)
+            belief = (ParameterBelief.from_config_prior(cfg) if scenario.initial_belief is None
+                      else scenario.initial_belief.copy())
+            recorder = MissionRecorder(scenario, chasers, state, belief)
+            phase, dwell, update_offset = scenario.reference.initial_phase(), 0, 0
+            recorder.sample_phases[0] = phase.name
         controller = scenario.create_controller()
         planner = CoupledMissionPlanner(scenario, controller)
-        belief = ParameterBelief.from_config_prior(cfg)
-        recorder = MissionRecorder(scenario, chasers, state, belief)
         adaptation = MissionAdaptation(cfg, scenario.truth, scenario.point_estimator,
-                                       state.states[chasers[0].chaser_id], state.anomaly)
+                                       state.states[chasers[0].chaser_id], state.anomaly,
+                                       mode=scenario.adaptation_mode)
+        if checkpoint is not None:
+            import copy
+            adaptation.smid_records = copy.deepcopy(checkpoint.source_record['smid_records'])
+            adaptation.membership_records = copy.deepcopy(checkpoint.source_record['metadata'].get('membership_records', []))
         executor = DenseFeedbackExecutor(scenario, adaptation)
         truth_matrices = orbital_ellp_drag(anom_step=cfg.anom_step, **scenario.truth.dynamics_params())[0]
-        phase = MissionPhase('rendezvous', 'rendezvous')
+        # Complete old control horizons and exact dense adaptation windows are
+        # unavailable in recorded results. The numerical restart declares a
+        # cold planner start and an explicitly empty dense measurement window.
         previous_plans = {}
-        completed, valid, dwell = False, True, 0
+        completed, valid = False, True
         messages = []
         for update in range(int(steps)):
-            if phase.operation == 'rendezvous' and scenario.reference.rendezvous_goal_satisfied(state.states, chasers):
-                phase = MissionPhase('docking', 'docking')
+            selected_phase = scenario.reference.select_phase(phase, state, chasers)
+            if selected_phase != phase:
+                phase = selected_phase
                 recorder.sample_phases[-1] = phase.name
             recorder.phases.append(phase.name)
             # Plan the whole fleet and check simultaneous two-tube separation.
@@ -92,7 +111,7 @@ class CoupledTubeMission:
                 break
             recorder.record_execution(state, execution, planning, phase, executor.dense_anom_step)
             # Membership contracts first. Point estimation cannot replace its box.
-            updated = adaptation.update(belief, update, executor.dense_anom_step, eligible=valid)
+            updated = adaptation.update(belief, update_offset + update, executor.dense_anom_step, eligible=valid)
             valid = valid and updated.consistent
             messages.extend(updated.messages)
             recorder.record_belief(belief)
@@ -103,5 +122,5 @@ class CoupledTubeMission:
             previous_plans = planning.plans
             if completed or not valid:
                 break
-        return recorder.result(mission=mission, steps=int(steps), belief=belief, adaptation=adaptation,
+        return recorder.result(mission=mission, steps=update_offset + int(steps), belief=belief, adaptation=adaptation,
                                valid=valid, completed=completed, dwell=dwell, messages=messages)

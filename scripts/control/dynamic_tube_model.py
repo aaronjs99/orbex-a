@@ -10,8 +10,8 @@
 
 Phi bounds the sliding error ``e_v + Lambda e_p``; Omega bounds position error.
 The nominal model and its parameter-uncertainty envelope must refer to the same
-physical LVLH dynamics. The continuous-feedback tube argument does not by itself
-certify a sampled, held ancillary input or numerical integration error.
+physical LVLH dynamics. Coupled planning includes the derived held-input forcing
+from sample_hold; numerical integration error still requires a separate bound.
 """
 
 from dataclasses import dataclass
@@ -22,6 +22,7 @@ import numpy as np
 
 from orbexa.core.dynamics import orbital_ellp_drag
 from orbexa.control.uncertainty import uncertainty_envelope, nominal_acceleration_bound
+from orbexa.control.sample_hold import sample_hold_bounds
 
 
 def _vector(value, name, *, nonnegative=False):
@@ -53,6 +54,9 @@ class TubeProfile:
     alpha: np.ndarray = None
     input_reserve: np.ndarray = None
     assumptions: Tuple[str, ...] = ()
+    tube_model_version: str = "continuous-feedback-legacy"
+    hold_width: float = None
+    forcing: dict = None
 
     @property
     def position_radius(self):
@@ -74,11 +78,11 @@ class TubeProfile:
                                np.max(self.velocity_error_bound, axis=0)))
 
 
-def advance_tube(phi, omega, alpha, lambda_gain, disturbance, step):
+def advance_tube(phi, omega, alpha, lambda_gain, disturbance, step, *, phi_peak=None):
     """Positive exponential step for constant bandwidth and forcing bounds.
 
-    ``disturbance`` bounds nominal-model uncertainty plus affine disturbances
-    over the interval. Phi is integrated exactly for that constant upper bound.
+    ``disturbance`` bounds total acceleration forcing, including the hold
+    correction when feedback is sampled. Phi is integrated exactly for it.
     Omega uses the larger endpoint Phi, bounding its convolution even when Phi
     changes during the interval. No forward-Euler clipping is used.
     """
@@ -97,11 +101,41 @@ def advance_tube(phi, omega, alpha, lambda_gain, disturbance, step):
     gain_weight = np.divide(-np.expm1(-gain * step), gain,
                             out=np.full(3, step), where=gain != 0.0)
     phi_next = np.exp(-alpha * step) * phi + alpha_weight * forcing
-    omega_next = np.exp(-gain * step) * omega + gain_weight * np.maximum(phi, phi_next)
+    peak = np.maximum(phi, phi_next) if phi_peak is None else _vector(phi_peak, "phi_peak", nonnegative=True)
+    omega_next = np.exp(-gain * step) * omega + gain_weight * peak
     # Retain exact zero for a zero tube, and round positive endpoints outward.
     phi_next = np.where(phi_next > 0.0, np.nextafter(phi_next, np.inf), 0.0)
     omega_next = np.where(omega_next > 0.0, np.nextafter(omega_next, np.inf), 0.0)
     return phi_next, omega_next
+
+
+def held_tube_stage_seed(phi, omega, alpha, lambda_gain, A_abs, delta_A,
+                         A_variation, base_forcing, step, hold_width):
+    """Find a consistent numeric stage seed for the coupled held-input bound.
+
+    For fixed gains the nonnegative forcing is affine in the two stage peaks.
+    Monotone iteration from the initial bounds seeks its least fixed point.
+    Failure to obtain a finite fixed point is explicit; no margin is clipped.
+    This initializes the NLP and does not replace its coupled constraints.
+    """
+    phi = _vector(phi, "phi", nonnegative=True)
+    omega = _vector(omega, "omega", nonnegative=True)
+    peak_phi, peak_omega = phi.copy(), omega.copy()
+    for _ in range(200):
+        terms = sample_hold_bounds(A_abs, delta_A, A_variation, base_forcing,
+            peak_phi, peak_omega, alpha, lambda_gain, hold_width)
+        next_phi, next_omega = advance_tube(phi, omega, alpha, lambda_gain,
+            terms['disturbance_bound'], step, phi_peak=peak_phi)
+        new_phi, new_omega = np.maximum(phi, next_phi), np.maximum(omega, next_omega)
+        change = max(np.max(np.abs(new_phi - peak_phi)), np.max(np.abs(new_omega - peak_omega)))
+        peak_phi, peak_omega = new_phi, new_omega
+        if change <= 1e-13 * (1 + max(np.max(peak_phi), np.max(peak_omega))):
+            terms = sample_hold_bounds(A_abs, delta_A, A_variation, base_forcing,
+                peak_phi, peak_omega, alpha, lambda_gain, hold_width)
+            next_phi, next_omega = advance_tube(phi, omega, alpha, lambda_gain,
+                terms['disturbance_bound'], step, phi_peak=peak_phi)
+            return next_phi, next_omega, peak_phi, peak_omega, terms
+    raise ValueError("Held-input tube stage seed has no converged finite fixed point at the supplied gains")
 
 
 def ancillary_input_bound(A_accel, delta_A, phi, omega, alpha, lambda_gain):

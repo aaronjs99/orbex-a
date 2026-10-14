@@ -107,6 +107,10 @@ class TumblingCylinderTarget:
     def angular_velocity_at(self, anom: float) -> np.ndarray:
         return np.asarray(self.angular_velocity, dtype=float)
 
+    def rotation_matrix_at(self, anom: float) -> np.ndarray:
+        from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+        return tait_bryan_to_rotation_matrix(self.orientation_at(anom))
+
     def approach_azimuth(self, initial_state: np.ndarray) -> float:
         position_body = self.approach_position_body(initial_state)
         radial_norm = float(np.linalg.norm(position_body[:2]))

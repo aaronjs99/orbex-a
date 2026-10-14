@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping
 import matplotlib.pyplot as plt
 from orbexa.visualization.plot_canvas import artifact_figure, artifact_subplots
 import numpy as np
@@ -26,7 +27,7 @@ class MissionPlots:
         "smid_fss_widths.png": ("anom_history", "feasible_set_history.eccentricity/alpha/beta"),
         "parameter_estimates_vs_truth.png": ("anom_history", "parameter_estimate_history", "feasible_set_history", "truth"),
         "target_attitude.png": ("anom_history", "target_attitude_history or saved target orientation model"),
-        "target_angular_velocity.png": ("anom_history", "target_angular_velocity_history or saved target angular_velocity"),
+        "target_angular_velocity.png": ("anom_history", "target_kinematics.body_angular_velocity or target_angular_velocity_history or saved target angular_velocity"),
         "multi_chaser_spacing.png": ("anom_history", "pairwise_spacing"),
     }
 
@@ -59,7 +60,15 @@ class MissionPlots:
         self._smid_widths()
         self._parameter_estimates()
         self._target_plot("target_attitude.png", self.samples.recorded_orientation, "Euler angle (rad)", ("roll", "pitch", "yaw"))
-        self._target_plot("target_angular_velocity.png", self.samples.recorded_rates, "Euler angle rate (rad/rad anomaly)", ("roll rate", "pitch rate", "yaw rate"))
+        kinematics = self.result.metadata.get("target_kinematics", {})
+        kinematics = kinematics if isinstance(kinematics, Mapping) else {}
+        spin = recorded_array(kinematics.get("body_angular_velocity", []))
+        spin_q = recorded_array(kinematics.get("anomaly", []))
+        if (spin.shape == (len(self.q), 3) and np.all(np.isfinite(spin))
+                and spin_q.shape == self.q.shape and np.array_equal(spin_q, self.q)):
+            self._target_plot("target_angular_velocity.png", spin, "Body angular velocity (rad/s)", ("body x", "body y", "body z"))
+        else:
+            self._target_plot("target_angular_velocity.png", self.samples.recorded_rates, "Euler angle rate (rad/rad anomaly)", ("roll rate", "pitch rate", "yaw rate"))
         self._spacing()
         return list(self.artifacts)
 

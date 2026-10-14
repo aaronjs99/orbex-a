@@ -21,6 +21,7 @@ from orbexa.simulation.mission_models import ChaserConfig, MissionPhase
 if TYPE_CHECKING:
     from orbexa.core.config import SimulationConfig
     from orbexa.core.target_geometry import TargetGeometry
+    from orbexa.simulation.coupled_state import CoupledMissionState
 
 
 class MissionReferencePolicy:
@@ -32,6 +33,21 @@ class MissionReferencePolicy:
         self.config = config
         self.target = target
         self.horizon_steps = None if horizon_steps is None else int(horizon_steps)
+
+    def initial_phase(self) -> MissionPhase:
+        """Select the first phase without constructing or mutating the controller."""
+        return MissionPhase("rendezvous", "rendezvous")
+
+    def select_phase(self, phase: MissionPhase, state: CoupledMissionState,
+                     chasers: Sequence[ChaserConfig]) -> MissionPhase:
+        """Choose the next operation from the current committed fleet state."""
+        if phase.operation == "rendezvous" and self.rendezvous_goal_satisfied(state.states, chasers):
+            return MissionPhase("docking", "docking")
+        return phase
+
+    def scenario_metadata(self) -> Dict[str, Any]:
+        """Extra scenario provenance supplied by an injected policy."""
+        return {}
 
     def phase_reference_state(
         self,
@@ -142,10 +158,9 @@ class MissionReferencePolicy:
     def terminal_bounds(self, chaser: ChaserConfig, anomaly: float, center: np.ndarray,
                         phi: np.ndarray, omega: np.ndarray) -> Tuple[float, float]:
         goal = self.target.docking_state(chaser.docking_point_body, anomaly)
-        position_bound = np.linalg.norm(center[:3] - goal[:3]) + np.linalg.norm(omega)
-        velocity_bound = np.linalg.norm(center[3:] - goal[3:]) + np.linalg.norm(
-            phi + np.asarray(self.config.tube.sliding_gains) * omega
-        )
+        position_bound = np.linalg.norm(np.abs(center[:3] - goal[:3]) + omega)
+        velocity_bound = np.linalg.norm(np.abs(center[3:] - goal[3:]) +
+            phi + np.asarray(self.config.tube.sliding_gains) * omega)
         return float(position_bound), float(velocity_bound)
 
     def terminal_bounds_admissible(self, position_bound: float, velocity_bound: float) -> bool:

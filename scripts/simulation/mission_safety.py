@@ -26,10 +26,15 @@ if TYPE_CHECKING:
 class MissionSafety:
     """Physical target margins, pairwise spacing and actuator feasibility."""
 
-    def __init__(self, config: SimulationConfig, target: TargetGeometry):
+    def __init__(self, config: SimulationConfig, target: TargetGeometry, *, chaser_body_radius: float = 0.0):
         self.config = config
         self.target = target
+        if not np.isfinite(chaser_body_radius) or chaser_body_radius < 0:
+            raise ValueError('chaser_body_radius must be finite and nonnegative')
+        self.chaser_body_radius = float(chaser_body_radius)
         self.min_chaser_separation = float(config.mpc.min_chaser_separation)
+        if self.min_chaser_separation < 2 * self.chaser_body_radius:
+            raise ValueError('Minimum pair separation must accommodate both finite chaser bodies')
         self.target_safety_tolerance = float(config.mission.target_safety_tolerance)
 
     def clip_control(self, control: np.ndarray) -> np.ndarray:
@@ -49,13 +54,13 @@ class MissionSafety:
     ) -> float:
         position = np.asarray(state[:3], dtype=float)
         if phase.operation == "docking":
-            cylinder = self.target.cylinder_constraint(anom, tube_radius=0.0)
+            cylinder = self.target.cylinder_constraint(anom, tube_radius=self.chaser_body_radius)
             radial, axial = cylinder.margins(position)
             return float(max(radial, axial))
         return rendezvous_margin(
             position,
             target_radius=self.target.rendezvous_radius,
-            tube_radius=0.0,
+            tube_radius=self.chaser_body_radius,
         )
 
 
@@ -99,21 +104,21 @@ class MissionSafety:
                     rendezvous_margin(
                         position,
                         target_radius=self.target.rendezvous_radius,
-                        tube_radius=0.0,
+                        tube_radius=self.chaser_body_radius,
                     )
                 )
                 tightened_rv_values.append(
                     rendezvous_margin(
                         position,
                         target_radius=self.target.rendezvous_radius,
-                        tube_radius=tube_radius,
+                        tube_radius=tube_radius + self.chaser_body_radius,
                     )
                 )
-                physical_cylinder = self.target.cylinder_constraint(anom, tube_radius=0.0)
+                physical_cylinder = self.target.cylinder_constraint(anom, tube_radius=self.chaser_body_radius)
                 physical_radial, physical_axial = physical_cylinder.margins(position)
                 physical_dock_values.append(float(max(physical_radial, physical_axial)))
                 tightened_cylinder = self.target.cylinder_constraint(
-                    anom, tube_radius=tube_radius
+                    anom, tube_radius=tube_radius + self.chaser_body_radius
                 )
                 tightened_radial, tightened_axial = tightened_cylinder.margins(position)
                 tightened_dock_values.append(float(max(tightened_radial, tightened_axial)))

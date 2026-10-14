@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orbexa"
-version = "2.0.0"
+version = "2.1.0"
 description = "Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC"
 authors = [
   { name = "Aaron John Sabu", email = "aaronjs@g.ucla.edu" },
@@ -28,7 +28,9 @@ dependencies = [
 casadi = ["casadi"]
 visualization = ["mayavi"]
 video = ["imageio-ffmpeg"]
-all = ["casadi", "mayavi", "imageio-ffmpeg"]
+studio = ["mistune>=3,<4"]
+certification = ["python-flint>=0.8,<0.10"]
+all = ["casadi", "mayavi", "imageio-ffmpeg", "mistune>=3,<4", "python-flint>=0.8,<0.10"]
 
 [tool.setuptools]
 package-dir = {orbexa = "scripts"}
@@ -38,8 +40,13 @@ packages = [
   "orbexa.solvers", "orbexa.utils", "orbexa.visualization",
 ]
 
+[tool.setuptools.package-data]
+"orbexa.visualization" = ["studio/*", "studio/vendor/*", "studio/vendor/three/*", "studio/vendor/katex/*", "studio/vendor/katex/fonts/*"]
+
 [project.scripts]
 orbexa-generate-demo = "orbexa.cli.generate_demo:main"
+orbexa-complete-mission = "orbexa.cli.complete_mission:main"
+orbexa-run-mission = "orbexa.cli.run_mission:main"
 
 
 [project.urls]

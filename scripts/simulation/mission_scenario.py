@@ -19,6 +19,7 @@ import numpy as np
 from orbexa.core.config import SimulationConfig
 from orbexa.core.orbital_parameters import OrbitalPlantTruth
 from orbexa.core.target_geometry import TargetGeometry, TumblingCylinderTarget
+from orbexa.estimation.belief import ParameterBelief
 from orbexa.estimation.mission_adaptation import PointEstimator, default_point_estimator
 from orbexa.simulation.fleet import FleetInitializer
 from orbexa.simulation.mission_policy import MissionReferencePolicy
@@ -57,6 +58,9 @@ class MissionScenario:
                  safety: Optional[MissionSafety] = None,
                  point_estimator: Optional[PointEstimator] = None,
                  controller_factory: Optional[ControllerFactory] = None,
+                 initial_belief: Optional[ParameterBelief] = None,
+                 execution_guard=None,
+                 adaptation_mode: str = 'adaptive',
                  horizon_steps: Optional[int] = None,
                  actuation_steps: Optional[int] = None,
                  approximation: str = "nonlinear", solver_backend: str = "gekko"):
@@ -64,6 +68,15 @@ class MissionScenario:
         if reference is not None and horizon_steps is not None:
             raise ValueError("Inject horizon_steps into the supplied MissionReferencePolicy")
         self.truth = truth if truth is not None else OrbitalPlantTruth.from_config(self.config)
+        if initial_belief is not None and not isinstance(initial_belief, ParameterBelief):
+            raise TypeError("initial_belief must be a ParameterBelief")
+        # Copying also validates a caller-mutated belief. No plant value is used
+        # to recenter or enlarge an explicitly supplied controller prior.
+        self.initial_belief = None if initial_belief is None else initial_belief.copy()
+        if adaptation_mode not in ('adaptive', 'frozen'):
+            raise ValueError("adaptation_mode must be 'adaptive' or 'frozen'")
+        self.adaptation_mode = adaptation_mode
+        self.execution_guard = execution_guard
         self.target = target if target is not None else TumblingCylinderTarget.from_config(self.config)
         self.fleet = fleet if fleet is not None else FleetInitializer(self.config, self.target)
         self.reference = reference if reference is not None else MissionReferencePolicy(self.config, self.target, horizon_steps)
@@ -77,6 +90,13 @@ class MissionScenario:
         self.approximation = approximation
         self.solver_backend = solver_backend
 
+    def scenario_metadata(self) -> Dict[str, Any]:
+        """Record optional scenario policy without coupling the recorder to it."""
+        return {**self.reference.scenario_metadata(),
+                'tracked_reference_point': 'chaser_center_of_mass',
+                'belief_update_mode': self.adaptation_mode,
+                'chaser_body_bounding_radius_m': self.safety.chaser_body_radius}
+
     def require_coupled_execution(self) -> None:
         if self.approximation != "nonlinear" or self.solver_backend != "gekko":
             raise ValueError("ADTMPC missions require the nonlinear GEKKO coupled dynamic-tube controller")
@@ -86,7 +106,8 @@ class MissionScenario:
                   list(self.config.mpc.actuation_steps.values()))
         if any(count != 1 for count in counts):
             raise ValueError("Coupled ADTMPC replans every outer interval; actuation_steps must be one")
-        if self.target.docking_standoff <= self.target.radius * self.target.tolerance + self.config.mission.target_barrier_clearance:
+        if self.target.docking_standoff <= (self.target.radius * self.target.tolerance +
+                self.config.mission.target_barrier_clearance + self.safety.chaser_body_radius):
             raise ValueError("The docking standoff leaves no free-flight tube clearance; contact requires an explicit contact model")
 
     def create_controller(self) -> CoupledController:

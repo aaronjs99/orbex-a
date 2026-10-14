@@ -13,6 +13,8 @@ from scipy.linalg import expm
 from gekko import GEKKO
 
 from orbexa.solvers.base import SolverResult
+from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
+from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 
 
@@ -25,7 +27,13 @@ class GekkoDynamicTube:
         self.spec = problem.extra_params["dynamic_tube"]
         self.model = GEKKO(remote=config.get("remote", False))
         self.residuals = []
-        self._build()
+        self.residual_descriptions = []
+        self.constraint_context = 'formulation'
+        try:
+            self._build()
+        except Exception:
+            self.model.cleanup()
+            raise
 
     def _array(self, key, shape, nonnegative=False):
         value = np.asarray(self.spec[key], dtype=float)
@@ -39,11 +47,13 @@ class GekkoDynamicTube:
         residual = self.model.Intermediate(left - right)
         self.model.Equation(residual == 0)
         self.residuals.append((residual, True))
+        self.residual_descriptions.append(self.constraint_context)
 
     def _ge(self, left, right=0.0):
         residual = self.model.Intermediate(left - right)
         self.model.Equation(residual >= 0)
         self.residuals.append((residual, False))
+        self.residual_descriptions.append(self.constraint_context)
 
     def _abs(self, value, seed=0.0):
         bound = self.model.Var(value=abs(float(seed)), lb=0.0)
@@ -139,12 +149,19 @@ class GekkoDynamicTube:
         dd = self._array("delta_d", (count-1, 3), True)
         eta = self._array("eta", (3,), True)
         a_abs = self._array("A_abs", (count-1, 3, 6), True)
+        a_variation = self._array("A_variation", (count-1, 3, 6), True)
+        hold_width = float(spec["hold_width"])
+        if not np.isfinite(hold_width) or not 0 < hold_width <= h:
+            raise ValueError("Dynamic tube hold_width must be positive and no larger than the outer step")
         lower_alpha, upper_alpha = map(float, spec["alpha_bounds"])
         if not (0 < lower_alpha <= upper_alpha < np.inf):
             raise ValueError("Dynamic tube alpha_bounds must be finite and strictly positive")
         rate = float(spec.get("alpha_rate_limit", np.inf))
         if np.isnan(rate) or rate < 0:
             raise ValueError("Dynamic tube alpha_rate_limit must be nonnegative")
+        if np.any(alpha0 < lower_alpha) or np.any(alpha0 > upper_alpha):
+            raise ValueError('Initial bandwidth must belong to its allowed interval')
+        fixed_bandwidth = rate == 0 or lower_alpha == upper_alpha
         tube_weight = float(spec.get("tube_weight", 1.0))
         bandwidth_weight = float(spec.get("bandwidth_weight", 1.0e-4))
         if min(tube_weight, bandwidth_weight) < 0 or not np.isfinite(tube_weight + bandwidth_weight):
@@ -179,6 +196,8 @@ class GekkoDynamicTube:
         # the NLP. Repeating the initial tube at every node creates a large,
         # avoidable infeasibility just when the hard terminal set is armed.
         transitions, phi_guess, omega_guess = [], np.zeros((count,3)), np.zeros((count,3))
+        phi_peak_guess, omega_peak_guess = np.zeros((count-1,3)), np.zeros((count-1,3))
+        self.seed_diagnostics = []
         phi_guess[0], omega_guess[0] = phi0, omega0
         alpha_guess = np.clip(alpha0,lower_alpha,upper_alpha)
         for k in range(count-1):
@@ -190,29 +209,52 @@ class GekkoDynamicTube:
             source = np.abs(p.input_matrix) @ np.abs(uguess[:,k]) + np.concatenate((np.zeros(3),d_abs[k]))
             enclosure = transition[:6,:6] @ np.abs(xguess[:,k]) + transition[:6,6:] @ source
             w_guess = da[k] @ enclosure + dd[k] + eta
-            alpha_decay = np.exp(-h*alpha_guess)
-            phi_guess[k+1] = alpha_decay*phi_guess[k] + (-np.expm1(-h*alpha_guess))*w_guess/alpha_guess
-            omega_decay = np.exp(-h*lam)
-            omega_guess[k+1] = omega_decay*omega_guess[k] + (-np.expm1(-h*lam))*np.maximum(phi_guess[k],phi_guess[k+1])/lam
+            try:
+                phi_guess[k+1], omega_guess[k+1], phi_peak_guess[k], omega_peak_guess[k], _ = held_tube_stage_seed(
+                    phi_guess[k], omega_guess[k], alpha_guess, lam, a_abs[k], da[k],
+                    a_variation[k], w_guess, h, hold_width)
+            except ValueError as error:
+                # A failed fixed point at this *initial* bandwidth is not a
+                # proof that another admissible bandwidth is infeasible. Keep
+                # a finite initial iterate; all corrected equations and hard
+                # constraints remain present in the actual optimization.
+                phi_guess[k+1], omega_guess[k+1] = advance_tube(
+                    phi_guess[k], omega_guess[k], alpha_guess, lam, w_guess, h)
+                phi_peak_guess[k] = np.maximum(phi_guess[k], phi_guess[k+1])
+                omega_peak_guess[k] = np.maximum(omega_guess[k], omega_guess[k+1])
+                self.seed_diagnostics.append(dict(stage=k, initialization='finite_uncoupled_initial_iterate',
+                                                  reason=str(error)))
         self.states = [[m.Var(value=float(xguess[i,k])) for i in range(6)] for k in range(count)]
         self.inputs = [[m.Var(value=float(uguess[i,k])) for i in range(3)] for k in range(count-1)]
         self.phi = [[m.Var(value=float(phi_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
         self.omega = [[m.Var(value=float(omega_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
-        self.alpha = [[m.Var(value=float(np.clip(alpha0[i],lower_alpha,upper_alpha)),
-                             lb=lower_alpha, ub=upper_alpha) for i in range(3)] for _ in range(count-1)]
+        # A prescribed gain is a parameter. Equal variable bounds plus two
+        # zero-rate inequalities create redundant active NLP constraints.
+        self.alpha = [[m.Param(value=float(alpha0[i])) if fixed_bandwidth else
+                       m.Var(value=float(alpha0[i]), lb=lower_alpha, ub=upper_alpha)
+                       for i in range(3)] for _ in range(count-1)]
+        self.bandwidth_mode = 'fixed_parameter' if fixed_bandwidth else 'optimized_dynamic_bandwidth'
         self.reserve = []
         self.disturbance_bounds = []
         self.nominal_enclosures = []
+        self.stage_terms = {name: [] for name in (
+            "base_forcing", "hold_forcing", "velocity_peak", "error_peak",
+            "velocity_derivative_bound", "error_derivative_bound", "sliding_derivative_bound")}
+        self.phi_peaks, self.omega_peaks = [], []
+        self.constraint_context = 'initial_state'
         for i in range(6):
             self._eq(self.states[0][i], float(p.initial_state[i]))
+        self.constraint_context = 'initial_tube'
         for i in range(3):
             self._eq(self.phi[0][i], float(phi0[i]))
             self._eq(self.omega[0][i], float(omega0[i]))
         for k in range(count-1):
+            self.constraint_context = f'nominal_dynamics[{k}]'
             x, u, alpha = self.states[k], self.inputs[k], self.alpha[k]
             predicted = self._rk4(x, u, self.coefficients[k])
             for i in range(6):
                 self._eq(self.states[k+1][i], predicted[i])
+            self.constraint_context = f'absolute_epigraphs[{k}]'
             absx = [self._abs(x[i], xguess[i,k]) for i in range(6)]
             absu = [self._abs(u[i], uguess[i,k]) for i in range(3)]
             # Positive comparison system bounds the entire continuous interval,
@@ -223,42 +265,45 @@ class GekkoDynamicTube:
             e_state = self._dot(transition[:6,:6], absx)
             e_source = self._dot(transition[:6,6:], source)
             enclosure = [m.Intermediate(e_state[i]+e_source[i]) for i in range(6)]
-            w = [m.Intermediate(sum(float(da[k,i,j])*enclosure[j] for j in range(6))
-                                + float(dd[k,i]+eta[i])) for i in range(3)]
-            self.disturbance_bounds.append(w)
+            w0 = [m.Intermediate(sum(float(da[k,i,j])*enclosure[j] for j in range(6))
+                                 + float(dd[k,i]+eta[i])) for i in range(3)]
             self.nominal_enclosures.append(enclosure)
             phi_peak, omega_peak = [], []
+            self.constraint_context = f'tube_peaks_and_position_decay[{k}]'
             for i in range(3):
-                decay = m.exp(-h*alpha[i])
-                self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*w[i]/alpha[i])
-                peak = m.Var(value=float(max(phi_guess[k,i],phi_guess[k+1,i])), lb=0)
+                peak = m.Var(value=float(phi_peak_guess[k,i]), lb=0)
                 self._ge(peak, self.phi[k][i])
                 self._ge(peak, self.phi[k+1][i])
                 phi_peak.append(peak)
                 omega_decay = float(np.exp(-h*lam[i]))
                 self._eq(self.omega[k+1][i], omega_decay*self.omega[k][i]
                          + (1-omega_decay)*peak/float(lam[i]))
-                radius = m.Var(value=float(max(omega_guess[k,i],omega_guess[k+1,i])), lb=0)
+                radius = m.Var(value=float(omega_peak_guess[k,i]), lb=0)
                 self._ge(radius, self.omega[k][i])
                 self._ge(radius, self.omega[k+1][i])
                 omega_peak.append(radius)
-                if np.isfinite(rate):
+                if np.isfinite(rate) and not fixed_bandwidth:
                     previous = float(alpha0[i]) if k == 0 else self.alpha[k-1][i]
                     self._ge(rate*h, alpha[i]-previous)
                     self._ge(rate*h, previous-alpha[i])
                 m.Minimize(h*bandwidth_weight*alpha[i]**2
                            + h*(tube_weight+1e-4)*(peak**2+radius**2))
-            velocity_peak = [phi_peak[i]+float(lam[i])*omega_peak[i] for i in range(3)]
-            error_peak = omega_peak+velocity_peak
-            reserve = []
+            # One coupled set of peaks supplies rho, the comparison forcing
+            # and the complete actuator reserve. The bounded-term residual
+            # remains valid at Phi=0 without a reciprocal or smallness test.
+            terms = sample_hold_expressions(a_abs[k], da[k], a_variation[k], w0,
+                phi_peak, omega_peak, alpha, lam, hold_width, intermediate=m.Intermediate)
+            w, reserve = terms['disturbance_bound'], terms['input_reserve']
+            self.disturbance_bounds.append(w)
+            self.phi_peaks.append(phi_peak)
+            self.omega_peaks.append(omega_peak)
+            for name in self.stage_terms:
+                self.stage_terms[name].append(terms[name])
             for i in range(3):
-                # |Av+Lambda| <= |Av|+Lambda. A_abs encloses every stage.
-                feedback = sum(float(a_abs[k,i,j])*omega_peak[j] for j in range(3))
-                feedback += sum(float(a_abs[k,i,j+3]+(lam[i] if i == j else 0))*velocity_peak[j]
-                                for j in range(3))
-                uncertainty = sum(float(da[k,i,j])*error_peak[j] for j in range(6))
-                margin = m.Intermediate(feedback + uncertainty + alpha[i]*phi_peak[i])
-                reserve.append(margin)
+                self.constraint_context = f'sliding_decay_and_input_reserve[{k}]'
+                decay = m.exp(-h*alpha[i])
+                self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*w[i]/alpha[i])
+                margin = reserve[i]
                 if p.input_bounds and i < len(p.input_bounds):
                     lower = self._bound(p.input_bounds[i], "lower")
                     upper = self._bound(p.input_bounds[i], "upper")
@@ -270,9 +315,12 @@ class GekkoDynamicTube:
         self.lambda_gain = lam
         self._constraints()
         for k in range(count):
-            errors = [self.states[k][i]-float(p.reference_states[i,k]) for i in range(6)]
-            m.Minimize(h*sum(float(p.state_cost_matrix[i,j])*errors[i]*errors[j]
-                             for i in range(6) for j in range(6) if p.state_cost_matrix[i,j] != 0))
+            if k < count-1:
+                errors = [self.states[k][i]-float(p.reference_states[i,k]) for i in range(6)]
+                m.Minimize(h*sum(float(p.state_cost_matrix[i,j])*errors[i]*errors[j]
+                                 for i in range(6) for j in range(6) if p.state_cost_matrix[i,j] != 0))
+            # Nodewise tube regularization includes the endpoint. State stage
+            # costs stop before it; the Riccati tail already starts there.
             m.Minimize(h*tube_weight*sum(self.phi[k][i]**2+self.omega[k][i]**2 for i in range(3)))
         for k in range(count-1):
             errors = [self.inputs[k][i]-float(p.reference_inputs[i,k]) for i in range(3)]
@@ -284,10 +332,19 @@ class GekkoDynamicTube:
                            for i in range(6) for j in range(6) if p.terminal_cost_matrix[i,j] != 0))
         m.options.IMODE = 3
         m.options.SOLVER = 3
+        # IPOPT otherwise relaxes bounds on its internal inequality slacks.
+        # Projecting those slacks back after the solve can spoil the original
+        # nonlinear terminal constraint despite a successful native status.
+        # These are hard tube/geometry bounds, so keep them unrelaxed.
+        m.solver_options = ["bound_relax_factor 0"]
         m.options.MAX_ITER = self.config.get("max_iter", 3000)
         m.options.MAX_MEMORY = self.config.get("max_memory", 512)
-        m.options.OTOL = self.config.get("otol", 1e-7)
-        m.options.RTOL = self.config.get("rtol", 1e-7)
+        # Keep the optimizer's feasibility tolerance below the existing 1e-8
+        # runtime comparison replay check. This is numerical consistency, not
+        # an integration or floating-point enclosure certificate.
+        m.options.OTOL = self.config.get("otol", 1e-9)
+        m.options.RTOL = self.config.get("rtol", 1e-9)
+        m.options.SCALING = self.config.get('scaling', 1)
 
     def _constraints(self):
         p, m, spec = self.problem, self.model, self.spec
@@ -323,6 +380,7 @@ class GekkoDynamicTube:
                 raise ValueError("Pairwise reference_positions/tube_radius have invalid shape or values")
             pair_data.append((positions,radii,separation))
         for k, x in enumerate(self.states):
+            self.constraint_context = f'geometry_and_state_bounds[{k}]'
             omega = self.omega[k]
             velocity = [self.phi[k][i]+float(self.lambda_gain[i])*omega[i] for i in range(3)]
             envelope = omega+velocity
@@ -341,13 +399,15 @@ class GekkoDynamicTube:
                 body = self._dot(rotations[k].T,pos)
                 radius = float(target["target_radius"])
                 half_length = float(target["target_half_length"])
-                clearance = radius_tube+float(target.get("safety_reserve",0.))
+                safety_reserve = float(target.get("safety_reserve",0.))
                 if target.get("robust_side_corridor",False):
                     normal = np.asarray(target["docking_normal_body"],dtype=float)
                     if normal.shape != (3,) or np.linalg.norm(normal[:2]) <= 0:
                         raise ValueError("Side corridor needs a nonzero docking_normal_body")
                     normal = np.array([normal[0],normal[1],0.])/np.linalg.norm(normal[:2])
-                    self._ge(body[0]**2+body[1]**2,(radius+clearance)**2)
+                    box_support = sum(abs(float(value))*omega[i]
+                                      for i,value in enumerate(rotations[k] @ normal))
+                    clearance = box_support + safety_reserve
                     self._ge(sum(float(normal[i])*body[i] for i in range(3)),radius+clearance)
                 else:
                     # A unit support-plane normal supplies the nonlinear union
@@ -359,6 +419,10 @@ class GekkoDynamicTube:
                     self._eq(sum(n*n for n in normal),1.)
                     nz_abs = self._abs(normal[2],guess[2])
                     support = radius*self._norm(normal[:2])+half_length*nz_abs
+                    world_normal = self._dot(rotations[k], normal)
+                    box_support = sum(self._abs(world_normal[i],(rotations[k] @ guess)[i])*omega[i]
+                                      for i in range(3))
+                    clearance = box_support + safety_reserve
                     self._ge(sum(normal[i]*body[i] for i in range(3)),support+clearance)
             for positions,radii,separation in pair_data:
                 delta = [x[i]-float(positions[k,i]) for i in range(3)]
@@ -373,13 +437,17 @@ class GekkoDynamicTube:
                 robust = sum(abs(float(row[i]))*envelope[i] for i in range(len(row)))
                 self._ge(sum(float(row[i])*x[i] for i in range(len(row)))+offset,robust)
         if spec.get("enforce_terminal",False):
+            self.constraint_context = 'normalized_terminal_pose'
             for offset,key,tube in ((0,"terminal_position_tolerance",self.omega[-1]),
                                     (3,"terminal_velocity_tolerance",velocity)):
                 tolerance = spec.get(key)
                 if tolerance is None or not np.isfinite(float(tolerance)) or float(tolerance) <= 0:
                     raise ValueError("Hard terminal constraints require positive %s" % key)
                 error = [self.states[-1][offset+i]-float(p.reference_states[offset+i,-1]) for i in range(3)]
-                self._ge(float(tolerance),self._norm(error)+self._norm(tube))
+                # Exact box worst-case Euclidean error, with convex absolute
+                # epigraphs. Squaring avoids the zero-norm derivative.
+                absolute_error = [self._abs(error[i]) for i in range(3)]
+                self._ge(1.,sum(((absolute_error[i]+tube[i])/float(tolerance))**2 for i in range(3)))
 
     @staticmethod
     def _values(rows):
@@ -394,16 +462,24 @@ class GekkoDynamicTube:
             tube = {"phi":self._values(self.phi), "omega":self._values(self.omega),
                     "alpha":self._values(self.alpha), "input_reserve":self._values(self.reserve),
                     "disturbance_bound":self._values(self.disturbance_bounds),
-                    "nominal_enclosure":self._values(self.nominal_enclosures)}
+                    "nominal_enclosure":self._values(self.nominal_enclosures),
+                    "phi_peak":self._values(self.phi_peaks), "omega_peak":self._values(self.omega_peaks),
+                    "A_variation":np.asarray(self.spec['A_variation']).copy(),
+                    "hold_width":float(self.spec['hold_width'])}
+            tube.update({name:self._values(rows) for name,rows in self.stage_terms.items()})
             residuals = [(float(value.value[0]),equality) for value,equality in self.residuals]
             violation = max([abs(value) if equality else max(0.,-value) for value,equality in residuals]+[0.])
+            residual_details = sorted((dict(index=i,context=self.residual_descriptions[i],
+                equality=equality,residual=value,violation=abs(value) if equality else max(0.,-value))
+                for i,(value,equality) in enumerate(residuals)), key=lambda x:x['violation'],reverse=True)[:8]
             lower_alpha, upper_alpha = map(float,self.spec["alpha_bounds"])
             violation = max(violation,float(np.max(-tube["phi"])),float(np.max(-tube["omega"])),
                             float(np.max(lower_alpha-tube["alpha"])),
                             float(np.max(tube["alpha"]-upper_alpha)))
             finite = all(np.all(np.isfinite(value)) for value in [states,controls]+list(tube.values()))
             finite = finite and all(np.isfinite(value) for value,_ in residuals)
-            tolerance = float(self.config.get("residual_tolerance",1e-5))
+            tube["tube_model_version"] = TUBE_MODEL_VERSION
+            tolerance = float(self.config.get("residual_tolerance",1e-8))
             success = finite and violation <= tolerance and self.model.options.APPSTATUS == 1
             return SolverResult(success=success,state_trajectory=states,control_trajectory=controls,
                                 cost=float(self.model.options.objfcnval),solve_time=time.time()-started,
@@ -412,6 +488,15 @@ class GekkoDynamicTube:
                                 solver_info={"status":self.model.options.APPSTATUS,
                                              "iterations":self.model.options.ITERATIONS,
                                              "max_constraint_violation":violation,
+                                             "largest_constraint_residuals":residual_details,
+                                             "bandwidth_mode":self.bandwidth_mode,
+                                             "residual_tolerance":tolerance,
+                                             "comparison_replay_tolerance":1e-8,
+                                             "rtol":float(self.model.options.RTOL),
+                                             "otol":float(self.model.options.OTOL),
+                                             "native_solver_options":list(self.model.solver_options),
+                                             "terminal_residual_scaling":"squared box error divided by squared physical tolerance",
+                                             "tube_seed_diagnostics":list(self.seed_diagnostics),
                                              "constraint_sampling":"nonlinear geometry and state constraints at prediction nodes",
                                              "dynamic_tube":tube})
         except Exception as error:
@@ -419,11 +504,13 @@ class GekkoDynamicTube:
                                 message="Coupled GEKKO dynamic-tube solve failed: %s" % error)
 
     def solve(self):
-        """Retry a failed warm start once using a fresh dynamics-feasible seed.
+        """Bounded initialization and numerical-accuracy retries after failure.
 
-        Neighbor trajectories, terminal sets, uncertainty bounds, and solver
-        tolerances stay identical. A rejected residual check is a failed
-        attempt too; neither optimizer status nor retrying implies feasibility.
+        One cold initialization retains the same solver options. A final
+        residual-only refinement tightens numerical accuracy; neighbor paths,
+        physical constraints, uncertainty bounds and admission stay identical.
+        A rejected residual check is a failed attempt too; neither optimizer
+        status nor retrying implies feasibility.
         """
         started = time.time()
         warm_keys = ("state_initial_guess", "control_initial_guess")
@@ -433,7 +520,8 @@ class GekkoDynamicTube:
         def record(result, initialization):
             attempts.append(dict(initialization=initialization,success=bool(result.success),
                                  solve_time=float(result.solve_time),message=result.message,
-                                 max_constraint_violation=result.solver_info.get("max_constraint_violation")))
+                                 max_constraint_violation=result.solver_info.get("max_constraint_violation"),
+                                 largest_constraint_residuals=result.solver_info.get('largest_constraint_residuals', [])))
 
         result = self._solve_once()
         record(result,"caller_warm_start" if has_warm_start else "dynamics_rollout")
@@ -453,6 +541,24 @@ class GekkoDynamicTube:
                                      solve_time=0.0,message="Alternate initialization failed: %s" % error,
                                      max_constraint_violation=None))
                 result.message += "; alternate initialization failed: %s" % error
+        if (not result.success and result.message == 'Coupled dynamic-tube residual verification failed'
+                and self.config.get('residual_refinement_retry', True)):
+            # Refine a numerically rejected candidate under the same physical
+            # constraints. Tightening solver accuracy never relaxes admission.
+            extra = dict(self.problem.extra_params,
+                state_initial_guess=result.state_trajectory, control_initial_guess=result.control_trajectory)
+            refined_config = dict(self.config, rtol=min(float(self.config.get('rtol',1e-9)),1e-12),
+                                  otol=min(float(self.config.get('otol',1e-9)),1e-12),scaling=0)
+            try:
+                candidate = GekkoDynamicTube(replace(self.problem,extra_params=extra),refined_config)
+                refined = candidate._solve_once()
+                record(refined,'strict_residual_refinement')
+                self.model.cleanup()
+                self.__dict__.update(candidate.__dict__)
+                result = refined
+            except Exception as error:
+                attempts.append(dict(initialization='strict_residual_refinement',success=False,
+                    solve_time=0.,message=f'Residual refinement failed: {error}',max_constraint_violation=None))
         result.solve_time = time.time()-started
         result.solver_info["attempts"] = attempts
         result.solver_info["initialization_retry_count"] = len(attempts)-1

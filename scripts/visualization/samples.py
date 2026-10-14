@@ -75,9 +75,27 @@ class MissionSamples:
             self.orientation = self._target_history(result.target_attitude_history, "initial_orientation", "orientation")
         if count and self.rates is None:
             self.rates = self._target_history(result.target_angular_velocity_history, "angular_velocity", "rate")
-        if self.orientation is None and count:
-            self.notes.append("Saved target orientation is unavailable; views omit the rotating target and docking geometry.")
         self.rotations = None if self.orientation is None else np.stack([tait_bryan_to_rotation_matrix(value) for value in self.orientation])
+        self.rotation_primes = None
+        kinematics = self.metadata.get("target_kinematics", {})
+        if isinstance(kinematics, Mapping) and kinematics:
+            recorded_anomaly = recorded_array(kinematics.get("anomaly", []))
+            rotations = recorded_array(kinematics.get("rotations", []))
+            primes = recorded_array(kinematics.get("rotation_primes", []))
+            aligned = (recorded_anomaly.ndim == 1 and len(recorded_anomaly) >= count and
+                       np.array_equal(recorded_anomaly[:count], self.q))
+            proper = (recorded_anomaly.ndim == 1 and rotations.shape == (len(recorded_anomaly), 3, 3) and
+                      np.all(np.isfinite(rotations[:count])) and
+                      np.allclose(rotations[:count].transpose(0, 2, 1) @ rotations[:count], np.eye(3), atol=1e-8) and
+                      np.allclose(np.linalg.det(rotations[:count]), 1.0, atol=1e-8))
+            if aligned and proper:
+                self.rotations = rotations[:count]
+                if primes.shape == rotations.shape and np.all(np.isfinite(primes[:count])):
+                    self.rotation_primes = primes[:count]
+            else:
+                self.notes.append("Stored target kinematics are invalid or unaligned; only usable saved Euler geometry is shown.")
+        if self.rotations is None and count:
+            self.notes.append("Saved target orientation is unavailable; views omit the rotating target and docking geometry.")
         self.body = None if self.rotations is None else np.einsum("tji,tcj->tci", self.rotations, self.states[:, :, :3])
         self.goals_body = {}
         for identifier in self.ids:
@@ -89,7 +107,10 @@ class MissionSamples:
             goals = np.stack([self.goals_body[identifier] for identifier in self.ids])
             positions = np.einsum("tij,cj->tci", self.rotations, goals)
             self.position_error = np.linalg.norm(self.states[:, :, :3] - positions, axis=2)
-            if self.rates is not None:
+            if self.rotation_primes is not None:
+                velocities = np.einsum("tij,cj->tci", self.rotation_primes, goals)
+                self.velocity_error = np.linalg.norm(self.states[:, :, 3:] - velocities, axis=2)
+            elif self.rates is not None:
                 from orbexa.control.constraints import rotating_body_point_velocity
                 velocities = np.array([[rotating_body_point_velocity(goal, orientation, rate) for goal in goals]
                                        for orientation, rate in zip(self.orientation, self.rates)])

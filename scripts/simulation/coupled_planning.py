@@ -14,14 +14,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 from typing import Any, Dict, List, Sequence, TYPE_CHECKING
 import numpy as np
 
 from orbexa.contracts import SolverResult
 from orbexa.control.dynamic_tube_model import TubeProfile
 from orbexa.control.dynamic_tube_spec import DynamicTubeSpec
+from orbexa.control.sample_hold import TUBE_MODEL_VERSION, TUBE_ASSUMPTIONS
 from orbexa.control.terminal_cost import local_terminal_cost
-from orbexa.control.uncertainty import uncertainty_envelope, nominal_acceleration_bound, coefficient_intervals
+from orbexa.control.uncertainty import uncertainty_envelope, coefficient_intervals
 from orbexa.core.dynamics import orbital_ellp_drag
 
 if TYPE_CHECKING:
@@ -61,7 +63,7 @@ class CoupledMissionPlanner:
                   count: int, phi: np.ndarray, omega: np.ndarray, bandwidth: np.ndarray) -> DynamicTubeSpec:
         tube = self.config.tube
         semi_major_axis, mu = params['semi_major_axis'], params['mu']
-        delta_a, delta_d, a_abs, d_abs = [], [], [], []
+        delta_a, delta_d, a_abs, a_variation, d_abs = [], [], [], [], []
         for stage in range(count - 1):
             lo, hi = anomaly + stage * self.config.anom_step, anomaly + (stage + 1) * self.config.anom_step
             da, dd = uncertainty_envelope(lo, hi, params,
@@ -69,14 +71,18 @@ class CoupledMissionPlanner:
                 belief.feasible_sets['beta'], semi_major_axis, mu)
             delta_a.append(da)
             delta_d.append(dd)
-            a_abs.append(nominal_acceleration_bound(lo, hi, params, semi_major_axis))
-            _, _, dl, dh = coefficient_intervals(lo, hi, params, semi_major_axis)
+            al, ah, dl, dh = coefficient_intervals(lo, hi, params, semi_major_axis)
+            a_abs.append(np.maximum(np.abs(al), np.abs(ah)))
+            # The outer-interval width encloses any change during one inner
+            # hold. It is a coefficient change, so is not multiplied by tau.
+            a_variation.append(np.nextafter(ah - al, np.inf))
             d_abs.append(np.maximum(np.abs(dl), np.abs(dh)))
         return DynamicTubeSpec(
             phi_initial=phi, omega_initial=omega, lambda_gain=tube.sliding_gains,
             alpha_initial=bandwidth, alpha_bounds=(tube.bandwidth_range['lower'], tube.bandwidth_range['upper']),
             alpha_rate_limit=tube.bandwidth_rate_limit, delta_A=np.asarray(delta_a), delta_d=np.asarray(delta_d),
-            A_abs=np.asarray(a_abs), d_abs=np.asarray(d_abs), eta=np.full(3, tube.numerical_reserve),
+            A_abs=np.asarray(a_abs), A_variation=np.asarray(a_variation), d_abs=np.asarray(d_abs),
+            hold_width=self.config.anom_step / tube.feedback_substeps, eta=np.full(3, tube.numerical_reserve),
             bandwidth_weight=tube.bandwidth_weight, tube_weight=tube.tube_weight,
             terminal_position_tolerance=self.config.mpc.docking_position_tolerance,
             terminal_velocity_tolerance=self.config.mpc.docking_velocity_tolerance, enforce_terminal=False)
@@ -98,9 +104,16 @@ class CoupledMissionPlanner:
             references, feedforward = scenario.reference.phase_reference_preview(
                 phase, chaser, goal, q, count, matrices, params['time_periapsis'])
             target = scenario.target.collision_params(phase.operation, q)
-            target.update(orientations=[scenario.target.orientation_at(q + k * cfg.anom_step).tolist() for k in range(count)],
-                robust_side_corridor=phase.operation == 'docking', docking_normal_body=chaser.docking_normal_body,
-                safety_reserve=cfg.mission.target_barrier_clearance)
+            rotation_at = getattr(scenario.target, 'rotation_matrix_at', None)
+            if callable(rotation_at):
+                target['rotation_matrices'] = [rotation_at(q + k * cfg.anom_step).tolist() for k in range(count)]
+            else:
+                target['orientations'] = [scenario.target.orientation_at(q + k * cfg.anom_step).tolist() for k in range(count)]
+            target.update(robust_side_corridor=phase.operation == 'docking',
+                docking_normal_body=chaser.docking_normal_body,
+                safety_reserve=cfg.mission.target_barrier_clearance + scenario.safety.chaser_body_radius)
+            if phase.operation == 'rendezvous':
+                target['rendezvous_radius'] += scenario.safety.chaser_body_radius
             # Arm an explicit terminal set only near the final approach.
             # Completion always checks that set, including the current tube.
             spec.enforce_terminal = bool(phase.operation == 'docking' and
@@ -135,11 +148,20 @@ class CoupledMissionPlanner:
             if cfg.mpc.terminal_cost_enabled:
                 kwargs['terminal_cost_matrix'] = local_terminal_cost(matrices[0](q, params['time_periapsis']),
                     matrices[1](), kwargs['state_cost_matrix'], cfg.mpc.R, cfg.anom_step)
-            result = self.controller.solve_step(
-                initial_state=state.centers[key], final_state=goal, control_input_0=feedforward[:, 0],
-                start_anom=q, anom_step=cfg.anom_step, num_steps=count, dynamics=matrices, bounds=cfg.mpc.bounds(),
-                time_periapsis=params['time_periapsis'], eccentricity=params['eccentricity'],
-                use_anomaly_scaling=False, **kwargs)
+            solve_started = time.perf_counter()
+            try:
+                result = self.controller.solve_step(
+                    initial_state=state.centers[key], final_state=goal, control_input_0=feedforward[:, 0],
+                    start_anom=q, anom_step=cfg.anom_step, num_steps=count, dynamics=matrices, bounds=cfg.mpc.bounds(),
+                    time_periapsis=params['time_periapsis'], eccentricity=params['eccentricity'],
+                    use_anomaly_scaling=False, **kwargs)
+            except (ValueError, FloatingPointError, OverflowError) as error:
+                # Unsupported numeric setup or a non-finite initial iterate is
+                # a recorded failed attempt, never an infeasibility theorem or
+                # an unrecorded mission exit. Programming errors still surface.
+                result = SolverResult(success=False, solve_time=time.perf_counter()-solve_started,
+                    message=f'Coupled MPC numeric setup failed: {error}',
+                    solver_info=dict(failure_stage='numeric_problem_setup', exception_type=type(error).__name__))
             outcome.attempts[key] = result
             if not result.success:
                 outcome.success = False
@@ -148,7 +170,14 @@ class CoupledMissionPlanner:
             tube = result.solver_info['dynamic_tube']
             profile = TubeProfile(phi=np.asarray(tube['phi']), omega=np.asarray(tube['omega']),
                 time_grid=q + cfg.anom_step * np.arange(count), lambda_gain=lam,
-                alpha=np.asarray(tube['alpha']), input_reserve=np.asarray(tube['input_reserve']))
+                alpha=np.asarray(tube['alpha']), input_reserve=np.asarray(tube['input_reserve']),
+                assumptions=TUBE_ASSUMPTIONS, tube_model_version=TUBE_MODEL_VERSION,
+                hold_width=spec.hold_width,
+                forcing={name: np.asarray(tube[name]) for name in (
+                    'base_forcing', 'hold_forcing', 'disturbance_bound', 'nominal_enclosure',
+                    'phi_peak', 'omega_peak', 'velocity_peak', 'error_peak',
+                    'velocity_derivative_bound', 'error_derivative_bound', 'sliding_derivative_bound',
+                    'A_variation')})
             outcome.plans[key] = ChaserPlan(result=result, profile=profile, spec=spec, tube=tube)
         if outcome.success:
             outcome.messages.extend(scenario.safety.planned_separation_messages(outcome.plans))

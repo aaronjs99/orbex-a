@@ -1,0 +1,199 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/OrbitControls.js';
+import { representativeSpacecraft, starField } from './spacecraft.js';
+
+/** Numerical geometry only. Vehicle glyphs do not claim physical size or attitude. */
+export class MissionScene {
+  constructor(container, onSelect) {
+    this.container = container;
+    this.onSelect = onSelect;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setClearColor('#010306');
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.domElement.setAttribute('aria-label', 'Recorded chaser and target geometry');
+    container.prepend(this.renderer.domElement);
+    this.scene = new THREE.Scene();
+    this.scene.add(starField());
+    this.camera = new THREE.PerspectiveCamera(38, 1, 0.005, 1000);
+    this.camera.up.set(0, 0, 1);
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.12;
+    this.controls.minDistance = 0.1;
+    this.controls.maxDistance = 150;
+    this.scene.add(new THREE.AmbientLight('#b4cadd', 2.0));
+    const key = new THREE.DirectionalLight('#e0efff', 3.5);
+    key.position.set(-3, -5, 7);
+    this.scene.add(key);
+    const fill = new THREE.DirectionalLight('#4d8eaf', 1.8);
+    fill.position.set(4, 2, 1);
+    this.scene.add(fill);
+    this.model = new THREE.Group();
+    this.scene.add(this.model);
+    this.raycaster = new THREE.Raycaster();
+    this.renderer.domElement.addEventListener('pointerdown', event => { this.pointerDown = [event.clientX, event.clientY]; });
+    this.renderer.domElement.addEventListener('pointerup', event => {
+      if (!this.pointerDown || Math.hypot(event.clientX - this.pointerDown[0], event.clientY - this.pointerDown[1]) > 5) return;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.raycaster.setFromCamera(new THREE.Vector2(2 * (event.clientX - rect.left) / rect.width - 1, 1 - 2 * (event.clientY - rect.top) / rect.height), this.camera);
+      const hit = this.raycaster.intersectObjects(this.vehicles || [], false)[0];
+      if (hit) this.onSelect(hit.object.userData.track);
+    });
+    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver.observe(container);
+    this.mode = 'overview';
+    this.options = { paths: true, tubes: true };
+  }
+
+  clear() {
+    this.model.traverse(object => {
+      object.geometry?.dispose();
+      if (Array.isArray(object.material)) object.material.forEach(material => material.dispose());
+      else object.material?.dispose();
+    });
+    this.model.clear();
+  }
+
+  load(data) {
+    this.clear();
+    this.data = data;
+    this.index = 0;
+    this.selected = 0;
+    const points = data.tracks.flatMap(track => track.states.map(row => new THREE.Vector3(...row.slice(0, 3))));
+    const bounds = new THREE.Box3().setFromPoints([...points, new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1)]);
+    this.center = bounds.getCenter(new THREE.Vector3());
+    this.extent = Math.max(...bounds.getSize(new THREE.Vector3()).toArray()) * 0.55;
+    const grid = new THREE.GridHelper(Math.max(4, Math.ceil(this.extent * 2)), 20, '#2a4054', '#1b2b3b');
+    this.grid = grid;
+    grid.rotation.x = Math.PI / 2;
+    grid.position.z = -Math.max(1, (data.target.half_length || 0.3) * 2.5);
+    grid.material.transparent = true;
+    grid.material.opacity = 0.65;
+    this.model.add(grid);
+    const axes = new THREE.AxesHelper(Math.max(1, this.extent * 0.3));
+    this.axes = axes;
+    axes.material.transparent = true;
+    axes.material.opacity = 0.5;
+    this.model.add(axes);
+    this.target = new THREE.Group();
+    this.target.matrixAutoUpdate = false;
+    this.model.add(this.target);
+    if (data.target.shape === 'cylinder' && data.target.radius > 0 && data.rotations) {
+      const radius = data.target.radius;
+      const height = data.target.height || 2 * data.target.half_length;
+      const envelopeRadius = data.collision_envelope?.radius ?? radius;
+      const envelopeHeight = data.collision_envelope ? 2 * data.collision_envelope.half_length : height;
+      const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(envelopeRadius, envelopeRadius, envelopeHeight, 64), new THREE.MeshStandardMaterial({ color: '#91a5b7', transparent: true, opacity: 0.06, depthWrite: false, roughness: 0.44, metalness: 0.58 }));
+      this.envelope = cylinder;
+      cylinder.rotation.x = Math.PI / 2;
+      this.target.add(cylinder);
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(cylinder.geometry, 25), new THREE.LineBasicMaterial({ color: '#d6e3ed', transparent: true, opacity: 0.38 }));
+      edges.rotation.copy(cylinder.rotation);
+      this.target.add(edges);
+      edges.material.opacity = 0.18;
+      this.envelopeEdges = edges;
+      this.target.add(representativeSpacecraft(radius, height));
+      for (const sign of [-1, 1]) {
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(radius, radius * 0.015, 6, 64), new THREE.MeshStandardMaterial({ color: '#c4d4df', metalness: 0.5, roughness: 0.45 }));
+        rim.position.z = sign * height / 2;
+        rim.visible = false;
+      }
+    }
+    this.vehicles = [];
+    this.traces = [];
+    this.boxes = [];
+    this.centers = [];
+    this.goals = [];
+    for (const [trackIndex, track] of data.tracks.entries()) {
+      const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.states.map(row => new THREE.Vector3(...row.slice(0, 3)))), new THREE.LineBasicMaterial({ color: track.color, transparent: true, opacity: 0.56 }));
+      this.model.add(path);
+      this.traces.push(path);
+      const glyph = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), new THREE.MeshStandardMaterial({ color: track.color, emissive: track.color, emissiveIntensity: 0.23, roughness: 0.5 }));
+      if (data.chaser_body_radius_m > 0) {
+        const envelope = new THREE.Mesh(new THREE.SphereGeometry(data.chaser_body_radius_m, 20, 12), new THREE.MeshBasicMaterial({color:track.color,wireframe:true,transparent:true,opacity:0.18}));
+        // Child scale is undone in update: physical radius never changes when
+        // the selected display glyph is highlighted.
+        glyph.add(envelope);
+      }
+      glyph.userData.track = trackIndex;
+      this.model.add(glyph);
+      this.vehicles.push(glyph);
+      const center = new THREE.Mesh(new THREE.SphereGeometry(0.012, 10, 8), new THREE.MeshBasicMaterial({ color: '#e9f0f7' }));
+      this.model.add(center);
+      this.centers.push(center);
+      const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: track.color, transparent: true, opacity: 0.9 }));
+      this.model.add(box);
+      this.boxes.push(box);
+      const goal = new THREE.Mesh(new THREE.OctahedronGeometry(0.026), new THREE.MeshBasicMaterial({ color: '#f5b567', wireframe: true }));
+      if (track.goal_body && data.rotations) { goal.position.set(...track.goal_body); this.target.add(goal); }
+      else goal.visible = false;
+      this.goals.push(goal);
+      if (track.surface_point_body_m && data.rotations) {
+        const patch = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 8), new THREE.MeshBasicMaterial({color:track.color}));
+        patch.position.set(...track.surface_point_body_m);
+        this.target.add(patch);
+      }
+    }
+    this.setCamera(this.mode);
+    this.update(0, 0, this.options);
+  }
+
+  setCamera(mode) {
+    this.mode = mode;
+    if (!this.data) return;
+    this.camera.up.set(0, mode === 'top' ? 1 : 0, mode === 'top' ? 0 : 1);
+    const center = mode === 'follow' ? new THREE.Vector3(...this.data.tracks[this.selected].states[this.index].slice(0, 3)) : mode === 'overview' ? this.center : new THREE.Vector3();
+    const extent = mode === 'docking' || mode === 'follow' ? Math.max(1.0, this.data.target.radius * 1.9 || 1.5) : this.extent;
+    this.controls.target.copy(center);
+    const offset = mode === 'top' ? new THREE.Vector3(0, 0, 3.8) : new THREE.Vector3(-2.1, -2.5, 1.8);
+    this.camera.position.copy(center).addScaledVector(offset, extent);
+    this.controls.update();
+  }
+
+  update(index, selected, options) {
+    if (!this.data) return;
+    this.index = index;
+    this.selected = selected;
+    this.options = options;
+    this.grid.visible = this.axes.visible = Boolean(options.grid);
+    if (this.envelope) this.envelope.visible = this.envelopeEdges.visible = Boolean(options.envelope);
+    const rotation = this.data.rotations?.[index];
+    if (rotation) {
+      this.target.matrix.set(rotation[0][0], rotation[0][1], rotation[0][2], 0, rotation[1][0], rotation[1][1], rotation[1][2], 0, rotation[2][0], rotation[2][1], rotation[2][2], 0, 0, 0, 0, 1);
+    }
+    this.data.tracks.forEach((track, number) => {
+      this.vehicles[number].position.set(...track.states[index].slice(0, 3));
+      this.vehicles[number].scale.setScalar(number === selected ? 1.2 : 0.8);
+      this.vehicles[number].children.forEach(child => { child.scale.setScalar(1 / this.vehicles[number].scale.x); child.visible = Boolean(options.envelope); });
+      this.traces[number].visible = options.paths;
+      this.traces[number].material.opacity = number === selected ? 0.95 : 0.33;
+      const tube = options.tubes && track.center && track.omega;
+      this.boxes[number].visible = Boolean(tube);
+      this.centers[number].visible = Boolean(tube);
+      if (tube) {
+        this.boxes[number].position.set(...track.center[index]);
+        this.boxes[number].scale.set(...track.omega[index].map(width => 2 * width));
+        this.centers[number].position.set(...track.center[index]);
+      }
+    });
+    if (this.mode === 'follow') {
+      const position = this.vehicles[selected].position;
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      this.controls.target.copy(position);
+      this.camera.position.copy(position).add(offset);
+    }
+  }
+
+  resize() {
+    const width = this.container.clientWidth;
+    const height = this.container.clientHeight;
+    if (!width || !height) return;
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+  }
+
+  render() { this.controls.update(); this.renderer.render(this.scene, this.camera); }
+  dispose() { this.resizeObserver.disconnect(); this.clear(); this.controls.dispose(); this.renderer.dispose(); this.renderer.domElement.remove(); }
+}

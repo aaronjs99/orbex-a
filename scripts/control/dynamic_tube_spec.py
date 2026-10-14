@@ -33,7 +33,9 @@ class DynamicTubeSpec:
     delta_A: np.ndarray
     delta_d: np.ndarray
     A_abs: np.ndarray
+    A_variation: np.ndarray
     d_abs: np.ndarray
+    hold_width: float
     eta: np.ndarray
     bandwidth_weight: float
     tube_weight: float
@@ -49,7 +51,8 @@ class DynamicTubeSpec:
         shapes = {
             "phi_initial": (3,), "omega_initial": (3,), "lambda_gain": (3,),
             "alpha_initial": (3,), "eta": (3,), "delta_A": (intervals, 3, 6),
-            "delta_d": (intervals, 3), "A_abs": (intervals, 3, 6), "d_abs": (intervals, 3),
+            "delta_d": (intervals, 3), "A_abs": (intervals, 3, 6),
+            "A_variation": (intervals, 3, 6), "d_abs": (intervals, 3),
         }
         for name, shape in shapes.items():
             value = np.asarray(getattr(self, name), dtype=float)
@@ -58,6 +61,9 @@ class DynamicTubeSpec:
             setattr(self, name, value.copy())
         if np.any(self.lambda_gain <= 0):
             raise ValueError("dynamic_tube.lambda_gain must be positive")
+        self.hold_width = float(self.hold_width)
+        if not np.isfinite(self.hold_width) or self.hold_width <= 0:
+            raise ValueError("dynamic_tube.hold_width must be finite and positive")
         bounds = np.asarray(self.alpha_bounds, dtype=float)
         if (bounds.shape != (2,) or not np.all(np.isfinite(bounds)) or
                 not 0 < bounds[0] <= bounds[1]):
