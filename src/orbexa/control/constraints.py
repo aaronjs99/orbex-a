@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -104,11 +104,106 @@ def rotating_body_point_velocity(
     return rotation_dot @ np.asarray(body_point, dtype=float)
 
 
+def rotating_body_point_acceleration(
+    body_point: np.ndarray,
+    orientation: np.ndarray,
+    orientation_rate: np.ndarray,
+) -> np.ndarray:
+    """Second derivative of a body-fixed point for constant Euler angle rates.
+
+    This follows the repository's ``Rx(roll) @ Ry(pitch) @ Rz(yaw)`` convention.
+    Rates are derivatives with respect to the dynamics' independent variable,
+    which is true anomaly in the ADTMPC mission.
+    """
+    roll, pitch, yaw = np.asarray(orientation, dtype=float)
+    roll_rate, pitch_rate, yaw_rate = np.asarray(orientation_rate, dtype=float)
+    cr, sr = np.cos(roll), np.sin(roll)
+    cp, sp = np.cos(pitch), np.sin(pitch)
+    cy, sy = np.cos(yaw), np.sin(yaw)
+    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]], dtype=float)
+    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]], dtype=float)
+    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]], dtype=float)
+    gx = np.array([[0, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=float)
+    gy = np.array([[0, 0, 1], [0, 0, 0], [-1, 0, 0]], dtype=float)
+    gz = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 0]], dtype=float)
+    rotation_ddot = (
+        roll_rate**2 * gx @ gx @ rx @ ry @ rz
+        + pitch_rate**2 * rx @ gy @ gy @ ry @ rz
+        + yaw_rate**2 * rx @ ry @ gz @ gz @ rz
+        + 2.0 * roll_rate * pitch_rate * gx @ rx @ gy @ ry @ rz
+        + 2.0 * roll_rate * yaw_rate * gx @ rx @ ry @ gz @ rz
+        + 2.0 * pitch_rate * yaw_rate * rx @ gy @ ry @ gz @ rz
+    )
+    return rotation_ddot @ np.asarray(body_point, dtype=float)
+
+
 def rendezvous_margin(
     position: np.ndarray, target_radius: float, tube_radius: float = 0.0
 ) -> float:
     """Positive margin means the chaser is outside the rendezvous exclusion sphere."""
     return float(np.linalg.norm(position) - target_radius - tube_radius)
+
+
+def project_box_halfspace(
+    control: np.ndarray,
+    normal: np.ndarray,
+    offset: float,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> Optional[np.ndarray]:
+    """Nearest bounded input satisfying ``normal @ input >= offset``.
+
+    A scalar multiplier solves the Euclidean projection onto a box intersected
+    with one halfspace. Return ``None`` when the bounded halfspace is infeasible.
+    """
+    control, normal, lower, upper = (
+        np.asarray(value, dtype=float) for value in (control, normal, lower, upper)
+    )
+    if (control.ndim != 1 or any(value.shape != control.shape for value in (normal, lower, upper))
+            or not np.all(np.isfinite(control)) or not np.all(np.isfinite(normal))
+            or not np.isfinite(offset) or np.any(np.isnan(lower)) or np.any(np.isnan(upper))
+            or np.any(np.isposinf(lower)) or np.any(np.isneginf(upper))
+            or np.any(lower > upper)):
+        raise ValueError("Halfspace projection requires finite control/normal/offset and a valid input box")
+    bounded = np.clip(control, lower, upper)
+    if float(normal @ bounded) >= offset:
+        return bounded
+    original_normal, original_offset = normal, offset
+    scale = float(np.max(np.abs(normal)))
+    if scale == 0.0:
+        return None
+    normal, offset = normal / scale, offset / scale
+    if not np.isfinite(offset):
+        return None
+    positive, negative = normal > 0, normal < 0
+    maximizer = bounded.copy()
+    maximizer[positive], maximizer[negative] = upper[positive], lower[negative]
+    maximum = float(normal @ maximizer)
+    if maximum < offset:
+        return None
+    high = max(1.0, (offset - float(normal @ bounded)) / float(normal @ normal))
+    for _ in range(128):
+        if float(normal @ np.clip(control + high * normal, lower, upper)) >= offset:
+            break
+        high *= 2.0
+        if not np.isfinite(high):
+            return None
+    else:
+        return None
+    low = 0.0
+    for _ in range(60):
+        midpoint = 0.5 * (low + high)
+        if float(normal @ np.clip(control + midpoint * normal, lower, upper)) < offset:
+            low = midpoint
+        else:
+            high = midpoint
+    projected = np.clip(control + high * normal, lower, upper)
+    tolerance = 8.0 * np.finfo(float).eps * max(1.0, abs(original_offset))
+    if (not np.all(np.isfinite(projected)) or np.any(projected < lower)
+            or np.any(projected > upper)
+            or float(original_normal @ projected) < original_offset - tolerance):
+        return None
+    return projected
 
 
 def collision_params_from_target_config(

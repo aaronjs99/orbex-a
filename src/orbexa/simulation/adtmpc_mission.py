@@ -46,10 +46,13 @@ from orbexa.control import (
 )
 from orbexa.core.config import SimulationConfig
 from orbexa.control.terminal_cost import local_terminal_cost
+from orbexa.control.constraints import project_box_halfspace, rotating_body_point_acceleration
+from orbexa.control.tracking_reference import sample_tracking_reference
 from orbexa.core.dynamics import orbital_ellp_drag
 from orbexa.estimation.adaptor import SMIDAdaptor, SMIDRecord
 from orbexa.solvers import SolverResult
 from orbexa.utils.io_utils import load_data, save_data
+from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 
 
 ADTMPC_PARAMETER_KEYS = ("eccentricity", "alpha", "beta")
@@ -353,6 +356,13 @@ class TumblingCylinderTarget:
         )
         return np.concatenate((position, velocity))
 
+    def docking_acceleration(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
+        return rotating_body_point_acceleration(
+            docking_point_body,
+            self.orientation_at(anom),
+            self.angular_velocity_at(anom),
+        )
+
     def collision_params(self, operation: str, anom: float) -> Dict[str, Any]:
         radius = self.radius * (1.0 + self.tolerance)
         half_length = self.half_length * (1.0 + self.tolerance)
@@ -537,6 +547,7 @@ class ADTMPCMissionRunner:
         self.min_chaser_separation = float(self.config.mpc.min_chaser_separation)
         self.target_safety_tolerance = 1.0e-7
         self.target_barrier_buffer = 0.04
+        self.target_barrier_clearance = 0.05 * self.target_barrier_buffer
 
     @property
     def linearized(self) -> bool:
@@ -662,6 +673,15 @@ class ADTMPCMissionRunner:
                     "input_cost_matrix": self.config.mpc.R,
                     "target_params": target_params,
                 }
+                if self.config.mpc.reference_preview_enabled:
+                    state_reference, input_reference = self._phase_reference_preview(
+                        active_phase, chaser, final_state, anom, horizon_steps,
+                        matrices, belief_params["time_periapsis"],
+                    )
+                    solve_kwargs.update(
+                        state_reference=state_reference,
+                        input_reference=input_reference,
+                    )
                 if self.config.mpc.terminal_cost_enabled:
                     if terminal_cost_matrix is None:
                         terminal_cost_matrix = local_terminal_cost(
@@ -782,7 +802,12 @@ class ADTMPCMissionRunner:
                         control=control,
                         anom=anom,
                         phase=active_phase,
+                        belief_params=update_solutions[chaser_id]["belief_params"],
                     )
+                    if applied_control is None:
+                        solver_success = False
+                        messages.append(f"{chaser_id}:target_safety_filter_infeasible")
+                        break
                     applied_control = self._clip_control(applied_control)
                     applied_controls[chaser_id] = applied_control
                     next_states[chaser_id] = self._propagate_truth(
@@ -790,6 +815,8 @@ class ADTMPCMissionRunner:
                         applied_control,
                         anom,
                     )
+                if not solver_success:
+                    break
                 for chaser_id, control in applied_controls.items():
                     controls[chaser_id].append(control.tolist())
 
@@ -840,7 +867,7 @@ class ADTMPCMissionRunner:
                     mission_complete = True
                     break
 
-            if mission_complete:
+            if mission_complete or not solver_success:
                 break
 
         (
@@ -905,6 +932,10 @@ class ADTMPCMissionRunner:
                 "horizon_steps": self._configured_horizon_metadata(),
                 "actuation_steps": self.actuation_steps,
                 "terminal_cost_enabled": self.config.mpc.terminal_cost_enabled,
+                "reference_preview_enabled": self.config.mpc.reference_preview_enabled,
+                "docking_position_tolerance": self.docking_position_tolerance,
+                "docking_velocity_tolerance": self.docking_velocity_tolerance,
+                "smid_error_bound": self.smid.error_bound,
                 "anom_step": self.config.anom_step,
                 "max_mpc_updates": int(steps),
                 "mission_complete": mission_complete,
@@ -914,6 +945,9 @@ class ADTMPCMissionRunner:
                 "pairwise_spacing_safe": spacing_ok,
                 "target_barrier": {
                     "enabled": True,
+                    "model": "belief_rk4_cylinder_union_projection",
+                    "clearance_reserve": self.target_barrier_clearance,
+                    "radial_damping": True,
                     "radial_buffer": self.target_barrier_buffer,
                 },
                 "margin_semantics": {
@@ -1021,6 +1055,42 @@ class ADTMPCMissionRunner:
         expanded_radius = self.target.rendezvous_radius + float(tube_radius) + 0.2
         approach_radius = max(physical_radius, expanded_radius)
         return np.concatenate((direction / norm * approach_radius, np.zeros(3)))
+
+    def _phase_reference_preview(
+        self,
+        phase: MissionPhase,
+        chaser: ChaserConfig,
+        current_reference: np.ndarray,
+        anom: float,
+        horizon_steps: int,
+        matrices: Tuple,
+        time_periapsis: float,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Preview target motion and the nominal inputs needed to track it."""
+        if phase.operation == "docking":
+            def state_at(value):
+                return self.target.docking_state(chaser.docking_point_body, value)
+
+            def derivative_at(value):
+                state = state_at(value)
+                acceleration = self.target.docking_acceleration(chaser.docking_point_body, value)
+                return np.concatenate((state[3:], acceleration))
+        else:
+            def state_at(value):
+                return current_reference
+
+            def derivative_at(value):
+                return np.zeros_like(current_reference)
+
+        anomalies = anom + np.arange(horizon_steps) * self.config.anom_step
+        return sample_tracking_reference(
+            anomalies,
+            state_at,
+            derivative_at,
+            lambda value: matrices[0](value, time_periapsis),
+            matrices[1](),
+            lambda value: matrices[4](value, time_periapsis),
+        )
 
     def _rendezvous_goal_satisfied(
         self,
@@ -1286,72 +1356,108 @@ class ADTMPCMissionRunner:
         control: np.ndarray,
         anom: float,
         phase: MissionPhase,
-    ) -> np.ndarray:
+        belief_params: Dict[str, float],
+    ) -> Optional[np.ndarray]:
         if phase.operation != "docking":
             return np.asarray(control, dtype=float)
 
-        position = np.asarray(state[:3], dtype=float)
-        velocity = np.asarray(state[3:], dtype=float)
+        control = self._clip_control(self._radial_damping_control(state, control, anom))
+        # RK4 is affine in the interval input for this relative dynamics model.
+        # Predict with the controller belief, never with the plant truth.
+        offset, input_map = self._affine_step_map(state, anom, belief_params)
+        future_orientation = self.target.orientation_at(anom + self.config.anom_step)
+        rotation = tait_bryan_to_rotation_matrix(future_orientation)
+        offset_body = rotation.T @ offset[:3]
+        input_map_body = rotation.T @ input_map[:3]
+        predicted_body = offset_body + input_map_body @ control
+        radius = self.target.radius * (1.0 + self.target.tolerance)
+        half_length = self.target.half_length * (1.0 + self.target.tolerance)
+        reserve = self.target_barrier_clearance
+        radial_norm = float(np.linalg.norm(predicted_body[:2]))
+        if max(radial_norm - radius, abs(predicted_body[2]) - half_length) >= reserve:
+            return np.asarray(control, dtype=float)
+
+        radial_direction = np.array([1.0, 0.0, 0.0])
+        if radial_norm > 1.0e-9:
+            radial_direction[:2] = predicted_body[:2] / radial_norm
+        normals = (radial_direction, np.array([0.0, 0.0, 1.0]), np.array([0.0, 0.0, -1.0]))
+        limits = (radius + reserve, half_length + reserve, half_length + reserve)
+        lower, upper = self._input_limits()
+        candidates = []
+        for normal, limit in zip(normals, limits):
+            candidate = project_box_halfspace(
+                control, normal @ input_map_body,
+                float(limit - normal @ offset_body), lower, upper,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+        if not candidates:
+            return None
+        # Every candidate satisfies a sufficient safe side/cap halfspace.
+        # Choose the least change among these locally constructed alternatives.
+        return min(candidates, key=lambda candidate: float(np.linalg.norm(candidate - control)))
+
+    def _radial_damping_control(
+        self, state: np.ndarray, control: np.ndarray, anom: float
+    ) -> np.ndarray:
+        """Retain the approach damping near the rotating cylindrical side."""
         orientation = self.target.orientation_at(anom)
-        p_body = target_frame_position(position, orientation)
+        p_body = target_frame_position(np.asarray(state[:3], dtype=float), orientation)
         rotation_velocity = rotating_body_point_velocity(
             p_body, orientation, self.target.angular_velocity_at(anom)
         )
-        # The barrier needs velocity relative to the rotating target surface.
-        v_body = target_frame_position(velocity - rotation_velocity, orientation)
+        v_body = target_frame_position(np.asarray(state[3:], dtype=float) - rotation_velocity, orientation)
         radial_norm = float(np.linalg.norm(p_body[:2]))
-        if radial_norm <= 1.0e-9:
-            return np.asarray(control, dtype=float)
-
         half_length = self.target.half_length * (1.0 + self.target.tolerance)
-        if abs(float(p_body[2])) > half_length + self.target_barrier_buffer:
+        if radial_norm <= 1.0e-9 or abs(float(p_body[2])) > half_length + self.target_barrier_buffer:
             return np.asarray(control, dtype=float)
-
-        radial_clearance = radial_norm - self.target.radius * (1.0 + self.target.tolerance)
-        if radial_clearance >= self.target_barrier_buffer:
+        clearance = radial_norm - self.target.radius * (1.0 + self.target.tolerance)
+        if clearance >= self.target_barrier_buffer:
             return np.asarray(control, dtype=float)
+        radial_direction = np.array([p_body[0] / radial_norm, p_body[1] / radial_norm, 0.0])
+        radial_velocity = float(v_body @ radial_direction)
+        delta_velocity = max(0.0, -1.5 * max(clearance, 0.0) - radial_velocity)
+        correction = delta_velocity / self.config.anom_step * radial_direction
+        return np.asarray(control, dtype=float) + rotating_docking_point(correction, orientation)
 
-        radial_dir_body = np.array(
-            [p_body[0] / radial_norm, p_body[1] / radial_norm, 0.0],
-            dtype=float,
-        )
-        radial_velocity = float(np.dot(v_body, radial_dir_body))
-        min_outward_velocity = -1.5 * max(radial_clearance, 0.0)
-        if radial_velocity >= min_outward_velocity:
-            return np.asarray(control, dtype=float)
+    def _input_limits(self) -> Tuple[np.ndarray, np.ndarray]:
+        lower = np.full(3, -np.inf)
+        upper = np.full(3, np.inf)
+        for index, bound in enumerate(self.config.mpc.input_bounds[:3]):
+            lower[index] = float(bound.get("lower", -np.inf))
+            upper[index] = float(bound.get("upper", np.inf))
+        return lower, upper
 
-        required_delta_v = min_outward_velocity - radial_velocity
-        correction_body = (
-            required_delta_v / max(self.config.anom_step, 1.0e-9)
-        ) * radial_dir_body
-        correction_lvlh = rotating_docking_point(correction_body, orientation)
-        return np.asarray(control, dtype=float) + correction_lvlh
-
-    def _propagate_truth(self, state: np.ndarray, control: np.ndarray, anom: float) -> np.ndarray:
+    def _affine_step_map(
+        self, state: np.ndarray, anom: float, dynamics_params: Dict[str, float]
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """RK4 endpoint offset and input map for one constant-control interval."""
         matrices, _, _ = orbital_ellp_drag(
-            anom_step=self.config.anom_step, **self.truth.dynamics_params()
+            anom_step=self.config.anom_step, **dynamics_params
         )
         A_func, B_func, _, _, d_func = matrices
-        B_val = np.asarray(B_func(), dtype=float)
-
-        def derivative(local_state: np.ndarray, local_anom: float) -> np.ndarray:
-            A_val = np.asarray(
-                A_func(local_anom, self.truth.time_periapsis),
-                dtype=float,
-            )
-            d_val = np.asarray(
-                d_func(local_anom, self.truth.time_periapsis),
-                dtype=float,
-            )
-            return A_val @ local_state + B_val @ control + d_val
-
         dt = self.config.anom_step
+        times = (anom, anom + 0.5 * dt, anom + dt)
+        t_p = dynamics_params["time_periapsis"]
+        a0, am, a1 = [np.asarray(A_func(value, t_p), dtype=float) for value in times]
+        d0, dm, d1 = [np.asarray(d_func(value, t_p), dtype=float) for value in times]
+        b = np.asarray(B_func(), dtype=float)
         state = np.asarray(state, dtype=float)
-        k1 = derivative(state, anom)
-        k2 = derivative(state + 0.5 * dt * k1, anom + 0.5 * dt)
-        k3 = derivative(state + 0.5 * dt * k2, anom + 0.5 * dt)
-        k4 = derivative(state + dt * k3, anom + dt)
-        return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        k1 = a0 @ state + d0
+        k2 = am @ (state + 0.5 * dt * k1) + dm
+        k3 = am @ (state + 0.5 * dt * k2) + dm
+        k4 = a1 @ (state + dt * k3) + d1
+        offset = state + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+        g1 = b
+        g2 = am @ (0.5 * dt * g1) + b
+        g3 = am @ (0.5 * dt * g2) + b
+        g4 = a1 @ (dt * g3) + b
+        input_map = dt / 6.0 * (g1 + 2.0 * g2 + 2.0 * g3 + g4)
+        return offset, input_map
+
+    def _propagate_truth(self, state: np.ndarray, control: np.ndarray, anom: float) -> np.ndarray:
+        offset, input_map = self._affine_step_map(state, anom, self.truth.dynamics_params())
+        return offset + input_map @ control
 
     def _active_margin_for_state(
         self, state: np.ndarray, anom: float, phase: MissionPhase

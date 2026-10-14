@@ -41,6 +41,16 @@ SciPy/SLSQP comparison artifacts.
 
 Use `orbexa-generate-demo --from-data` (or `python run.py --from-data`) to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID. This replaces the removed `orbexa-plot-results` command.
 
+Open `results/<session_id>/index.html` for the offline mission gallery, animated
+recorded replay, docking close-ups, and filtered evidence plots. Partial renders
+retain other rendered families. Failed primary runs also create this gallery
+before returning a nonzero status. Saved data and rendered output may be on
+different Windows drives; the gallery then identifies the raw-data location.
+
+Moving-goal prediction is optional: set `mpc.reference_preview_enabled: true` in
+your scenario YAML. The default is false because its benefit depends on target
+motion. The side/cap safety filter remains active with either setting.
+
 If MP4 generation is skipped, install `ffmpeg`; the report shows the reason
 and provides a GIF instead of an empty MP4. Windows and cloud-mounted folders
 do not need symlink privileges: `latest.json` selects the latest saved session,

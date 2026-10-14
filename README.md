@@ -50,11 +50,15 @@ scripted trajectory length. Each update solves a fixed-horizon OCP, applies the
 first configured control command(s), replans from the propagated plant state,
 and stops only when the rendezvous/docking goal is reached. Fresh nonlinear
 primary runs raise an error if the update limit is exhausted first.
+The CLI currently uses 10 prediction state samples and applies one interval per
+update. API callers can select phase-specific YAML horizons and actuation counts
+by passing `horizon_steps=None, actuation_steps=None` to `ADTMPCMissionRunner`.
 If enabled, the optional SciPy/SLSQP linearized comparison is capped separately by
 `--linearized-steps` because it is not the authoritative nonlinear mission.
 
 This writes:
 
+- `results/<session_id>/index.html`: the session gallery, with mission selection, animations, interactive replays, plot filters, and full-resolution images
 - `results/<session_id>/single/nonlinear/`
 - `results/<session_id>/multi/nonlinear/`
 - optional matching `linearized/` folders when `--run-linearized` is set
@@ -62,7 +66,21 @@ This writes:
 - editable run-note templates at `results/<session_id>/README.md` and `data/<session_id>/README.md`
 - portable `results/latest.json` and `data/latest.json` references to the newest generated session; directory symlinks are also created when supported
 
-Each results folder contains `manifest.json`, `index.html`, `trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.gif`, optional `trajectory.mp4`, and diagnostics for actual/nominal trajectories, tube geometry, controls, physical and tube-tightened margins, SMID FSS widths, parameter estimates vs truth, target roll/pitch/yaw, and multi-chaser spacing. Multi-agent runs also expose `results/<session_id>/demo.gif`, using a symlink when available and a copy otherwise.
+Each mission folder contains its own gallery, `manifest.json`, `replay.html`,
+`trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.gif`,
+optional `trajectory.mp4`, and the existing control, safety, tube, target, and
+parameter diagnostics. New views show docking errors, the measurable drag
+difference and retained marginal ambiguity, emitted-point SMID errors, a body-frame
+docking close-up PNG/GIF, and a minimum pairwise-spacing heatmap for fleets.
+`insights_manifest.json` records source sample indices, playback rate, fallback
+assumptions, and reasons for unavailable views. Replays use recorded states;
+playback is sample-based and does not represent physical time. Unsupported views
+remain absent for incomplete or older saved data. Multi-agent runs also expose
+`results/<session_id>/demo.gif`, using a symlink when available and a copy otherwise.
+
+Open the session's `index.html` in a browser. All interactive views include their
+plotting runtime and work offline. Partial saved-data rendering retains the
+other rendered mission families through `gallery.json` or their older manifests.
 
 Playable MP4 output requires FFmpeg. Without it, the report links to the GIF and `manifest.json` records why MP4 was skipped; no empty video is presented as a generated artifact.
 
@@ -83,7 +101,24 @@ penalty adds to the existing endpoint state cost, giving an endpoint weight of
 The local linear approximation is a performance aid, not a proof of nonlinear feasibility
 or physical safety. Mission completion and physical-margin checks still determine
 success. The docking safety filter measures velocity relative to the rotating
-target surface.
+target surface. A second filter predicts the next position with the controller's
+belief and the same RK4 propagation used by the simulation. It checks the
+rotating cylinder's curved side and both end caps, then projects the command onto
+bounded, sufficient safe halfspaces when needed. If no constructed alternative
+is feasible, the mission stops before applying that interval and records the
+failure. The current reserve is 0.002 position units; input limits and completion
+tolerances are unchanged. This is a sampled, local filter, not a continuous
+safety guarantee; the radial tangent can conservatively reject a feasible path.
+
+Set `mpc.reference_preview_enabled: true` to track the docking point's future
+position and anomaly-velocity throughout the prediction horizon, with nominal
+feedforward inputs derived from its acceleration and the estimated orbital model.
+It is opt-in: the measured four-times-tumble single-chaser scenario completed in
+225 updates versus 392 without preview, while the default single-chaser case
+took 185 versus 181. Both comparisons used the same safety filter and bounds.
+Default scenarios retain the constant-reference controller. Solver-independent
+previews have shapes `(n, T)` for states and `(m, T - 1)` for interval inputs;
+omitting them retains the constant final-state and zero-input references.
 
 `run.py` defaults to the ADTMPC mission workflow. Useful options:
 
@@ -116,11 +151,11 @@ names; `latest`, `latest.json`, path traversal, and Windows device names are
 reserved. Existing ordinary `latest` folders and editable run notes are retained.
 Raw mission data, manifests, and latest references are written atomically.
 
-Incomplete or solver-failed primary missions return a nonzero status and retain
-their raw `mission_data.json` for inspection. Select that session with
-`--from-data` to render the failure. Use `--no-require-primary-success` deliberately
-for bounded diagnostic runs; their reports still show `Success: False` when the
-mission did not complete.
+Incomplete or solver-failed primary missions save their raw data and visual
+gallery before returning a nonzero status. Empty and one-state saved results
+show their available evidence and omit unsupported motion views. Use
+`--no-require-primary-success` deliberately to allow a zero exit status for
+bounded diagnostic runs; their galleries still identify unmet mission criteria.
 
 Generated plots, videos, JSON outputs, caches, and local paper PDFs are ignored by git.
 

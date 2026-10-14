@@ -113,6 +113,8 @@ class MissionSession:
                     self._check_path(path, self.output_root)
         for directory in (self.output_dir, self.data_dir):
             self._check_path(directory / "README.md", directory.parent)
+        for filename in ("index.html", "gallery.json"):
+            self._check_path(self.output_dir / filename, self.output_root)
         preview = self.output_dir / "demo.gif"
         expected_preview = self.output_dir / "multi" / "nonlinear" / "trajectory.gif"
         if preview.is_symlink() and preview.resolve() == expected_preview.resolve():

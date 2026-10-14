@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import logging
 import tempfile
-from html import escape
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -50,9 +49,32 @@ from orbexa.simulation.adtmpc_mission import (
 )
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 from orbexa.utils.io_utils import save_data
+from orbexa.visualization.mission_insights import MissionInsights, chaser_color
+from orbexa.visualization.mission_replay import MissionReplay
+from orbexa.visualization.mission_gallery import MissionGallery
 
 
 logger = logging.getLogger(__name__)
+
+_CORE_ARTIFACTS = (
+    "trajectory.html", "diagnostics.html", "tube_trajectory.html",
+    "trajectory.mp4", "trajectory.gif", "actual_nominal_trajectories.png",
+    "tube_geometry.png", "control_effort.png", "rendezvous_margin.png",
+    "docking_cylinder_margin.png", "tightened_rendezvous_margin.png",
+    "tightened_docking_cylinder_margin.png", "active_target_margin.png",
+    "smid_fss_widths.png", "parameter_estimates_vs_truth.png",
+    "target_attitude.png", "target_angular_velocity.png", "multi_chaser_spacing.png",
+)
+
+
+def _raw_data_reference(data_file: Optional[Path], root: Path) -> Dict:
+    if data_file is None:
+        return {}
+    try:
+        return {"data_href": Path(os.path.relpath(data_file, root)).as_posix()}
+    except ValueError:
+        # Windows cannot form relative links between different drives.
+        return {"notes": [f"Raw mission data is saved on another drive: {data_file}"]}
 
 
 @dataclass(frozen=True)
@@ -100,6 +122,11 @@ class ADTMPCMissionManifest:
     artifacts: List[Path] = field(default_factory=list)
     artifact_labels: Dict[str, str] = field(default_factory=dict)
     skipped_artifacts: Dict[str, str] = field(default_factory=dict)
+    success: bool = False
+    mission_complete: bool = False
+    sample_count: int = 0
+    chaser_count: int = 0
+    message: str = ""
 
     def add(self, path: Path, label: Optional[str] = None) -> Path:
         self.artifacts.append(path)
@@ -116,30 +143,14 @@ class ADTMPCMissionManifest:
             "solver_backend": self.solver_backend,
             "data_file": None if self.data_file is None else str(self.data_file),
             "artifacts": [str(path) for path in self.artifacts],
-            "required_entries": [
-                "index.html",
-                "trajectory.html",
-                "diagnostics.html",
-                "tube_trajectory.html",
-                "trajectory.mp4",
-                "trajectory.gif",
-                "mission_data.json",
-                "actual_nominal_trajectories.png",
-                "tube_geometry.png",
-                "control_effort.png",
-                "rendezvous_margin.png",
-                "docking_cylinder_margin.png",
-                "tightened_rendezvous_margin.png",
-                "tightened_docking_cylinder_margin.png",
-                "active_target_margin.png",
-                "smid_fss_widths.png",
-                "parameter_estimates_vs_truth.png",
-                "target_attitude.png",
-                "target_angular_velocity.png",
-                "multi_chaser_spacing.png",
-            ],
+            "required_entries": ["index.html", "mission_data.json", *_CORE_ARTIFACTS],
             "artifact_labels": dict(self.artifact_labels),
             "skipped_artifacts": dict(self.skipped_artifacts),
+            "success": self.success,
+            "mission_complete": self.mission_complete,
+            "sample_count": self.sample_count,
+            "chaser_count": self.chaser_count,
+            "message": self.message,
         }
         payload["required_entries"] = [name for name in payload["required_entries"] if name not in self.skipped_artifacts]
         if not save_data(path, payload):
@@ -168,15 +179,37 @@ class ADTMPCMissionRenderer:
             approximation=result.approximation,
             solver_backend=result.solver_backend,
             data_file=data_file,
+            success=result.success,
+            mission_complete=bool(result.metadata.get("mission_complete", result.success)),
+            sample_count=len(result.anom_history),
+            chaser_count=len(result.actual_trajectories),
+            message=result.message,
         )
         if data_file is not None:
             manifest.add(Path(data_file))
-        self._render_static_plots(result, manifest)
-        self._render_interactive_html(result, manifest)
-        self._render_interactive_diagnostics(result, manifest)
-        self._render_tube_trajectory_html(result, manifest)
-        self._render_video(result, manifest)
-        self._render_gif(result, manifest, speed_multiplier=2.0)
+        insights = MissionInsights(result, self.output_dir, fps=self.fps)
+        usable_states = bool(len(insights.samples.q)) and all(
+            np.asarray(values).ndim == 2 and np.asarray(values).shape[1] >= 6
+            and len(values) > 0 and np.all(np.isfinite(np.asarray(values, dtype=float)))
+            for values in result.actual_trajectories.values()
+        )
+        if usable_states:
+            self._render_static_plots(result, manifest)
+            self._render_interactive_html(result, manifest)
+            self._render_interactive_diagnostics(result, manifest)
+            self._render_tube_trajectory_html(result, manifest)
+            self._render_video(result, manifest)
+            self._render_gif(result, manifest, speed_multiplier=2.0)
+        else:
+            manifest.skipped_artifacts.update({
+                name: "No complete usable recorded state trajectories; see saved-data insight notes."
+                for name in _CORE_ARTIFACTS
+            })
+        for path, label in insights.render():
+            manifest.add(path, label)
+        manifest.skipped_artifacts.update(insights.skipped_artifacts)
+        manifest.add(MissionReplay(result).write(self.output_dir / "replay.html"),
+                     "Animated replay of recorded states with target rotation and update slider.")
         self._render_index(result, manifest)
         manifest.write()
         return manifest
@@ -186,10 +219,11 @@ class ADTMPCMissionRenderer:
     ) -> None:
         fig = plt.figure(figsize=(8.5, 7))
         ax = fig.add_subplot(111, projection="3d")
-        for chaser_id, states in result.actual_trajectories.items():
+        for chaser_index, (chaser_id, states) in enumerate(result.actual_trajectories.items()):
             positions = np.asarray(states, dtype=float)[:, :3]
-            ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], label=f"{chaser_id} actual")
-            ax.scatter(positions[0, 0], positions[0, 1], positions[0, 2], s=18)
+            color = chaser_color(chaser_index)
+            ax.plot(positions[:, 0], positions[:, 1], positions[:, 2], color=color, label=f"{chaser_id} actual")
+            ax.scatter(positions[0, 0], positions[0, 1], positions[0, 2], s=18, color=color)
             nominal_labeled = False
             for nominal in result.nominal_trajectories.get(chaser_id, []):
                 nom = np.asarray(nominal, dtype=float)
@@ -199,6 +233,7 @@ class ADTMPCMissionRenderer:
                         nom[:, 1],
                         nom[:, 2],
                         linestyle=":",
+                        color=color,
                         alpha=0.25,
                         label=f"{chaser_id} nominal horizons" if not nominal_labeled else None,
                     )
@@ -323,7 +358,10 @@ class ADTMPCMissionRenderer:
                 x_values = np.asarray(result.anom_history[: len(y_values)], dtype=float)
             else:
                 x_values = np.asarray(result.anom_history[: len(y_values)], dtype=float)
-            ax.plot(x_values, y_values, label=label)
+            chaser_ids = list(result.actual_trajectories)
+            color = chaser_color(chaser_ids.index(label)) if label in chaser_ids else "#596780"
+            ax.plot(x_values, y_values, label=label, color=color,
+                    linestyle="--" if label == "max_tube" else "-")
         if zero_line:
             ax.axhline(0.0, color="black", linestyle="--", linewidth=0.9, alpha=0.75)
         if phase_markers:
@@ -604,7 +642,8 @@ class ADTMPCMissionRenderer:
         self, result: ADTMPCMissionResult, manifest: ADTMPCMissionManifest
     ) -> None:
         fig = go.Figure()
-        for chaser_id, states in result.actual_trajectories.items():
+        for chaser_index, (chaser_id, states) in enumerate(result.actual_trajectories.items()):
+            color = chaser_color(chaser_index)
             positions = np.asarray(states, dtype=float)[:, :3]
             fig.add_trace(
                 go.Scatter3d(
@@ -613,6 +652,8 @@ class ADTMPCMissionRenderer:
                     z=positions[:, 2],
                     mode="lines+markers",
                     name=f"{chaser_id} actual",
+                    line=dict(color=color, width=4),
+                    marker=dict(color=color, size=2),
                 )
             )
             nominal_labeled = False
@@ -628,6 +669,7 @@ class ADTMPCMissionRenderer:
                             name=f"{chaser_id} nominal horizons" if not nominal_labeled else f"{chaser_id} nominal",
                             showlegend=not nominal_labeled,
                             opacity=0.22,
+                            line=dict(color=color, dash="dot"),
                         )
                     )
                     nominal_labeled = True
@@ -791,7 +833,8 @@ class ADTMPCMissionRenderer:
     ) -> None:
         """Save an interactive 3D trajectory view with sparse tube envelopes."""
         fig = go.Figure()
-        for chaser_id, states in result.actual_trajectories.items():
+        for chaser_index, (chaser_id, states) in enumerate(result.actual_trajectories.items()):
+            color = chaser_color(chaser_index)
             positions = np.asarray(states, dtype=float)[:, :3]
             fig.add_trace(
                 go.Scatter3d(
@@ -800,7 +843,7 @@ class ADTMPCMissionRenderer:
                     z=positions[:, 2],
                     mode="lines",
                     name=f"{chaser_id} actual",
-                    line=dict(width=5),
+                    line=dict(width=5, color=color),
                 )
             )
             nominal_labeled = False
@@ -816,7 +859,7 @@ class ADTMPCMissionRenderer:
                             name=f"{chaser_id} nominal horizons" if not nominal_labeled else f"{chaser_id} nominal",
                             showlegend=not nominal_labeled,
                             opacity=0.18,
-                            line=dict(width=2, dash="dot"),
+                            line=dict(width=2, dash="dot", color=color),
                         )
                     )
                     nominal_labeled = True
@@ -838,7 +881,7 @@ class ADTMPCMissionRenderer:
                             name=f"{chaser_id} tube envelope" if surface_idx == 0 else f"{chaser_id} tube",
                             showscale=False,
                             opacity=0.08,
-                            colorscale=[[0, "rgb(255,127,14)"], [1, "rgb(255,127,14)"]],
+                            colorscale=[[0, color], [1, color]],
                         )
                     )
         frame_index = max(0, len(result.anom_history) - 1)
@@ -893,12 +936,9 @@ class ADTMPCMissionRenderer:
     ) -> None:
         path = self.output_dir / "trajectory.mp4"
         if shutil.which("ffmpeg") is None:
-            if path.is_file() and path.stat().st_size > 0:
-                manifest.add(path)
-            else:
-                reason = "FFmpeg is unavailable; the trajectory GIF remains available."
-                manifest.skipped_artifacts[path.name] = reason
-                logger.warning(reason)
+            reason = "FFmpeg is unavailable; no current MP4 was generated. The trajectory GIF remains available."
+            manifest.skipped_artifacts[path.name] = reason
+            logger.warning(reason)
             return
 
         positions_by_id = {
@@ -917,9 +957,10 @@ class ADTMPCMissionRenderer:
         ax = fig.add_subplot(111, projection="3d")
         lines: Dict[str, object] = {}
         points: Dict[str, object] = {}
-        for chaser_id in positions_by_id:
-            (line,) = ax.plot([], [], [], label=chaser_id)
-            (point,) = ax.plot([], [], [], marker="o")
+        for chaser_index, chaser_id in enumerate(positions_by_id):
+            color = chaser_color(chaser_index)
+            (line,) = ax.plot([], [], [], label=chaser_id, color=color)
+            (point,) = ax.plot([], [], [], marker="o", color=color)
             lines[chaser_id] = line
             points[chaser_id] = point
         self._plot_rendezvous_sphere(ax, result)
@@ -981,8 +1022,7 @@ class ADTMPCMissionRenderer:
             for chaser_id, states in result.actual_trajectories.items()
         }
         if not positions_by_id:
-            path.write_bytes(b"")
-            manifest.add(path)
+            manifest.skipped_artifacts[path.name] = "No recorded trajectory samples are available."
             return
 
         all_positions = np.vstack(list(positions_by_id.values()))
@@ -1001,9 +1041,10 @@ class ADTMPCMissionRenderer:
         ax = fig.add_subplot(111, projection="3d")
         lines: Dict[str, object] = {}
         points: Dict[str, object] = {}
-        for chaser_id in positions_by_id:
-            (line,) = ax.plot([], [], [], label=chaser_id)
-            (point,) = ax.plot([], [], [], marker="o")
+        for chaser_index, chaser_id in enumerate(positions_by_id):
+            color = chaser_color(chaser_index)
+            (line,) = ax.plot([], [], [], label=chaser_id, color=color)
+            (point,) = ax.plot([], [], [], marker="o", color=color)
             lines[chaser_id] = line
             points[chaser_id] = point
         self._plot_rendezvous_sphere(ax, result)
@@ -1041,66 +1082,19 @@ class ADTMPCMissionRenderer:
     def _render_index(
         self, result: ADTMPCMissionResult, manifest: ADTMPCMissionManifest
     ) -> None:
-        rows = "\n".join(
-            (
-                f"<tr><td>{escape(str(chaser_id))}</td><td>{len(states)}</td>"
-                f"<td>{len(result.controls.get(chaser_id, []))}</td>"
-                f"<td>{sum(item['solve_time'] for item in result.solve_stats.get(chaser_id, [])):.3f}</td></tr>"
-            )
-            for chaser_id, states in result.actual_trajectories.items()
-        )
-        title = escape(f"ORBEX-A ADTMPC Mission: {result.mission} {result.approximation}")
-        video = ('<video controls width="900" src="trajectory.mp4"></video>'
-                 if any(path.name == "trajectory.mp4" for path in manifest.artifacts)
-                 else '<p>MP4 unavailable. <a href="trajectory.gif">Watch the trajectory GIF.</a></p>')
-        html = f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>{title}</title>
-  <style>
-    body {{ font-family: system-ui, sans-serif; margin: 24px; color: #17202a; }}
-    table {{ border-collapse: collapse; margin-bottom: 24px; }}
-    th, td {{ border: 1px solid #c8d0d8; padding: 6px 10px; text-align: left; }}
-    iframe {{ border: 1px solid #c8d0d8; }}
-    img {{ max-width: 900px; width: 100%; margin: 10px 0 22px; display: block; }}
-  </style>
-</head>
-<body>
-<h1>{title}</h1>
-<p>Solver: {escape(str(result.solver_backend))}. Success: {result.success}. {escape(str(result.message))}</p>
-<table>
-<tr><th>Chaser</th><th>State Samples</th><th>Controls</th><th>Solve Time (s)</th></tr>
-{rows}
-</table>
-<h2>Interactive Trajectory</h2>
-<iframe src="trajectory.html" width="100%" height="650"></iframe>
-<h2>Interactive Tube Trajectory</h2>
-<iframe src="tube_trajectory.html" width="100%" height="650"></iframe>
-<h2>Interactive Diagnostics</h2>
-<iframe src="diagnostics.html" width="100%" height="900"></iframe>
-<h2>Video</h2>
-{video}
-<h2>Diagnostics</h2>
-<img src="actual_nominal_trajectories.png" alt="Actual and nominal trajectories">
-<img src="tube_geometry.png" alt="Tube geometry">
-<img src="control_effort.png" alt="Control effort">
-<img src="rendezvous_margin.png" alt="Physical rendezvous margin">
-<img src="docking_cylinder_margin.png" alt="Physical docking cylinder margin">
-<img src="tightened_rendezvous_margin.png" alt="Tube-tightened rendezvous margin">
-<img src="tightened_docking_cylinder_margin.png" alt="Tube-tightened docking cylinder margin">
-<img src="active_target_margin.png" alt="Active target safety margin">
-<img src="smid_fss_widths.png" alt="SMID feasible-set widths">
-<img src="parameter_estimates_vs_truth.png" alt="Parameter estimates vs truth">
-<img src="target_attitude.png" alt="Target attitude">
-<img src="target_angular_velocity.png" alt="Target angular velocity">
-<img src="multi_chaser_spacing.png" alt="Multi-chaser spacing">
-</body>
-</html>
-"""
-        path = self.output_dir / "index.html"
-        path.write_text(html, encoding="utf-8")
-        manifest.add(path)
+        entry = {
+            "mission": result.mission, "approximation": result.approximation,
+            "backend": result.solver_backend, "success": result.success,
+            "mission_complete": manifest.mission_complete,
+            "sample_count": manifest.sample_count, "chaser_count": manifest.chaser_count,
+            "message": result.message, "relative_dir": ".",
+            "artifacts": [{"path": path.name,
+                           "label": manifest.artifact_labels.get(path.name, path.stem.replace("_", " "))}
+                          for path in manifest.artifacts if path.parent == self.output_dir],
+            "skipped_artifacts": manifest.skipped_artifacts,
+            **_raw_data_reference(manifest.data_file, self.output_dir),
+        }
+        manifest.add(MissionGallery(self.output_dir).render([entry]))
 
     def _save_matplotlib(self, fig, filename: str) -> Path:
         path = self.output_dir / filename
@@ -1127,6 +1121,7 @@ class OrbexaDemo:
         output_session_dir, data_session_dir = session.output_dir, session.data_dir
         approximations = ["nonlinear", "linearized"] if self.config.run_linearized else ["nonlinear"]
         session.preflight([(mission, approximation) for mission in self._missions() for approximation in approximations])
+        gallery_entries = self._read_gallery_catalog(output_session_dir)
         if self.config.from_data:
             # Read every requested family before changing any rendered artifacts or notes.
             self._saved_results = {}
@@ -1164,10 +1159,99 @@ class OrbexaDemo:
                         data_family_dir=data_session_dir / mission / "linearized",
                     )
                 )
+        for manifest in manifests:
+            entry = self._gallery_entry(manifest, output_session_dir)
+            gallery_entries[entry["relative_dir"]] = entry
+        entries = list(gallery_entries.values())
+        MissionGallery(output_session_dir).render(entries)
+        if not save_data(output_session_dir / "gallery.json", {
+            "schema": "orbexa.mission.gallery.v1", "entries": entries,
+        }):
+            raise OSError("Could not save mission gallery catalog")
         self._link_session_demo_gif(output_session_dir)
         if not self.config.from_data:
             session.publish()
+            failures = [manifest for manifest in manifests
+                        if self._requires_success(manifest.approximation, manifest.solver_backend)
+                        and not manifest.success]
+            if failures:
+                failed = failures[0]
+                raise RuntimeError(
+                    f"{failed.mission}/{failed.approximation}/{failed.solver_backend} did not complete: "
+                    f"{failed.message or 'mission_complete=false'}. "
+                    f"Inspect the saved gallery at {output_session_dir / 'index.html'}"
+                )
         return manifests
+
+    @staticmethod
+    def _read_gallery_catalog(output_session_dir: Path) -> Dict[str, Dict]:
+        path = output_session_dir / "gallery.json"
+        entries = []
+        if path.exists():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict) or payload.get("schema") != "orbexa.mission.gallery.v1":
+                raise ValueError(f"Refusing to replace an unrecognized gallery catalog: {path}")
+            entries = payload.get("entries")
+            if not isinstance(entries, list):
+                raise ValueError(f"Invalid mission gallery catalog: {path}")
+        catalog = {}
+        families = ("single/nonlinear", "single/linearized", "multi/nonlinear", "multi/linearized")
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError(f"Invalid mission gallery entry in {path}")
+            relative = entry.get("relative_dir")
+            if relative not in families:
+                raise ValueError(f"Invalid mission gallery family in {path}")
+            MissionSession._check_path(output_session_dir / relative, output_session_dir)
+            catalog[relative] = entry
+        # Older sessions have family manifests but no session catalog. Retain
+        # their views during a partial render without loading unrequested data.
+        for relative in families:
+            if relative in catalog:
+                continue
+            family = output_session_dir / relative
+            manifest_path = family / "manifest.json"
+            MissionSession._check_path(manifest_path, output_session_dir)
+            if not manifest_path.is_file():
+                continue
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if payload.get("schema") != "orbexa.adtmpc_mission.manifest.v1":
+                continue
+            artifacts = []
+            for value in payload.get("artifacts", []):
+                # Legacy manifests stored absolute paths; maintained family
+                # artifacts are flat, so bind their filenames to this session.
+                artifact = family / Path(value).name
+                MissionSession._check_path(artifact, output_session_dir)
+                if artifact.is_file():
+                    artifacts.append({"path": artifact.relative_to(output_session_dir).as_posix(),
+                                      "label": payload.get("artifact_labels", {}).get(artifact.name, artifact.stem.replace("_", " "))})
+            mission, approximation = relative.split("/")
+            catalog[relative] = {
+                "mission": mission, "approximation": approximation,
+                "backend": payload.get("solver_backend", "unspecified"),
+                "success": payload.get("success"), "mission_complete": payload.get("mission_complete"),
+                "sample_count": payload.get("sample_count"), "chaser_count": payload.get("chaser_count"),
+                "message": payload.get("message", "Outcome not recorded in this older manifest."),
+                "relative_dir": relative, "artifacts": artifacts,
+                "skipped_artifacts": payload.get("skipped_artifacts", {}),
+            }
+        return catalog
+
+    @staticmethod
+    def _gallery_entry(manifest: ADTMPCMissionManifest, root: Path) -> Dict:
+        artifacts = [{"path": path.relative_to(root).as_posix(),
+                      "label": manifest.artifact_labels.get(path.name, path.stem.replace("_", " "))}
+                     for path in manifest.artifacts if path.is_relative_to(root)]
+        return {
+            "mission": manifest.mission, "approximation": manifest.approximation,
+            "backend": manifest.solver_backend, "success": manifest.success,
+            "mission_complete": manifest.mission_complete, "message": manifest.message,
+            "sample_count": manifest.sample_count, "chaser_count": manifest.chaser_count,
+            "relative_dir": manifest.output_dir.relative_to(root).as_posix(),
+            "artifacts": artifacts, "skipped_artifacts": manifest.skipped_artifacts,
+            **_raw_data_reference(manifest.data_file, root),
+        }
 
     def _write_run_readme(
         self, output_session_dir: Path, data_session_dir: Path, session_id: str
@@ -1268,11 +1352,6 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
             )
             result = runner.run(mission=mission, steps=run_steps)
             data_file = runner.save_result(result, data_family_dir)
-            if self._requires_success(approximation, solver_backend) and not result.success:
-                raise RuntimeError(
-                    f"{mission}/{approximation}/{solver_backend} did not complete: "
-                    f"{result.message or 'mission_complete=false'}"
-                )
         return ADTMPCMissionRenderer(family_dir, fps=self.config.fps).render(
             result,
             data_file=data_file,

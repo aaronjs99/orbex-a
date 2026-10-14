@@ -88,7 +88,8 @@ class CasadiSolver(SolverBase):
         Q_p = opti.parameter(num_states, num_states)
         R_p = opti.parameter(num_inputs, num_inputs)
         x0_p = opti.parameter(num_states)
-        xf_p = opti.parameter(num_states)
+        xref_p = opti.parameter(num_states, num_steps)
+        uref_p = opti.parameter(num_inputs, num_steps)
 
         opti.set_value(A_p, A_d)
         opti.set_value(B_p, B_d)
@@ -97,18 +98,29 @@ class CasadiSolver(SolverBase):
         opti.set_value(Q_p, problem.state_cost_matrix)
         opti.set_value(R_p, problem.input_cost_matrix)
         opti.set_value(x0_p, problem.initial_state)
-        opti.set_value(xf_p, problem.final_state)
+        opti.set_value(xref_p, problem.reference_states)
+        interval_references = problem.reference_inputs
+        # Retain the unused final control variable and pad only its reference.
+        opti.set_value(
+            uref_p, np.hstack([interval_references, interval_references[:, -1:]])
+        )
+
+        seed = problem.extra_params.get("u_0")
+        if seed is not None and len(seed) == num_inputs:
+            opti.set_initial(
+                self._controls,
+                np.repeat(np.asarray(seed, dtype=float)[:, None], num_steps, axis=1),
+            )
 
         # Objective: sum of quadratic costs
         cost = 0
         for t in range(num_steps):
-            x_err = self._states[:, t] - xf_p
+            x_err = self._states[:, t] - xref_p[:, t]
+            u_err = self._controls[:, t] - uref_p[:, t]
             cost += casadi.mtimes(casadi.mtimes(x_err.T, Q_p), x_err)
-            cost += casadi.mtimes(
-                casadi.mtimes(self._controls[:, t].T, R_p), self._controls[:, t]
-            )
+            cost += casadi.mtimes(casadi.mtimes(u_err.T, R_p), u_err)
         if problem.terminal_cost_matrix is not None:
-            terminal_error = self._states[:, -1] - xf_p
+            terminal_error = self._states[:, -1] - xref_p[:, -1]
             cost += casadi.mtimes(
                 [terminal_error.T, problem.terminal_cost_matrix, terminal_error]
             )

@@ -129,6 +129,7 @@ class MPCController:
         extra_kwargs = kwargs.copy()
         extra_kwargs.pop("state_cost_matrix", None)
         extra_kwargs.pop("input_cost_matrix", None)
+        extra_kwargs.pop("control_0", None)
 
         # Build the MPC problem
         problem = build_from_dynamics(
@@ -139,6 +140,7 @@ class MPCController:
             d_func=d_func,
             initial_state=initial_state,
             final_state=final_state,
+            control_0=control_input_0,
             start_anom=start_anom,
             num_steps=num_steps,
             anom_step=anom_step,

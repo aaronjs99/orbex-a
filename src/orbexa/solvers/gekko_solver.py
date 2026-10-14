@@ -328,7 +328,26 @@ class GekkoSolver(SolverBase):
                 eqs.append(self._states[i].dt() == d_state)
 
         # --- Objective ---
-        # Quadratic cost: (x-xf)'Q(x-xf) + u'Ru
+        # State references use state nodes. GEKKO's raw input node k+1
+        # drives interval k; node zero has no preceding control interval.
+        state_references = [
+            solver.Param(value=row) for row in problem.reference_states
+        ]
+        interval_references = problem.reference_inputs
+        nodal_input_references = np.hstack(
+            [interval_references[:, :1], interval_references]
+        )
+        input_references = [
+            solver.Param(value=row) for row in nodal_input_references
+        ]
+        state_errors = [
+            self._states[i] - state_references[i] for i in range(num_states)
+        ]
+        input_errors = [
+            self._inputs[i] - input_references[i] for i in range(num_inputs)
+        ]
+
+        # Quadratic tracking cost at each node and active control interval.
         cost_terms = []
 
         # Iterate over diagonal of Q/R for efficiency if diagonal
@@ -338,10 +357,8 @@ class GekkoSolver(SolverBase):
         for i in range(num_states):
             for j in range(num_states):
                 if problem.state_cost_matrix[i, j] != 0:
-                    delta_state_i = self._states[i] - problem.final_state[i]
-                    delta_state_j = self._states[j] - problem.final_state[j]
                     cost_terms.append(
-                        delta_state_i * problem.state_cost_matrix[i, j] * delta_state_j
+                        state_errors[i] * problem.state_cost_matrix[i, j] * state_errors[j]
                     )
 
         # Input cost
@@ -349,9 +366,9 @@ class GekkoSolver(SolverBase):
             for j in range(num_inputs):
                 if problem.input_cost_matrix[i, j] != 0:
                     cost_terms.append(
-                        self._inputs[i]
+                        input_errors[i]
                         * problem.input_cost_matrix[i, j]
-                        * self._inputs[j]
+                        * input_errors[j]
                     )
 
         total_cost = solver.Intermediate(sum(cost_terms))
@@ -359,11 +376,8 @@ class GekkoSolver(SolverBase):
         solver.Equations(eqs)
         solver.Minimize(w_param * total_cost)
         if problem.terminal_cost_matrix is not None:
-            terminal_error = [
-                self._states[i] - problem.final_state[i] for i in range(num_states)
-            ]
             terminal_cost = sum(
-                terminal_error[i] * problem.terminal_cost_matrix[i, j] * terminal_error[j]
+                state_errors[i] * problem.terminal_cost_matrix[i, j] * state_errors[j]
                 for i in range(num_states)
                 for j in range(num_states)
             )

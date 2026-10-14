@@ -40,7 +40,7 @@ def main(argv: Optional[Sequence[str]] = None, *, default_root: Optional[Path] =
     parser.add_argument("--from-data", action="store_true",
                         help="Render saved raw data without running MPC or loading a scenario")
     parser.add_argument("--no-require-primary-success", action="store_true",
-                        help="Keep artifacts for incomplete diagnostic runs")
+                        help="Allow a zero exit status for incomplete diagnostic runs")
     parser.add_argument("--fps", type=_positive_int, default=8)
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("-v", "--verbose", action="store_true")

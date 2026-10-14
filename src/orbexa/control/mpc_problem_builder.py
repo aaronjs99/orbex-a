@@ -50,7 +50,7 @@ class ORBEXAProblemConfig:
     # States and goals
     initial_state: np.ndarray = field(default_factory=lambda: np.zeros(6))
     final_state: np.ndarray = field(default_factory=lambda: np.zeros(6))
-    control_0: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    control_0: Optional[np.ndarray] = None
 
     # Dynamics (can be matrices OR callables)
     dynamics_matrix: Union[np.ndarray, Callable, Any] = None
@@ -79,6 +79,8 @@ class ORBEXAProblemConfig:
     target_params: Optional[Dict[str, Any]] = None
     affine_constraints: List[Any] = field(default_factory=list)
     terminal_cost_matrix: Optional[np.ndarray] = None
+    state_reference: Optional[np.ndarray] = None
+    input_reference: Optional[np.ndarray] = None
 
 
 def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
@@ -128,6 +130,16 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
     else:
         B = np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
 
+    control_0 = (
+        np.zeros(B.shape[1])
+        if config.control_0 is None
+        else np.asarray(config.control_0, dtype=float)
+    )
+    if control_0.shape != (B.shape[1],):
+        raise ValueError("Initial control guess must have one value per input")
+    if not np.all(np.isfinite(control_0)):
+        raise ValueError("Initial control guess must be finite")
+
     # Build extra params for solver-specific features
     extra_params = {
         "dynamics_callable": (
@@ -145,7 +157,7 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
         "time_periapsis": config.time_periapsis,
         "eccentricity": config.eccentricity,
         "mean_motion": config.mean_motion,
-        "u_0": config.control_0,
+        "u_0": control_0,
         "use_anomaly_scaling": config.use_anomaly_scaling,
     }
 
@@ -201,6 +213,8 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
         dynamics_type="continuous",
         extra_params=extra_params,
         terminal_cost_matrix=config.terminal_cost_matrix,
+        state_reference=config.state_reference,
+        input_reference=config.input_reference,
     )
 
 
@@ -263,6 +277,7 @@ def build_from_dynamics(
         num_steps=num_steps,
         initial_state=initial_state,
         final_state=final_state,
+        control_0=kwargs.get("control_0"),
         dynamics_matrix=A_func,
         input_matrix=input_matrix,
         state_cost_matrix=state_cost_matrix,
@@ -274,6 +289,8 @@ def build_from_dynamics(
         time_periapsis=time_periapsis,
         mean_motion=kwargs.get("mean_motion", 0.001),
         terminal_cost_matrix=kwargs.get("terminal_cost_matrix"),
+        state_reference=kwargs.get("state_reference"),
+        input_reference=kwargs.get("input_reference"),
     )
 
     # Handle optional tube MPC

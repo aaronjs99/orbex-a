@@ -99,14 +99,22 @@ class ScipySolver(SolverBase):
         num_inputs, num_steps = p.num_inputs, p.num_steps
         inputs = z.reshape(num_inputs, num_steps)
         states = self._rollout_from_inputs(inputs)
+        state_references = p.reference_states
+        interval_references = p.reference_inputs
+        # The final allocated input is unused by dynamics and is omitted
+        # from SolverResult; pad its reference without shifting real intervals.
+        input_references = np.hstack(
+            [interval_references, interval_references[:, -1:]]
+        )
 
         cost = 0.0
         for t in range(num_steps):
-            state_err = states[:, t] - p.final_state
+            state_err = states[:, t] - state_references[:, t]
+            input_err = inputs[:, t] - input_references[:, t]
             cost += state_err @ p.state_cost_matrix @ state_err
-            cost += inputs[:, t] @ p.input_cost_matrix @ inputs[:, t]
+            cost += input_err @ p.input_cost_matrix @ input_err
         if p.terminal_cost_matrix is not None:
-            terminal_error = states[:, -1] - p.final_state
+            terminal_error = states[:, -1] - state_references[:, -1]
             cost += terminal_error @ p.terminal_cost_matrix @ terminal_error
         return cost
 

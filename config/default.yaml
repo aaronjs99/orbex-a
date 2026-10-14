@@ -16,6 +16,7 @@ orbit:
 
 mpc:
   terminal_cost_enabled: true
+  reference_preview_enabled: false
   horizon_steps:
     rendezvous: 80
     docking: 40
