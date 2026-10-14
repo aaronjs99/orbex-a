@@ -31,10 +31,7 @@ def main(argv: Optional[Sequence[str]] = None, *, default_root: Optional[Path] =
                         help="Scenario YAML; defaults to the checkout config/default.yaml. Unused with --from-data.")
     parser.add_argument("--session-id", type=lambda value: validate_session_id(value, allow_latest=True),
                         help="New unique session name, or a saved session to render")
-    parser.add_argument("--primary-solver", choices=["gekko", "scipy", "casadi"], default="gekko")
-    parser.add_argument("--secondary-solver", choices=["gekko", "scipy", "casadi"], default="scipy")
-    parser.add_argument("--run-linearized", action="store_true")
-    parser.add_argument("--linearized-steps", type=_positive_int, default=20)
+    parser.add_argument("--primary-solver", choices=["gekko"], default="gekko")
     parser.add_argument("--clean-generated", action="store_true",
                         help="Explicitly remove the selected generated roots, including session notes")
     parser.add_argument("--from-data", action="store_true",
@@ -64,8 +61,7 @@ def main(argv: Optional[Sequence[str]] = None, *, default_root: Optional[Path] =
             output_dir=args.output, data_dir=args.data_output,
             config_path=args.config, session_id=args.session_id,
             steps=args.steps, mission=args.mission,
-            primary_solver=args.primary_solver, secondary_solver=args.secondary_solver,
-            run_linearized=args.run_linearized, linearized_steps=args.linearized_steps,
+            primary_solver=args.primary_solver,
             from_data=args.from_data, clean_generated=args.clean_generated,
             require_primary_success=not args.no_require_primary_success, fps=args.fps,
         )).run()

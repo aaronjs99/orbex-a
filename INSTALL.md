@@ -36,8 +36,7 @@ to `orbexa-generate-demo`.
 controller replans over a fixed horizon and applies only the first control
 command(s) before solving again. The nonlinear primary run is considered valid
 only when `mission_complete` and `success` are both true.
-Use `--run-linearized --linearized-steps N` only when you want capped optional
-SciPy/SLSQP comparison artifacts.
+ADTMPC mission generation uses the coupled nonlinear GEKKO/IPOPT controller.
 
 Use `orbexa-generate-demo --from-data` (or `python run.py --from-data`) to rebuild figures and HTML from existing `mission_data.json` files without rerunning MPC or SMID. This replaces the removed `orbexa-plot-results` command.
 
@@ -47,9 +46,10 @@ retain other rendered families. Failed primary runs also create this gallery
 before returning a nonzero status. Saved data and rendered output may be on
 different Windows drives; the gallery then identifies the raw-data location.
 
-Moving-goal prediction is optional: set `mpc.reference_preview_enabled: true` in
-your scenario YAML. The default is false because its benefit depends on target
-motion. The side/cap safety filter remains active with either setting.
+Moving-goal prediction is enabled by default through
+`mpc.reference_preview_enabled: true`. Docking plans include the moving goal,
+nonlinear cylinder exclusion and the assigned conservative side corridor.
+Execution stops on a measured safety or tube-containment violation.
 
 If MP4 generation is skipped, install `ffmpeg`; the report shows the reason
 and provides a GIF instead of an empty MP4. Windows and cloud-mounted folders

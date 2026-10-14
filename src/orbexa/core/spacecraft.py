@@ -422,6 +422,8 @@ class Chaser(Spacecraft):
         return (self.t_state, self.t_ang_vel)
 
     def calculate_goals(self):
+        if self.goal_bounds is None:
+            raise ValueError("Standalone goal allocation requires explicit mpc.goal_bounds; docking missions use target geometry")
         num_agents = len(self.r_n_info.keys()) - 1
 
         # Determine number of agents to initialize weights

@@ -15,7 +15,8 @@ launcher and installed console command use the same options.
 pip install -e .
 ```
 
-GEKKO is the authoritative nonlinear solver path. SciPy/SLSQP is available only for labeled linearized comparison runs.
+ADTMPC missions use the coupled nonlinear GEKKO/IPOPT controller. Ordinary MPC
+and other solver adapters remain available through the Python API.
 
 ## Generate ADTMPC Mission Artifacts
 
@@ -25,7 +26,6 @@ Default full nonlinear run from the repository root:
 python run.py
 ```
 
-Add `--run-linearized` only when you want the optional SciPy/SLSQP comparison artifacts.
 The default YAML scenario uses 8 chasers for the multi-agent mission. Select a
 different scenario with `--config path/to/scenario.yaml`; its `num_chasers` sets
 the fleet size, and its orbit parameters set the simulated plant truth while
@@ -53,15 +53,12 @@ The default scenario uses 12 prediction nodes, one applied nominal interval,
 and 32 ancillary feedback substeps. Phase horizons come from YAML; API callers
 can override `horizon_steps`. The coupled policy replans every outer interval.
 Fresh nonlinear primary runs return failure if the goal is not reached.
-If enabled, the optional SciPy/SLSQP linearized comparison is capped separately by
-`--linearized-steps` because it is not the authoritative nonlinear mission.
 
 This writes:
 
 - `results/<session_id>/index.html`: the session gallery, with mission selection, animations, interactive replays, plot filters, and full-resolution images
 - `results/<session_id>/single/nonlinear/`
 - `results/<session_id>/multi/nonlinear/`
-- optional matching `linearized/` folders when `--run-linearized` is set
 - raw mission JSON under `data/<session_id>/`
 - editable run-note templates at `results/<session_id>/README.md` and `data/<session_id>/README.md`
 - portable `results/latest.json` and `data/latest.json` references to the newest generated session; directory symlinks are also created when supported
@@ -117,7 +114,7 @@ penalty aids performance; it does not prove nonlinear terminal invariance.
 
 The physical-coordinate model uses meters, derivatives per true anomaly, and
 anomaly-acceleration inputs. Physical acceleration increments are `qdot² * u`;
-the parsed historical `force_bounds` are not a thruster-force model. The default
+there is no mass/thruster-force actuator model. The default
 orbit now has a 300 km perigee at eccentricity 0.18. Its analytical quadratic-drag
 approximation and prescribed Euler target motion are explicitly limited models.
 See [the derivation and focused literature review](docs/adtmpc-design.md) for frame
@@ -126,8 +123,8 @@ conventions, moving-goal/obstacle distinctions, and evidence boundaries.
 Nonlinear geometry is constrained at prediction nodes and checked more densely
 during execution. Sampled simulation results do not establish continuous-time
 safety, recursive feasibility, physical capture, or a fully realistic atmosphere.
-Historical saved runs remain renderable but their earlier tube/physics claims
-must not be used to qualify this corrected model.
+Saved-data mission rendering requires the current physical model and coupled
+controller metadata. Retired runs remain in external recovery archives.
 
 `run.py` defaults to the ADTMPC mission workflow. Useful options:
 
@@ -137,9 +134,7 @@ must not be used to qualify this corrected model.
 - `--data-output data`
 - `--session-id NAME` (fresh runs require an unused, portable folder name)
 - `--config PATH`
-- `--primary-solver gekko|scipy|casadi`
-- `--run-linearized`
-- `--linearized-steps N`
+- `--primary-solver gekko`
 - `--clean-generated` (explicitly removes only the selected generated roots, including their saved session notes; source and scenario inputs are protected)
 - `--from-data`
 
@@ -153,7 +148,10 @@ orbexa-generate-demo \
   --from-data
 ```
 
-Add `--run-linearized` to saved-data rendering only when that session also contains the optional linearized comparison data. Use `--session-id NAME` and `--mission single|multi` to select an older or partial saved session. Rendering uses the saved data and does not load `--config` or construct a mission runner. Every requested family is loaded before existing artifacts or notes are changed.
+Use `--session-id NAME` and `--mission single|multi` to select a saved physical
+ADTMPC session. Rendering uses its data and does not load `--config` or construct
+a mission runner. Every requested family is checked before existing artifacts
+or notes are changed. Partial rendering retains other current model families.
 
 Fresh runs never overwrite an existing session. Session names are single folder
 names; `latest`, `latest.json`, path traversal, and Windows device names are
@@ -174,10 +172,10 @@ Source code and CLIs live under `src/orbexa`. Generated data belongs under
 `data/`; rendered artifacts belong under `results/`. Package console entry
 points are installed by `pip install -e .`.
 
-Useful manuscript source, editable diagrams, and historical experiment references
-from the older `mas_space_sim` repository are preserved under
-[`paper/legacy`](paper/legacy/README.md). That directory documents provenance,
-local manuscript edits, the retained thesis stash, and full recovery information.
+The active checkout contains the maintained physical-coordinate implementation,
+scenario settings, and current design notes. Imported historical manuscripts,
+diagrams and prototypes are preserved in verified external recovery archives
+and Git history, outside the active project tree.
 
 ## Citation
 

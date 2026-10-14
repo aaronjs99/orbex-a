@@ -14,7 +14,8 @@
 ORBEX-A MPC Controller Module.
 
 This module implements the Model Predictive Control (MPC) logic for spacecraft
-rendezvous and docking, including Tube MPC for robustness and Adaptive estimates.
+rendezvous and docking, with optional parameter-estimate adaptation.
+Coupled robust missions are orchestrated by ADTMPCMissionRunner.
 
 Key Design Principles:
 - Solver-agnostic: Uses the orbexa.solvers abstraction layer
@@ -24,21 +25,13 @@ Key Design Principles:
 
 import logging
 import numpy as np
-import time
 from typing import Dict, List, Tuple, Any, Optional, Union, Callable
 from dataclasses import dataclass
 
-from orbexa.solvers import get_solver, get_solver_from_config, MPCProblem, SolverResult
+from orbexa.solvers import get_solver, get_solver_from_config, SolverResult
 from orbexa.control.mpc_problem_builder import build_from_dynamics
-from orbexa.utils.anomaly import true_anomaly_to_time, dq_dt, dt_dq
-from orbexa.control.dynamic_tube_model import (
-    ancillary_controller,
-    input_tightening_from_profile,
-    propagate_tube_profile,
-    tighten_box_bounds,
-    tighten_target_params,
-)
-from orbexa.estimation.adaptor import run_adaptation, run_adaptor_op
+
+from orbexa.estimation.adaptor import run_adaptation
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +172,8 @@ class MPCController:
         Args:
            anom_step: True anomaly step size (rad).
         """
+        if (kwargs.get("tube_mpc") or {}).get("enabled") or kwargs.get("dynamic_tube") is not None:
+            raise ValueError("Tube-enabled missions require ADTMPCMissionRunner; MPCController.run_mission supports ordinary MPC only")
         # Calculate initial q based on start_time if needed, or assume q_0 is the independent var start
         eccentricity = dynamics_params.get("eccentricity", 0.0)
         mean_motion = dynamics_params.get("mean_motion", 0.001)
@@ -225,49 +220,9 @@ class MPCController:
             solve_kwargs.pop("time_periapsis", None)
             solve_kwargs.pop("t_periapsis", None)
             solve_kwargs.pop("eccentricity", None)
-            tube_config = solve_kwargs.pop("tube_mpc", None)
+            solve_kwargs.pop("tube_mpc", None)
             adapt_config = solve_kwargs.pop("adaptive", None)
             solve_bounds = bounds
-
-            if tube_config and tube_config.get("enabled"):
-                tube_profile = propagate_tube_profile(
-                    start_anom=anom,
-                    num_steps=num_mpc_steps,
-                    anom_step=anom_step,
-                    mean_motion=mean_motion,
-                    t_periapsis=time_periapsis,
-                    lambda_gain=tube_config["lambda_gain"],
-                    alpha=tube_config["alpha"],
-                    phi_0=tube_config["phi"],
-                    eccentricity_range=tube_config["eccentricity_range"],
-                    initial_error=np.zeros(6),
-                    eta=tube_config.get("eta", 0.0),
-                    aRange=tube_config.get("aRange", (0.0, 0.0)),
-                    bRange=tube_config.get("bRange", (0.0, 0.0)),
-                    mu=dynamics_params.get("mu", 3.986004418e14),
-                    semi_major_axis=dynamics_params.get("semi_major_axis"),
-                    specific_angular_momentum=dynamics_params.get(
-                        "specific_angular_momentum"
-                    ),
-                )
-                tube_config["profile"] = tube_profile
-                state_bounds, input_bounds = bounds
-                tightened_input_bounds = input_bounds
-                if tube_config.get("tighten_inputs", False):
-                    tightened_input_bounds = tighten_box_bounds(
-                        input_bounds,
-                        input_tightening_from_profile(
-                            tube_profile, tube_config["lambda_gain"]
-                        ),
-                    )
-                solve_bounds = (
-                    tighten_box_bounds(state_bounds, tube_profile.max_state_error),
-                    tightened_input_bounds,
-                )
-                if solve_kwargs.get("target_params"):
-                    solve_kwargs["target_params"] = tighten_target_params(
-                        solve_kwargs["target_params"], tube_profile
-                    )
 
             result = self.solve_step(
                 initial_state=state,
@@ -316,37 +271,6 @@ class MPCController:
                 else:
                     applied_control = np.zeros(3)
 
-                # Tube MPC
-                if tube_config and tube_config.get("enabled"):
-                    if (
-                        hasattr(result, "state_trajectory")
-                        and result.state_trajectory is not None
-                    ):
-                        if (
-                            result.state_trajectory.ndim == 2
-                            and result.state_trajectory.shape[1] > act_idx
-                        ):
-                            x_nom = result.state_trajectory[:, act_idx]
-                            # Tube controller might need physical time if it uses continuous dynamics internally?
-                            # Or we adapt it to q? Assuming we pass q.
-                            tube_control = ancillary_controller(
-                                t=anom,
-                                t_p=time_periapsis,
-                                t_f=anom + anom_step,
-                                dt=anom_step,
-                                mean_motion=mean_motion,
-                                nom_state=x_nom,
-                                act_state=state,
-                                mu=dynamics_params.get("mu", 3.986004418e14),
-                                semi_major_axis=dynamics_params.get(
-                                    "semi_major_axis"
-                                ),
-                                specific_angular_momentum=dynamics_params.get(
-                                    "specific_angular_momentum"
-                                ),
-                                **tube_config,
-                            )
-                            applied_control += tube_control
 
                 input_history.append(applied_control)
 
@@ -414,16 +338,10 @@ class MPCController:
                         for idx, key in enumerate(keys):
                             if key == "eccentricity":
                                 dynamics_params["eccentricity"] = latest_estimates[idx]
-                                if tube_config:
-                                    tube_config["eccentricity_range"] = tuple(fss[key])
                             elif key == "alpha":
                                 dynamics_params["alpha"] = latest_estimates[idx]
-                                if tube_config:
-                                    tube_config["aRange"] = tuple(fss[key])
                             elif key == "beta":
                                 dynamics_params["beta"] = latest_estimates[idx]
-                                if tube_config:
-                                    tube_config["bRange"] = tuple(fss[key])
                 except Exception as e:
                     # Suppress adaptation warnings - the core simulation still works
                     logger.debug(f"Adaptation skipped: {e}")

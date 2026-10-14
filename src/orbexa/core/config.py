@@ -119,8 +119,8 @@ class MPCConfig:
 
     state_bounds: List[Dict[str, Any]]
     input_bounds: List[Dict[str, float]]
-    force_bounds: List[Dict[str, float]]
-    goal_bounds: List[float]
+    goal_bounds: Optional[List[float]] = None
+    """Optional shell radii for standalone Chaser goal allocation, in meters."""
     min_chaser_separation: float = 0.35
 
     Q: np.ndarray = field(default_factory=lambda: np.eye(6))
@@ -226,7 +226,6 @@ class TubeMPCConfig:
     run_tube: bool
     bandwidth_0: List[float]
     boundary_layer_0: List[float]
-    convergence_rate: List[float]
     sliding_gains: List[float]
 
     # Adaptation ranges
@@ -351,8 +350,7 @@ class SimulationConfig:
             actuation_steps=mpc_data["actuation_steps"],
             state_bounds=mpc_data["state_bounds"],
             input_bounds=mpc_data["input_bounds"],
-            force_bounds=mpc_data["force_bounds"],
-            goal_bounds=mpc_data["goal_bounds"],
+            goal_bounds=mpc_data.get("goal_bounds"),
             min_chaser_separation=float(mpc_data.get("min_chaser_separation", 0.35)),
             Q=_as_square_weight_matrix(mpc_data.get("Q", np.eye(6).tolist()), 6),
             R=_as_square_weight_matrix(
@@ -388,7 +386,6 @@ class SimulationConfig:
             run_tube=tube_data["run_tube"],
             bandwidth_0=tube_data["bandwidth_0"],
             boundary_layer_0=tube_data["boundary_layer_0"],
-            convergence_rate=tube_data["convergence_rate"],
             sliding_gains=tube_data["sliding_gains"],
             bandwidth_range=tube_data["bandwidth_range"],
             feedback_substeps=int(tube_data.get("feedback_substeps", 32)),

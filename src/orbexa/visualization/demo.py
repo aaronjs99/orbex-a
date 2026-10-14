@@ -90,23 +90,20 @@ class DemoConfig:
     """Maximum number of receding-horizon MPC updates."""
     mission: str = "all"
     primary_solver: str = "gekko"
-    secondary_solver: str = "scipy"
-    run_linearized: bool = False
-    linearized_steps: Optional[int] = 20
     from_data: bool = False
     clean_generated: bool = False
     require_primary_success: bool = True
     fps: int = 8
 
     def __post_init__(self) -> None:
-        for name in ("steps", "fps", "linearized_steps"):
+        for name in ("steps", "fps"):
             value = getattr(self, name)
-            if name == "linearized_steps" and value is None:
-                continue
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
         if self.mission not in ("single", "multi", "all"):
             raise ValueError(f"Unknown mission: {self.mission}")
+        if self.primary_solver != "gekko":
+            raise ValueError("ADTMPC mission generation requires the nonlinear GEKKO controller")
         if self.session_id is not None:
             validate_session_id(self.session_id, allow_latest=self.from_data)
 
@@ -128,6 +125,8 @@ class ADTMPCMissionManifest:
     sample_count: int = 0
     chaser_count: int = 0
     message: str = ""
+    model_version: str = ""
+    controller: str = ""
 
     def add(self, path: Path, label: Optional[str] = None) -> Path:
         self.artifacts.append(path)
@@ -152,6 +151,8 @@ class ADTMPCMissionManifest:
             "sample_count": self.sample_count,
             "chaser_count": self.chaser_count,
             "message": self.message,
+            "model_version": self.model_version,
+            "controller": self.controller,
         }
         payload["required_entries"] = [name for name in payload["required_entries"] if name not in self.skipped_artifacts]
         if not save_data(path, payload):
@@ -185,6 +186,8 @@ class ADTMPCMissionRenderer:
             sample_count=len(result.anom_history),
             chaser_count=len(result.actual_trajectories),
             message=result.message,
+            model_version=result.metadata.get("model_version", ""),
+            controller=result.metadata.get("controller", ""),
         )
         if data_file is not None:
             manifest.add(Path(data_file))
@@ -1126,18 +1129,17 @@ class OrbexaDemo:
             mission=self.config.mission, solver=self.config.primary_solver,
         )
         output_session_dir, data_session_dir = session.output_dir, session.data_dir
-        approximations = ["nonlinear", "linearized"] if self.config.run_linearized else ["nonlinear"]
-        session.preflight([(mission, approximation) for mission in self._missions() for approximation in approximations])
-        gallery_entries = self._read_gallery_catalog(output_session_dir)
+        session.preflight([(mission, "nonlinear") for mission in self._missions()])
+        gallery_entries = self._read_gallery_catalog(output_session_dir, data_session_dir)
         if self.config.from_data:
             # Read every requested family before changing any rendered artifacts or notes.
             self._saved_results = {}
             for mission in self._missions():
-                for approximation in approximations:
-                    result = load_adtmpc_mission_result(data_session_dir / mission / approximation)
-                    if result.mission != mission or result.approximation != approximation:
-                        raise ValueError(f"Saved data does not match {mission}/{approximation}")
-                    self._saved_results[(mission, approximation)] = result
+                result = load_adtmpc_mission_result(data_session_dir / mission / "nonlinear")
+                if result.mission != mission:
+                    raise ValueError(f"Saved data does not match {mission}/nonlinear")
+                self._require_current_result(result)
+                self._saved_results[(mission, "nonlinear")] = result
         else:
             self._mission_config = SimulationConfig.load(self.config.config_path)
             if self.config.clean_generated:
@@ -1156,16 +1158,6 @@ class OrbexaDemo:
                     data_family_dir=data_session_dir / mission / "nonlinear",
                 )
             )
-            if self.config.run_linearized:
-                manifests.append(
-                    self._run_or_render(
-                        mission=mission,
-                        approximation="linearized",
-                        solver_backend=self.config.secondary_solver,
-                        family_dir=output_session_dir / mission / "linearized",
-                        data_family_dir=data_session_dir / mission / "linearized",
-                    )
-                )
         for manifest in manifests:
             entry = self._gallery_entry(manifest, output_session_dir)
             gallery_entries[entry["relative_dir"]] = entry
@@ -1191,7 +1183,9 @@ class OrbexaDemo:
         return manifests
 
     @staticmethod
-    def _read_gallery_catalog(output_session_dir: Path) -> Dict[str, Dict]:
+    def _read_gallery_catalog(
+        output_session_dir: Path, data_session_dir: Optional[Path] = None,
+    ) -> Dict[str, Dict]:
         path = output_session_dir / "gallery.json"
         entries = []
         if path.exists():
@@ -1202,19 +1196,54 @@ class OrbexaDemo:
             if not isinstance(entries, list):
                 raise ValueError(f"Invalid mission gallery catalog: {path}")
         catalog = {}
-        families = ("single/nonlinear", "single/linearized", "multi/nonlinear", "multi/linearized")
+        families = ("single/nonlinear", "multi/nonlinear")
+        rejected = set()
+
+        def qualify(record, relative, backend_key):
+            mission, approximation = relative.split("/")
+            identity = {
+                "mission": mission, "approximation": approximation, backend_key: "gekko",
+                "model_version": "physical-lvlh-v1",
+                "controller": "coupled-adaptive-dynamic-tube",
+            }
+            # Missing fields may be recovered from raw evidence; contradictory
+            # fields must never be overwritten merely because raw data exists.
+            if any(record.get(key) not in (None, "", value) for key, value in identity.items()):
+                return None, None
+            raw_file = None
+            if any(record.get(key) != value for key, value in identity.items()):
+                if data_session_dir is None:
+                    return None, None
+                raw_file = data_session_dir / relative / "mission_data.json"
+                MissionSession._check_path(raw_file, data_session_dir)
+                if not raw_file.is_file():
+                    return None, None
+                try:
+                    result = load_adtmpc_mission_result(raw_file.parent)
+                    OrbexaDemo._require_current_result(result)
+                except (OSError, ValueError, KeyError, TypeError):
+                    return None, None
+                if result.mission != mission:
+                    return None, None
+            return {**record, **identity}, raw_file
+
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ValueError(f"Invalid mission gallery entry in {path}")
             relative = entry.get("relative_dir")
             if relative not in families:
-                raise ValueError(f"Invalid mission gallery family in {path}")
+                continue
             MissionSession._check_path(output_session_dir / relative, output_session_dir)
-            catalog[relative] = entry
-        # Older sessions have family manifests but no session catalog. Retain
-        # their views during a partial render without loading unrequested data.
+            qualified, raw_file = qualify(entry, relative, "backend")
+            if qualified is None:
+                rejected.add(relative)
+                continue
+            if raw_file is not None:
+                qualified.update(_raw_data_reference(raw_file, output_session_dir))
+            catalog[relative] = qualified
+        # Preserve only current qualified families during a partial render.
         for relative in families:
-            if relative in catalog:
+            if relative in catalog or relative in rejected:
                 continue
             family = output_session_dir / relative
             manifest_path = family / "manifest.json"
@@ -1224,10 +1253,12 @@ class OrbexaDemo:
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
             if payload.get("schema") != "orbexa.adtmpc_mission.manifest.v1":
                 continue
+            payload, raw_file = qualify(payload, relative, "solver_backend")
+            if payload is None:
+                continue
             artifacts = []
             for value in payload.get("artifacts", []):
-                # Legacy manifests stored absolute paths; maintained family
-                # artifacts are flat, so bind their filenames to this session.
+                # Family artifacts are flat; bind their filenames to this session.
                 artifact = family / Path(value).name
                 MissionSession._check_path(artifact, output_session_dir)
                 if artifact.is_file():
@@ -1239,9 +1270,11 @@ class OrbexaDemo:
                 "backend": payload.get("solver_backend", "unspecified"),
                 "success": payload.get("success"), "mission_complete": payload.get("mission_complete"),
                 "sample_count": payload.get("sample_count"), "chaser_count": payload.get("chaser_count"),
-                "message": payload.get("message", "Outcome not recorded in this older manifest."),
+                "message": payload.get("message", ""),
                 "relative_dir": relative, "artifacts": artifacts,
                 "skipped_artifacts": payload.get("skipped_artifacts", {}),
+                "model_version": payload["model_version"], "controller": payload["controller"],
+                **({} if raw_file is None else _raw_data_reference(raw_file, output_session_dir)),
             }
         return catalog
 
@@ -1257,6 +1290,7 @@ class OrbexaDemo:
             "sample_count": manifest.sample_count, "chaser_count": manifest.chaser_count,
             "relative_dir": manifest.output_dir.relative_to(root).as_posix(),
             "artifacts": artifacts, "skipped_artifacts": manifest.skipped_artifacts,
+            "model_version": manifest.model_version, "controller": manifest.controller,
             **_raw_data_reference(manifest.data_file, root),
         }
 
@@ -1284,7 +1318,6 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
 
 - Mission(s): `{missions}`
 - Primary solver: `{self.config.primary_solver}`
-- Linearized comparison: `{self.config.run_linearized}`
 - Max nonlinear updates: `{self.config.steps}`
 - Notes:
 
@@ -1341,28 +1374,31 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
         family_dir: Path,
         data_family_dir: Path,
     ) -> ADTMPCMissionManifest:
+        if approximation != "nonlinear" or solver_backend != "gekko":
+            raise ValueError("ADTMPC mission generation requires nonlinear GEKKO")
         if self.config.from_data:
             result = self._saved_results[(mission, approximation)]
             data_file = data_family_dir / "mission_data.json"
         else:
-            runner_kwargs = {}
-            run_steps = self.config.steps
-            if approximation == "linearized":
-                runner_kwargs = {"horizon_steps": 2, "smid_window": 2}
-                if self.config.linearized_steps is not None:
-                    run_steps = min(self.config.steps, int(self.config.linearized_steps))
             runner = ADTMPCMissionRunner(
                 config=self._mission_config,
                 solver_backend=solver_backend,
                 approximation=approximation,
-                **runner_kwargs,
             )
-            result = runner.run(mission=mission, steps=run_steps)
+            result = runner.run(mission=mission, steps=self.config.steps)
             data_file = runner.save_result(result, data_family_dir)
+        self._require_current_result(result)
         return ADTMPCMissionRenderer(family_dir, fps=self.config.fps).render(
             result,
             data_file=data_file,
         )
+
+    @staticmethod
+    def _require_current_result(result: ADTMPCMissionResult) -> None:
+        if (result.approximation != "nonlinear" or result.solver_backend != "gekko" or
+                result.metadata.get("model_version") != "physical-lvlh-v1" or
+                result.metadata.get("controller") != "coupled-adaptive-dynamic-tube"):
+            raise ValueError("Saved mission data must use the current physical LVLH coupled ADTMPC controller")
 
     def _requires_success(self, approximation: str, solver_backend: str) -> bool:
         return (

@@ -24,35 +24,24 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 from orbexa.control import (
     CylinderConstraint,
-    MPCController,
-    ancillary_controller,
     input_tightening_from_profile,
-    linearize_cylinder_constraint,
-    linearize_rendezvous_constraint,
-    propagate_tube_profile,
     rendezvous_margin,
     rotating_body_point_velocity,
     rotating_docking_point,
     target_frame_position,
-    tighten_box_bounds,
-    tighten_target_params,
 )
 from orbexa.core.config import SimulationConfig
-from orbexa.control.terminal_cost import local_terminal_cost
-from orbexa.control.constraints import project_box_halfspace, rotating_body_point_acceleration
+from orbexa.control.constraints import rotating_body_point_acceleration
 from orbexa.control.tracking_reference import sample_tracking_reference
-from orbexa.core.dynamics import orbital_ellp_drag
-from orbexa.estimation.adaptor import SMIDAdaptor, SMIDRecord
-from orbexa.solvers import SolverResult
+from orbexa.estimation.adaptor import SMIDAdaptor
 from orbexa.utils.io_utils import load_data, save_data
-from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 
 
 ADTMPC_PARAMETER_KEYS = ("eccentricity", "alpha", "beta")
@@ -522,7 +511,6 @@ class ADTMPCMissionRunner:
         config: Optional[SimulationConfig] = None,
         horizon_steps: Optional[int] = None,
         actuation_steps: Optional[int] = None,
-        smid_window: int = 4,
     ):
         self.solver_backend = solver_backend
         self.approximation = approximation
@@ -531,7 +519,6 @@ class ADTMPCMissionRunner:
         self.target = TumblingCylinderTarget.from_config(self.config)
         self.horizon_steps = None if horizon_steps is None else int(horizon_steps)
         self.actuation_steps = None if actuation_steps is None else int(actuation_steps)
-        self.smid_window = int(max(2, smid_window))
         self.smid = SMIDAdaptor(
             error_bound=0.15,
             prediction_error_threshold=0.005,
@@ -552,19 +539,16 @@ class ADTMPCMissionRunner:
         self.target_barrier_buffer = 0.04
         self.target_barrier_clearance = 0.05 * self.target_barrier_buffer
 
-    @property
-    def linearized(self) -> bool:
-        return self.approximation == "linearized"
 
     def run(self, *, mission: str, steps: int) -> ADTMPCMissionResult:
-        if self.config.tube.run_tube and self.solver_backend == "gekko" and not self.linearized:
-            from orbexa.simulation.coupled_mission import CoupledTubeMission
-            return CoupledTubeMission(self).run(mission=mission, steps=steps)
-        if mission == "single":
-            return self._run_chasers(mission="single", chasers=self._single_chaser(), steps=steps)
-        if mission == "multi":
-            return self._run_chasers(mission="multi", chasers=self._multi_chasers(), steps=steps)
-        raise ValueError(f"Unknown ADTMPC mission: {mission}")
+        if mission not in ("single", "multi"):
+            raise ValueError(f"Unknown ADTMPC mission: {mission}")
+        if self.approximation != "nonlinear" or self.solver_backend != "gekko":
+            raise ValueError("ADTMPC missions require the nonlinear GEKKO coupled dynamic-tube controller")
+        if not self.config.tube.run_tube:
+            raise ValueError("ADTMPC missions require tube.run_tube=True; use MPCController for ordinary MPC")
+        from orbexa.simulation.coupled_mission import CoupledTubeMission
+        return CoupledTubeMission(self).run(mission=mission, steps=steps)
 
     def save_result(self, result: ADTMPCMissionResult, output_dir: Path) -> Path:
         output_dir = Path(output_dir)
@@ -585,393 +569,6 @@ class ADTMPCMissionRunner:
             return ADTMPCMissionResult.from_dict(payload["result"])
         return ADTMPCMissionResult.from_dict(payload)
 
-    def _run_chasers(
-        self,
-        *,
-        mission: str,
-        chasers: Sequence[ChaserConfig],
-        steps: int,
-    ) -> ADTMPCMissionResult:
-        controller = MPCController(
-            solver_backend=self.solver_backend,
-            solver_config=self._solver_config(),
-        )
-        belief = ParameterBelief.from_config_prior(self.config)
-        initial_belief = belief.copy()
-
-        states = {
-            chaser.chaser_id: np.asarray(chaser.initial_state, dtype=float).copy()
-            for chaser in chasers
-        }
-        actual = {
-            chaser_id: [state.copy().tolist()] for chaser_id, state in states.items()
-        }
-        nominal: Dict[str, List[List[List[float]]]] = {
-            chaser.chaser_id: [] for chaser in chasers
-        }
-        controls: Dict[str, List[List[float]]] = {chaser.chaser_id: [] for chaser in chasers}
-        tube_profiles: Dict[str, List[Dict[str, Any]]] = {
-            chaser.chaser_id: [] for chaser in chasers
-        }
-        solve_stats: Dict[str, List[Dict[str, Any]]] = {
-            chaser.chaser_id: [] for chaser in chasers
-        }
-        solver_costs: Dict[str, List[Optional[float]]] = {
-            chaser.chaser_id: [] for chaser in chasers
-        }
-
-        anom = 0.0
-        anom_history = [anom]
-        phase_history: List[str] = []
-        active_phase = MissionPhase(name="rendezvous", operation="rendezvous")
-        sample_phase_history: List[str] = [active_phase.name]
-        feasible_history = [_serial_ranges(belief.feasible_sets)]
-        estimate_history = [_serial_estimates(belief.estimates)]
-        smid_records: List[Dict[str, Any]] = []
-        tube_radius_history = [0.0]
-        attitude_history = [self.target.orientation_at(anom).tolist()]
-        angular_velocity_history = [self.target.angular_velocity_at(anom).tolist()]
-
-        solver_success = True
-        mission_complete = False
-        messages: List[str] = []
-        previous_anom = anom
-
-        for update_index in range(int(steps)):
-            if active_phase.operation == "rendezvous" and self._rendezvous_goal_satisfied(
-                states, chasers
-            ):
-                active_phase = MissionPhase(name="docking", operation="docking")
-                sample_phase_history[-1] = active_phase.name
-            if active_phase.operation == "docking" and self._docking_goal_satisfied(
-                states, chasers, anom
-            ):
-                mission_complete = True
-                break
-
-            phase_history.append(active_phase.name)
-            update_solutions: Dict[str, Dict[str, Any]] = {}
-            predicted_terminal_states: Dict[str, np.ndarray] = {}
-            terminal_cost_matrix = None
-
-            for chaser in chasers:
-                chaser_id = chaser.chaser_id
-                state = states[chaser_id]
-                belief_params = belief.dynamics_params(self.truth)
-                matrices, _, _ = orbital_ellp_drag(anom_step=self.config.anom_step, **belief_params)
-                solve_bounds = self.config.mpc.bounds()
-                horizon_steps = self._horizon_steps_for_phase(active_phase)
-                tube_config, profile = self._tube_for_belief(
-                    belief, belief_params, anom, horizon_steps
-                )
-                target_params = self.target.collision_params(active_phase.operation, anom)
-                final_state = self._phase_reference_state(
-                    active_phase,
-                    chaser,
-                    state,
-                    anom,
-                    tube_radius=profile.max_position_radius,
-                )
-
-                solve_kwargs: Dict[str, Any] = {
-                    "mean_motion": belief_params["mean_motion"],
-                    "state_cost_matrix": self._phase_state_weights(active_phase),
-                    "input_cost_matrix": self.config.mpc.R,
-                    "target_params": target_params,
-                }
-                if self.config.mpc.reference_preview_enabled:
-                    state_reference, input_reference = self._phase_reference_preview(
-                        active_phase, chaser, final_state, anom, horizon_steps,
-                        matrices, belief_params["time_periapsis"],
-                    )
-                    solve_kwargs.update(
-                        state_reference=state_reference,
-                        input_reference=input_reference,
-                    )
-                if self.config.mpc.terminal_cost_enabled:
-                    if terminal_cost_matrix is None:
-                        terminal_cost_matrix = local_terminal_cost(
-                            matrices[0](anom, belief_params["time_periapsis"]),
-                            matrices[1](),
-                            solve_kwargs["state_cost_matrix"],
-                            solve_kwargs["input_cost_matrix"],
-                            self.config.anom_step,
-                        )
-                    solve_kwargs["terminal_cost_matrix"] = terminal_cost_matrix
-                tube_profiles[chaser_id].append(self._tube_metadata(anom, profile))
-                solve_bounds = self._tightened_bounds(solve_bounds, profile)
-                if active_phase.operation == "rendezvous":
-                    solve_kwargs["target_params"] = tighten_target_params(
-                        solve_kwargs["target_params"], profile
-                    )
-                solve_kwargs["tube_mpc"] = tube_config
-
-                pairwise = self._pairwise_constraints(
-                    chaser_id=chaser_id,
-                    states={**states, **predicted_terminal_states},
-                    horizon_steps=horizon_steps,
-                )
-                if pairwise:
-                    solve_kwargs["pairwise_constraints"] = pairwise
-
-                if self.linearized:
-                    solve_kwargs.update(
-                        self._linearized_constraints(
-                            phase=active_phase,
-                            state=state,
-                            target_params=target_params,
-                            tube_radius=(
-                                profile.max_position_radius
-                                if active_phase.operation == "rendezvous"
-                                else 0.0
-                            ),
-                            anom=anom,
-                        )
-                    )
-
-                result = controller.solve_step(
-                    initial_state=state,
-                    final_state=final_state,
-                    control_input_0=np.zeros(3),
-                    start_anom=anom,
-                    anom_step=self.config.anom_step,
-                    num_steps=horizon_steps,
-                    dynamics=matrices,
-                    bounds=solve_bounds,
-                    time_periapsis=belief_params["time_periapsis"],
-                    eccentricity=belief_params["eccentricity"],
-                    use_anomaly_scaling=False,
-                    **solve_kwargs,
-                )
-                solve_stats[chaser_id].append(
-                    {
-                        "success": bool(result.success),
-                        "solve_time": float(result.solve_time),
-                        "message": result.message,
-                        "solver_info": result.solver_info,
-                    }
-                )
-                solver_costs[chaser_id].append(
-                    None if result.cost is None else float(result.cost)
-                )
-
-                if not result.success:
-                    solver_success = False
-                    messages.append(f"{chaser_id}:{result.message}")
-                    break
-
-                nominal_trajectory = np.asarray(result.state_trajectory, dtype=float)
-                nominal[chaser_id].append(nominal_trajectory.T.tolist())
-                if nominal_trajectory.ndim == 2 and nominal_trajectory.shape[1] > 0:
-                    predicted_terminal_states[chaser_id] = nominal_trajectory[:, -1]
-                update_solutions[chaser_id] = {
-                    "result": result,
-                    "belief_params": belief_params,
-                    "tube_config": tube_config,
-                    "tube_profile": profile,
-                    "reference_state": final_state,
-                    "phase": active_phase,
-                }
-
-            if not solver_success:
-                break
-
-            act_count = self._actuation_steps_for_phase(active_phase, update_solutions)
-            for act_idx in range(act_count):
-                controls_to_apply: Dict[str, np.ndarray] = {}
-                sample_tube_radius = 0.0
-                for chaser in chasers:
-                    chaser_id = chaser.chaser_id
-                    solution = update_solutions[chaser_id]
-                    profile = solution["tube_profile"]
-                    sample_tube_radius = max(
-                        sample_tube_radius,
-                        float(profile.max_position_radius),
-                    )
-                    control = self._control_at(solution["result"], act_idx)
-                    control = self._apply_ancillary(
-                        control=control,
-                        state=states[chaser_id],
-                        result=solution["result"],
-                        anom=anom,
-                        belief_params=solution["belief_params"],
-                        tube_config=solution["tube_config"],
-                        nominal_index=act_idx,
-                    )
-                    controls_to_apply[chaser_id] = self._clip_control(control)
-
-                next_states = {}
-                applied_controls: Dict[str, np.ndarray] = {}
-                for chaser_id, control in controls_to_apply.items():
-                    applied_control = self._apply_target_barrier_control(
-                        state=states[chaser_id],
-                        control=control,
-                        anom=anom,
-                        phase=active_phase,
-                        belief_params=update_solutions[chaser_id]["belief_params"],
-                    )
-                    if applied_control is None:
-                        solver_success = False
-                        messages.append(f"{chaser_id}:target_safety_filter_infeasible")
-                        break
-                    applied_control = self._clip_control(applied_control)
-                    applied_controls[chaser_id] = applied_control
-                    next_states[chaser_id] = self._propagate_truth(
-                        states[chaser_id],
-                        applied_control,
-                        anom,
-                    )
-                if not solver_success:
-                    break
-                for chaser_id, control in applied_controls.items():
-                    controls[chaser_id].append(control.tolist())
-
-                states.update(next_states)
-                for chaser_id, state in states.items():
-                    actual[chaser_id].append(state.tolist())
-
-                previous_anom = anom
-                anom += self.config.anom_step
-                anom_history.append(float(anom))
-                sample_phase_history.append(active_phase.name)
-                tube_radius_history.append(float(sample_tube_radius))
-                attitude_history.append(self.target.orientation_at(anom).tolist())
-                angular_velocity_history.append(self.target.angular_velocity_at(anom).tolist())
-
-                if act_idx == act_count - 1:
-                    primary_id = chasers[0].chaser_id
-                    primary_states = np.asarray(actual[primary_id], dtype=float)
-                    primary_controls = np.asarray(controls[primary_id], dtype=float)
-                    if len(primary_states) >= 2 and len(primary_controls) >= 1:
-                        window_len = min(self.smid_window, len(primary_states))
-                        window_states = primary_states[-window_len:]
-                        window_controls = primary_controls[-(window_len - 1):]
-                        window_start = anom_history[-window_len]
-                        fss, estimates, record = self.smid.update(
-                            feasible_sets=belief.feasible_sets,
-                            estimates=belief.estimates,
-                            states=window_states,
-                            controls=window_controls,
-                            start_anom=window_start,
-                            anom_step=self.config.anom_step,
-                            dynamics_context=self._smid_context(),
-                        )
-                        belief = ParameterBelief(feasible_sets=fss, estimates=estimates)
-                        smid_records.append(record.to_dict())
-
-                feasible_history.append(_serial_ranges(belief.feasible_sets))
-                estimate_history.append(_serial_estimates(belief.estimates))
-
-                if active_phase.operation == "rendezvous" and self._rendezvous_goal_satisfied(
-                    states, chasers
-                ):
-                    active_phase = MissionPhase(name="docking", operation="docking")
-                    break
-                if active_phase.operation == "docking" and self._docking_goal_satisfied(
-                    states, chasers, anom
-                ):
-                    mission_complete = True
-                    break
-
-            if mission_complete or not solver_success:
-                break
-
-        (
-            physical_rendezvous_margins,
-            physical_docking_margins,
-            tightened_rendezvous_margins,
-            tightened_docking_margins,
-            active_margins,
-        ) = self._safety_margins(
-            actual, anom_history, sample_phase_history, tube_radius_history
-        )
-        pairwise_spacing = self._spacing_history(actual, anom_history)
-
-        active_safety_ok = self._active_target_margins_safe(active_margins)
-        spacing_ok = self._pairwise_spacing_safe(pairwise_spacing)
-        success = solver_success and mission_complete and active_safety_ok and spacing_ok
-        if solver_success and not mission_complete:
-            messages.append("max_mpc_updates_reached_before_goal")
-        if mission_complete and not active_safety_ok:
-            messages.append("active_target_margin_negative")
-        if mission_complete and not spacing_ok:
-            messages.append("pairwise_separation_below_configured_minimum")
-
-        return ADTMPCMissionResult(
-            mission=mission,
-            approximation=self.approximation,
-            solver_backend=self.solver_backend,
-            success=success,
-            message="; ".join(messages),
-            anom_history=anom_history,
-            phase_history=phase_history,
-            sample_phase_history=sample_phase_history,
-            actual_trajectories=actual,
-            nominal_trajectories=nominal,
-            controls=controls,
-            solve_stats=solve_stats,
-            solver_costs=solver_costs,
-            truth=self.truth.as_dict(),
-            target=self.target.as_dict(),
-            target_attitude_history=attitude_history,
-            target_angular_velocity_history=angular_velocity_history,
-            docking_points={
-                chaser.chaser_id: chaser.docking_point_body.tolist()
-                for chaser in chasers
-            },
-            initial_belief=initial_belief.as_metadata(),
-            final_belief=belief.as_metadata(),
-            feasible_set_history=feasible_history,
-            parameter_estimate_history=estimate_history,
-            smid_records=smid_records,
-            tube_profiles=tube_profiles,
-            tube_radius_history=tube_radius_history,
-            rendezvous_margins=physical_rendezvous_margins,
-            docking_cylinder_margins=physical_docking_margins,
-            active_target_margins=active_margins,
-            pairwise_spacing=pairwise_spacing,
-            physical_rendezvous_margins=physical_rendezvous_margins,
-            physical_docking_cylinder_margins=physical_docking_margins,
-            tightened_rendezvous_margins=tightened_rendezvous_margins,
-            tightened_docking_cylinder_margins=tightened_docking_margins,
-            metadata={
-                "horizon_steps": self._configured_horizon_metadata(),
-                "actuation_steps": self.actuation_steps,
-                "terminal_cost_enabled": self.config.mpc.terminal_cost_enabled,
-                "reference_preview_enabled": self.config.mpc.reference_preview_enabled,
-                "docking_position_tolerance": self.docking_position_tolerance,
-                "docking_velocity_tolerance": self.docking_velocity_tolerance,
-                "smid_error_bound": self.smid.error_bound,
-                "anom_step": self.config.anom_step,
-                "max_mpc_updates": int(steps),
-                "mission_complete": mission_complete,
-                "active_target_margins_safe": active_safety_ok,
-                "target_safety_tolerance": self.target_safety_tolerance,
-                "min_chaser_separation": self.min_chaser_separation,
-                "pairwise_spacing_safe": spacing_ok,
-                "target_barrier": {
-                    "enabled": True,
-                    "model": "belief_rk4_cylinder_union_projection",
-                    "clearance_reserve": self.target_barrier_clearance,
-                    "radial_damping": True,
-                    "radial_buffer": self.target_barrier_buffer,
-                },
-                "margin_semantics": {
-                    "rendezvous_margins": "physical bounding-sphere clearance without tube expansion",
-                    "docking_cylinder_margins": "physical cylinder-union clearance without tube expansion",
-                    "tightened_rendezvous_margins": "tube-expanded rendezvous diagnostic; can be negative when the physical state is safe but outside the tightened robust set",
-                    "tightened_docking_cylinder_margins": "tube-expanded cylinder diagnostic; can be negative when the physical state is safe but outside the tightened robust set",
-                    "active_target_margins": "physical margin for the safety model active in that sample's phase",
-                },
-                "phase_updates": phase_history,
-                "sample_phase_history": sample_phase_history,
-                "chaser_assignments": [
-                    chaser.assignment_metadata() for chaser in chasers
-                ],
-                "primary_smid_chaser": chasers[0].chaser_id,
-                "previous_anom": previous_anom if "previous_anom" in locals() else 0.0,
-            },
-        )
 
     def _single_chaser(self) -> List[ChaserConfig]:
         initial_states = [
@@ -1117,23 +714,6 @@ class ADTMPCMissionRunner:
                 return False
         return True
 
-    def _docking_goal_satisfied(
-        self,
-        states: Dict[str, np.ndarray],
-        chasers: Sequence[ChaserConfig],
-        anom: float,
-    ) -> bool:
-        for chaser in chasers:
-            state = np.asarray(states[chaser.chaser_id], dtype=float)
-            goal = self.target.docking_state(chaser.docking_point_body, anom)
-            position_error = float(np.linalg.norm(state[:3] - goal[:3]))
-            velocity_error = float(np.linalg.norm(state[3:] - goal[3:]))
-            if (
-                position_error > self.docking_position_tolerance
-                or velocity_error > self.docking_velocity_tolerance
-            ):
-                return False
-        return True
 
     def _phase_state_weights(self, phase: MissionPhase) -> np.ndarray:
         weights = np.asarray(np.diag(np.diag(self.config.mpc.Q)), dtype=float).copy()
@@ -1155,55 +735,6 @@ class ADTMPCMissionRunner:
             for key, value in self.config.mpc.horizon_steps.items()
         }
 
-    def _tube_for_belief(
-        self,
-        belief: ParameterBelief,
-        belief_params: Dict[str, float],
-        anom: float,
-        horizon_steps: int,
-    ):
-        tube_config = {
-            "enabled": True,
-            "lambda_gain": [float(value) for value in self.config.tube.sliding_gains],
-            "alpha": [float(value) for value in self.config.tube.bandwidth_0],
-            "phi": [float(value) for value in self.config.tube.boundary_layer_0],
-            "eccentricity_range": belief.feasible_sets["eccentricity"],
-            "aRange": belief.feasible_sets["alpha"],
-            "bRange": belief.feasible_sets["beta"],
-            "tighten_inputs": True,
-        }
-        profile = propagate_tube_profile(
-            start_anom=anom,
-            num_steps=horizon_steps,
-            anom_step=self.config.anom_step,
-            mean_motion=belief_params["mean_motion"],
-            t_periapsis=belief_params["time_periapsis"],
-            lambda_gain=tube_config["lambda_gain"],
-            alpha=tube_config["alpha"],
-            phi_0=tube_config["phi"],
-            eccentricity_range=tube_config["eccentricity_range"],
-            aRange=tube_config["aRange"],
-            bRange=tube_config["bRange"],
-            mu=belief_params["mu"],
-            semi_major_axis=belief_params["semi_major_axis"],
-            specific_angular_momentum=belief_params["specific_angular_momentum"],
-        )
-        tube_config["profile"] = profile
-        return tube_config, profile
-
-    def _tightened_bounds(self, bounds, profile):
-        state_bounds, input_bounds = bounds
-        input_tightening = input_tightening_from_profile(
-            profile, self.config.tube.sliding_gains
-        )
-        tightened_inputs = tighten_box_bounds(input_bounds, input_tightening)
-        for bound in tightened_inputs or []:
-            lower = bound.get("lower")
-            upper = bound.get("upper")
-            if isinstance(lower, (int, float)) and isinstance(upper, (int, float)):
-                if lower >= upper:
-                    raise ValueError("The tube leaves no admissible nominal input")
-        return tighten_box_bounds(state_bounds, profile.max_state_error), tightened_inputs
 
     def _tube_metadata(self, anom: float, profile) -> Dict[str, Any]:
         return {
@@ -1223,128 +754,6 @@ class ADTMPCMissionRunner:
             ).tolist(),
         }
 
-    def _tube_radius_at(self, profile, index: int) -> float:
-        radii = profile.position_radius
-        if len(radii) == 0:
-            return 0.0
-        return float(radii[min(index, len(radii) - 1)])
-
-    def _linearized_constraints(
-        self,
-        *,
-        phase: MissionPhase,
-        state: np.ndarray,
-        target_params: Dict[str, Any],
-        tube_radius: float,
-        anom: float,
-    ) -> Dict[str, Any]:
-        if phase.operation == "rendezvous":
-            affine = linearize_rendezvous_constraint(
-                state[:3],
-                target_radius=float(target_params["rendezvous_radius"]),
-                tube_radius=tube_radius,
-            )
-        else:
-            affine = linearize_cylinder_constraint(
-                state[:3],
-                self.target.cylinder_constraint(anom, tube_radius=tube_radius),
-            )
-        return {"target_params": None, "affine_constraints": [affine]}
-
-    def _pairwise_constraints(
-        self,
-        *,
-        chaser_id: str,
-        states: Dict[str, np.ndarray],
-        horizon_steps: int,
-    ) -> List[Dict[str, Any]]:
-        constraints = []
-        for other_id, other_state in states.items():
-            if other_id == chaser_id:
-                continue
-            reference = np.repeat(
-                np.asarray(other_state[:3], dtype=float).reshape(1, 3),
-                horizon_steps,
-                axis=0,
-            )
-            constraints.append(
-                {
-                    "other_chaser": other_id,
-                    "reference_positions": reference.tolist(),
-                    "min_separation": self.min_chaser_separation,
-                }
-            )
-        return constraints
-
-    def _first_control(self, result: SolverResult) -> np.ndarray:
-        return self._control_at(result, 0)
-
-    def _control_at(self, result: SolverResult, index: int) -> np.ndarray:
-        controls = np.asarray(result.control_trajectory, dtype=float)
-        if controls.ndim == 1:
-            return controls.copy()
-        if controls.shape[1] == 0:
-            return np.zeros(controls.shape[0], dtype=float)
-        return controls[:, min(index, controls.shape[1] - 1)].copy()
-
-    def _actuation_steps_for_phase(
-        self,
-        phase: MissionPhase,
-        update_solutions: Dict[str, Dict[str, Any]],
-    ) -> int:
-        configured = (
-            int(self.actuation_steps)
-            if self.actuation_steps is not None
-            else int(self.config.mpc.actuation_steps.get(phase.operation, 1))
-        )
-        if configured <= 0:
-            configured = int(self.config.mpc.actuation_steps.get(phase.operation, 1))
-        available = [self._horizon_steps_for_phase(phase)]
-        for solution in update_solutions.values():
-            controls = solution["result"].control_trajectory
-            if controls is None:
-                continue
-            controls = np.asarray(controls, dtype=float)
-            if controls.ndim == 2:
-                available.append(controls.shape[1])
-        return max(1, min(configured, *available))
-
-    def _apply_ancillary(
-        self,
-        *,
-        control: np.ndarray,
-        state: np.ndarray,
-        result: SolverResult,
-        anom: float,
-        belief_params: Dict[str, float],
-        tube_config: Dict[str, Any],
-        nominal_index: int = 0,
-    ) -> np.ndarray:
-        if result.state_trajectory is None:
-            return control
-        nominal = np.asarray(result.state_trajectory, dtype=float)
-        if nominal.ndim != 2 or nominal.shape[1] == 0:
-            return control
-        nominal_index = min(nominal_index, nominal.shape[1] - 1)
-        local_tube_config = dict(tube_config)
-        profile = local_tube_config.get("profile")
-        if profile is not None and len(profile.phi) > 0:
-            profile_index = min(nominal_index, len(profile.phi) - 1)
-            local_tube_config["phi"] = np.asarray(profile.phi[profile_index], dtype=float)
-        correction = ancillary_controller(
-            t=anom,
-            t_p=belief_params["time_periapsis"],
-            t_f=anom + self.config.anom_step,
-            dt=self.config.anom_step,
-            mean_motion=belief_params["mean_motion"],
-            nom_state=nominal[:, nominal_index],
-            act_state=state,
-            mu=belief_params["mu"],
-            semi_major_axis=belief_params["semi_major_axis"],
-            specific_angular_momentum=belief_params["specific_angular_momentum"],
-            **local_tube_config,
-        )
-        return np.asarray(control, dtype=float) + np.asarray(correction, dtype=float)
 
     def _clip_control(self, control: np.ndarray) -> np.ndarray:
         clipped = np.asarray(control, dtype=float).copy()
@@ -1357,115 +766,6 @@ class ADTMPCMissionRunner:
                 clipped[idx] = min(float(upper), clipped[idx])
         return clipped
 
-    def _apply_target_barrier_control(
-        self,
-        *,
-        state: np.ndarray,
-        control: np.ndarray,
-        anom: float,
-        phase: MissionPhase,
-        belief_params: Dict[str, float],
-    ) -> Optional[np.ndarray]:
-        if phase.operation != "docking":
-            return np.asarray(control, dtype=float)
-
-        control = self._clip_control(self._radial_damping_control(state, control, anom))
-        # RK4 is affine in the interval input for this relative dynamics model.
-        # Predict with the controller belief, never with the plant truth.
-        offset, input_map = self._affine_step_map(state, anom, belief_params)
-        future_orientation = self.target.orientation_at(anom + self.config.anom_step)
-        rotation = tait_bryan_to_rotation_matrix(future_orientation)
-        offset_body = rotation.T @ offset[:3]
-        input_map_body = rotation.T @ input_map[:3]
-        predicted_body = offset_body + input_map_body @ control
-        radius = self.target.radius * (1.0 + self.target.tolerance)
-        half_length = self.target.half_length * (1.0 + self.target.tolerance)
-        reserve = self.target_barrier_clearance
-        radial_norm = float(np.linalg.norm(predicted_body[:2]))
-        if max(radial_norm - radius, abs(predicted_body[2]) - half_length) >= reserve:
-            return np.asarray(control, dtype=float)
-
-        radial_direction = np.array([1.0, 0.0, 0.0])
-        if radial_norm > 1.0e-9:
-            radial_direction[:2] = predicted_body[:2] / radial_norm
-        normals = (radial_direction, np.array([0.0, 0.0, 1.0]), np.array([0.0, 0.0, -1.0]))
-        limits = (radius + reserve, half_length + reserve, half_length + reserve)
-        lower, upper = self._input_limits()
-        candidates = []
-        for normal, limit in zip(normals, limits):
-            candidate = project_box_halfspace(
-                control, normal @ input_map_body,
-                float(limit - normal @ offset_body), lower, upper,
-            )
-            if candidate is not None:
-                candidates.append(candidate)
-        if not candidates:
-            return None
-        # Every candidate satisfies a sufficient safe side/cap halfspace.
-        # Choose the least change among these locally constructed alternatives.
-        return min(candidates, key=lambda candidate: float(np.linalg.norm(candidate - control)))
-
-    def _radial_damping_control(
-        self, state: np.ndarray, control: np.ndarray, anom: float
-    ) -> np.ndarray:
-        """Retain the approach damping near the rotating cylindrical side."""
-        orientation = self.target.orientation_at(anom)
-        p_body = target_frame_position(np.asarray(state[:3], dtype=float), orientation)
-        rotation_velocity = rotating_body_point_velocity(
-            p_body, orientation, self.target.angular_velocity_at(anom)
-        )
-        v_body = target_frame_position(np.asarray(state[3:], dtype=float) - rotation_velocity, orientation)
-        radial_norm = float(np.linalg.norm(p_body[:2]))
-        half_length = self.target.half_length * (1.0 + self.target.tolerance)
-        if radial_norm <= 1.0e-9 or abs(float(p_body[2])) > half_length + self.target_barrier_buffer:
-            return np.asarray(control, dtype=float)
-        clearance = radial_norm - self.target.radius * (1.0 + self.target.tolerance)
-        if clearance >= self.target_barrier_buffer:
-            return np.asarray(control, dtype=float)
-        radial_direction = np.array([p_body[0] / radial_norm, p_body[1] / radial_norm, 0.0])
-        radial_velocity = float(v_body @ radial_direction)
-        delta_velocity = max(0.0, -1.5 * max(clearance, 0.0) - radial_velocity)
-        correction = delta_velocity / self.config.anom_step * radial_direction
-        return np.asarray(control, dtype=float) + rotating_docking_point(correction, orientation)
-
-    def _input_limits(self) -> Tuple[np.ndarray, np.ndarray]:
-        lower = np.full(3, -np.inf)
-        upper = np.full(3, np.inf)
-        for index, bound in enumerate(self.config.mpc.input_bounds[:3]):
-            lower[index] = float(bound.get("lower", -np.inf))
-            upper[index] = float(bound.get("upper", np.inf))
-        return lower, upper
-
-    def _affine_step_map(
-        self, state: np.ndarray, anom: float, dynamics_params: Dict[str, float]
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """RK4 endpoint offset and input map for one constant-control interval."""
-        matrices, _, _ = orbital_ellp_drag(
-            anom_step=self.config.anom_step, **dynamics_params
-        )
-        A_func, B_func, _, _, d_func = matrices
-        dt = self.config.anom_step
-        times = (anom, anom + 0.5 * dt, anom + dt)
-        t_p = dynamics_params["time_periapsis"]
-        a0, am, a1 = [np.asarray(A_func(value, t_p), dtype=float) for value in times]
-        d0, dm, d1 = [np.asarray(d_func(value, t_p), dtype=float) for value in times]
-        b = np.asarray(B_func(), dtype=float)
-        state = np.asarray(state, dtype=float)
-        k1 = a0 @ state + d0
-        k2 = am @ (state + 0.5 * dt * k1) + dm
-        k3 = am @ (state + 0.5 * dt * k2) + dm
-        k4 = a1 @ (state + dt * k3) + d1
-        offset = state + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-        g1 = b
-        g2 = am @ (0.5 * dt * g1) + b
-        g3 = am @ (0.5 * dt * g2) + b
-        g4 = a1 @ (dt * g3) + b
-        input_map = dt / 6.0 * (g1 + 2.0 * g2 + 2.0 * g3 + g4)
-        return offset, input_map
-
-    def _propagate_truth(self, state: np.ndarray, control: np.ndarray, anom: float) -> np.ndarray:
-        offset, input_map = self._affine_step_map(state, anom, self.truth.dynamics_params())
-        return offset + input_map @ control
 
     def _active_margin_for_state(
         self, state: np.ndarray, anom: float, phase: MissionPhase

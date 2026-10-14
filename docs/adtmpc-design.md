@@ -28,8 +28,8 @@ are obtained by multiplying an input by the square of the anomaly rate.
 
 The reference follows an analytical eccentric orbit with the Carter–Humi drag
 approximation. The relative equations are a local linearization in physical
-coordinates. The historical transformed equations remain explicitly available
-as `orbital_ellp_drag_legacy_transformed`; they cannot be combined directly with
+coordinates. The obsolete transformed-coordinate implementation has been
+removed from the active package; it could not be combined directly with
 meter-valued collision geometry. See [Carter and Humi, 2002](https://doi.org/10.2514/2.5010).
 The model is not a calibrated atmosphere, an orbital propagator with J2, or a
 contact-mechanics model. Target attitude remains prescribed Euler motion per
