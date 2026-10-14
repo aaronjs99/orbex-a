@@ -63,7 +63,7 @@ Files: reviewed estimation/planning/core modules, package exports and developer 
 - [x] Document module responsibilities, extension points and remaining physics boundaries.
 - [x] Review the integrated diff independently; fix all material findings.
 - [x] Refresh current plots/GIFs, videos, offline bundle and provenance.
-- [ ] Publish the reviewed source and completion record through PR #8.
+- [x] Publish the reviewed source and completion record through PR #8.
 
 ## Recorded outcome
 
