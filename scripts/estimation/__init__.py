@@ -1,0 +1,34 @@
+# /***********************************************************
+# *                                                         *
+# * Copyright (c) 2026                                      *
+# *                                                         *
+# * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
+# * University of California, Los Angeles                   *
+# *                                                         *
+# * Authors: Aaron John Sabu, Brett T. Lopez                *
+# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# *                                                         *
+# ***********************************************************/
+
+"""Explicit estimation services and lazy public exports."""
+
+from importlib import import_module
+
+_EXPORTS = {
+    "min_enclosing_ellipsoid": "orbexa.estimation.enclosures",
+    "SMIDAdaptor": "orbexa.estimation.smid",
+    "SMIDRecord": "orbexa.estimation.smid_records",
+    "gen_adaptor_data": "orbexa.estimation.batch_adaptation",
+    "run_adaptor_op": "orbexa.estimation.batch_adaptation",
+    "run_adaptation": "orbexa.estimation.batch_adaptation",
+}
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+    value = getattr(import_module(module_name), name)
+    globals()[name] = value
+    return value

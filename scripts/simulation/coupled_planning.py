@@ -1,0 +1,156 @@
+# /***********************************************************
+# *                                                         *
+# * Copyright (c) 2026                                      *
+# *                                                         *
+# * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
+# * University of California, Los Angeles                   *
+# *                                                         *
+# * Authors: Aaron John Sabu, Brett T. Lopez                *
+# * Contact: {aaronjs, btlopez}@ucla.edu                    *
+# *                                                         *
+# ***********************************************************/
+
+"""Coupled planning of all chasers with the existing dynamic-tube backend."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Sequence, TYPE_CHECKING
+import numpy as np
+
+from orbexa.contracts import SolverResult
+from orbexa.control.dynamic_tube_model import TubeProfile
+from orbexa.control.dynamic_tube_spec import DynamicTubeSpec
+from orbexa.control.terminal_cost import local_terminal_cost
+from orbexa.control.uncertainty import uncertainty_envelope, nominal_acceleration_bound, coefficient_intervals
+from orbexa.core.dynamics import orbital_ellp_drag
+
+if TYPE_CHECKING:
+    from orbexa.estimation.belief import ParameterBelief
+    from orbexa.simulation.coupled_state import CoupledMissionState
+    from orbexa.simulation.mission_models import ChaserConfig, MissionPhase
+    from orbexa.simulation.mission_scenario import CoupledController, MissionScenario
+
+
+@dataclass
+class ChaserPlan:
+    result: SolverResult
+    profile: TubeProfile
+    spec: DynamicTubeSpec
+    tube: Dict[str, Any]
+
+
+@dataclass
+class PlanningStep:
+    matrices: tuple
+    parameters: Dict[str, float]
+    plans: Dict[str, ChaserPlan] = field(default_factory=dict)
+    attempts: Dict[str, SolverResult] = field(default_factory=dict)
+    success: bool = True
+    messages: List[str] = field(default_factory=list)
+
+
+class CoupledMissionPlanner:
+    """Form one shared update; preserve sequential warm starts and joint checks."""
+
+    def __init__(self, scenario: MissionScenario, controller: CoupledController):
+        self.scenario = scenario
+        self.config = scenario.config
+        self.controller = controller
+
+    def tube_spec(self, belief: ParameterBelief, params: Dict[str, float], anomaly: float,
+                  count: int, phi: np.ndarray, omega: np.ndarray, bandwidth: np.ndarray) -> DynamicTubeSpec:
+        tube = self.config.tube
+        semi_major_axis, mu = params['semi_major_axis'], params['mu']
+        delta_a, delta_d, a_abs, d_abs = [], [], [], []
+        for stage in range(count - 1):
+            lo, hi = anomaly + stage * self.config.anom_step, anomaly + (stage + 1) * self.config.anom_step
+            da, dd = uncertainty_envelope(lo, hi, params,
+                belief.feasible_sets['eccentricity'], belief.feasible_sets['alpha'],
+                belief.feasible_sets['beta'], semi_major_axis, mu)
+            delta_a.append(da)
+            delta_d.append(dd)
+            a_abs.append(nominal_acceleration_bound(lo, hi, params, semi_major_axis))
+            _, _, dl, dh = coefficient_intervals(lo, hi, params, semi_major_axis)
+            d_abs.append(np.maximum(np.abs(dl), np.abs(dh)))
+        return DynamicTubeSpec(
+            phi_initial=phi, omega_initial=omega, lambda_gain=tube.sliding_gains,
+            alpha_initial=bandwidth, alpha_bounds=(tube.bandwidth_range['lower'], tube.bandwidth_range['upper']),
+            alpha_rate_limit=tube.bandwidth_rate_limit, delta_A=np.asarray(delta_a), delta_d=np.asarray(delta_d),
+            A_abs=np.asarray(a_abs), d_abs=np.asarray(d_abs), eta=np.full(3, tube.numerical_reserve),
+            bandwidth_weight=tube.bandwidth_weight, tube_weight=tube.tube_weight,
+            terminal_position_tolerance=self.config.mpc.docking_position_tolerance,
+            terminal_velocity_tolerance=self.config.mpc.docking_velocity_tolerance, enforce_terminal=False)
+
+    def plan(self, state: CoupledMissionState, belief: ParameterBelief, phase: MissionPhase,
+             chasers: Sequence[ChaserConfig], previous_plans: Dict[str, ChaserPlan]) -> PlanningStep:
+        scenario, cfg = self.scenario, self.config
+        q = state.anomaly
+        count = scenario.reference.horizon_steps_for_phase(phase)
+        params = belief.dynamics_params(scenario.truth)
+        matrices = orbital_ellp_drag(anom_step=cfg.anom_step, **params)[0]
+        outcome = PlanningStep(matrices=matrices, parameters=params)
+        ids = [c.chaser_id for c in chasers]
+        lam = np.asarray(cfg.tube.sliding_gains)
+        for chaser in chasers:
+            key = chaser.chaser_id
+            spec = self.tube_spec(belief, params, q, count, state.phi[key], state.omega[key], state.bandwidth[key])
+            goal = scenario.reference.phase_reference_state(phase, chaser, state.centers[key], q)
+            references, feedforward = scenario.reference.phase_reference_preview(
+                phase, chaser, goal, q, count, matrices, params['time_periapsis'])
+            target = scenario.target.collision_params(phase.operation, q)
+            target.update(orientations=[scenario.target.orientation_at(q + k * cfg.anom_step).tolist() for k in range(count)],
+                robust_side_corridor=phase.operation == 'docking', docking_normal_body=chaser.docking_normal_body,
+                safety_reserve=cfg.mission.target_barrier_clearance)
+            # Arm an explicit terminal set only near the final approach.
+            # Completion always checks that set, including the current tube.
+            spec.enforce_terminal = bool(phase.operation == 'docking' and
+                np.linalg.norm(state.centers[key][:3] - goal[:3]) < cfg.mission.terminal_activation_distance)
+            pairwise = []
+            for other in ids:
+                if other == key:
+                    continue
+                prior = outcome.plans.get(other, previous_plans.get(other))
+                if prior is not None:
+                    path = np.asarray(prior.result.state_trajectory).T
+                    rad = np.asarray(prior.profile.position_radius)
+                    shift = 0 if other in outcome.plans else 1
+                    indices = np.minimum(np.arange(count) + shift, len(path) - 1)
+                    path, rad = path[indices, :3], rad[indices]
+                else:
+                    path = np.array([state.centers[other][:3] + k * cfg.anom_step * state.centers[other][3:] for k in range(count)])
+                    rad = np.full(count, np.linalg.norm(state.omega[other]))
+                pairwise.append(dict(other_chaser=other, reference_positions=path, tube_radius=rad,
+                                     min_separation=scenario.safety.min_chaser_separation))
+            kwargs = dict(mean_motion=params['mean_motion'], state_cost_matrix=scenario.reference.phase_state_weights(phase),
+                input_cost_matrix=cfg.mpc.R, dynamic_tube=spec.to_extra_params(), target_params=target,
+                pairwise_constraints=pairwise)
+            prior = previous_plans.get(key)
+            if prior is not None:
+                path = np.asarray(prior.result.state_trajectory)
+                commands = np.asarray(prior.result.control_trajectory)
+                kwargs['state_initial_guess'] = path[:, np.minimum(np.arange(count) + 1, path.shape[1] - 1)]
+                kwargs['control_initial_guess'] = commands[:, np.minimum(np.arange(count - 1) + 1, commands.shape[1] - 1)]
+            if cfg.mpc.reference_preview_enabled or spec.enforce_terminal:
+                kwargs.update(state_reference=references, input_reference=feedforward)
+            if cfg.mpc.terminal_cost_enabled:
+                kwargs['terminal_cost_matrix'] = local_terminal_cost(matrices[0](q, params['time_periapsis']),
+                    matrices[1](), kwargs['state_cost_matrix'], cfg.mpc.R, cfg.anom_step)
+            result = self.controller.solve_step(
+                initial_state=state.centers[key], final_state=goal, control_input_0=feedforward[:, 0],
+                start_anom=q, anom_step=cfg.anom_step, num_steps=count, dynamics=matrices, bounds=cfg.mpc.bounds(),
+                time_periapsis=params['time_periapsis'], eccentricity=params['eccentricity'],
+                use_anomaly_scaling=False, **kwargs)
+            outcome.attempts[key] = result
+            if not result.success:
+                outcome.success = False
+                outcome.messages.append(f'{key}: {result.message}')
+                break
+            tube = result.solver_info['dynamic_tube']
+            profile = TubeProfile(phi=np.asarray(tube['phi']), omega=np.asarray(tube['omega']),
+                time_grid=q + cfg.anom_step * np.arange(count), lambda_gain=lam,
+                alpha=np.asarray(tube['alpha']), input_reserve=np.asarray(tube['input_reserve']))
+            outcome.plans[key] = ChaserPlan(result=result, profile=profile, spec=spec, tube=tube)
+        if outcome.success:
+            outcome.messages.extend(scenario.safety.planned_separation_messages(outcome.plans))
+            outcome.success = not outcome.messages
+        return outcome

@@ -74,14 +74,16 @@ docking close-up PNG/GIF, and a minimum pairwise-spacing heatmap for fleets.
 `insights_manifest.json` records source sample indices, playback rate, fallback
 assumptions, and reasons for unavailable views. Replays use recorded states;
 playback is sample-based and does not represent physical time. Unsupported views
-remain absent for incomplete or older saved data. Multi-agent runs also expose
+remain absent for incomplete or older saved data. Rendered sessions also expose
 `results/<session_id>/demo.gif`, using a symlink when available and a copy otherwise.
 
 Open the session's `index.html` in a browser. All interactive views include their
 plotting runtime and work offline. Partial saved-data rendering retains the
 other rendered mission families through `gallery.json` or their older manifests.
 
-Playable MP4 output requires FFmpeg. Without it, the report links to the GIF and `manifest.json` records why MP4 was skipped; no empty video is presented as a generated artifact.
+Playable MP4 output uses FFmpeg on the system path or the local executable
+provided by `pip install -e ".[video]"`. Without an available encoder, the report
+links to the GIF and `manifest.json` records why MP4 was skipped.
 
 Generated session artifacts stay out of git. Add a curated preview intentionally when a representative mission artifact is available.
 
@@ -168,9 +170,14 @@ Generated plots, videos, JSON outputs, caches, and local paper PDFs are ignored 
 
 ## Repository Layout
 
-Source code and CLIs live under `src/orbexa`. Generated data belongs under
+Source code and CLIs live under `scripts/`, mapped to the `orbexa` Python
+package for stable imports and console commands. Generated data belongs under
 `data/`; rendered artifacts belong under `results/`. Package console entry
 points are installed by `pip install -e .`.
+
+Paper figures remain under `paper/IEEE Aerospace Conference 2025/assets/`.
+The user's moved layout is preserved. See [the architecture guide](docs/architecture.md)
+for module responsibilities, dependency injection, public APIs and recorded-data rendering.
 
 The active checkout contains the maintained physical-coordinate implementation,
 scenario settings, and current design notes. Imported historical manuscripts,

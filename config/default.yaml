@@ -5,6 +5,33 @@ num_update_steps: 200
 decoupled_mode: true
 num_chasers: 8
 
+mission:
+  rendezvous_standoff: 0.5
+  rendezvous_capture_radius: 3.5
+  rendezvous_position_tolerance: 0.15
+  rendezvous_velocity_tolerance: 5.0
+  docking_position_weight_factor: 6.0
+  docking_velocity_weight_factor: 1.5
+  target_safety_tolerance: 1.0e-7
+  target_barrier_buffer: 0.04
+  target_barrier_clearance_fraction: 0.05
+  terminal_activation_distance: 0.035
+
+adaptation:
+  error_bound: 0.15
+  prediction_error_threshold: 0.005
+  max_iter: 90
+  minimum_widths: {eccentricity: 0.04, alpha: 1.0e-7, beta: 1.5e-7}
+  prior_eccentricity_half_width: 0.08
+  prior_drag_factors: [0.5, 1.5]
+  window_intervals: 8
+
+solver:
+  remote: false
+  disp: false
+  max_iter: 400
+  max_memory: 512
+
 orbit:
   mu: 3.986004418e14
   # 300 km perigee with e=0.18; the earlier a placed perigee inside Earth.

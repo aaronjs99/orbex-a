@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,7 +12,7 @@ authors = [
 ]
 license = { text = "GPL-2.0-only" }
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 dependencies = [
   "numpy",
@@ -27,10 +27,16 @@ dependencies = [
 [project.optional-dependencies]
 casadi = ["casadi"]
 visualization = ["mayavi"]
-all = ["casadi", "mayavi"]
+video = ["imageio-ffmpeg"]
+all = ["casadi", "mayavi", "imageio-ffmpeg"]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+package-dir = {orbexa = "scripts"}
+packages = [
+  "orbexa", "orbexa.cli", "orbexa.control", "orbexa.core",
+  "orbexa.estimation", "orbexa.planning", "orbexa.simulation",
+  "orbexa.solvers", "orbexa.utils", "orbexa.visualization",
+]
 
 [project.scripts]
 orbexa-generate-demo = "orbexa.cli.generate_demo:main"

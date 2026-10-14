@@ -2,6 +2,9 @@
 
 ## Basic Install
 
+Use Python 3.10 or newer. The physical `scripts/` directory supplies the
+`orbexa` package through the installation mapping; keep the user's directory layout.
+
 ```bash
 python -m pip install -e .
 ```
@@ -17,7 +20,8 @@ location to update an existing installed console command.
 python -m pip install -e ".[casadi]"
 ```
 
-GEKKO/IPOPT remains the primary nonlinear path for paper missions. SciPy/SLSQP is only a secondary linearized comparison path.
+ADTMPC missions use the coupled nonlinear GEKKO/IPOPT path. The ordinary MPC
+Python API also supports the SciPy and optional CasADi adapters.
 
 ## Run ADTMPC Missions
 
@@ -51,7 +55,9 @@ Moving-goal prediction is enabled by default through
 nonlinear cylinder exclusion and the assigned conservative side corridor.
 Execution stops on a measured safety or tube-containment violation.
 
-If MP4 generation is skipped, install `ffmpeg`; the report shows the reason
+For local MP4 generation, install `ffmpeg` on the system path or use
+`python -m pip install -e ".[video]"` for a packaged local encoder.
+If encoding is unavailable or fails, the report shows the reason
 and provides a GIF instead of an empty MP4. Windows and cloud-mounted folders
 do not need symlink privileges: `latest.json` selects the latest saved session,
 and the session preview falls back to a copied GIF.
