@@ -61,13 +61,28 @@ class OrbitConfig:
     """Time of periapsis passage."""
 
     initial_conditions: np.ndarray
-    """Initial relative state vector [x, y, z, vx, vy, vz]."""
+    """Physical LVLH state [x, y, z, dx/dq, dy/dq, dz/dq]."""
 
     target_drag: float = 0.0
     """Target quadratic drag constant alpha."""
 
     chaser_drag: float = 0.0
     """Chaser quadratic drag constant beta."""
+
+    central_body_radius: float = 0.0
+    """Reference surface radius in meters; zero disables surface admissibility."""
+
+    def __post_init__(self) -> None:
+        if not (np.isfinite(self.mu) and self.mu > 0 and
+                np.isfinite(self.semi_major_axis) and self.semi_major_axis > 0 and
+                0 <= self.eccentricity < 1):
+            raise ValueError("The reference orbit must be a finite bound ellipse")
+        if self.central_body_radius < 0 or not np.isfinite(self.central_body_radius):
+            raise ValueError("central_body_radius must be finite and nonnegative")
+        if self.semi_major_axis * (1 - self.eccentricity) <= self.central_body_radius:
+            raise ValueError("Reference-orbit perigee intersects the central body")
+        if min(self.target_drag, self.chaser_drag) < 0:
+            raise ValueError("Drag coefficients must be nonnegative")
 
     @property
     def mean_motion(self) -> float:
@@ -111,13 +126,22 @@ class MPCConfig:
     Q: np.ndarray = field(default_factory=lambda: np.eye(6))
     R: np.ndarray = field(default_factory=lambda: np.eye(3) * 1e-4)
     terminal_cost_enabled: bool = True
-    reference_preview_enabled: bool = False
+    reference_preview_enabled: bool = True
+    docking_position_tolerance: float = 0.002
+    docking_velocity_tolerance: float = 0.08
+    terminal_dwell_updates: int = 5
 
     def __post_init__(self) -> None:
         if not isinstance(self.terminal_cost_enabled, bool):
             raise ValueError("mpc.terminal_cost_enabled must be a boolean")
         if not isinstance(self.reference_preview_enabled, bool):
             raise ValueError("mpc.reference_preview_enabled must be a boolean")
+        if (not isinstance(self.terminal_dwell_updates, int) or
+                isinstance(self.terminal_dwell_updates, bool) or self.terminal_dwell_updates <= 0):
+            raise ValueError("mpc.terminal_dwell_updates must be a positive integer")
+        if any(not np.isfinite(value) or value <= 0 for value in
+               (self.docking_position_tolerance, self.docking_velocity_tolerance)):
+            raise ValueError("Docking tolerances must be finite and positive")
 
     def bounds(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, float]]]:
         return self.state_bounds, self.input_bounds
@@ -129,6 +153,7 @@ class TargetConfig:
 
     initial_orientation: np.ndarray
     initial_angular_velocity: np.ndarray
+    """Prescribed Euler angle derivatives per anomaly, not body rates in rad/s."""
     inertia: np.ndarray
     shape: str
     center: np.ndarray
@@ -206,6 +231,31 @@ class TubeMPCConfig:
 
     # Adaptation ranges
     bandwidth_range: Dict[str, float]
+    feedback_substeps: int = 32
+    bandwidth_rate_limit: float = 1500.0
+    bandwidth_weight: float = 1.0e-7
+    tube_weight: float = 10.0
+    numerical_reserve: float = 1.0e-5
+    membership_error_bound: float = 1.0e-7
+    membership_box_budget: int = 32
+    membership_update_period: int = 5
+
+    def __post_init__(self) -> None:
+        for name in ("bandwidth_0", "sliding_gains", "boundary_layer_0"):
+            value = np.asarray(getattr(self, name), dtype=float)
+            if value.shape != (3,) or not np.all(np.isfinite(value)):
+                raise ValueError(f"tube.{name} must contain three finite values")
+            if np.any(value <= 0):
+                raise ValueError(f"tube.{name} must be positive")
+        low, high = self.bandwidth_range["lower"], self.bandwidth_range["upper"]
+        if not 0 < low <= high or self.feedback_substeps < 1:
+            raise ValueError("Invalid tube bandwidth range or feedback sampling")
+        if any(not np.isfinite(value) or value < 0 for value in
+               (self.numerical_reserve, self.membership_error_bound, self.bandwidth_rate_limit,
+                self.bandwidth_weight, self.tube_weight)):
+            raise ValueError("Tube numerical reserves, limits and weights must be finite and nonnegative")
+        if self.membership_box_budget < 1 or self.membership_update_period < 1:
+            raise ValueError("Membership budget and update period must be positive")
 
     def runtime_params(
         self,
@@ -292,6 +342,7 @@ class SimulationConfig:
             initial_conditions=to_numpy(orbit_data["initial_conditions"]),
             target_drag=float(orbit_data.get("target_drag", orbit_data.get("alpha", 0.0))),
             chaser_drag=float(orbit_data.get("chaser_drag", orbit_data.get("beta", 0.0))),
+            central_body_radius=float(orbit_data.get("central_body_radius", 0.0)),
         )
 
         mpc_data = data["mpc"]
@@ -308,7 +359,10 @@ class SimulationConfig:
                 mpc_data.get("R", (np.eye(3) * 1e-4).tolist()), 3
             ),
             terminal_cost_enabled=mpc_data.get("terminal_cost_enabled", True),
-            reference_preview_enabled=mpc_data.get("reference_preview_enabled", False),
+            reference_preview_enabled=mpc_data.get("reference_preview_enabled", True),
+            docking_position_tolerance=float(mpc_data.get("docking_position_tolerance", 0.002)),
+            docking_velocity_tolerance=float(mpc_data.get("docking_velocity_tolerance", 0.08)),
+            terminal_dwell_updates=int(mpc_data.get("terminal_dwell_updates", 5)),
         )
 
         target_data = data["target"]
@@ -337,6 +391,14 @@ class SimulationConfig:
             convergence_rate=tube_data["convergence_rate"],
             sliding_gains=tube_data["sliding_gains"],
             bandwidth_range=tube_data["bandwidth_range"],
+            feedback_substeps=int(tube_data.get("feedback_substeps", 32)),
+            bandwidth_rate_limit=float(tube_data.get("bandwidth_rate_limit", 1500.0)),
+            bandwidth_weight=float(tube_data.get("bandwidth_weight", 1.0e-7)),
+            tube_weight=float(tube_data.get("tube_weight", 10.0)),
+            numerical_reserve=float(tube_data.get("numerical_reserve", 1.0e-5)),
+            membership_error_bound=float(tube_data.get("membership_error_bound", 1.0e-7)),
+            membership_box_budget=int(tube_data.get("membership_box_budget", 32)),
+            membership_update_period=int(tube_data.get("membership_update_period", 5)),
         )
 
         config = cls(

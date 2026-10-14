@@ -24,13 +24,13 @@ This module is strictly functional and stateless; all parameters must be passed
 as arguments.
 """
 
-import math
 import numpy as np
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Tuple, List, Dict, Any, Callable, Optional
 
 from orbexa.utils import discretize, gen_skew_sym_mat
+from orbexa.utils.anomaly import orbital_radius_terms
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,11 @@ def _default_specific_angular_momentum(
 # =============================================================================
 def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNamespace:
     """
-    Calculate orbital elements from state vectors.
+    Calculate elements of a bound elliptical orbit from SI inertial vectors.
+
+    Anomalies are returned in [0, 2*pi). Circular orbits use argument of
+    latitude from the ascending node, or longitude from +X if equatorial,
+    because their periapsis and true anomaly are otherwise undefined.
 
     Args:
         r_osc (np.ndarray): Position vector (3,).
@@ -104,10 +108,21 @@ def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNam
             - M (float): Mean anomaly (rad).
             - q (float): True anomaly (rad).
     """
+    r_osc = np.asarray(r_osc, dtype=float).reshape(3)
+    v_osc = np.asarray(v_osc, dtype=float).reshape(3)
+    if (
+        not np.isfinite(mu)
+        or mu <= 0.0
+        or not np.all(np.isfinite(r_osc))
+        or not np.all(np.isfinite(v_osc))
+    ):
+        raise ValueError("finite orbital vectors and positive mu are required")
     h_vec = np.cross(r_osc, v_osc)
     h = np.linalg.norm(h_vec)
     r = np.linalg.norm(r_osc)
     v = np.linalg.norm(v_osc)
+    if r <= 0.0 or h <= 0.0:
+        raise ValueError("nonzero radius and angular momentum are required")
 
     # Eccentricity vector
     e_vec = (np.cross(v_osc, h_vec) / mu) - (r_osc / r)
@@ -120,24 +135,37 @@ def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNam
     else:
         a = -mu / (2 * energy)
 
-    # True Anomaly
-    if np.dot(r_osc, v_osc) >= 0:
-        q = np.arccos(np.dot(e_vec, r_osc) / (e * r))
+    if e >= 1.0:
+        raise ValueError("orbital_params currently requires an elliptical orbit")
+
+    # atan2 selects the inbound quadrant once, without an acos roundoff error.
+    normal = h_vec / h
+    if e > 1.0e-10:
+        periapsis_direction = e_vec / e
+        q = np.arctan2(
+            np.dot(r_osc, np.cross(normal, periapsis_direction)),
+            np.dot(r_osc, periapsis_direction),
+        ) % (2.0 * np.pi)
     else:
-        q = 2 * np.pi - np.arccos(np.dot(e_vec, r_osc) / (e * r))
-
-    if np.isnan(q):
-        q = 0.0
-
-    # Eccentric Anomaly
-    E = 2 * np.arctan(np.sqrt((1 - e) / (1 + e)) * np.tan(q / 2))
-
-    # Mean Anomaly
-    M = E - e * np.sin(E)
-
-    # Correct quadrant for q
-    if np.dot(r_osc, v_osc) < 0:
-        q = 2 * math.pi - q
+        # Periapsis is undefined for a circular orbit. Return argument of
+        # latitude from the ascending node, or orbital longitude from +X for
+        # an equatorial orbit, consistently as q=E=M.
+        node = np.cross(np.array([0.0, 0.0, 1.0]), normal)
+        reference = (
+            node / np.linalg.norm(node)
+            if np.linalg.norm(node) > 1.0e-10
+            else np.array([1.0, 0.0, 0.0])
+        )
+        q = np.arctan2(
+            np.dot(r_osc, np.cross(normal, reference)), np.dot(r_osc, reference)
+        ) % (2.0 * np.pi)
+    if e <= 1.0e-10:
+        E = M = q
+    else:
+        E = np.arctan2(np.sqrt(1.0 - e**2) * np.sin(q), e + np.cos(q)) % (
+            2.0 * np.pi
+        )
+        M = E - e * np.sin(E)
 
     return SimpleNamespace(r=r, v=v, h=h, e=e, a=a, E=E, M=M, q=q)
 
@@ -162,6 +190,13 @@ def cwh_equations(
 
     Also known as Hill's equations. Linearized dynamics for a chaser
     relative to a target in a circular orbit.
+
+    This compatibility factory uses time in seconds and the conventional
+    axes x=radial outward, y=transverse, z=orbit normal. Its legacy parameter
+    name ``anom_step`` denotes seconds here. To compare with the physical
+    elliptical factory, map positions and velocities with
+    ``(x_ellp, y_ellp, z_ellp) = (-y_cwh, x_cwh, z_cwh)`` and convert the
+    velocity independent variable from time to anomaly.
 
     Args:
         dt (float): Time step (seconds).
@@ -213,7 +248,7 @@ def cwh_equations(
 # =============================================================================
 # 3. Time-Varying Orbital Dynamics (Elliptical)
 # =============================================================================
-def orbital_ellp_drag(
+def orbital_ellp_drag_legacy_transformed(
     anom_step: Optional[float] = None,
     mean_motion: float = 0.001,
     eccentricity: float = 0.0,
@@ -229,11 +264,13 @@ def orbital_ellp_drag(
     **kwargs,
 ) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
     """
-    Extended Tschauner-Hempel dynamics with quadratic drag.
+    Legacy transformed-coordinate model, version ``legacy-transformed-v0``.
 
-    This implements the paper's Appendix B model with true anomaly as the
-    independent variable. The drag constants are ``alpha`` for the target and
-    ``beta`` for the chaser; zero values recover the no-drag model.
+    Retains the historical implementation exactly for numerical reproduction,
+    including its omitted exponential curvature factor and positive z-prime
+    differential-drag coefficient. Its coordinates and forcing are not a
+    physical-meter LVLH state; do not couple it directly to metric geometry.
+    The physical mission model is ``orbital_ellp_drag`` below.
     """
     if anom_step is None:
         anom_step = kwargs.get("dt")
@@ -334,6 +371,100 @@ def orbital_ellp_drag(
     return model.legacy_return()
 
 
+def orbital_ellp_drag(
+    anom_step: Optional[float] = None,
+    mean_motion: float = 0.001,
+    eccentricity: float = 0.0,
+    state_bounds: Optional[List[Dict[str, Any]]] = None,
+    input_bounds: Optional[List[Dict[str, float]]] = None,
+    alpha: float = 0.0,
+    beta: float = 0.0,
+    mu: float = 3.986004418e14,
+    semi_major_axis: Optional[float] = None,
+    specific_angular_momentum: Optional[float] = None,
+    theta0: float = 0.0,
+    *args,
+    **kwargs,
+):
+    """Physical LVLH relative dynamics, version ``physical-lvlh-v1``.
+
+    The six states are ``[p, dp/dq]`` with p in meters and dp/dq in m/rad.
+    Axes are x opposite the transverse direction, y radially outward, and z
+    along the target's orbital angular momentum. They form a right-handed
+    frame; x is not opposite the full velocity on an eccentric orbit.
+
+    Inputs are anomaly accelerations in m/rad^2, so B has a lower identity.
+    A physical thruster acceleration in m/s^2 must be divided by (dq/dt)^2
+    before applying it here. All geometry therefore acts on physical meters.
+
+    The model uses Carter--Humi's pre-transformation, small-separation and
+    small-radial-speed approximation with inverse-radius quadratic drag.
+    Alpha/beta are dimensionless target/chaser drag constants, not C_D.
+    It is not a full atmosphere or nonlinear two-spacecraft propagator.
+    No-drag circular motion reduces to HCW in the stated axis convention.
+    ``anom_step`` is retained for API compatibility; callbacks are continuous
+    in unwrapped q, and discretization is the consumer's responsibility.
+    """
+    if anom_step is None:
+        anom_step = kwargs.get("dt")
+    if anom_step is None:
+        raise ValueError("anom_step is required for orbital_ellp_drag")
+    alpha = kwargs.get("drag_alpha", alpha)
+    beta = kwargs.get("drag_beta", beta)
+    specific_angular_momentum = kwargs.get("h", specific_angular_momentum)
+    theta0 = kwargs.get("theta0", theta0)
+
+    def radius_terms(q, local_kwargs):
+        return orbital_radius_terms(
+            q,
+            eccentricity=eccentricity,
+            alpha=alpha,
+            mu=mu,
+            semi_major_axis=semi_major_axis,
+            mean_motion=mean_motion,
+            specific_angular_momentum=specific_angular_momentum,
+            theta0=theta0,
+            solver=_backend(local_kwargs),
+        )
+
+    def A_func(t, t_p=0.0, *args, **local_kwargs):
+        q = local_kwargs.get("q", t)
+        radius, radius_prime, h = radius_terms(q, local_kwargs)
+        k = radius_prime / radius
+        gamma = beta - alpha
+        curvature = mu * radius * _exp(_backend(local_kwargs), 2.0 * alpha * q) / h**2
+        damping = 2.0 * k - gamma
+        values = [
+            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0 - curvature, -damping, 0.0, damping, 2.0, 0.0],
+            [damping, 1.0 + 2.0 * curvature, 0.0, -2.0, damping, 0.0],
+            [0.0, 0.0, -curvature, 0.0, 0.0, damping],
+        ]
+        return values if "m" in local_kwargs else np.array(values, dtype=object)
+
+    def B_func(*args, **local_kwargs):
+        return np.vstack((np.zeros((3, 3)), np.eye(3)))
+
+    def d_func(t, t_p=0.0, *args, **local_kwargs):
+        q = local_kwargs.get("q", t)
+        radius, radius_prime, _ = radius_terms(q, local_kwargs)
+        gamma = beta - alpha
+        values = [0.0, 0.0, 0.0, gamma * radius, -gamma * radius_prime, 0.0]
+        return values if "m" in local_kwargs else np.array(values, dtype=object)
+
+    return DynamicsModel(
+        A=A_func,
+        B=B_func,
+        Q=np.asarray(kwargs.get("state_cost_matrix", np.identity(6))),
+        R=np.asarray(kwargs.get("input_cost_matrix", np.identity(3))),
+        d=d_func,
+        state_bounds=state_bounds,
+        input_bounds=input_bounds,
+    ).legacy_return()
+
+
 def orbital_ellp_undrag(
     anom_step: Optional[float] = None,
     mean_motion: float = 0.001,
@@ -343,7 +474,10 @@ def orbital_ellp_undrag(
     *args,
     **kwargs,
 ) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
-    """Elliptical true-anomaly dynamics without differential drag."""
+    """Physical ``[p, dp/dq]`` LVLH dynamics with both drag constants zero.
+
+    Uses the same axes and m/rad^2 input convention as ``orbital_ellp_drag``.
+    """
     kwargs.pop("alpha", None)
     kwargs.pop("beta", None)
     kwargs.pop("drag_alpha", None)
@@ -375,6 +509,9 @@ def orbital_circ_undrag(
     Dynamics model for circular orbits without drag.
 
     Returns functions for A(t) and B(t), though they are constant here.
+    Time is in seconds, velocity in m/s, and inputs in m/s^2. This older
+    factory retains x=radial outward, y=transverse, z=orbit normal, as in
+    ``cwh_equations``; see its documented mapping to the elliptical axes.
     """
 
     def A_func(*args, **kwargs):

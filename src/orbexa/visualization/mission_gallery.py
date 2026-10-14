@@ -94,7 +94,9 @@ class MissionGallery:
                 continue
             seen.add(url)
             stem = path.stem
-            if "margin" in stem or "spacing" in stem:
+            if stem.startswith("matched_tube"):
+                category = "Tube & goal"
+            elif "margin" in stem or "spacing" in stem:
                 category = "Safety"
             elif any(word in stem for word in ("parameter", "smid", "drag")):
                 category = "Adaptation"
@@ -104,6 +106,7 @@ class MissionGallery:
                 category = "Motion"
             files.append({"url": url, "name": path.name, "stem": stem, "suffix": path.suffix.lower(), "category": category,
                           "title": _TITLES.get(stem, stem.replace("_", " ").capitalize()), "label": label or labels.get(path.name, "Recorded simulation artifact.")})
+        files.sort(key=lambda item: 0 if item["stem"].startswith("matched_tube") else 1)
         sample_count = entry.get("sample_count", entry.get("samplecount"))
         data_href = str(entry.get("data_href") or "").replace("\\", "/")
         if data_href and (urlsplit(data_href).scheme or data_href.startswith("//")):

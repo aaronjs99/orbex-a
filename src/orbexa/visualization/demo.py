@@ -52,6 +52,7 @@ from orbexa.utils.io_utils import save_data
 from orbexa.visualization.mission_insights import MissionInsights, chaser_color
 from orbexa.visualization.mission_replay import MissionReplay
 from orbexa.visualization.mission_gallery import MissionGallery
+from orbexa.visualization.tube_diagnostics import MatchedTubeDiagnostics
 
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,10 @@ class ADTMPCMissionRenderer:
         for path, label in insights.render():
             manifest.add(path, label)
         manifest.skipped_artifacts.update(insights.skipped_artifacts)
+        tube_diagnostics = MatchedTubeDiagnostics(result, self.output_dir)
+        for path, label in tube_diagnostics.render():
+            manifest.add(path, label)
+        manifest.skipped_artifacts.update(tube_diagnostics.skipped_artifacts)
         manifest.add(MissionReplay(result).write(self.output_dir / "replay.html"),
                      "Animated replay of recorded states with target rotation and update slider.")
         self._render_index(result, manifest)
@@ -324,7 +329,7 @@ class ADTMPCMissionRenderer:
             manifest,
             filename="target_attitude.png",
             values=result.target_attitude_history,
-            ylabel="attitude",
+            ylabel="Euler angle (rad)",
             labels=["roll", "pitch", "yaw"],
         )
         self._target_plot(
@@ -332,7 +337,7 @@ class ADTMPCMissionRenderer:
             manifest,
             filename="target_angular_velocity.png",
             values=result.target_angular_velocity_history,
-            ylabel="angular velocity",
+            ylabel="Euler angle rate (rad/rad anomaly)",
             labels=["roll rate", "pitch rate", "yaw rate"],
         )
         self._plot_spacing(result, manifest)
@@ -618,6 +623,8 @@ class ADTMPCMissionRenderer:
             ax.plot(result.anom_history[: len(arr)], arr[:, idx], label=labels[idx])
         ax.set_xlabel("true anomaly")
         ax.set_ylabel(ylabel)
+        if "prescribed" in str(result.metadata.get("target_attitude_model", "")).lower():
+            ax.set_title("Prescribed Euler-angle target motion in true anomaly")
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=8)
         manifest.add(self._save_matplotlib(fig, filename))

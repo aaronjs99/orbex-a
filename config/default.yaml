@@ -7,7 +7,9 @@ num_chasers: 8
 
 orbit:
   mu: 3.986004418e14
-  semi_major_axis: 6678136.3
+  # 300 km perigee with e=0.18; the earlier a placed perigee inside Earth.
+  semi_major_axis: 8144068.658536585
+  central_body_radius: 6378136.3
   eccentricity: 0.18
   target_drag: 2.0e-7
   chaser_drag: 4.5e-7
@@ -16,13 +18,16 @@ orbit:
 
 mpc:
   terminal_cost_enabled: true
-  reference_preview_enabled: false
+  reference_preview_enabled: true
+  docking_position_tolerance: 0.002
+  docking_velocity_tolerance: 0.08
+  terminal_dwell_updates: 5
   horizon_steps:
-    rendezvous: 80
-    docking: 40
+    rendezvous: 12
+    docking: 12
   actuation_steps:
-    rendezvous: 20
-    docking: 2
+    rendezvous: 1
+    docking: 1
   state_bounds:
     - {lower: "-Inf", upper: "+Inf"}
     - {lower: "-Inf", upper: "+Inf"}
@@ -37,6 +42,8 @@ mpc:
   Q: [1, 1, 1, 1, 1, 1]
   R: [0.0001, 0.0001, 0.0001]
   min_chaser_separation: 0.35
+  # Historical field: no mass/thruster force model consumes these values.
+  # Active input bounds above are anomaly acceleration in m/rad^2.
   force_bounds:
     - {lower: -7000.0, upper: 7000.0}
     - {lower: -7000.0, upper: 7000.0}
@@ -47,9 +54,11 @@ target:
   initial_orientation: [0.0, 0.2, -0.1]
   initial_angular_velocity: [-0.09, 0.225, -0.045]
   inertia:
-    - [800.0, 2.0, 5.0]
-    - [4.0, 450.0, 3.0]
-    - [6.0, 8.0, 200.0]
+    # Physical homogeneous cylinder, 1000 kg; prescribed attitude mode below
+    # does not use inertia to integrate rigid-body motion.
+    - [190.0, 0.0, 0.0]
+    - [0.0, 190.0, 0.0]
+    - [0.0, 0.0, 320.0]
   shape: "cylinder"
   center: [0.0, 0.0, 0.0]
   limits:
@@ -67,10 +76,18 @@ target:
 
 tube:
   run_tube: true
-  bandwidth_0: [0.25, 0.25, 0.25]
+  bandwidth_0: [80.0, 80.0, 80.0]
   boundary_layer_0: [0.002, 0.002, 0.002]
   convergence_rate: [0.1, 0.1, 0.1]
-  sliding_gains: [0.6, 0.6, 0.6]
+  sliding_gains: [20.0, 20.0, 20.0]
+  feedback_substeps: 32
+  bandwidth_rate_limit: 1500.0
+  bandwidth_weight: 1.0e-7
+  tube_weight: 10.0
+  numerical_reserve: 1.0e-5
+  membership_error_bound: 1.0e-7
+  membership_box_budget: 32
+  membership_update_period: 5
   bandwidth_range:
-    lower: 0.01
-    upper: 10.0
+    lower: 40.0
+    upper: 300.0

@@ -45,14 +45,14 @@ orbexa-generate-demo \
   --primary-solver gekko
 ```
 
-Here `--steps` is the maximum number of receding-horizon MPC updates, not a
-scripted trajectory length. Each update solves a fixed-horizon OCP, applies the
-first configured control command(s), replans from the propagated plant state,
-and stops only when the rendezvous/docking goal is reached. Fresh nonlinear
-primary runs raise an error if the update limit is exhausted first.
-The CLI currently uses 10 prediction state samples and applies one interval per
-update. API callers can select phase-specific YAML horizons and actuation counts
-by passing `horizon_steps=None, actuation_steps=None` to `ADTMPCMissionRunner`.
+Here `--steps` is the maximum number of receding-horizon MPC updates. The
+nonlinear default jointly optimizes nominal motion, dynamic tube states, and
+feedback bandwidth with GEKKO/IPOPT. It carries the nominal center and tube
+between updates and applies ancillary feedback within each control interval.
+The default scenario uses 12 prediction nodes, one applied nominal interval,
+and 32 ancillary feedback substeps. Phase horizons come from YAML; API callers
+can override `horizon_steps`. The coupled policy replans every outer interval.
+Fresh nonlinear primary runs return failure if the goal is not reached.
 If enabled, the optional SciPy/SLSQP linearized comparison is capped separately by
 `--linearized-steps` because it is not the authoritative nonlinear mission.
 
@@ -69,7 +69,9 @@ This writes:
 Each mission folder contains its own gallery, `manifest.json`, `replay.html`,
 `trajectory.html`, `tube_trajectory.html`, `diagnostics.html`, `trajectory.gif`,
 optional `trajectory.mp4`, and the existing control, safety, tube, target, and
-parameter diagnostics. New views show docking errors, the measurable drag
+parameter diagnostics. Matched tube views show position/sliding-error containment,
+terminal accuracy including the entire tube, bandwidth allocation, and ancillary
+input-reserve use. Other views show docking errors, the measurable drag
 difference and retained marginal ambiguity, emitted-point SMID errors, a body-frame
 docking close-up PNG/GIF, and a minimum pairwise-spacing heatmap for fleets.
 `insights_manifest.json` records source sample indices, playback rate, fallback
@@ -86,39 +88,46 @@ Playable MP4 output requires FFmpeg. Without it, the report links to the GIF and
 
 Generated session artifacts stay out of git. Add a curated preview intentionally when a representative mission artifact is available.
 
-The physical margin plots answer collision safety. The tube-tightened margin plots answer whether the nominal robust tube stayed inside the tightened constraint; they can go below zero even when the physical active safety margin is positive. Parameter-estimate diagnostics show the point belief, truth, and the active feasible-set band. Weak or collinear data keep unidentifiable marginal intervals broad. Point estimates can still learn measurable parameter combinations, while preserving the prior along unsupported directions. Each emitted point estimate is checked against an RK4 replay of the measured state/control window; its prediction and fit errors are recorded separately from the candidate set's verification witness.
+Physical constraint margins concern the actual vehicle. Tube-expanded margins
+concern each persistent nominal center and its own matched-node tube. The older
+cylinder constraint value combines radial squared and axial linear margins;
+its sign indicates exclusion and its magnitude is not a clearance in meters.
+Parameter plots distinguish point estimates from the retained uncertainty box.
+Local optimization may update a point estimate; only the outward-rounded interval
+RK4 membership contractor removes parameter values. Unprocessed boxes are retained
+when its budget expires. Exact held ancillary substep inputs are used for adaptation.
 
 Solver results contain `T` state samples, including the initial state, and
 `T - 1` control intervals. Control column `k` drives state `k` to state `k + 1`.
 Backend adapters normalize their grid conventions before returning results.
-The mission applies the optimized interval command and tube ancillary correction,
-followed by the existing input limits and docking target-safety filter.
-The default mission adds a local Riccati terminal penalty to account for regulation
-beyond its short prediction horizon. This uses the current belief and the configured
-state/input weights; set `mpc.terminal_cost_enabled: false` to disable it. The
-penalty adds to the existing endpoint state cost, giving an endpoint weight of
-`Q + P`, where `P` is the local Riccati matrix. It does not replace the stage cost.
-The local linear approximation is a performance aid, not a proof of nonlinear feasibility
-or physical safety. Mission completion and physical-margin checks still determine
-success. The docking safety filter measures velocity relative to the rotating
-target surface. A second filter predicts the next position with the controller's
-belief and the same RK4 propagation used by the simulation. It checks the
-rotating cylinder's curved side and both end caps, then projects the command onto
-bounded, sufficient safe halfspaces when needed. If no constructed alternative
-is feasible, the mission stops before applying that interval and records the
-failure. The current reserve is 0.002 position units; input limits and completion
-tolerances are unchanged. This is a sampled, local filter, not a continuous
-safety guarantee; the radial tangent can conservatively reject a feasible path.
+The coupled mission reserves every ancillary-input term inside the optimization.
+Saturation, reserve exceedance, measured containment failure, and inconsistent
+membership stop the mission and preserve the available evidence. It does not
+change a nominal command through an unaccounted docking projection. The assigned
+side corridor is deliberately conservative and retains nonlinear cylinder
+exclusion. Fleet planning constrains contemporaneous nominal paths and both tubes.
 
-Set `mpc.reference_preview_enabled: true` to track the docking point's future
-position and anomaly-velocity throughout the prediction horizon, with nominal
-feedforward inputs derived from its acceleration and the estimated orbital model.
-It is opt-in: the measured four-times-tumble single-chaser scenario completed in
-225 updates versus 392 without preview, while the default single-chaser case
-took 185 versus 181. Both comparisons used the same safety filter and bounds.
-Default scenarios retain the constant-reference controller. Solver-independent
-previews have shapes `(n, T)` for states and `(m, T - 1)` for interval inputs;
-omitting them retains the constant final-state and zero-input references.
+Moving-reference preview is enabled by default. State previews have shape
+`(n, T)` and feedforward previews `(m, T - 1)`. Near docking, the solver enforces
+a terminal set around the future reference. Completion requires nominal position
+error plus the whole position-tube radius to fit 2 mm, and nominal velocity error
+plus its full envelope to fit 0.08 m/rad, at five consecutive outer endpoints.
+The requested goal remains the configured 5 mm standoff. A local Riccati terminal
+penalty aids performance; it does not prove nonlinear terminal invariance.
+
+The physical-coordinate model uses meters, derivatives per true anomaly, and
+anomaly-acceleration inputs. Physical acceleration increments are `qdot² * u`;
+the parsed historical `force_bounds` are not a thruster-force model. The default
+orbit now has a 300 km perigee at eccentricity 0.18. Its analytical quadratic-drag
+approximation and prescribed Euler target motion are explicitly limited models.
+See [the derivation and focused literature review](docs/adtmpc-design.md) for frame
+conventions, moving-goal/obstacle distinctions, and evidence boundaries.
+
+Nonlinear geometry is constrained at prediction nodes and checked more densely
+during execution. Sampled simulation results do not establish continuous-time
+safety, recursive feasibility, physical capture, or a fully realistic atmosphere.
+Historical saved runs remain renderable but their earlier tube/physics claims
+must not be used to qualify this corrected model.
 
 `run.py` defaults to the ADTMPC mission workflow. Useful options:
 

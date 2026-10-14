@@ -149,7 +149,9 @@ class ParameterBelief:
             ranges = {
                 "eccentricity": (
                     max(0.0, eccentricity - 0.08),
-                    min(0.99, eccentricity + 0.08),
+                    min(0.99, eccentricity + 0.08,
+                        1.0 - (config.orbit.central_body_radius + 1.0) /
+                        config.orbit.semi_major_axis),
                 ),
                 "alpha": (max(0.0, 0.5 * alpha), 1.5 * alpha),
                 "beta": (max(0.0, 0.5 * beta), 1.5 * beta),
@@ -481,6 +483,7 @@ class ADTMPCMissionResult:
     tightened_rendezvous_margins: Dict[str, List[float]] = field(default_factory=dict)
     tightened_docking_cylinder_margins: Dict[str, List[float]] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    tube_diagnostics: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return copy.deepcopy(self.__dict__)
@@ -517,8 +520,8 @@ class ADTMPCMissionRunner:
         solver_backend: str = "gekko",
         approximation: str = "nonlinear",
         config: Optional[SimulationConfig] = None,
-        horizon_steps: Optional[int] = 10,
-        actuation_steps: Optional[int] = 1,
+        horizon_steps: Optional[int] = None,
+        actuation_steps: Optional[int] = None,
         smid_window: int = 4,
     ):
         self.solver_backend = solver_backend
@@ -542,8 +545,8 @@ class ADTMPCMissionRunner:
         self.rendezvous_standoff = 0.5
         self.rendezvous_capture_radius = 3.5
         self.rendezvous_position_tolerance = 0.15
-        self.docking_position_tolerance = 0.08
-        self.docking_velocity_tolerance = 0.08
+        self.docking_position_tolerance = self.config.mpc.docking_position_tolerance
+        self.docking_velocity_tolerance = self.config.mpc.docking_velocity_tolerance
         self.min_chaser_separation = float(self.config.mpc.min_chaser_separation)
         self.target_safety_tolerance = 1.0e-7
         self.target_barrier_buffer = 0.04
@@ -554,6 +557,9 @@ class ADTMPCMissionRunner:
         return self.approximation == "linearized"
 
     def run(self, *, mission: str, steps: int) -> ADTMPCMissionResult:
+        if self.config.tube.run_tube and self.solver_backend == "gekko" and not self.linearized:
+            from orbexa.simulation.coupled_mission import CoupledTubeMission
+            return CoupledTubeMission(self).run(mission=mission, steps=steps)
         if mission == "single":
             return self._run_chasers(mission="single", chasers=self._single_chaser(), steps=steps)
         if mission == "multi":
@@ -1196,9 +1202,7 @@ class ADTMPCMissionRunner:
             upper = bound.get("upper")
             if isinstance(lower, (int, float)) and isinstance(upper, (int, float)):
                 if lower >= upper:
-                    center = 0.5 * (float(lower) + float(upper))
-                    bound["lower"] = center - 1.0e-6
-                    bound["upper"] = center + 1.0e-6
+                    raise ValueError("The tube leaves no admissible nominal input")
         return tighten_box_bounds(state_bounds, profile.max_state_error), tightened_inputs
 
     def _tube_metadata(self, anom: float, profile) -> Dict[str, Any]:
@@ -1210,6 +1214,10 @@ class ADTMPCMissionRunner:
             "position_radius": profile.position_radius.tolist(),
             "max_position_radius": profile.max_position_radius,
             "max_state_error": profile.max_state_error.tolist(),
+            "lambda_gain": None if profile.lambda_gain is None else np.asarray(profile.lambda_gain).tolist(),
+            "bandwidth": None if profile.alpha is None else np.asarray(profile.alpha).tolist(),
+            "input_reserve": None if profile.input_reserve is None else np.asarray(profile.input_reserve).tolist(),
+            "assumptions": list(profile.assumptions),
             "input_tightening": input_tightening_from_profile(
                 profile, self.config.tube.sliding_gains
             ).tolist(),

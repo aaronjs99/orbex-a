@@ -81,6 +81,7 @@ class ORBEXAProblemConfig:
     terminal_cost_matrix: Optional[np.ndarray] = None
     state_reference: Optional[np.ndarray] = None
     input_reference: Optional[np.ndarray] = None
+    dynamic_tube: Optional[Dict[str, Any]] = None
 
 
 def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
@@ -184,6 +185,8 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
     # Add tube MPC if enabled
     if config.tube_mpc_enabled:
         extra_params["tube_mpc"] = config.tube_params
+    if config.dynamic_tube is not None:
+        extra_params["dynamic_tube"] = config.dynamic_tube
 
     # Add target params if present
     if config.target_params:
@@ -291,6 +294,7 @@ def build_from_dynamics(
         terminal_cost_matrix=kwargs.get("terminal_cost_matrix"),
         state_reference=kwargs.get("state_reference"),
         input_reference=kwargs.get("input_reference"),
+        dynamic_tube=kwargs.get("dynamic_tube"),
     )
 
     # Handle optional tube MPC
@@ -312,4 +316,8 @@ def build_from_dynamics(
             config.target_params = {}
         config.target_params["pairwise_constraints"] = kwargs["pairwise_constraints"]
 
-    return build_mpc_problem(config)
+    problem = build_mpc_problem(config)
+    for name in ("state_initial_guess", "control_initial_guess"):
+        if kwargs.get(name) is not None:
+            problem.extra_params[name] = kwargs[name]
+    return problem

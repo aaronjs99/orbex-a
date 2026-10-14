@@ -49,6 +49,7 @@ class GekkoSolver(SolverBase):
         self._model = None
         self._states = None
         self._inputs = None
+        self._dynamic_tube = None
 
     @staticmethod
     def _tait_bryan_rotation_expr(angles, solver):
@@ -76,6 +77,14 @@ class GekkoSolver(SolverBase):
         - Tube MPC constraint tightening
         """
         self._problem = problem
+        if self._dynamic_tube is not None:
+            self._dynamic_tube.cleanup()
+            self._dynamic_tube = None
+        if problem.extra_params.get("dynamic_tube") is not None:
+            from orbexa.solvers.gekko_dynamic_tube import GekkoDynamicTube
+            self._dynamic_tube = GekkoDynamicTube(problem, self.config)
+            self._is_setup = True
+            return
         logger.debug(
             f"Setting up GEKKO model for {problem.num_states} states, {problem.num_inputs} inputs"
         )
@@ -403,6 +412,9 @@ class GekkoSolver(SolverBase):
 
         start_time = time.time()
 
+        if self._dynamic_tube is not None:
+            return self._dynamic_tube.solve()
+
         try:
             self._model.solve(disp=self.disp)
             solve_time = time.time() - start_time
@@ -437,6 +449,9 @@ class GekkoSolver(SolverBase):
 
     def cleanup(self) -> None:
         """Clean up GEKKO model."""
+        if self._dynamic_tube is not None:
+            self._dynamic_tube.cleanup()
+            self._dynamic_tube = None
         if self._model:
             self._model.cleanup()
             self._model = None
