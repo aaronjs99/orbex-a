@@ -97,6 +97,8 @@ class StudioDataset:
         complete = bool(metadata.get("mission_complete", False))
         successful = bool(getattr(result, "success", False))
         synthetic = 'SYNTHETIC' in str(metadata.get('qualification_provenance', '')).upper()
+        message = getattr(result, "message", "")
+        update_limit = not complete and message == "max_mpc_updates_reached_before_terminal_tube_dwell"
         return {
             "schema": STUDIO_DATA_SCHEMA, "q": samples.q.tolist(),
             "elapsed_s": elapsed[:count].tolist() if clock else None,
@@ -109,8 +111,9 @@ class StudioDataset:
                  "semantics": "Recorded target dimensions inflated by the saved geometric tolerance"},
             "outcome": {"success": successful, "complete": complete,
                         "label": "Synthetic physics fixture" if synthetic else "Recorded criteria passed" if complete and successful else
+                                 "Recorded update limit reached" if update_limit else
                                  "Recorded failure" if not successful else "Recorded mission incomplete",
-                        "message": getattr(result, "message", "")},
+                        "message": message},
             "model": metadata.get("model_version", "unspecified"),
             "dynamics_scope": ("Analytical Carter–Humi relative translation; its declared uncertainty bounds do not automatically cover full nonlinear gravity, vector drag or J2. See Orbital model fidelity."
                                if metadata.get("model_version") == "physical-lvlh-v1" else
