@@ -17,12 +17,18 @@ class DetumblingPolicy(Protocol):
 class RateDampingPolicy:
     """Dissipative external torque request, before physical allocation."""
     gain_nm_s: float = 20.0
+    compensate_gravity_gradient: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "gain_nm_s", positive(self.gain_nm_s, "Rate damping gain"))
+        if not isinstance(self.compensate_gravity_gradient, bool):
+            raise TypeError("Gravity-gradient compensation must be a boolean")
 
     def torque_body_nm(self, assembly, state):
-        return -self.gain_nm_s * state.angular_velocity_body_rad_s
+        torque = -self.gain_nm_s * state.angular_velocity_body_rad_s
+        if self.compensate_gravity_gradient:
+            torque -= assembly.gravity_gradient_torque_body(state)
+        return torque
 
 
 @dataclass(frozen=True)

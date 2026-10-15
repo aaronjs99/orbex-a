@@ -38,6 +38,7 @@ Python namespace is `orbexa`; its source directory is the user's `scripts/`.
 | `scripts/simulation/complete_mission.py` | Stage orchestration, rigorous-clock translation propellant allowance and actual chaser-attitude handoff |
 | `scripts/simulation/terminal_handoff.py` | Reproved source-bound terminal continuation, actual endpoint and separate attitude/accounting trajectory |
 | `scripts/simulation/capture.py`, `assembly.py`, `propulsion.py` | Finite-reach inelastic latch, mass/inertia/fuel state and bounded external nozzle wrench allocation |
+| `scripts/simulation/burn_axis.py`, `deorbit.py` | Coupled-wrench body-axis planning, bounded retrograde pointing and finite-burn orbital events |
 | `scripts/simulation/chaser_attitude.py`, `detumbling.py`, `deorbit.py` | Controlled free-bus attitude, assembly detumbling and finite-burn entry-interface delivery |
 | `scripts/visualization/` | Recorded-data plots, interactive views, animation, catalogs and workflow |
 | `scripts/visualization/studio/` | Portable local 3D replay, synchronized charts, physical lifecycle, theory and browser video export |

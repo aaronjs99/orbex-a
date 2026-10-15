@@ -229,10 +229,40 @@ The angular audit separately records external torque impulse and the
 co-rotating mass-removal contribution, rather than silently resetting spin or
 claiming remaining-body angular momentum is conserved while fuel leaves.
 
-Detumbling requests dissipative external torque `-Kω`. Its default completion
-gate is a rate norm below `1e-5 rad/s` for 30 s. Dwell is measured at consecutive
-integration endpoints. It is not a continuous-time enclosure. Both orbital
-translation and quaternion attitude continue through this phase.
+`RateDampingPolicy` requests dissipative external torque `-Kω`. Its optional
+`compensate_gravity_gradient` flag subtracts the known modeled gravity-gradient
+torque. Composite-spacecraft completion enables this flag for both detumbling
+and `ThrustPointingPolicy`. `AttachedAssembly.gravity_gradient_torque_body`
+and the integrator share the same full-inertia expression, evaluated with the
+current fuel-dependent mass properties. The legacy policy default remains
+explicitly uncompensated; saved policy parameters identify each case.
+
+Let `e_r^B` denote the unit radial direction expressed in the assembly body,
+`r` its orbital radius, `μ` the central gravitational parameter, `J` the
+current inertia, `K>0` the rate damping gain and `T` rotational kinetic energy.
+The compensated request and the ideal continuously evaluated, frozen-mass
+energy identity are
+
+$$
+\tau_g=\frac{3\mu}{r^3}\,e_r^B\times(Je_r^B),\qquad
+\tau_c=-K\omega-\tau_g,\qquad
+\dot T=-K\|\omega\|^2.
+$$
+
+Pure rate damping leaves `τ_g` as a persistent forcing term; near zero spin,
+the scale `||τ_g||/K` can exceed the rate gate. Increasing the duration alone
+does not remove this mechanism. Compensation assumes the declared orbit,
+attitude and current mass properties are known. Allocation limits and the
+actual held wrench remain authoritative; no continuous-feedback identity is
+substituted for their numerical records. Within a hold the gravity-gradient
+torque continues to evolve in the dynamics, while the commanded compensation
+is held from the control endpoint. Fuel splitting and its co-rotation flux
+remain unchanged and are audited separately.
+
+The default completion gate remains a rate norm below `1e-5 rad/s` for 30 s,
+within 1200 s. Dwell is measured at consecutive integration endpoints. It is
+not a continuous-time enclosure. Both orbital translation and quaternion
+attitude continue through this phase.
 
 ## Finite-burn deorbit and terminal event
 
@@ -255,6 +285,34 @@ tangential direction. Thrust is enabled only inside pointing/rate tolerances.
 The Cartesian state, variable mass, attitude, force allocation, fuel, and actual
 perigee are integrated through the finite burn. No impulsive orbital velocity
 reset is used.
+
+Composite completion injects `AxialBurnPlanner`: the force direction is selected
+from the installed nozzle directions and body axes using the actual assembly
+mass center. A large projection of nozzle force onto an axis does not establish
+that the same force and required torque can be delivered together. In particular,
+chasers attached to one face can create a large force lever when thrusting
+parallel to that face.
+
+Let `W` denote the six-row installed force/torque matrix about the current COM,
+`u` signed nozzle commands, `u_max` their installed limits, `d` a candidate unit
+body direction and `s` the scalar axial force. The capacity problem is
+
+$$
+\max s\quad\text{subject to}\quad
+Wu=(sd,0),\qquad |u|\le u_{\max},\qquad s\ge0.
+$$
+
+The planned request retains the existing 0.65 fraction of this coupled capacity.
+A second LP minimizes total modeled fuel flow at that actual request, with all
+six wrench equalities and the same channel bounds. Every candidate also passes
+through the unchanged operational allocator at the planned force and control
+hold; selection uses its realized flow per newton. The saved plan retains
+capacity/minimum-flow witnesses, operational allocation, owner fuel rates and
+residuals. These are numerical planning calculations, not interval proofs or
+guarantees of future fuel balance. Pointing maps the selected **fixed body axis**
+to the moving retrograde direction, and the same axis defines the requested
+burn force. Bounded attitude motion, actual allocation, changing tanks/inertia,
+pointing/rate gates and orbital events remain authoritative at every hold.
 
 The nominal burn cutoff is the root of the actual osculating-perigee event at
 80 km altitude. If fuel is exhausted after an entry-intersecting orbit has

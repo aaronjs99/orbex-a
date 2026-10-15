@@ -196,6 +196,21 @@ class AttachedAssembly:
                 quaternion_body_to_eci=(rotation * Rotation.from_matrix(element.rotation_element_to_assembly)).as_quat().tolist())
         return result
 
+    def gravity_gradient_torque_body(self, state):
+        """Known central-field torque at the actual state and current fuel load."""
+        if not self.gravity_gradient:
+            return np.zeros(3)
+        inertia = self.mass_properties(state.fuel_kg)[2]
+        rotation = Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()
+        return self._gravity_gradient_torque_body(state.position_eci_m, rotation, inertia)
+
+    def _gravity_gradient_torque_body(self, position, rotation, inertia):
+        radius = np.linalg.norm(position)
+        if radius <= 0:
+            raise ValueError("Inertial orbital position must be nonzero")
+        radial_body = rotation.T @ (position / radius)
+        return 3 * self.mu_m3_s2 / radius**3 * np.cross(radial_body, inertia @ radial_body)
+
     def derivative(self, values, mass, inertia, force_body, torque_body):
         position, velocity, q, omega = values[:3], values[3:6], values[6:10], values[10:13]
         radius = np.linalg.norm(position)
@@ -204,8 +219,7 @@ class AttachedAssembly:
         rotation = Rotation.from_quat(q).as_matrix()
         torque = np.asarray(torque_body, dtype=float).copy()
         if self.gravity_gradient:
-            radial_body = rotation.T @ (position / radius)
-            torque += 3 * self.mu_m3_s2 / radius**3 * np.cross(radial_body, inertia @ radial_body)
+            torque += self._gravity_gradient_torque_body(position, rotation, inertia)
         qdot = .5 * np.r_[q[3] * omega + np.cross(q[:3], omega), -np.dot(q[:3], omega)]
         result = np.r_[velocity, -self.mu_m3_s2 * position / radius**3 + rotation @ force_body / mass,
                        qdot, np.linalg.solve(inertia, torque - np.cross(omega, inertia @ omega))]

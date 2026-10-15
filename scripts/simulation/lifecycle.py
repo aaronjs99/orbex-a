@@ -62,12 +62,15 @@ class MissionLifecycle:
         def policy(value):
             return dict(implementation=f"{type(value).__module__}.{type(value).__qualname__}",
                         parameters=asdict(value) if is_dataclass(value) else "injected policy; parameters supplied by caller")
-        return dict(capture=dict(options=asdict(self.capture.options), target_mass_kg=self.capture.target.mass_kg,
+        configuration = dict(capture=dict(options=asdict(self.capture.options), target_mass_kg=self.capture.target.mass_kg,
                                  target_inertia_kg_m2=self.capture.target.inertia_kg_m2.tolist(),
                                  default_chaser=asdict(self.capture.default_chaser),
                                  chasers={key: asdict(value) for key, value in self.capture.chasers.items()}),
                     detumbling=dict(options=asdict(self.detumbling.options), policy=policy(self.detumbling.policy)),
                     deorbit=dict(options=asdict(self.deorbit.options), pointing_policy=policy(self.deorbit.pointing_policy)))
+        if self.deorbit.burn_axis_planner is not None:
+            configuration['deorbit']['burn_axis_planner'] = policy(self.deorbit.burn_axis_planner)
+        return configuration
 
     def run(self, approach, *, capture_truth=None, chaser_attitudes=None,
             terminal_handoff=None) -> MissionLifecycleResult:

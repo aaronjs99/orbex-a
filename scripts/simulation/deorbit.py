@@ -6,7 +6,7 @@ breakup, demise, thermal protection and ground impact are outside this model.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -65,10 +65,26 @@ def time_to_apoapsis_s(position, velocity, mu):
 class ThrustPointingPolicy:
     attitude_gain_nm: float = .2
     rate_gain_nm_s: float = 20.0
+    compensate_gravity_gradient: bool = False
+    thrust_axis_body: tuple[float, float, float] = (1., 0., 0.)
 
     def __post_init__(self):
         object.__setattr__(self, "attitude_gain_nm", positive(self.attitude_gain_nm, "Pointing attitude gain"))
         object.__setattr__(self, "rate_gain_nm_s", positive(self.rate_gain_nm_s, "Pointing rate gain"))
+        if not isinstance(self.compensate_gravity_gradient, bool):
+            raise TypeError("Gravity-gradient compensation must be a boolean")
+        axis = finite_vector(self.thrust_axis_body, 'Body thrust axis', 3)
+        scale = np.max(np.abs(axis))
+        if scale == 0:
+            raise ValueError('Body thrust axis must be nonzero')
+        scaled_axis = axis / scale
+        normalized = scaled_axis / np.linalg.norm(scaled_axis)
+        if not np.all(np.isfinite(normalized)):
+            raise ValueError('Body thrust axis must normalize to a finite unit vector')
+        object.__setattr__(self, 'thrust_axis_body', tuple(map(float, normalized)))
+
+    def with_thrust_axis(self, axis):
+        return replace(self, thrust_axis_body=tuple(axis))
 
     def command(self, assembly, state):
         r, v = state.position_eci_m, state.velocity_eci_m_s
@@ -78,6 +94,13 @@ class ThrustPointingPolicy:
         retrograde = -(v - np.dot(v, radial) * radial)
         retrograde /= np.linalg.norm(retrograde)
         desired = np.column_stack((retrograde, np.cross(normal, retrograde), normal))
+        axis = np.asarray(self.thrust_axis_body)
+        if self.thrust_axis_body != (1., 0., 0.):
+            auxiliary = np.array([0., 0., 1.]) if abs(axis[2]) < .9 else np.array([0., 1., 0.])
+            tangent = np.cross(auxiliary, axis)
+            tangent /= np.linalg.norm(tangent)
+            body_frame = np.column_stack((axis, tangent, np.cross(axis, tangent)))
+            desired = desired @ body_frame.T
         current = Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()
         error = Rotation.from_matrix(current.T @ desired).as_rotvec()
         desired_omega_eci = np.cross(r, v) / np.dot(r, r)
@@ -87,7 +110,10 @@ class ThrustPointingPolicy:
         feedforward = inertia @ (current.T @ (-2 * np.dot(r, v) / np.dot(r, r) * desired_omega_eci))
         torque = (self.attitude_gain_nm * error - self.rate_gain_nm_s * (omega - desired_omega_body)
                   + np.cross(omega, inertia @ omega) + feedforward)
-        pointing = float(np.arccos(np.clip(np.dot(current[:, 0], retrograde), -1, 1)))
+        if self.compensate_gravity_gradient:
+            torque -= assembly.gravity_gradient_torque_body(state)
+        pointed_axis = current[:, 0] if self.thrust_axis_body == (1., 0., 0.) else current @ axis
+        pointing = float(np.arccos(np.clip(np.dot(pointed_axis, retrograde), -1, 1)))
         return torque, pointing, float(np.linalg.norm(omega - desired_omega_body))
 
 
@@ -132,9 +158,10 @@ class DeorbitResult:
 
 class DeorbitSimulator:
     def __init__(self, *, options: Optional[DeorbitOptions] = None,
-                 pointing_policy: Optional[ThrustPointingPolicy] = None):
+                 pointing_policy: Optional[ThrustPointingPolicy] = None, burn_axis_planner=None):
         self.options = options or DeorbitOptions()
         self.pointing_policy = pointing_policy or ThrustPointingPolicy()
+        self.burn_axis_planner = burn_axis_planner
 
     def _record(self, assembly, state, phase):
         record = assembly.state_record(state)
@@ -247,14 +274,24 @@ class DeorbitSimulator:
         if crossed:
             return finish(True, "descending_entry_interface_reached_during_coast")
         alignment_start, burn_start = state.time_s, None
-        # The body +x direction is a hardware-fixed thrust axis. Pointing is
-        # achieved with bounded thrusters, never assigned as an instantaneous reset.
-        default_force = .65 * sum(thruster.max_force_n * abs(thruster.direction_body[0])
-                                  for thruster in propulsion.thrusters)
+        pointing_policy = self.pointing_policy
+        axis = np.asarray(getattr(pointing_policy, 'thrust_axis_body', (1., 0., 0.)))
+        if self.burn_axis_planner is not None:
+            if not callable(getattr(pointing_policy, 'with_thrust_axis', None)):
+                raise ValueError('A selected burn axis requires a pointing policy with with_thrust_axis')
+            plan = self.burn_axis_planner.select(assembly, state, propulsion, options.control_step_s)
+            pointing_policy = pointing_policy.with_thrust_axis(plan.direction_body)
+            axis = np.asarray(plan.direction_body)
+            default_force = plan.commanded_force_n
+            audit['burn_axis_plan'] = plan.to_dict()
+        else:
+            default_force = .65 * sum(thruster.max_force_n * abs(float(np.dot(thruster.direction_body, axis)))
+                                      for thruster in propulsion.thrusters)
         burn_force = default_force if options.burn_force_n is None else options.burn_force_n
-        audit.update(commanded_burn_force_n=burn_force, planned_apoapsis_time_s=apo_time)
+        audit.update(commanded_burn_force_n=burn_force, planned_apoapsis_time_s=apo_time,
+                     thrust_axis_body=axis.tolist())
         while True:
-            torque, pointing, tracking_rate = self.pointing_policy.command(assembly, state)
+            torque, pointing, tracking_rate = pointing_policy.command(assembly, state)
             aligned = pointing <= options.pointing_tolerance_rad and tracking_rate <= options.pointing_rate_tolerance_rad_s
             if burn_start is None and state.time_s >= apo_time and aligned:
                 burn_start = state.time_s
@@ -268,7 +305,7 @@ class DeorbitSimulator:
                 return finish(False, "deorbit_body_rate_limit_exceeded")
             duration = options.control_step_s
             fire = burn_start is not None and aligned
-            force = np.array([burn_force if fire else 0., 0., 0.])
+            force = axis * (burn_force if fire else 0.)
             allocation = propulsion.allocate(assembly, state, force, torque, duration)
             if not allocation.success:
                 return finish(False, f"deorbit_{allocation.message}")
