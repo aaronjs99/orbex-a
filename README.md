@@ -50,12 +50,12 @@ python -m pip install -e ".[certification,studio,video]"
 ```
 
 Run an Envisat study with its explicit prior, deployment and assumed
-sensing/model envelopes in [config](config/README.md). Supply the study's
-[arrival-policy declaration](docs/arrival-policy.md), including sourced reference
-errors and a validity domain covering the planned terminal suffix:
+sensing/model envelopes in [config](config/README.md). The CLI loads the adjacent
+[arrival declaration](docs/arrival-policy.md#default-envisat-declaration), whose
+reference errors cover the unchanged default study:
 
 ```bash
-orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --arrival-policy path/to/arrival-policy.json --output-dir ../orbexa-output/envisat-eight
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --output-dir ../orbexa-output/envisat-eight
 ```
 
 This is an actual nonlinear optimization run. The update cap is a resource bound;
@@ -70,7 +70,7 @@ An unfinished saved approach can be numerically restarted with the same physical
 configuration, prior, bounds and target domain:
 
 ```bash
-orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --arrival-policy path/to/arrival-policy.json --resume ../orbexa-output/envisat-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --resume ../orbexa-output/envisat-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
 ```
 
 The cap now counts additional updates. The original states, tubes, beliefs and
@@ -83,6 +83,9 @@ Introducing arrival into a historical prefix additionally requires
 `--transition-arrival-policy`; its complete original configuration must match.
 Use `--historical-terminal-policy` for the identified distance-gated reproduction.
 Missing arrival declarations refuse before reserving an output directory.
+Changed spin, orbit, inertia, reference points or evaluation assumptions need
+a matching sourced declaration through `--arrival-policy`; the supplied JSON
+is a study-specific assumption contract, not an automatic qualification of overrides.
 
 After approach completion, the runner conservatively debits translation fuel,
 replays bounded chaser attitude control, and supplies those actual attitudes and

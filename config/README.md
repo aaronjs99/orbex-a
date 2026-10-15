@@ -5,6 +5,12 @@
 `envisat-deployment.json` declares routes from one compact release cluster.
 The separate `envisat-prior.json` does not read plant truth to center the belief.
 `envisat-admission.json` identifies assumed sensing/model/evaluation envelopes.
+`envisat-arrival.json` supplies the fixed-deadline planning region and reference
+evaluation errors for the unchanged default study on anomaly [0, 1.214]. The
+CLI loads this named sibling automatically. Its scope and derivation are in
+[arrival policy](../docs/arrival-policy.md#default-envisat-declaration).
+The Envisat YAML explicitly selects conservative component support corridors;
+the generic solver default remains free component normals.
 The physical profile derives a conservative target rotation-rate bound from
 rigid-body energy and the orbital clock. These inputs are not measured flight
 sensor accuracy or a current target-state estimate.

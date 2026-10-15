@@ -33,6 +33,8 @@ solver:
   remote: false
   disp: false
   max_iter: 1200
+  # Explicit conservative component support corridors; generic backend stays free.
+  composite_geometry_mode: reference_corridor
   # APMonitor base-10 sparsity exponent: 4 means 10000 elements/equation.
   max_memory: 4
 

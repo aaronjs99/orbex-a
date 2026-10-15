@@ -24,6 +24,15 @@ $$D_p=\|\,|e_p|+\Omega\,\|_2,\qquad D_v=\|\,|e_v|+\Phi+\Lambda\Omega\,\|_2.$$
 
 These bounds concern the complete error box conditional on its valid containment. The native backend rechecks every explicit suffix node from its returned arrays, with the existing numerical residual tolerance. This is numerical planning admission, not an integration enclosure theorem.
 
+The backend's injectable `terminal_solve_reserve` defaults to $10^{-6}$ for
+explicit future suffix rows. It multiplies their native tolerances by
+$1-10^{-6}$, preserving unscaled error allowances, the node-zero outer set and
+the original readback gate. This stricter native set leaves room for finite
+precision result export; it does not change a returned state. Zero reserve
+reproduces the earlier formulation, and policy-absent graphs are unchanged.
+The saved native replay passes the original gate with this reserve, but no
+single reserve value guarantees serialization accuracy for every scaling.
+
 ## Required reference-centered entry region
 
 A terminal pose ball alone need not fit the physical tracking controller's component/sliding region. Optional `TerminalRegion` therefore supplies the required position half widths $\Omega_r$, sliding half widths $\Phi_r$, gain $\Lambda_r$ and explicit complete reference-state evaluation error bounds $E_{g,p}$ and $E_{g,v}$. Its error source, state frame, finite anomaly domain and maximum query-clock displacement are mandatory declarations. No velocity-evaluation bound is inferred from a pose rotation error or integrator tolerance.
@@ -53,6 +62,37 @@ The supplied source configuration must also equal the complete configuration sav
 The original actual states, nominal centers, tubes, gains, belief, raw solver-stat rows and historical kinematics remain unchanged. New lineage goes in `policy_transition_history`; it is not inserted retroactively into old solver rows. Original unexecuted proposals remain archived. The dense adaptation window and unavailable warm starts are explicitly reset as in numerical restart; they are not reconstructed from averaged inputs.
 
 The physical CLI `orbexa-run-mission` enables the explicit arrival path for composite missions. Supply `--arrival-policy` with its sourced region/errors, or an explicitly present configuration-name sibling arrival JSON. Missing declarations refuse before output reservation. `--resume --transition-arrival-policy` selects a new cohort explicitly. `--historical-terminal-policy` selects the retained distance-gated reproduction. No default zero reference errors or spacecraft-specific region constants are hidden in the backend.
+
+## Default Envisat declaration
+
+`config/envisat-arrival.json` is sourced for the unchanged fresh Envisat study,
+including its full inertia, eight COM reference points, 0.85 m standoff,
+2.4 degree/s initial axial spin, central gravity-gradient model and orbital
+clock. The initial spin box has component radii $10^{-8}$ rad/s. Its canonical
+anomaly domain is [0, 1.214], covering 1200 updates and the declared preview.
+
+| Quantity | Declared or derived bound per component |
+| :-- | :-- |
+| Required position / sliding region | 0.00115 m / 0.020 m/rad |
+| Reference sliding gain | 20/rad |
+| Direct numerical reference position / velocity error | $10^{-6}$ m / $10^{-4}$ m/rad |
+| Numerical anomaly-query displacement | $10^{-10}$ rad |
+| Reference error including query displacement | $1.039062929292621\times10^{-6}$ m / $1.2063371187349754\times10^{-4}$ m/rad |
+
+The original full-inertia energy comparison and orbital rotation derivatives
+bound the entire expanded query interval, then take the maximum over all eight
+COM points and round outward to binary64. The preserved Arb proof archive has
+SHA-256 `d34fad9edde3058bc6139b71aea18d15f6fa5c1ffb56dc87bd7b6fa031792615`.
+Uniform direct evaluation accuracy and physical initial-spin containment remain
+assumptions; ODE tolerances and a pose-only rotation error do not prove them.
+All eight global physical-controller attempts remain refused. This JSON
+supplies only a planning/entry error screen; actual terminal tracking needs its
+own finite-window derivation at the achieved endpoint.
+
+The declaration does not automatically bind a changed target configuration.
+Different spin, inertia, orbit, standoff/reference norms, query allowance or
+evaluation accuracy requires a coverage argument or a new sourced declaration.
+Longer queries must pass the explicit domain gate; the screen never extrapolates.
 
 ## Evidence and scope
 

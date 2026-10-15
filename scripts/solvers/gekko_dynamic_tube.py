@@ -32,6 +32,16 @@ class GekkoDynamicTube:
         self.spec = problem.extra_params["dynamic_tube"]
         self.explicit_terminal_policy = any(self.spec.get(key) is not None
             for key in ("terminal_start_index", "terminal_region", "terminal_planning_fraction"))
+        reserve = config.get("terminal_solve_reserve", 1e-6)
+        if isinstance(reserve, bool) or not isinstance(reserve, Real):
+            raise ValueError("terminal_solve_reserve must be a finite real in [0,1)")
+        try:
+            reserve = float(reserve)
+        except (ValueError, OverflowError) as error:
+            raise ValueError("terminal_solve_reserve must be a finite real in [0,1)") from error
+        if not np.isfinite(reserve) or not 0 <= reserve < 1:
+            raise ValueError("terminal_solve_reserve must be a finite real in [0,1)")
+        self.terminal_solve_reserve = reserve if self.explicit_terminal_policy else 0.
         fraction = self.spec.get("terminal_planning_fraction", 1.)
         if fraction is None:
             fraction = 1.
@@ -498,6 +508,7 @@ class GekkoDynamicTube:
                 # every future node reserves the explicit planning interior for
                 # numerical carrying and the independent endpoint enclosure.
                 fraction = self.terminal_planning_fraction if k > 0 else 1.
+                native_fraction = 1. - self.terminal_solve_reserve if k > 0 else 1.
                 self.constraint_context = ('normalized_terminal_pose[%s]' % k if self.explicit_terminal_policy
                                            else 'normalized_terminal_pose')
                 velocity = [self.phi[k][i] + lam[i] * self.omega[k][i] for i in range(3)]
@@ -506,7 +517,7 @@ class GekkoDynamicTube:
                     tolerance = spec.get(key)
                     if tolerance is None or not np.isfinite(float(tolerance)) or float(tolerance) <= 0:
                         raise ValueError("Hard terminal constraints require positive %s" % key)
-                    tolerance = float(tolerance) * fraction
+                    tolerance = float(tolerance) * fraction * native_fraction
                     error = [self.states[k][offset+i]-float(p.reference_states[offset+i,k]) for i in range(3)]
                     # Exact box worst-case Euclidean error, with convex absolute
                     # epigraphs. Squaring avoids the zero-norm derivative.
@@ -523,8 +534,8 @@ class GekkoDynamicTube:
                             + abs(float(region.lambda_gain[i]) - lam[i]) * self.omega[k][i]
                             + float(region.reference_state_error_abs[i+3]
                                     + region.lambda_gain[i] * region.reference_state_error_abs[i]))
-                        self._ge(1., position / float(region.omega[i]))
-                        self._ge(1., sliding / float(region.phi[i]))
+                        self._ge(1., position / (float(region.omega[i])*native_fraction))
+                        self._ge(1., sliding / (float(region.phi[i])*native_fraction))
 
     @staticmethod
     def _values(rows):
@@ -555,11 +566,15 @@ class GekkoDynamicTube:
                            sliding_region_margins=[float(value) for value in sliding])
                 violation = max(violation, *(float(-value / bound) for value, bound in zip(position, node_region.omega)),
                                 *(float(-value / bound) for value, bound in zip(sliding, node_region.phi)))
+            row['native_solve_fraction'] = fraction * (1. - self.terminal_solve_reserve if k > 0 else 1.)
             nodes.append(row)
         return dict(start_index=int(self.terminal_start_index), checked_nodes=nodes,
                     maximum_normalized_violation=violation,
                     planning_fraction=self.terminal_planning_fraction,
                     fixed_node_zero_policy='Unchanged outer admission; all future suffix nodes use the planning interior',
+                    native_solve_reserve=dict(value=self.terminal_solve_reserve, future_only=True,
+                        stricter_native_set=self.terminal_solve_reserve > 0.,
+                        original_readback_unchanged=True, universal_serialization_guarantee=False),
                     required_region=None if region is None else region.as_dict(),
                     scope='Numerical whole-tube suffix/entry screen; continuous flow and physical terminal certification are separate')
 

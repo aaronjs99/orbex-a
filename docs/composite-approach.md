@@ -92,8 +92,11 @@ free-normal representation on the same machine. Projecting the result back to
 all 2526 original free-normal residuals gave a maximum violation of
 $8.48\times10^{-11}$, below the unchanged $10^{-8}$ numerical gate, and retained
 the original restricted objective. This is one recorded optimization problem,
-not an end-to-end mission or a general runtime guarantee. The default Envisat
-scenario has not been silently switched to this optional policy.
+not an end-to-end mission or a general runtime guarantee. The shipped Envisat
+study explicitly selects `solver.composite_geometry_mode: reference_corridor`,
+matching its source-qualified continuation. The generic solver default remains
+`free`; select it explicitly to reproduce the unrestricted formulation. This
+choice changes the declared planning policy and must stay in saved configuration.
 
 ## Finite cluster, patch assignment and staged routes
 
