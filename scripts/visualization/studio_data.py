@@ -99,6 +99,8 @@ class StudioDataset:
         synthetic = 'SYNTHETIC' in str(metadata.get('qualification_provenance', '')).upper()
         message = getattr(result, "message", "")
         update_limit = not complete and message == "max_mpc_updates_reached_before_terminal_tube_dwell"
+        checkpoint = not complete and message == (
+            "bounded_continuation_checkpoint; max_mpc_updates_reached_before_terminal_tube_dwell")
         return {
             "schema": STUDIO_DATA_SCHEMA, "q": samples.q.tolist(),
             "elapsed_s": elapsed[:count].tolist() if clock else None,
@@ -111,6 +113,7 @@ class StudioDataset:
                  "semantics": "Recorded target dimensions inflated by the saved geometric tolerance"},
             "outcome": {"success": successful, "complete": complete,
                         "label": "Synthetic physics fixture" if synthetic else "Recorded criteria passed" if complete and successful else
+                                 "Recorded checkpoint" if checkpoint else
                                  "Recorded update limit reached" if update_limit else
                                  "Recorded failure" if not successful else "Recorded mission incomplete",
                         "message": message},
