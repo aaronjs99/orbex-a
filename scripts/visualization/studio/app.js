@@ -258,7 +258,7 @@ async function loadScenario(key) {
       link.href=figure.href; image.src=figure.href;image.alt=figure.title;image.loading='lazy';
       link.append(image);return link;
     }));
-    $('lifecycle-frame').dataset.source = entry.lifecycle_href ? `lifecycle.html?data=${encodeURIComponent(entry.lifecycle_href)}&controlled=1&session=${generation}` : '';
+    $('lifecycle-frame').dataset.source = entry.lifecycle_href ? `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&data=${encodeURIComponent(entry.lifecycle_href)}&controlled=1&session=${generation}` : '';
     if (entry.lifecycle_href) $('lifecycle-frame').src = $('lifecycle-frame').dataset.source;
     else $('lifecycle-frame').removeAttribute('src');
     $('mission-video').pause();
@@ -414,7 +414,7 @@ function applyLiveSnapshot(snapshot) {
   if (changedLifecycle) {
     if (!newJob) ++state.generation;
     lifecycleReady = false;
-    $('lifecycle-frame').src = `lifecycle.html?source=parent&controlled=1&session=${state.generation}`;
+    $('lifecycle-frame').src = `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&source=parent&controlled=1&session=${state.generation}`;
   }
   paint();
   if (continueJourney) play();

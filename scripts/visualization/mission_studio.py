@@ -91,8 +91,11 @@ class MissionStudio:
         assets = Path(__file__).with_name("studio")
         shutil.copytree(assets, studio, dirs_exist_ok=True)
         local_assets = sorted(path for path in assets.iterdir() if path.is_file())
-        asset_version = hashlib.sha256(b"".join(path.name.encode() + b"\0" + path.read_bytes()
-                                                for path in local_assets)).hexdigest()[:16]
+        asset_bytes = b"".join(path.name.encode() + b"\0" + path.read_bytes() for path in local_assets)
+        document_bytes = b"".join(title.encode() + b"\0" + text.encode() + b"\0"
+                                  for (title, _), text in zip(documents, document_text))
+        asset_version = hashlib.sha256(asset_bytes + document_bytes).hexdigest()[:16]
+        document_links = {path: name + '?v=' + asset_version for path, name in document_links.items()}
         catalog = {"schema": "orbexa.mission.studio.catalog.v1", "asset_version": asset_version,
                    "entries": [], "theory": []}
         for entry, dataset, raw, video, evidence, lifecycle in projected:
@@ -134,7 +137,7 @@ class MissionStudio:
             document += '<body class="theory-document"><main class="prose">' + body + '</main>'
             document += '<script defer src="vendor/katex/katex.min.js"></script><script defer src="vendor/katex/auto-render.min.js"></script><script defer src="theory.js"></script></body></html>'
             (studio / name).write_text(document, encoding="utf-8")
-            catalog["theory"].append({"title": title, "href": name})
+            catalog["theory"].append({"title": title, "href": name + '?v=' + asset_version})
         (studio / "catalog.json").write_text(json.dumps(catalog, indent=2, allow_nan=False), encoding="utf-8")
         # A refreshed saved-data export must not retain an older cached renderer.
         # Vendor URLs and their pinned registry bytes remain unchanged.
