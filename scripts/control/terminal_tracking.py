@@ -9,6 +9,7 @@ All admission decisions use exact rational arithmetic.  See
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from fractions import Fraction
 from numbers import Integral
 from typing import Any, Sequence
@@ -17,6 +18,26 @@ from .reachability import FRAME, IntervalBox
 
 
 TERMINAL_METHOD = "exact-held-reference-terminal-v1"
+MIDPOINT_TERMINAL_METHOD = "exact-held-midpoint-reference-terminal-v1"
+
+
+class TerminalFeedforwardPolicy(str, Enum):
+    """Supported held laws; the residual factor is not a caller-tuned bound."""
+
+    START_V1 = "start_feedforward_v1"
+    MIDPOINT_V1 = "midpoint_feedforward_v1"
+
+    @property
+    def sample_fraction(self):
+        return Fraction(0) if self is self.START_V1 else Fraction(1, 2)
+
+    @property
+    def residual_fraction(self):
+        return Fraction(1) if self is self.START_V1 else Fraction(1, 2)
+
+    @property
+    def certificate_method(self):
+        return TERMINAL_METHOD if self is self.START_V1 else MIDPOINT_TERMINAL_METHOD
 
 
 def _q(value: Any) -> Fraction:
@@ -153,7 +174,7 @@ class TerminalTrackingBounds:
     Position and anomaly-velocity use m and m/rad; acceleration and input use
     m/rad^2. Gains have units 1/rad. All bounds cover ``scope`` continuously.
     Reference feedforward is u_g=p_g''-Ahat*x_g-dhat. Its Lipschitz bound is
-    |u_g(q)-u_g(q_j)| <= feedforward_lipschitz*(q-q_j).
+    |u_g(q)-u_g(r)| <= feedforward_lipschitz*|q-r| for any two scope clocks.
     """
 
     scope: BoundScope
@@ -220,13 +241,23 @@ class TerminalCertificate:
     reasons: tuple[str, ...]
     quantities: dict = field(default_factory=dict)
     method: str = TERMINAL_METHOD
+    policy: TerminalFeedforwardPolicy = TerminalFeedforwardPolicy.START_V1
+
+    def __post_init__(self):
+        policy = TerminalFeedforwardPolicy(self.policy)
+        if self.method != policy.certificate_method:
+            raise ValueError("Unsupported or inconsistent terminal held-law method/policy")
+        object.__setattr__(self, "policy", policy)
 
     def as_dict(self):
-        return {"method": self.method, "admissible": self.admissible,
+        record = {"method": self.method, "admissible": self.admissible,
                 "status": "CONDITIONAL_PROVEN" if self.admissible else "REFUSED",
                 "reasons": self.reasons, "bounds": self.bounds.as_dict(),
                 "exact_quantities": _encode(self.quantities),
                 "claim": "Invariant held-feedback tracking conditional on the declared global bounds"}
+        if self.policy is not TerminalFeedforwardPolicy.START_V1:
+            record["held_policy"] = self.policy.value
+        return record
 
     def contains(self, state: IntervalBox, reference: TerminalReferenceSample) -> bool:
         if not self.admissible or not self.bounds.scope.contains(reference.anomaly) or state.dimension != 6:
@@ -244,13 +275,15 @@ class TerminalCertificate:
         return True
 
 
-def certify_terminal_tracking(bounds: TerminalTrackingBounds) -> TerminalCertificate:
+def certify_terminal_tracking(bounds: TerminalTrackingBounds, *,
+                              policy=TerminalFeedforwardPolicy.START_V1) -> TerminalCertificate:
     """Check every sufficient inequality using exact rational comparisons.
 
     Positive algebraic margins do not prove the global model/reference bounds
     themselves. The source and validity of those bounds remain explicit proof
     assumptions in the returned certificate.
     """
+    policy = TerminalFeedforwardPolicy(policy)
     b = bounds
     a, delta, variation = b.nominal_matrix_abs, b.matrix_uncertainty_abs, b.nominal_matrix_variation
     lam, kappa, omega, phi, tau = b.lambda_gain, b.bandwidth, b.omega, b.phi, b.maximum_hold
@@ -263,7 +296,7 @@ def certify_terminal_tracking(bounds: TerminalTrackingBounds) -> TerminalCertifi
     sensing = _sum(_dot(a_delta, b.sensing_error_abs), _mul(lam, nv), _mul(kappa, ns))
     base = _sum(_dot(delta, b.reference_state_abs), b.affine_uncertainty_abs,
                 b.acceleration_disturbance_abs, b.actuator_error_abs,
-                tuple(tau * value for value in b.feedforward_lipschitz), sensing)
+                tuple(tau * value * policy.residual_fraction for value in b.feedforward_lipschitz), sensing)
     reserve = _sum(_dot(a_delta, sensed_error), _mul(lam, _sum(velocity, nv)), _mul(kappa, phi))
     dv = _sum(_dot(a_delta, error), base, reserve)
     de = velocity + dv
@@ -303,7 +336,11 @@ def certify_terminal_tracking(bounds: TerminalTrackingBounds) -> TerminalCertifi
                       upper_input_margin=upper_margin, position_radius_squared=radius_squared,
                       anomaly_velocity_radius_squared=speed_squared,
                       target_distance_after_body_and_clearance=target_gap)
-    return TerminalCertificate(b, not reasons, tuple(reasons), quantities)
+    if policy is not TerminalFeedforwardPolicy.START_V1:
+        quantities.update(actual_feedforward_lipschitz=b.feedforward_lipschitz,
+            feedforward_residual_scale=policy.residual_fraction,
+            midpoint_feedforward_variation_abs=tuple(tau * value / 2 for value in b.feedforward_lipschitz))
+    return TerminalCertificate(b, not reasons, tuple(reasons), quantities, policy.certificate_method, policy)
 
 
 @dataclass(frozen=True)
@@ -348,6 +385,59 @@ class TerminalReferenceSample:
 
 
 @dataclass(frozen=True)
+class TerminalHoldReferences:
+    """Two canonical reference events and their actual evaluation query clocks.
+
+    The feedback sample belongs to the actual observation/flow start.  Only
+    feedforward is previewed. Accuracy of the evaluated values is a separate
+    declared contract, not established by these clock consistency checks.
+    """
+
+    policy: TerminalFeedforwardPolicy
+    feedback: TerminalReferenceSample
+    feedforward: TerminalReferenceSample
+    feedback_query_anomaly: Any | None = None
+    feedforward_query_anomaly: Any | None = None
+    maximum_query_displacement: Any = 0
+
+    def __post_init__(self):
+        object.__setattr__(self, "policy", TerminalFeedforwardPolicy(self.policy))
+        if not isinstance(self.feedback, TerminalReferenceSample) or not isinstance(self.feedforward, TerminalReferenceSample):
+            raise TypeError("Both hold references must be typed reference samples")
+        if self.feedback.reference_id != self.feedforward.reference_id:
+            raise ValueError("Both hold references must name the same authoritative reference")
+        for name, sample in (("feedback_query_anomaly", self.feedback), ("feedforward_query_anomaly", self.feedforward)):
+            value = getattr(self, name)
+            object.__setattr__(self, name, sample.anomaly if value is None else _q(value))
+        budget = _q(self.maximum_query_displacement)
+        if budget < 0:
+            raise ValueError("Reference query displacement must be nonnegative")
+        object.__setattr__(self, "maximum_query_displacement", budget)
+
+    def validate(self, bounds, hold_width, *, maximum_query_displacement=0):
+        hold, budget = _q(hold_width), _q(maximum_query_displacement)
+        if (self.maximum_query_displacement != budget or not 0 < hold <= bounds.maximum_hold
+                or not bounds.scope.contains_hold(self.feedback.anomaly, hold)
+                or self.feedforward.anomaly != self.feedback.anomaly + self.policy.sample_fraction * hold
+                or self.feedback.reference_id != bounds.reference_id):
+            raise ValueError("Held policy, reference identity, exact clocks, width or query contract changed")
+        if self.policy is TerminalFeedforwardPolicy.START_V1 and self.feedback != self.feedforward:
+            raise ValueError("Start feedforward must use the same reference evaluation as feedback")
+        if (abs(self.feedback_query_anomaly - self.feedback.anomaly) > budget
+                or abs(self.feedforward_query_anomaly - self.feedforward.anomaly) > budget):
+            raise ValueError("A reference query clock exceeds its declared evaluation budget")
+        return True
+
+    def as_dict(self):
+        return dict(held_policy=self.policy.value, feedback=self.feedback.as_dict(),
+            feedforward=self.feedforward.as_dict(), feedback_query_anomaly=str(self.feedback_query_anomaly),
+            feedforward_query_anomaly=str(self.feedforward_query_anomaly),
+            maximum_query_displacement=str(self.maximum_query_displacement),
+            feedback_query_displacement=str(abs(self.feedback_query_anomaly - self.feedback.anomaly)),
+            feedforward_query_displacement=str(abs(self.feedforward_query_anomaly - self.feedforward.anomaly)))
+
+
+@dataclass(frozen=True)
 class TerminalControlCommand:
     anomaly: Fraction
     hold_width: Fraction
@@ -355,6 +445,7 @@ class TerminalControlCommand:
     applied_input: IntervalBox
     actuator_error_abs: tuple[Fraction, ...]
     reference_id: str
+    hold_references: TerminalHoldReferences | None = None
 
     def float_command(self) -> tuple[float, ...]:
         """Round only when the declared actuator-error budget covers it."""
@@ -365,11 +456,15 @@ class TerminalControlCommand:
         return result
 
     def as_dict(self):
-        return {"anomaly": str(self.anomaly), "hold_width": str(self.hold_width),
+        record = {"anomaly": str(self.anomaly), "hold_width": str(self.hold_width),
                 "exact_command": tuple(map(str, self.exact_command)),
                 "applied_input": self.applied_input.as_dict(),
                 "actuator_error_abs": tuple(map(str, self.actuator_error_abs)),
                 "reference_id": self.reference_id}
+        if self.hold_references is not None:
+            record.update(held_policy=self.hold_references.policy.value,
+                end_anomaly=str(self.anomaly + self.hold_width), reference_samples=self.hold_references.as_dict())
+        return record
 
 
 class TerminalTrackingController:
@@ -377,19 +472,35 @@ class TerminalTrackingController:
 
     def __init__(self, certificate: TerminalCertificate):
         # Recompute instead of trusting a hand-constructed/stored status flag.
-        self.certificate = certify_terminal_tracking(certificate.bounds)
+        if (not isinstance(certificate, TerminalCertificate)
+                or certificate.method != TerminalFeedforwardPolicy(certificate.policy).certificate_method):
+            raise ValueError("Unsupported or inconsistent terminal certificate policy")
+        self.certificate = certify_terminal_tracking(certificate.bounds, policy=certificate.policy)
         if not self.certificate.admissible:
             raise ValueError("Terminal certificate refused: " + "; ".join(self.certificate.reasons))
 
     def command(self, measured_state, state_enclosure: IntervalBox,
-                reference: TerminalReferenceSample, *, hold_width) -> TerminalControlCommand:
+                reference: TerminalReferenceSample, *, hold_width,
+                hold_references: TerminalHoldReferences | None = None) -> TerminalControlCommand:
         b = self.certificate.bounds
         hold = _q(hold_width)
         measurement = _vector(measured_state, 6, "measurement")
+        policy = self.certificate.policy
+        if hold_references is None:
+            if policy is not TerminalFeedforwardPolicy.START_V1:
+                raise ValueError("Midpoint feedforward requires both exact held-reference events")
+        elif (not isinstance(hold_references, TerminalHoldReferences)
+              or hold_references.policy is not policy or hold_references.feedback != reference):
+            raise ValueError("The held-reference policy or actual feedback sample changed")
+        else:
+            hold_references.validate(b, hold)
+        feedforward = reference if hold_references is None else hold_references.feedforward
         if not 0 < hold <= b.maximum_hold or not b.scope.contains_hold(reference.anomaly, hold):
             raise ValueError("The complete feedback hold must belong to the certified scope")
         if not self.certificate.contains(state_enclosure, reference):
             raise ValueError("Current state enclosure is outside the certified terminal set")
+        if not feedforward.complies(b):
+            raise ValueError("The held feedforward sample violates its global reference contract")
         if any(max(abs(lo - m), abs(hi - m)) > n for lo, hi, m, n in
                zip(state_enclosure.lower, state_enclosure.upper, measurement, b.sensing_error_abs)):
             raise ValueError("Measurement and state enclosure violate the sensing-error budget")
@@ -399,9 +510,10 @@ class TerminalTrackingController:
         robust = _sum(_dot(b.matrix_uncertainty_abs, tuple(map(abs, error))), _mul(b.bandwidth, b.phi))
         cancellation = _sum(_dot(reference.nominal_matrix, error), _mul(b.lambda_gain, error[3:]),
                             _mul(robust, saturation))
-        command = tuple(g - c for g, c in zip(reference.feedforward, cancellation))
+        command = tuple(g - c for g, c in zip(feedforward.feedforward, cancellation))
         applied = IntervalBox.from_center_radius(command, b.actuator_error_abs)
         if not b.input_limits.contains(applied):
             raise ValueError("Command exceeds certified input limits")
         return TerminalControlCommand(reference.anomaly, hold, command, applied,
-                                      b.actuator_error_abs, reference.reference_id)
+            b.actuator_error_abs, reference.reference_id,
+            hold_references if policy is not TerminalFeedforwardPolicy.START_V1 else None)

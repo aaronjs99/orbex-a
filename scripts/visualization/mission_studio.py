@@ -104,7 +104,16 @@ class MissionStudio:
                 "figures": figures[entry.key],
                 "raw_sha256": hashlib.sha256((studio / raw).read_bytes()).hexdigest()})
         for index, (title, source) in enumerate(documents):
+            heading_ids = {}
             class DocumentRenderer(mistune.HTMLRenderer):
+                def heading(self, text, level, **attrs):
+                    plain = html.unescape(re.sub(r"<[^>]+>", "", text)).lower()
+                    slug = re.sub(r"\s+", "-", re.sub(r"[^\w\s-]", "", plain)).strip("-") or "section"
+                    count = heading_ids.get(slug, 0)
+                    heading_ids[slug] = count + 1
+                    anchor = slug if count == 0 else f"{slug}-{count}"
+                    return f'<h{level} id="{html.escape(anchor, quote=True)}">{text}</h{level}>\n'
+
                 def link(self, text, url, title=None):
                     relative, separator, fragment = url.partition("#")
                     if ":" not in relative and relative.endswith(".md"):

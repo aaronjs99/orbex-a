@@ -19,7 +19,8 @@ from .reachability import (
 )
 from .terminal_tracking import (
     BoundScope, TerminalCertificate, TerminalControlCommand,
-    TerminalGeometryBounds, TerminalReferenceSample, TerminalTrackingBounds,
+    TerminalFeedforwardPolicy, TerminalGeometryBounds, TerminalHoldReferences,
+    TerminalReferenceSample, TerminalTrackingBounds,
     certify_terminal_tracking,
 )
 
@@ -425,6 +426,28 @@ class PhysicalTerminalBoundsBuilder:
     def _geometry_proof_reference(self):
         return PHYSICAL_TERMINAL_METHOD
 
+    def _terminal_proof_reference(self):
+        return self._geometry_proof_reference()
+
+    def _terminal_policy(self):
+        return TerminalFeedforwardPolicy.START_V1
+
+    def _reference_jet_bounds(self, flint, ar, *, point, point_radius, rotation_derivatives,
+                              duration, rate, rate_prime, rate_double, torque_factor, radius_log_prime):
+        return (point_radius,) + tuple(point_radius * value for value in rotation_derivatives), {}
+
+    def _feedforward_range(self, ar, nominal, p2, reference_state, matrix_abs):
+        state_balls = tuple(ar.interval((-value, value)) for value in reference_state)
+        return ar.box(tuple(ar.interval((-p2, p2)) - sum(
+            (value[0] * x for value, x in zip(row, state_balls)), ar.arb(0)) - drift[0]
+            for row, drift in zip(nominal["matrix"], nominal["affine"])))
+
+    def _evaluation_input_error(self, *, acceleration_error, affine_error, matrix_error,
+                                reference_state, error_state, reference_error, matrix_abs):
+        return _add(acceleration_error, affine_error,
+            _dot(matrix_error, _add(reference_state, error_state, self.errors.sensing_error_abs)),
+            _dot(matrix_abs, reference_error))
+
     def _spin_bound(self, ar, entry_norm, duration, quadratic, constant, jmin):
         """Original scalar first-exit comparison, retained for cylinder records."""
         c = entry_norm + constant * duration
@@ -475,7 +498,10 @@ class PhysicalTerminalBoundsBuilder:
                                 (1 + k0) ** 3 + 3 * (1 + k0) * k1 + k2)
         point = self.body_ports[self.port_index]
         point_radius = _sqrt_upper(ar, sum(v * v for v in point))
-        p0, p1, p2, p3 = (point_radius,) + tuple(point_radius * value for value in rotation_derivatives)
+        (p0, p1, p2, p3), reference_evidence = self._reference_jet_bounds(flint, ar,
+            point=point, point_radius=point_radius, rotation_derivatives=rotation_derivatives,
+            duration=duration, rate=rate, rate_prime=rate_prime, rate_double=rate_double,
+            torque_factor=torque_factor, radius_log_prime=radius_log_prime)
         reference_state = (p0,) * 3 + (p1,) * 3
         reference_derivative = (p1,) * 3 + (p2,) * 3
         matrix_abs = tuple(tuple(_abs(ar, value[0]) for value in row) for row in nominal["matrix"])
@@ -486,10 +512,7 @@ class PhysicalTerminalBoundsBuilder:
         affine_prime = tuple(_abs(ar, value[1]) for value in nominal["affine"])
         lipschitz = _add((p3,) * 3, _dot(matrix_prime, reference_state),
                          _dot(matrix_abs, reference_derivative), affine_prime)
-        state_balls = tuple(ar.interval((-value, value)) for value in reference_state)
-        feedforward = ar.box(tuple(ar.interval((-p2, p2)) - sum(
-            (value[0] * x for value, x in zip(row, state_balls)), ar.arb(0)) - drift[0]
-            for row, drift in zip(nominal["matrix"], nominal["affine"])))
+        feedforward = self._feedforward_range(ar, nominal, p2, reference_state, matrix_abs)
         reference_error = _add(self.errors.reference_state_error_abs,
                                tuple(q_error * value for value in reference_derivative))
         acceleration_error = _add(self.errors.reference_acceleration_error_abs, (q_error * p3,) * 3)
@@ -502,9 +525,9 @@ class PhysicalTerminalBoundsBuilder:
         # Exact-reference measured error uses n-E_g. The remaining difference
         # in the evaluated command is bounded independently as actuator forcing.
         sensing = _add(self.errors.sensing_error_abs, reference_error)
-        evaluation_input_error = _add(acceleration_error, affine_error,
-            _dot(matrix_error, _add(reference_state, error_state, self.errors.sensing_error_abs)),
-            _dot(matrix_abs, reference_error))
+        evaluation_input_error = self._evaluation_input_error(acceleration_error=acceleration_error,
+            affine_error=affine_error, matrix_error=matrix_error, reference_state=reference_state,
+            error_state=error_state, reference_error=reference_error, matrix_abs=matrix_abs)
         actuator = _add(self.errors.actuator_error_abs, evaluation_input_error)
         target_distance, geometry_evidence = self._geometry_distance(ar, point)
         peer_radius_squared = (sum(v * v for v in self.omega) if self.peer_position_radius_squared_upper is None
@@ -516,7 +539,7 @@ class PhysicalTerminalBoundsBuilder:
             distance = ar.box((ar.scalar(sum((a - b) ** 2 for a, b in zip(point, peer))).sqrt(),)).lower[0]
             peer_geometry.append((distance, peer_radius_squared, self.body_radius))
         scope = BoundScope(self.start_anomaly, self.end_anomaly,
-            proof_kind="validated-interval-global", proof_reference=self._geometry_proof_reference(),
+            proof_kind="validated-interval-global", proof_reference=self._terminal_proof_reference(),
             assumptions=("Arb interval jets enclose the analytical orbit over the complete finite anomaly domain",
                          "The entry spin box encloses the true target spin; fixed physical inertia and central gravity-gradient torque only",
                          "All assigned body ports share the actual target rigid rotation and peers obey the declared terminal bounds",
@@ -547,6 +570,7 @@ class PhysicalTerminalBoundsBuilder:
             sampled_maxima_used=False)
         derived.update(geometry_evidence)
         derived.update(spin_evidence)
+        derived.update(reference_evidence)
         attempts = []
         last = None
         for bandwidth in self.bandwidth_candidates:
@@ -561,7 +585,7 @@ class PhysicalTerminalBoundsBuilder:
                 sensing_error_abs=sensing, actuator_error_abs=actuator, input_limits=self.input_limits,
                 geometry=TerminalGeometryBounds(target_distance, self.body_radius, self.clearance, tuple(peer_geometry)),
                 position_tolerance=self.position_tolerance, anomaly_velocity_tolerance=self.anomaly_velocity_tolerance)
-            last = certify_terminal_tracking(bounds)
+            last = certify_terminal_tracking(bounds, policy=self._terminal_policy())
             attempts.append(dict(bandwidth=bandwidth, admissible=last.admissible, reasons=last.reasons,
                                  sliding_inward_margin=last.quantities["sliding_inward_margin"],
                                  lower_input_margin=last.quantities["lower_input_margin"],
@@ -588,22 +612,51 @@ class PhysicalTerminalController:
         result = builder.build()
         if not result.admissible:
             raise ValueError("A proved physical terminal result is required")
-        certificate = certify_terminal_tracking(result.certificate.bounds)
+        policy = TerminalFeedforwardPolicy(builder._terminal_policy())
+        expected = builder._terminal_proof_reference()
+        supported = (PHYSICAL_TERMINAL_METHOD, "arb-composite-orbit-rigid-body-terminal-v1",
+                     "arb-componentwise-composite-midpoint-terminal-v1")
+        if (expected not in supported or result.method != expected
+                or result.certificate.policy is not policy
+                or result.certificate.method != policy.certificate_method
+                or result.certificate.bounds.scope.proof_reference != expected
+                or (policy is TerminalFeedforwardPolicy.MIDPOINT_V1) !=
+                   (expected == "arb-componentwise-composite-midpoint-terminal-v1")):
+            raise ValueError("Unsupported or inconsistent physical terminal method, policy or scope proof identity")
+        certificate = certify_terminal_tracking(result.certificate.bounds, policy=policy)
         if not certificate.admissible:
             raise ValueError("Terminal algebra recertification refused")
+        if certificate.as_dict() != result.certificate.as_dict():
+            raise ValueError("Physical terminal algebra differs from its policy-aware recertification")
         self.result = result
         self.certificate = certificate
+        self.anomaly_evaluation_error_abs = builder.errors.anomaly_evaluation_error_abs
 
     def command(self, measured_state, state_enclosure: IntervalBox,
-                approximate_reference: TerminalReferenceSample, *, hold_width):
+                approximate_reference: TerminalReferenceSample, *, hold_width,
+                hold_references: TerminalHoldReferences | None = None):
         b, reference = self.certificate.bounds, approximate_reference
         hold = _exact(hold_width)
         measured = _vector(measured_state, 6, "Measured state")
+        policy = self.certificate.policy
+        if hold_references is None:
+            if policy is not TerminalFeedforwardPolicy.START_V1:
+                raise ValueError("Midpoint feedforward requires both exact held-reference events")
+        elif (not isinstance(hold_references, TerminalHoldReferences)
+              or hold_references.policy is not policy or hold_references.feedback != reference):
+            raise ValueError("The held-reference policy or actual feedback sample changed")
+        else:
+            hold_references.validate(b, hold, maximum_query_displacement=
+                                     self.anomaly_evaluation_error_abs)
+        feedforward = reference if hold_references is None else hold_references.feedforward
         if not 0 < hold <= b.maximum_hold or not b.scope.contains_hold(reference.anomaly, hold):
             raise ValueError("The complete held command must belong to the certified finite scope")
         reference_reason = self.result.reference_values_reason(reference)
         if reference_reason:
             raise ValueError(reference_reason)
+        feedforward_reason = self.result.reference_values_reason(feedforward)
+        if feedforward_reason:
+            raise ValueError(feedforward_reason)
         if not self.result.robust_contains(state_enclosure, reference):
             raise ValueError("Robust membership for the complete reference-evaluation box failed")
         sensor = self.result.derived["physical_sensing_error_abs"]
@@ -618,12 +671,13 @@ class PhysicalTerminalController:
         cancellation = _add(_dot(reference.nominal_matrix, error),
             tuple(lam * value for lam, value in zip(b.lambda_gain, error[3:])),
             tuple(gain * sat for gain, sat in zip(robust, saturation)))
-        command = tuple(u - correction for u, correction in zip(reference.feedforward, cancellation))
+        command = tuple(u - correction for u, correction in zip(feedforward.feedforward, cancellation))
         actuator = self.result.derived["physical_actuator_error_abs"]
         applied = IntervalBox.from_center_radius(command, actuator)
         if not b.input_limits.contains(applied):
             raise ValueError("The actual evaluated command exceeds the input limits")
-        return TerminalControlCommand(reference.anomaly, hold, command, applied, actuator, b.reference_id)
+        return TerminalControlCommand(reference.anomaly, hold, command, applied, actuator, b.reference_id,
+            hold_references if policy is not TerminalFeedforwardPolicy.START_V1 else None)
 
 
 @dataclass(frozen=True)
@@ -673,6 +727,8 @@ class PhysicalTerminalFleet:
             raise ValueError("Each fleet member needs a unique reference identity")
         self.builders = builders
         self.controllers = tuple(PhysicalTerminalController(item) for item in builders)
+        if any(item.certificate.policy is not self.controllers[0].certificate.policy for item in self.controllers):
+            raise ValueError("A physical terminal fleet must share one explicitly supported held policy")
 
     def admit(self, state_enclosures: Sequence[IntervalBox],
               approximate_references: Sequence[TerminalReferenceSample]) -> PhysicalTerminalAdmission:
@@ -688,11 +744,16 @@ class PhysicalTerminalFleet:
                         for index, accepted in enumerate(contained) if not accepted)
         return PhysicalTerminalAdmission(not reasons, reasons, anomaly, contained)
 
-    def commands(self, measurements, state_enclosures, approximate_references, *, hold_width):
+    def commands(self, measurements, state_enclosures, approximate_references, *, hold_width,
+                 hold_references=None):
         measurements, states, references = tuple(measurements), tuple(state_enclosures), tuple(approximate_references)
         admission = self.admit(states, references)
         if not admission.admissible or len(measurements) != len(self.controllers):
             raise ValueError("Physical terminal fleet admission refused: " + "; ".join(
                 admission.reasons or ("Measurement count differs from the physical fleet",)))
-        return tuple(controller.command(measured, state, reference, hold_width=hold_width)
-                     for controller, measured, state, reference in zip(self.controllers, measurements, states, references))
+        pairs = (None,) * len(self.controllers) if hold_references is None else tuple(hold_references)
+        if len(pairs) != len(self.controllers):
+            raise ValueError("Held-reference pairs differ from the physical fleet")
+        return tuple(controller.command(measured, state, reference, hold_width=hold_width, hold_references=pair)
+                     for controller, measured, state, reference, pair in
+                     zip(self.controllers, measurements, states, references, pairs))

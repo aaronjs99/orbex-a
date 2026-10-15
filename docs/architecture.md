@@ -22,7 +22,9 @@ Python namespace is `orbexa`; its source directory is the user's `scripts/`.
 | `scripts/core/target_spacecraft.py`, `chaser_spacecraft.py` | Supporting spacecraft APIs; `spacecraft.py` is the base/lazy facade |
 | `scripts/control/` | MPC formulation, constraints, references, dynamic tubes and uncertainty enclosures |
 | `scripts/control/reachability.py` | Validated continuous held-flow and swept finite-body geometry certificates |
+| `scripts/control/orbital_hold.py` | Authenticated orbital hold reconstruction and separate variation-of-constants endpoint refinement; original swept witnesses remain authoritative |
 | `scripts/control/terminal_tracking.py`, `physical_terminal.py`, `continuation.py` | Exact terminal conditions, derived eccentric rigid-target bounds and stored admissible backups |
+| `scripts/control/rigid_body_terminal.py`, `componentwise_terminal.py` | Full-inertia componentwise port jets and explicitly typed midpoint terminal feedback |
 | `scripts/solvers/` | GEKKO, SciPy and optional CasADi implementations |
 | `scripts/estimation/belief.py` | Retained parameter intervals and an admissible nominal point |
 | `scripts/estimation/interval_membership.py` | Outward-rounded interval RK4 membership contraction |
@@ -32,6 +34,7 @@ Python namespace is `orbexa`; its source directory is the user's `scripts/`.
 | `scripts/planning/` | Docking assignment, allocation and explicit supporting observation/deflection optimizers |
 | `scripts/simulation/` | Scenario, fleet, phase policy, planning, execution, recording and result I/O |
 | `scripts/simulation/physical_approach.py`, `certified_execution.py` | Compact finite-body target approach with explicit sensing/model admission bounds |
+| `scripts/simulation/arrival_policy.py`, `mission_transition.py` | Persistent exact arrival deadline, whole-tube suffix/entry region and explicit policy-only restart seam |
 | `scripts/simulation/complete_mission.py` | Stage orchestration, rigorous-clock translation propellant allowance and actual chaser-attitude handoff |
 | `scripts/simulation/terminal_handoff.py` | Reproved source-bound terminal continuation, actual endpoint and separate attitude/accounting trajectory |
 | `scripts/simulation/capture.py`, `assembly.py`, `propulsion.py` | Finite-reach inelastic latch, mass/inertia/fuel state and bounded external nozzle wrench allocation |

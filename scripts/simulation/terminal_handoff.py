@@ -20,6 +20,7 @@ import zlib
 import numpy as np
 
 from orbexa.control.physical_terminal import PhysicalTerminalBoundsBuilder, PhysicalTerminalErrorBounds
+from orbexa.control.terminal_tracking import TerminalFeedforwardPolicy
 from orbexa.control.reachability import (
     HeldInputRequest, IntervalBox, OrbitalModelBounds, ReachabilityConfig,
     _exact, _float_outward,
@@ -28,11 +29,13 @@ from orbexa.simulation.capture import CaptureModel, CaptureTruth, TargetPhysical
 from orbexa.simulation.mission_checkpoint import digest, plain, _target_signature, physical_target_from_snapshot
 from orbexa.simulation.mission_result import ADTMPCMissionResult
 from orbexa.simulation.physical_terminal_execution import (
-    EXECUTION_METHOD, PhysicalTerminalRunner, TerminalObservation,
+    PhysicalTerminalRunner, TerminalObservation, terminal_execution_policy,
+    terminal_hold_linkage, terminal_source_lineage,
 )
 
 
 HANDOFF_METHOD = "verified-physical-terminal-handoff-v1"
+MIDPOINT_HANDOFF_METHOD = "verified-physical-midpoint-terminal-handoff-v1"
 
 
 def _require(condition, reason):
@@ -48,8 +51,27 @@ def _observation(value):
     return TerminalObservation(value["measurements"], tuple(map(_box, value["state_enclosures"])))
 
 
-def _builder(value):
+def _builder(value, *, method, certificate):
+    """Reconstruct a supported policy AND geometry; never infer a new law."""
+    _require(isinstance(value, dict), "physical builder assumptions must be a complete dictionary")
     arguments = copy.deepcopy(value)
+    _require(isinstance(certificate, dict), "a typed global certificate is required")
+    bounds = certificate.get("bounds")
+    _require(isinstance(bounds, dict) and isinstance(bounds.get("scope"), dict),
+             "global bounds and their typed scope are required")
+    scope = bounds["scope"]
+    composite = "target_geometry" in arguments
+    if method == "arb-componentwise-composite-midpoint-terminal-v1":
+        _require(composite and arguments.get("held_policy") == TerminalFeedforwardPolicy.MIDPOINT_V1.value
+                 and certificate.get("held_policy") == TerminalFeedforwardPolicy.MIDPOINT_V1.value
+                 and certificate.get("method") == TerminalFeedforwardPolicy.MIDPOINT_V1.certificate_method,
+                 "midpoint builder, certificate, policy or complete geometry identity changed")
+    else:
+        expected = "arb-composite-orbit-rigid-body-terminal-v1" if composite else "arb-orbit-rigid-body-terminal-v1"
+        _require(method == expected and "held_policy" not in arguments and "held_policy" not in certificate
+                 and certificate.get("method") == TerminalFeedforwardPolicy.START_V1.certificate_method,
+                 "unsupported or inconsistent legacy physical method, policy or geometry")
+    _require(scope.get("proof_reference") == method, "the controller proof identity differs from its scope")
     for name in ("target_orbit", "plant_parameters", "nominal_parameters"):
         arguments[name] = OrbitalModelBounds(**arguments[name])
     for name in ("entry_spin", "input_limits"):
@@ -59,6 +81,9 @@ def _builder(value):
         from orbexa.core.spacecraft_geometry import SpacecraftGeometry
         from orbexa.control.composite_terminal import CompositePhysicalTerminalBoundsBuilder
         arguments["target_geometry"] = SpacecraftGeometry.from_dict(arguments["target_geometry"])
+        if method == "arb-componentwise-composite-midpoint-terminal-v1":
+            from orbexa.control.componentwise_terminal import ComponentwiseCompositePhysicalTerminalBoundsBuilder
+            return ComponentwiseCompositePhysicalTerminalBoundsBuilder(**arguments)
         return CompositePhysicalTerminalBoundsBuilder(**arguments)
     return PhysicalTerminalBoundsBuilder(**arguments)
 
@@ -140,18 +165,24 @@ class PhysicalTerminalHandoff:
         approach_path, terminal_result_path = Path(approach_path), Path(terminal_result_path)
         approach_raw, terminal_raw = approach_path.read_bytes(), terminal_result_path.read_bytes()
         payload = json.loads(approach_raw)
+        _require(isinstance(payload, dict), "the original approach must be a typed result dictionary")
         approach = ADTMPCMissionResult.from_dict(payload.get("result", payload))
         record = plain(approach.to_dict())
         execution = json.loads(gzip.decompress(terminal_raw) if terminal_result_path.suffix == ".gz" else terminal_raw)
         source_sha, terminal_sha = (hashlib.sha256(value).hexdigest() for value in (approach_raw, terminal_raw))
         _require(approach.success and approach.metadata.get("mission_complete") is True,
                  "the originating approach did not complete")
-        _require(execution.get("method") == EXECUTION_METHOD and execution.get("success") is True
+        policy = terminal_execution_policy(execution)
+        _require(execution.get("success") is True
                  and execution.get("status") == "COMPLETED_FINITE_WINDOW"
                  and execution.get("reset_performed") is False, "the terminal execution is incomplete or reset")
         context = execution["source_context"]
         _require(context["caller"].get("approach_result_sha256") == source_sha,
                  "the terminal record names a different raw approach source")
+        if policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+            _require(context["caller"].get("origin") == "actual_approach_endpoint"
+                     and digest(context["caller"].get("source_approach_lineage")) == digest(terminal_source_lineage(record)),
+                     "midpoint execution is not bound to the original actual arrival/region/transition lineage")
         _require(_target_signature(context["target"]) == _target_signature(record["target"]),
                  "the physical target epoch, geometry, dynamics or numerical domain changed")
         guarded = record["metadata"].get("continuous_execution_certificate")
@@ -173,7 +204,10 @@ class PhysicalTerminalHandoff:
         _require(np.array_equal(states[0], initial), "the actual approach endpoint was replaced")
         saved_certificates = execution["bound_certificates"]
         _require(len(saved_certificates) == count, "global certificate fleet differs from the source")
-        builders = tuple(_builder(value["assumptions"]) for value in saved_certificates)
+        builders = tuple(_builder(value["assumptions"], method=value["method"], certificate=value["certificate"])
+                         for value in saved_certificates)
+        _require(all(builder._terminal_policy() is policy for builder in builders),
+                 "execution policy differs from a physical bound builder")
         source_body_radius = _exact(guarded["body_radius_m"])
         scenario_body_radius = _exact(record["metadata"]["scenario"]["chaser_body_bounding_radius_m"])
         _require(source_body_radius > 0 and scenario_body_radius > 0
@@ -224,7 +258,11 @@ class PhysicalTerminalHandoff:
         target = _target(context["target"])
         runner = PhysicalTerminalRunner(builders=builders, target=target, truth=truth,
             observation_source=lambda *args: None, orientation_matrix_error=geometry_error,
-            minimum_pair_center_distance=holds[0]["geometry"]["minimum_pair_center_distance"])
+            minimum_pair_center_distance=holds[0]["geometry"]["minimum_pair_center_distance"],
+            source_context=context["caller"])
+        if policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+            _require(digest(context) == digest(runner.source_context),
+                     "midpoint source stage, exact schedule, prior, target or source lineage changed")
         _require(not runner._observation_reason(first_observation, states[0]), "invalid actual entry observation")
         _require(runner.fleet.admit(first_observation.state_enclosures, runner.references_at(clocks[0])).admissible,
                  "global proof or robust actual entry admission failed")
@@ -237,7 +275,8 @@ class PhysicalTerminalHandoff:
         flow_count = 0
         for index, hold in enumerate(holds):
             q, width = clocks[index], clocks[index + 1] - clocks[index]
-            _require(hold.get("method") == EXECUTION_METHOD and hold.get("stage") == index
+            _require(terminal_execution_policy(hold) is policy and hold.get("method") == execution["method"]
+                     and hold.get("stage") == index
                      and hold.get("executed") is True and hold.get("decision") == "EXECUTED_PROVEN_HOLD"
                      and _exact(hold["start_anomaly"]) == q and _exact(hold["hold_width"]) == width
                      and _exact(hold["end_anomaly"]) == q + width,
@@ -250,10 +289,16 @@ class PhysicalTerminalHandoff:
             _require(not runner._observation_reason(observation, states[index]), f"hold {index} observation is invalid")
             _require(all(a.contains(b) for a, b in zip(previous_endpoints, observation.state_enclosures)),
                      f"hold {index} observation does not refine the preceding proved endpoints")
+            pairs = runner.hold_references_at(q, width)
+            references = tuple(pair.feedback for pair in pairs)
             commands = runner.fleet.commands(observation.measurements, observation.state_enclosures,
-                                             runner.references_at(q), hold_width=width)
+                references, hold_width=width,
+                hold_references=pairs if policy is TerminalFeedforwardPolicy.MIDPOINT_V1 else None)
             _require(digest([command.as_dict() for command in commands]) == digest(hold["commands"]),
                      f"hold {index} commands differ from the actual held law")
+            for name, expected in runner._policy_event(q, width, pairs).items():
+                _require(digest(hold.get(name)) == digest(expected),
+                         f"hold {index} midpoint policy, reference samples, query clocks or contracts changed")
             _require(len(hold["flows"]) == count, f"hold {index} continuous fleet is incomplete")
             flows = []
             for member, (builder, command, box, saved) in enumerate(zip(builders, commands,
@@ -286,8 +331,7 @@ class PhysicalTerminalHandoff:
                 minimum_pair_center_distance=runner.minimum_pair_center_distance)
             _require(collision.admissible and digest(collision.as_dict()) == digest(hold["geometry"]),
                      f"hold {index} whole-fleet swept geometry proof did not reproduce")
-            linkage = dict(start_anomaly=str(q), hold_width=str(width), commands=hold["commands"],
-                           flow_fingerprints=fingerprints, geometry=hold["geometry"])
+            linkage = terminal_hold_linkage(hold)
             _require(digest(linkage) == hold["command_flow_geometry_sha256"]
                      and digest(linkage) == digest(hold["command_flow_geometry_linkage"]),
                      f"hold {index} command/flow/geometry linkage changed")
@@ -336,6 +380,9 @@ class PhysicalTerminalHandoff:
                 maximum_hold=str(b.maximum_hold), position_tolerance=str(b.position_tolerance),
                 whole_tube_position_radius_squared=str(sum(v * v for v in b.omega)),
                 input_limits=b.input_limits.as_dict(), body_radius=str(b.geometry.body_radius))
+            if controller.certificate.policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+                bounds[key].update(held_policy=controller.certificate.policy.value,
+                    proof_reference=b.scope.proof_reference, true_feedforward_lipschitz=list(map(str, b.feedforward_lipschitz)))
         last_kinematics = runner.target.recorded_kinematics([float(clocks[-1])])
         truth_view = SimpleNamespace(target=copy.deepcopy(record["target"]), truth=copy.deepcopy(record["truth"]),
             anom_history=np.array([float(clocks[-1])]), metadata={"target_kinematics": last_kinematics})
@@ -392,6 +439,12 @@ class PhysicalTerminalHandoff:
             scope="Finite conditional terminal continuation and numerical physical capture endpoint; sensor/reference/initial-spin contracts remain explicit assumptions",
             reference_center_semantics="Evaluated physical reference, not an optimized nominal center; capture Omega/Phi include outward reference-evaluation reserve",
             trajectory_semantics="Actual translation/target samples for attitude replay and conservative propellant accounting only")
+        if runner.policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+            summary["method"] = MIDPOINT_HANDOFF_METHOD
+            summary["terminal_execution"].update(held_policy=runner.policy.value,
+                execution_schema=execution["schema"], error_source_sha256=execution["source_context"]["caller"]["error_source_sha256"],
+                source_approach_lineage=copy.deepcopy(execution["source_context"]["caller"]["source_approach_lineage"]),
+                terminal_stage=copy.deepcopy(execution["source_context"]["terminal_stage"]))
         self = object.__new__(cls)
         for name, value in dict(trajectory=trajectory, capture_truth=capture_truth,
                 states=MappingProxyType(endpoints), nominal_centers=MappingProxyType(centers),

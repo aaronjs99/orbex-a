@@ -16,7 +16,7 @@ from typing import Any, Callable, Sequence
 from .reachability import (CollisionCertificate, FlowCertificate, HeldInputRequest,
                            IntervalBox, OrbitalModelBounds, ValidatedFlowEncloser)
 from .terminal_tracking import (TerminalCertificate, TerminalReferenceSample,
-                                TerminalTrackingController, _q,
+                                TerminalFeedforwardPolicy, TerminalTrackingController, _q,
                                 certify_terminal_tracking)
 
 
@@ -170,6 +170,10 @@ class ContinuationBuilder:
                  acceleration_disturbance: IntervalBox | None = None):
         if not callable(flow_provider) or not callable(geometry_checker) or input_limits.dimension != 3:
             raise ValueError("Explicit flow/geometry proof providers and 3-input limits are required")
+        if (not isinstance(terminal, TerminalCertificate)
+                or terminal.policy is not TerminalFeedforwardPolicy.START_V1
+                or terminal.method != TerminalFeedforwardPolicy.START_V1.certificate_method):
+            raise ValueError("This v1 continuation format supports only the explicit start-feedforward terminal policy")
         self.flow_provider, self.geometry_checker = flow_provider, geometry_checker
         self.input_limits = input_limits
         self.terminal = certify_terminal_tracking(terminal.bounds)

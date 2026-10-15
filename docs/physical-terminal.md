@@ -20,6 +20,12 @@ instrumentation, numerical-reference, occupied-geometry and process-error
 bounds. A numerical attitude integration is not converted into a validated
 attitude trajectory by attaching a certificate label to its samples.
 
+`ComponentwiseCompositePhysicalTerminalBoundsBuilder` is a separate service
+for the explicit midpoint-feedforward law and complete composite geometry.
+Its full-inertia componentwise first-exit and port-derivative bounds are
+described below. Algebra/source qualification of this service does not
+establish a controlled Envisat arrival or completed mission.
+
 ## 2. Conventions and Assumptions
 
 The independent variable is unwrapped anomaly $q$ in radians. Physical time is
@@ -73,7 +79,7 @@ must still satisfy the certified maximum hold.
 |---|---|---|---|---|
 | P1 | Orbital samples bound the whole window | Incorrect | Samples can miss extrema | Arb interval jets evaluate the complete anomaly and parameter box |
 | P2 | SPD inertia is physically realizable | Incorrect | Principal-moment triangles are also necessary | Check SPD and positive semidefiniteness of $\operatorname{tr}(J)I-2J$ exactly |
-| P3 | Entry spin is a global spin bound | Incorrect | Gravity gradient and rigid-body coupling change spin | Prove the strict scalar first-exit self-inclusion inequality |
+| P3 | Entry spin is a global spin bound | Incorrect | Gravity gradient and rigid-body coupling change spin | Use the selected scalar first-exit, energy comparison or strict componentwise first-exit proof |
 | P4 | Physical angular acceleration directly gives $R''$ | Incorrect | The clock and rotating LVLH frame contribute derivatives | Include $\nu'$, $\nu''$ and all rotating-frame product terms |
 | P5 | Numerical reference values meet an exact-reference API | Incorrect without conditions | Evaluation error also affects admission and commanded input | Use robust reference-box membership and the derived evaluation forcing budget |
 | P6 | Rotation can reduce assigned port separation | Valid under condition | The references share the same actual proper rotation | Preserve exact body-point distances; include all terminal body/tube radii |
@@ -388,6 +394,131 @@ cannot reduce this radial lower bound. For peers, proper rotation preserves
 $\|R(b_i-b_j)\|=\|b_i-b_j\|$. The checker uses downward Arb distance
 enclosures, complete tube radii, physical enclosing body radii and required
 clearance. Different target poses are not assigned to different agents.
+
+### Componentwise full-inertia port jets
+
+The reusable `bound_componentwise_terminal_jets` service retains the full
+fixed inertia $J$. Let $M=J^{-1}$, let $F$ be the physical-time spin
+derivative, and let $\tau_g$ be central gravity-gradient torque. Exact
+rational expansion combines coefficients of
+$F=M[-\omega\times(J\omega)+\tau_g]$ before interval evaluation.
+
+The entry box has center $c$ and half-widths $r_0$. A proposed whole-query
+spin box $W=c+[-b,b]$ is accepted only if the absolute time bound $T$ and
+the complete torque enclosure give the strict componentwise inequalities
+
+$$
+r_{0i}+T\sup_{\omega\in W,\ \tau_g\in\mathcal U_g}|F_i|<b_i.
+\tag{P11}
+$$
+
+This is a first-exit comparison in both time directions, including backward
+evaluation queries. It does not assert contraction. Its elapsed time is
+measured from the actual entry to the furthest query. Centered-inertia
+bounds enclose gravity-gradient torque and its derivative, including body
+and radial-direction motion. Then
+$\dot F=D_\omega F_{\rm gyro}F+M\dot\tau_g$.
+
+For the fixed body port $b_p$, define the inertial physical-time velocity,
+acceleration and jerk in body coordinates before taking any norm:
+
+$$
+\begin{aligned}
+v_b&=\omega\times b_p,\\
+a_b&=F\times b_p+\omega\times(\omega\times b_p),\\
+j_b&=\dot F\times b_p+F\times(\omega\times b_p)
+ +2\omega\times(F\times b_p)
+ +\omega\times(\omega\times(\omega\times b_p)).
+\end{aligned}
+\tag{P12}
+$$
+
+Exact expanded polynomials in spin, torque and torque derivative preserve
+the cancellations associated with each actual port and full off-diagonal
+inertia. Arb evaluates them over the entire first-exit enclosure. Physical
+rotation preserves their Euclidean norms; the positive orbital clock and
+all anomaly/LVLH product terms then give global reference state,
+acceleration and jerk bounds. No target-history maximum is used.
+
+### Two-clock numerical evaluation and execution
+
+The new physical method and scope proof identity are both
+`arb-componentwise-composite-midpoint-terminal-v1`; the separate geometry
+provenance remains the complete-component geometry proof. Its algebra method
+is `exact-held-midpoint-reference-terminal-v1`. The builder, controller,
+execution record and handoff parser must agree on this policy. Relabeling
+an old certificate or an outside prospective candidate is refused.
+
+The midpoint and start matrices are evaluated separately. Let $G$ bound the
+true six-state reference, $E$ the tracking error, $N$ physical sensing error,
+$E_g$ reference evaluation, $E_A$ matrix evaluation, $E_a$ acceleration
+evaluation and $E_d$ affine evaluation. All are componentwise uniform bounds
+covering both queries. The numerical input reserve is
+
+$$
+E_u=E_a+E_d+E_A(G+E_g)
+       +E_A(E+N+E_g)+|\widehat A|E_g.
+\tag{P13}
+$$
+
+The two matrix-error terms cannot use the same-clock cancellation in P9.
+Effective feedback sensing is $N+E_g$; physical actuator error remains
+separate. The true global feedforward Lipschitz constant is preserved, and
+only its held variation uses the half-width residual proved in
+[T9](terminal-tracking.md#explicit-midpoint-feedforward-policy).
+
+`PhysicalTerminalRunner` obtains the actual width before calling
+`hold_references_at(s, h)` to evaluate the two exact clocks $s$ and $s+h/2$.
+Each corresponding binary64 query displacement is independently checked
+against the original anomaly-error declaration. The complete hold endpoint
+is checked separately. Every new command and linkage records both reference
+samples, exact/query clocks, error contracts, policy, target/source identity,
+physical input interval, continuous-flow fingerprints and swept geometry.
+The source observation and continuous flow still start at $s$.
+
+Midpoint execution requires an explicit `source_context`. For an actual
+approach, prepare it from the literal source file and a separately frozen
+terminal runtime:
+
+```python
+from orbexa.simulation import terminal_source_lineage
+
+source_context = {
+    "origin": "actual_approach_endpoint",
+    "approach_result_sha256": original_approach_file_sha256,
+    "source_snapshot_sha256": frozen_terminal_source_sha256,
+    "error_source_sha256": preserved_error_declaration_file_sha256,
+    "source_approach_lineage": terminal_source_lineage(approach.to_dict()),
+}
+```
+
+Pass this context to `PhysicalTerminalRunner`. Its new execution method is
+`physical-terminal-midpoint-execution-v1`, with schema
+`orbexa.physical_terminal_execution.midpoint.v1`. The context binds the
+original arrival policy, required region, runtime state and transition
+lineage without appending fictitious MPC or adaptation records.
+An initialized terminal fixture must instead declare
+`origin="initialized_terminal_fixture"`; it cannot become an actual-approach
+handoff.
+
+`PhysicalTerminalHandoff.from_files` selects the supported policy and
+geometry together. It rebuilds the complete global certificate, both samples
+and commands, every applied-input flow, all component/peer swept separation,
+observation refinements and linkage. It compares the full saved proof
+records. Only a complete successful reproof can provide the literal final
+state/clock to the unchanged capture interface. Missing policy, clock,
+sample or source fields refuse. Old start-law records retain their
+original serialization and reproof path. Partial terminal resume remains
+unsupported; an approach checkpoint is not terminal execution evidence.
+
+The saved Envisat prospective family uses the original maximum individual
+hold $1152921504606847/36893488147419103232$ rad, approximately
+$3.125\times10^{-5}$ rad. Each proof window is exactly 32 such holds,
+approximately $0.001$ rad or $0.96$ s. The 128 eight-port/event certificates
+are finite conditional mathematics. Their preserved limits, full prior,
+error declarations and true Lipschitz constants match the maintained
+derivation; the real endpoint must still pass fresh all-eight admission.
+The unchanged recorded $q=0.16$ endpoint remains outside this entry region.
 
 ## 7. Domain-Specific Checks
 

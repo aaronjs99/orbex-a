@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from fractions import Fraction
 from numbers import Integral
+from pathlib import Path
 from threading import RLock
 from typing import Any, Iterable, Sequence
 import math
@@ -25,6 +26,12 @@ import json
 _ARB_LOCK = RLock()
 FRAME = "physical-lvlh-v1"
 METHOD = "arb-picard-continuous-v1"
+# Optional source authentication must not make legacy imports require a source
+# file. The separate orbital-hold service refuses an unavailable identity.
+try:
+    _LOADED_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+except OSError:
+    _LOADED_SOURCE_SHA256 = None
 
 
 def _exact(value: Any) -> Fraction:
@@ -348,6 +355,39 @@ class _ArbArithmetic:
         return tuple(v + self.arb(0, (v.rad() * fraction + padding).upper()) for v in balls)
 
 
+def _orbital_coefficients(q, parameters: OrbitalModelBounds, ar):
+    """Shared Arb coefficients of the supported analytical orbital model.
+
+    Input and additional acceleration are deliberately separate from this
+    state matrix, affine drift and physical anomaly rate.
+    """
+    e, alpha, beta, phase = (ar.interval(getattr(parameters, name))
+                              for name in ("eccentricity", "alpha", "beta", "theta0"))
+    mu, axis = ar.scalar(parameters.mu), ar.scalar(parameters.semi_major_axis)
+    h2 = mu * axis * (1 - e * e)
+    exponential = (2 * alpha * q).exp()
+    denominator = exponential + e * (q - phase).cos()
+    if not denominator > 0 or not h2 > 0:
+        raise _ProofUnresolved("Orbital denominator or h(e)^2 is not proved positive")
+    scale = 1 + 4 * alpha * alpha
+    radius = h2 * scale / (mu * denominator)
+    k = (e * (q - phase).sin() - 2 * alpha * exponential) / denominator
+    curvature = scale * exponential / denominator
+    gamma, damping = beta - alpha, 2 * k - (beta - alpha)
+    zero, one = ar.arb(0), ar.arb(1)
+    matrix = ((zero, zero, zero, one, zero, zero),
+              (zero, zero, zero, zero, one, zero),
+              (zero, zero, zero, zero, zero, one),
+              (1 - curvature, -damping, zero, damping, 2 * one, zero),
+              (damping, 1 + 2 * curvature, zero, -2 * one, damping, zero),
+              (zero, zero, -curvature, zero, zero, damping))
+    drift = (gamma * radius, -gamma * radius * k, zero)
+    rate = h2.sqrt() * (-alpha * q).exp() / (radius * radius)
+    if not rate > 0:
+        raise _ProofUnresolved("dq/dt is not proved positive")
+    return matrix, (zero, zero, zero) + drift, rate
+
+
 class ValidatedFlowEncloser:
     """Finite-budget interval Picard integration with strict self-containment.
 
@@ -362,33 +402,10 @@ class ValidatedFlowEncloser:
     def enclose_orbital(self, request: HeldInputRequest,
                         parameters: OrbitalModelBounds) -> FlowCertificate:
         def coefficients(q, ar):
-            e, alpha, beta, phase = (ar.interval(getattr(parameters, name))
-                                      for name in ("eccentricity", "alpha", "beta", "theta0"))
-            mu, axis = ar.scalar(parameters.mu), ar.scalar(parameters.semi_major_axis)
-            h2 = mu * axis * (1 - e * e)
-            exponential = (2 * alpha * q).exp()
-            denominator = exponential + e * (q - phase).cos()
-            if not denominator > 0 or not h2 > 0:
-                raise _ProofUnresolved("Orbital denominator or h(e)^2 is not proved positive")
-            scale = 1 + 4 * alpha * alpha
-            radius = h2 * scale / (mu * denominator)
-            k = (e * (q - phase).sin() - 2 * alpha * exponential) / denominator
-            curvature = scale * exponential / denominator
-            gamma, damping = beta - alpha, 2 * k - (beta - alpha)
-            zero, one = ar.arb(0), ar.arb(1)
-            matrix = ((zero, zero, zero, one, zero, zero),
-                      (zero, zero, zero, zero, one, zero),
-                      (zero, zero, zero, zero, zero, one),
-                      (1 - curvature, -damping, zero, damping, 2 * one, zero),
-                      (damping, 1 + 2 * curvature, zero, -2 * one, damping, zero),
-                      (zero, zero, -curvature, zero, zero, damping))
+            matrix, affine, rate = _orbital_coefficients(q, parameters, ar)
             control, disturbance = ar.vector(request.held_input), ar.vector(request.acceleration_disturbance)
-            drift = (gamma * radius, -gamma * radius * k, zero)
-            forcing = (zero, zero, zero) + tuple(
-                d + u + w for d, u, w in zip(drift, control, disturbance))
-            rate = h2.sqrt() * (-alpha * q).exp() / (radius * radius)
-            if not rate > 0:
-                raise _ProofUnresolved("dq/dt is not proved positive")
+            forcing = affine[:3] + tuple(
+                d + u + w for d, u, w in zip(affine[3:], control, disturbance))
             return matrix, forcing, rate
 
         return self._enclose(request.initial_state, request.start_anomaly, request.hold_width,

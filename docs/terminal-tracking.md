@@ -32,8 +32,10 @@ global bounds for the complete certificate scope.
 
 The authoritative reference is a twice differentiable continuous function
 $x_g=[p_g^T,p_g'^T]^T$, with known $a_g=p_g''$. Its feedforward input is
-$u_g=a_g-\widehat A_a x_g-\widehat d_a$. Reference values are evaluated at the
-actual sample anomaly. They are not an RK4 shooting node or a persistent
+$u_g=a_g-\widehat A_a x_g-\widehat d_a$. The default start policy evaluates
+these values at the actual sample anomaly. The separately identified midpoint
+policy previews only feedforward at the actual hold midpoint, as defined below.
+These references are not an RK4 shooting node or a persistent
 numerical nominal center. Any reference evaluation, clock or sensing error must
 be bounded in the supplied assumptions; giving numerical samples a reference
 type does not establish this contract.
@@ -186,6 +188,44 @@ of a nonzero set; nonzero disturbance bounds do not imply exact asymptotic
 tracking to zero. No RK4 error estimate is substituted into this argument.
 The terminal law is evaluated relative to the exact continuous reference.
 
+### Explicit midpoint feedforward policy
+
+Let $s$ be the exact actual hold start, $h$ its actual width, and
+$m=s+h/2$ its midpoint. The policy `midpoint_feedforward_v1` replaces only
+$u_g(q_j)$ in T2 by $u_g(m)$. Measurement, reference-relative error, nominal
+matrix and all feedback terms stay at $s$. The reference preview is causal
+under the declared known-reference contract. It does not advance a measurement
+or the physical flow start.
+
+The true global componentwise Lipschitz bound is still $L_u$. Since every
+$q\in[s,s+h]$ obeys $|q-m|\le h/2$, the new residual satisfies
+
+$$
+|u_g(q)-u_g(m)|\le L_u h/2\le L_u\tau/2.
+\tag{T9}
+$$
+
+Only the direct $\tau L_u$ term in T4 becomes $\tau L_u/2$. T3, the full
+feedback hold correction in T6, model uncertainty, sensing, actuator and
+geometry bounds retain their original forms. T5 and T6 are recomputed from
+the changed base forcing. A shorter final hold uses its own exact midpoint;
+the midpoint is never computed from the maximum hold or whole proof window.
+
+`certify_terminal_tracking(bounds, policy=TerminalFeedforwardPolicy.MIDPOINT_V1)`
+records `exact-held-midpoint-reference-terminal-v1`. It preserves the true
+`bounds.feedforward_lipschitz` and reports the residual factor separately.
+The default call retains the original start-law method and serialized
+dictionaries. An unknown or inconsistent policy/method refuses.
+
+`TerminalHoldReferences` carries both canonical samples and their numerical
+query clocks. `command(..., hold_references=pair)` requires the pair for
+midpoint execution, verifies its exact clock relation and policy, and retains
+both samples in the new command record. The exact-reference controller allows
+no undeclared query displacement. The
+[physical adapter](physical-terminal.md) separately accounts for both numerical
+evaluation errors. A certificate for one held law cannot silently execute
+the other.
+
 ### Geometry and complete-set accuracy
 
 The whole-set position radius squared is $r_T^2=\sum_i\Omega_{*i}^2$; the
@@ -256,6 +296,10 @@ or the already proved backup. `advance(...)` uses its proven successor and
 may intersect an independently valid observation box. An inconsistent
 observation is refused. `terminal_handoff()` succeeds only after the complete
 successor enters the terminal set.
+The unchanged v1 continuation format explicitly supports only the start
+terminal policy. It refuses a midpoint certificate instead of silently
+recertifying it as the start law; midpoint physical execution uses its
+separate policy-aware runner and handoff.
 
 The execution layer must preload the fallback command and invoke the supervisor
 on the actual schedule independently of an optimizer that may be late or fail.
@@ -273,7 +317,7 @@ plant, reference, occupied bodies, uncertainty and timing context.
 
 ## 7. Domain-Specific Checks
 
-The terminal controller uses the same held ancillary law as the approach model,
+The start terminal controller uses the same held ancillary law as the approach model,
 with explicit extra forcing for changing reference feedforward and sensing.
 It retains the full nonlinear analytical orbital model in the reachability
 provider when `OrbitalHeldPlant` is selected. `AffineHeldPlant` is a separate,

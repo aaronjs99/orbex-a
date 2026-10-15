@@ -20,11 +20,66 @@ from orbexa.control.reachability import (
     HeldInputRequest, IntervalBox, OrbitalModelBounds, ReachabilityConfig,
     RotatingCylinderBounds, SweptCollisionGuard, ValidatedFlowEncloser, _exact,
 )
-from orbexa.control.terminal_tracking import TerminalReferenceSample
+from orbexa.control.terminal_tracking import (
+    TerminalFeedforwardPolicy, TerminalHoldReferences, TerminalReferenceSample,
+)
 from orbexa.control.composite_geometry import CompositeSweptCollisionGuard, RotatingCompositeBounds
 
 
 EXECUTION_METHOD = "physical-terminal-held-execution-v1"
+MIDPOINT_EXECUTION_METHOD = "physical-terminal-midpoint-execution-v1"
+MIDPOINT_EXECUTION_SCHEMA = "orbexa.physical_terminal_execution.midpoint.v1"
+
+
+def _digest(value):
+    return hashlib.sha256(json.dumps(_encode(value), sort_keys=True, separators=(",", ":"),
+                                     allow_nan=False).encode("utf-8")).hexdigest()
+
+
+def terminal_execution_policy(record):
+    """Resolve only supported policy/schema pairs, including unchanged legacy v1."""
+    if not isinstance(record, dict):
+        raise ValueError("A typed physical terminal execution record is required")
+    if record.get("method") == EXECUTION_METHOD:
+        if "held_policy" in record or "schema" in record:
+            raise ValueError("Legacy start execution cannot claim a different held policy/schema")
+        return TerminalFeedforwardPolicy.START_V1
+    if (record.get("method") == MIDPOINT_EXECUTION_METHOD
+            and record.get("schema") == MIDPOINT_EXECUTION_SCHEMA
+            and record.get("held_policy") == TerminalFeedforwardPolicy.MIDPOINT_V1.value):
+        return TerminalFeedforwardPolicy.MIDPOINT_V1
+    raise ValueError("Unsupported or inconsistent physical terminal execution method/policy/schema")
+
+
+def terminal_hold_linkage(event):
+    """Canonical command/reference/flow/geometry binding used by writer and reader."""
+    policy = terminal_execution_policy(event)
+    value = {key: event[key] for key in ("start_anomaly", "hold_width", "commands", "flow_fingerprints", "geometry")}
+    if policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+        value.update({key: event[key] for key in ("schema", "held_policy", "exact_midpoint_anomaly",
+            "exact_end_anomaly", "target_context_sha256", "reference_samples", "evaluation_error_contracts",
+            "source_context_sha256")})
+    return value
+
+
+def terminal_source_lineage(approach_record):
+    """Hash the literal approach's arrival/region/transition facts for a new stage.
+
+    These hashes preserve source identity; they grant no admission or motion.
+    The handoff independently compares them with its exact raw approach file.
+    """
+    from orbexa.simulation.mission_checkpoint import plain
+    record = plain(approach_record)
+    metadata = record["metadata"]
+    policy = metadata.get("scenario", {}).get("arrival_policy")
+    state = metadata.get("arrival_state")
+    region = None if policy is None else policy.get("required_terminal_region")
+    return dict(arrival_policy_sha256=None if policy is None else _digest(policy),
+        required_region_sha256=None if region is None else _digest(region),
+        arrival_state_sha256=None if state is None else _digest(state),
+        arrival_activation_sha256=None if metadata.get("arrival_activation") is None else _digest(metadata["arrival_activation"]),
+        transition_history_sha256=_digest(metadata.get("policy_transition_history", [])),
+        transition_identity=None if state is None else state.get("transition_identity"))
 
 
 class _TerminalSourceFailure(RuntimeError):
@@ -65,6 +120,8 @@ class PhysicalTerminalExecutionResult:
     physical_duration_seconds: float
     source_context: dict = field(default_factory=dict)
     method: str = EXECUTION_METHOD
+    held_policy: str | None = None
+    schema: str | None = None
 
     @property
     def success(self):
@@ -75,7 +132,11 @@ class PhysicalTerminalExecutionResult:
         return self.actual_state_history[-1]
 
     def as_dict(self):
-        return _encode(vars(self)) | {"success": self.success, "reset_performed": False}
+        record = dict(vars(self))
+        for key in ("held_policy", "schema"):
+            if record[key] is None:
+                record.pop(key)
+        return _encode(record) | {"success": self.success, "reset_performed": False}
 
 
 class PhysicalTerminalRunner:
@@ -102,6 +163,7 @@ class PhysicalTerminalRunner:
                  source_context: dict | None = None):
         self.builders = tuple(builders)
         self.fleet = PhysicalTerminalFleet(self.builders)
+        self.policy = self.fleet.controllers[0].certificate.policy
         self.target, self.truth = target, truth
         self.observation_source = observation_source
         self.orientation_matrix_error = _exact(orientation_matrix_error)
@@ -167,6 +229,26 @@ class PhysicalTerminalRunner:
         self.source_context = dict(caller=dict(source_context or {}), truth=truth.as_dict(),
             target=target.as_dict(), observation_source="Explicit caller-supplied simulation observation contract",
             execution_scope="Offline numerical replay with exact scheduled anomaly holds; no hardware scheduler")
+        if self.policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
+            caller = self.source_context["caller"]
+            if caller.get("origin") not in ("actual_approach_endpoint", "initialized_terminal_fixture"):
+                raise ValueError("Midpoint execution needs an explicit actual-approach or initialized-fixture origin")
+            for key in ("source_snapshot_sha256", "error_source_sha256"):
+                value = caller.get(key)
+                if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+                    raise ValueError("Midpoint execution needs its frozen source and error-declaration SHA256 identities")
+            if caller["origin"] == "actual_approach_endpoint":
+                value = caller.get("approach_result_sha256")
+                if (not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+                        or not isinstance(caller.get("source_approach_lineage"), dict)):
+                    raise ValueError("Actual midpoint execution must identify the original approach and arrival/region/transition lineage")
+            self.source_context["terminal_stage"] = dict(schema="orbexa.physical_terminal_stage.v1",
+                held_policy=self.policy.value, proof_reference=first._terminal_proof_reference(),
+                exact_start_anomaly=str(first.start_anomaly), exact_end_anomaly=str(first.end_anomaly),
+                maximum_hold_by_reference={builder.reference_id: str(builder.maximum_hold) for builder in self.builders},
+                builder_contract_sha256=tuple(_digest(controller.result.assumptions) for controller in self.fleet.controllers),
+                target_context_sha256=_digest(self.source_context["target"]),
+                scope="Separate finite terminal stage; no approach state, clock, MPC or adaptation history is replaced")
 
     @staticmethod
     def _coefficients(anomaly, parameters):
@@ -194,11 +276,39 @@ class PhysicalTerminalRunner:
         q = _exact(anomaly)
         result = []
         for builder in self.builders:
+            if abs(_exact(float(q)) - q) > builder.errors.anomaly_evaluation_error_abs:
+                raise ValueError("Binary64 reference query exceeds its declared anomaly-evaluation budget")
             port = tuple(map(float, builder.body_ports[builder.port_index]))
             matrix, affine = self._coefficients(q, builder.nominal_parameters)
             result.append(TerminalReferenceSample(q, self.target.docking_state(port, float(q)),
                 self.target.docking_acceleration(port, float(q)), matrix, affine, builder.reference_id))
         return tuple(result)
+
+    def hold_references_at(self, start_anomaly, hold_width) -> tuple[TerminalHoldReferences, ...]:
+        """Evaluate feedback at the real start and feedforward at the actual midpoint."""
+        q, hold = _exact(start_anomaly), _exact(hold_width)
+        feedback = self.references_at(q)
+        sample_q = q + self.policy.sample_fraction * hold
+        feedforward = feedback if self.policy is TerminalFeedforwardPolicy.START_V1 else self.references_at(sample_q)
+        pairs = tuple(TerminalHoldReferences(self.policy, start, preview, _exact(float(q)),
+            _exact(float(sample_q)), builder.errors.anomaly_evaluation_error_abs)
+            for builder, start, preview in zip(self.builders, feedback, feedforward))
+        for pair, controller, builder in zip(pairs, self.fleet.controllers, self.builders):
+            pair.validate(controller.certificate.bounds, hold,
+                          maximum_query_displacement=builder.errors.anomaly_evaluation_error_abs)
+            if abs(_exact(float(q + hold)) - q - hold) > builder.errors.anomaly_evaluation_error_abs:
+                raise ValueError("Binary64 held endpoint exceeds its declared clock-evaluation budget")
+        return pairs
+
+    def _policy_event(self, q, hold, pairs):
+        if self.policy is TerminalFeedforwardPolicy.START_V1:
+            return {}
+        return dict(schema=MIDPOINT_EXECUTION_SCHEMA, held_policy=self.policy.value,
+            exact_midpoint_anomaly=str(q + hold / 2), exact_end_anomaly=str(q + hold),
+            target_context_sha256=_digest(self.source_context["target"]),
+            source_context_sha256=_digest(self.source_context),
+            reference_samples=tuple(pair.as_dict() for pair in pairs),
+            evaluation_error_contracts=tuple(builder.errors.as_dict() for builder in self.builders))
 
     def geometry_bounds_at(self, anomaly):
         """The exact declared target shape with its finite-window pose contract."""
@@ -254,16 +364,23 @@ class PhysicalTerminalRunner:
         observation = initial_observation
         observation_q = q
         history, clocks, records = [self._tuple_states(states)], [q], []
-        references = self.references_at(q)
-        admission = self.fleet.admit(observation.state_enclosures, references).as_dict()
+        admission = dict(admissible=False, reasons=("Reference evaluation has not been admitted",),
+                         anomaly=str(q), members_contained=())
         initial_q = q
         certificates = tuple(controller.result.as_dict() for controller in self.fleet.controllers)
 
         def finish(status, reason):
             duration = self.target.physical_time_at(float(q)) - self.target.physical_time_at(float(initial_q))
+            extra = {} if self.policy is TerminalFeedforwardPolicy.START_V1 else dict(
+                method=MIDPOINT_EXECUTION_METHOD, held_policy=self.policy.value, schema=MIDPOINT_EXECUTION_SCHEMA)
             return PhysicalTerminalExecutionResult(status, reason, tuple(clocks), tuple(history),
                 initial_observation, observation, observation_q, admission, certificates, tuple(records), float(duration),
-                dict(self.source_context))
+                dict(self.source_context), **extra)
+
+        try:
+            admission = self.fleet.admit(observation.state_enclosures, self.references_at(q)).as_dict()
+        except Exception as error:
+            return finish("REFUSED_REFERENCE", f"Reference source {type(error).__name__}: {error}")
 
         observation_reason = self._observation_reason(observation, states)
         if observation_reason:
@@ -275,10 +392,15 @@ class PhysicalTerminalRunner:
             if float(q + hold) <= float(q) or any(abs(_exact(float(q)) - q) > builder.errors.anomaly_evaluation_error_abs
                 or abs(_exact(float(q + hold)) - q - hold) > builder.errors.anomaly_evaluation_error_abs for builder in self.builders):
                 return finish("REFUSED_CLOCK_EVALUATION", "Binary64 sample-clock evaluation exceeds its declared bound")
-            references = self.references_at(q)
+            try:
+                pairs = self.hold_references_at(q, hold)
+            except Exception as error:
+                return finish("REFUSED_REFERENCE", f"Reference source {type(error).__name__}: {error}")
+            references = tuple(pair.feedback for pair in pairs)
             try:
                 commands = self.fleet.commands(observation.measurements, observation.state_enclosures,
-                                                references, hold_width=hold)
+                    references, hold_width=hold,
+                    hold_references=pairs if self.policy is TerminalFeedforwardPolicy.MIDPOINT_V1 else None)
             except ValueError as error:
                 return finish("REFUSED_MEMBERSHIP", str(error))
             flows = tuple(self.encloser.enclose_orbital(HeldInputRequest(
@@ -287,11 +409,13 @@ class PhysicalTerminalRunner:
                 acceleration_disturbance=IntervalBox.from_center_radius((0, 0, 0),
                     builder.errors.acceleration_disturbance_abs)), builder.plant_parameters)
                 for builder, box, command in zip(self.builders, observation.state_enclosures, commands))
-            event = dict(method=EXECUTION_METHOD, stage=len(records), start_anomaly=str(q), hold_width=str(hold),
+            method = EXECUTION_METHOD if self.policy is TerminalFeedforwardPolicy.START_V1 else MIDPOINT_EXECUTION_METHOD
+            event = dict(method=method, stage=len(records), start_anomaly=str(q), hold_width=str(hold),
                          initial_observation=observation.as_dict(),
                          commands=tuple(command.as_dict() for command in commands),
                          flows=tuple(flow.as_dict() for flow in flows),
                          flow_fingerprints=tuple(flow.fingerprint for flow in flows))
+            event.update(self._policy_event(q, hold, pairs))
             if any(not flow.proven for flow in flows):
                 event.update(executed=False, decision="REFUSED_FLOW")
                 records.append(event)
@@ -304,11 +428,9 @@ class PhysicalTerminalRunner:
                 target=geometry, clearance=first.clearance + solid_error,
                 minimum_pair_center_distance=self.minimum_pair_center_distance)
             event["geometry"] = collision.as_dict()
-            linkage = dict(start_anomaly=str(q), hold_width=str(hold), commands=event["commands"],
-                           flow_fingerprints=event["flow_fingerprints"], geometry=event["geometry"])
+            linkage = terminal_hold_linkage(event)
             event["command_flow_geometry_linkage"] = linkage
-            event["command_flow_geometry_sha256"] = hashlib.sha256(json.dumps(linkage, sort_keys=True,
-                separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+            event["command_flow_geometry_sha256"] = _digest(linkage)
             if not collision.admissible:
                 event.update(executed=False, decision="REFUSED_GEOMETRY")
                 records.append(event)
@@ -383,6 +505,10 @@ class PhysicalTerminalRunner:
                 intersections.append(IntervalBox(lower, upper))
             observation = TerminalObservation(next_observation.measurements, tuple(intersections))
             observation_q = q
-        if not self.fleet.admit(observation.state_enclosures, self.references_at(q)).admissible:
+        try:
+            final_admission = self.fleet.admit(observation.state_enclosures, self.references_at(q))
+        except Exception as error:
+            return finish("REFUSED_REFERENCE", f"Reference source {type(error).__name__}: {error}")
+        if not final_admission.admissible:
             return finish("REFUSED_FINAL_MEMBERSHIP", "Final observation is outside the robust terminal set")
         return finish("COMPLETED_FINITE_WINDOW", "Every held command and whole-fleet swept flow was proved before numerical execution")

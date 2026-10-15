@@ -49,6 +49,7 @@ _EXPORTS = {
     'PhysicalTerminalRunner': ('physical_terminal_execution', 'PhysicalTerminalRunner'),
     'PhysicalTerminalExecutionResult': ('physical_terminal_execution', 'PhysicalTerminalExecutionResult'),
     'TerminalObservation': ('physical_terminal_execution', 'TerminalObservation'),
+    'terminal_source_lineage': ('physical_terminal_execution', 'terminal_source_lineage'),
     'PhysicalTerminalHandoff': ('terminal_handoff', 'PhysicalTerminalHandoff'),
     'PhysicalTerminalTrajectory': ('terminal_handoff', 'PhysicalTerminalTrajectory'),
     'CertifiedExecutionGuard': ('certified_execution', 'CertifiedExecutionGuard'),
