@@ -119,6 +119,11 @@ See [physical lifecycle](docs/mission-lifecycle.md),
 
 ## Mission Studio
 
+Open the [published Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site)
+for the recorded 3D missions, plots, videos and illustrated theory. The Site is
+private and uses ChatGPT sign-in. Envisat approach evidence and completed
+cylinder-baseline mission results retain their separate outcomes.
+
 `MissionStudio` exports explicitly selected saved missions into a local browser
 workspace: a black-space 3D replay, synchronized goal/tube/reserve charts,
 camera controls, finite-body envelopes, recorded video, mathematical documents
