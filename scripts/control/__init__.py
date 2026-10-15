@@ -24,6 +24,7 @@ _EXPORTS = {
     'calc_delta': 'orbexa.control.dynamic_tube_model',
     'calc_d': 'orbexa.control.dynamic_tube_model',
     'TubeProfile': 'orbexa.control.dynamic_tube_model',
+    'TerminalRegion': 'orbexa.control.terminal_region',
     'input_tightening_from_profile': 'orbexa.control.dynamic_tube_model',
     'propagate_tube_profile': 'orbexa.control.dynamic_tube_model',
     'tighten_box_bounds': 'orbexa.control.dynamic_tube_model',

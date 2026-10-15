@@ -49,11 +49,13 @@ Install continuously validated flow, local Studio and MP4 dependencies:
 python -m pip install -e ".[certification,studio,video]"
 ```
 
-Run the declared Envisat study with its explicit prior, deployment and assumed
-sensing/model envelopes in [config](config/README.md):
+Run an Envisat study with its explicit prior, deployment and assumed
+sensing/model envelopes in [config](config/README.md). Supply the study's
+[arrival-policy declaration](docs/arrival-policy.md), including sourced reference
+errors and a validity domain covering the planned terminal suffix:
 
 ```bash
-orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --output-dir ../orbexa-output/envisat-eight
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --arrival-policy path/to/arrival-policy.json --output-dir ../orbexa-output/envisat-eight
 ```
 
 This is an actual nonlinear optimization run. The update cap is a resource bound;
@@ -68,7 +70,7 @@ An unfinished saved approach can be numerically restarted with the same physical
 configuration, prior, bounds and target domain:
 
 ```bash
-orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --resume ../orbexa-output/envisat-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --arrival-policy path/to/arrival-policy.json --resume ../orbexa-output/envisat-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
 ```
 
 The cap now counts additional updates. The original states, tubes, beliefs and
@@ -76,6 +78,11 @@ exact proof clock persist; unavailable warm plans and dense adaptation history
 reset explicitly. Older records need identified frozen-source context through
 `--source-context`. This [numerical restart](docs/mission-checkpoint.md) is separate
 from certified backup control after a solver failure.
+
+Introducing arrival into a historical prefix additionally requires
+`--transition-arrival-policy`; its complete original configuration must match.
+Use `--historical-terminal-policy` for the identified distance-gated reproduction.
+Missing arrival declarations refuse before reserving an output directory.
 
 After approach completion, the runner conservatively debits translation fuel,
 replays bounded chaser attitude control, and supplies those actual attitudes and
@@ -114,6 +121,7 @@ orbexa-run-mission --target-model cylinder-baseline --config config/default.yaml
 See [physical lifecycle](docs/mission-lifecycle.md),
 [chaser attitude](docs/chaser-attitude.md),
 [continuous safety](docs/continuous-safety.md),
+[fixed-deadline arrival](docs/arrival-policy.md),
 [terminal tracking and backup](docs/terminal-tracking.md), and
 [derived physical terminal bounds](docs/physical-terminal.md).
 
@@ -227,8 +235,10 @@ side corridor is deliberately conservative and retains nonlinear cylinder
 exclusion. Fleet planning constrains contemporaneous nominal paths and both tubes.
 
 Moving-reference preview is enabled by default. State previews have shape
-`(n, T)` and feedforward previews `(m, T - 1)`. Near docking, the solver enforces
-a terminal set around the future reference. Completion requires the exact
+`(n, T)` and feedforward previews `(m, T - 1)`. The explicit arrival policy fixes
+an absolute deadline and constrains the remaining terminal suffix inside the
+required reference-centered region. Future nodes reserve a planning interior;
+fixed node zero and actual completion keep the outer criteria. Completion requires the exact
 whole-box norm `norm(abs(nominal position error) + Omega)` to fit 2 mm, and
 `norm(abs(nominal velocity error) + Phi + Lambda*Omega)` to fit 0.08 m/rad,
 at five consecutive outer endpoints.

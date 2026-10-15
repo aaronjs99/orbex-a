@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import asdict, dataclass, is_dataclass
+from fractions import Fraction
 import hashlib
 import json
 from pathlib import Path
@@ -82,9 +83,12 @@ def _policy_signature(metadata):
                 raise ValueError("Composite numerical restart requires the complete route and geometry policy")
             names += composite
         result["deployment"] = {name: deployment[name] for name in names if name in deployment}
-    for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m", "vehicle_design"):
+    for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m", "vehicle_design", "arrival_policy"):
         if name in metadata:
             result[name] = metadata[name]
+    if "arrival_policy" in result:
+        from orbexa.simulation.arrival_policy import ArrivalPolicyConfig
+        result["arrival_policy"] = ArrivalPolicyConfig.from_dict(result["arrival_policy"]).as_dict()
     # Persisted JSON turns tuples/NumPy scalars into lists/Python scalars.
     # Compare supported policy values in that same representation on both sides.
     return plain(result)
@@ -224,7 +228,10 @@ class MissionCheckpoint:
         if len(record["feasible_set_history"]) != nodes or len(record["parameter_estimate_history"]) != nodes:
             raise ValueError("Belief histories do not cover the committed fleet events")
         final_belief = ParameterBelief(**copy.deepcopy(record["final_belief"]))
-        last_belief = ParameterBelief(record["feasible_set_history"][-1], record["parameter_estimate_history"][-1])
+        # ParameterBelief normalizes its input dictionaries in place. Validation
+        # must not convert the authoritative historical JSON lists into tuples.
+        last_belief = ParameterBelief(copy.deepcopy(record["feasible_set_history"][-1]),
+                                     copy.deepcopy(record["parameter_estimate_history"][-1]))
         if final_belief.as_metadata() != last_belief.as_metadata():
             raise ValueError("Final belief disagrees with the last committed belief record")
         ids = list(record["actual_trajectories"])
@@ -275,6 +282,44 @@ class MissionCheckpoint:
                     raise ValueError(f"Complete persistent {name} history is required")
                 if name != "nominal_center" and np.any(array < 0):
                     raise ValueError("Persistent tube data must be nonnegative")
+        self.arrival_runtime()
+
+    def arrival_runtime(self):
+        """Reconstruct only the typed policy state, never a serialized backup."""
+        metadata = self.source_record['metadata']
+        policy = metadata.get('scenario', {}).get('arrival_policy')
+        context = metadata.get('checkpoint_context') or self.source_context.get('checkpoint_context', {})
+        context_policy = context.get('policy', {}).get('arrival_policy')
+        if policy != context_policy:
+            raise ValueError('Recorded arrival policy and source checkpoint context disagree')
+        if policy is None:
+            if 'arrival_state' in metadata or 'arrival_activation' in metadata:
+                raise ValueError('Arrival state cannot be silently detached from its enabled policy')
+            return None
+        from orbexa.simulation.arrival_policy import ArrivalPolicyConfig, ArrivalRuntime
+        runtime = ArrivalRuntime.from_metadata(ArrivalPolicyConfig.from_dict(policy), metadata.get('arrival_state'),
+                                              activation_marker=metadata.get('arrival_activation'))
+        if runtime.transition_identity is not None:
+            ledger = metadata.get('policy_transition_history', [])
+            matches = [item for item in ledger if item.get('identity') == runtime.transition_identity]
+            if len(matches) != 1:
+                raise ValueError('Arrival state lost its source policy-transition ledger')
+            origin = matches[0]
+            payload = {key: value for key, value in origin.items() if key != 'identity'}
+            if (digest(payload) != runtime.transition_identity
+                    or runtime.enabled_at_update != origin['committed_updates']
+                    or runtime.exact_enabled_anomaly != Fraction(origin['exact_start_anomaly'])):
+                raise ValueError('Arrival activation changed its exact source transition seam')
+        elif runtime.enabled_at_update != 0 or runtime.exact_enabled_anomaly != 0:
+            raise ValueError('A fresh arrival policy must retain its initial update0/exact0 origin')
+        if runtime.enabled_at_update > self.committed_updates:
+            raise ValueError('Arrival activation is later than the saved committed cursor')
+        if runtime.commitment is None and 'docking' in self.source_record['phase_history'][
+                runtime.enabled_at_update:self.committed_updates]:
+            raise ValueError('Committed docking history cannot lose its accepted arrival deadline')
+        if runtime.latest_candidate is not None and runtime.latest_candidate['payload']['step']['current_update'] > self.committed_updates:
+            raise ValueError('The latest arrival candidate is later than the saved committed cursor')
+        return runtime
 
     def validate_scenario(self, scenario, mission):
         self._validate_record()
@@ -300,6 +345,8 @@ class MissionCheckpoint:
             raise ValueError("Numerical restart changed the target motion, geometry, clock or epoch")
         old_policy = _policy_signature(source.get("policy", metadata.get("scenario", {})))
         new_policy = _policy_signature(current["policy"])
+        if old_policy.get('arrival_policy') != new_policy.get('arrival_policy'):
+            raise ValueError('Changing an arrival policy requires an explicit MissionPolicyTransition')
         policy_changed = any(name not in new_policy or new_policy[name] != value for name, value in old_policy.items())
         if record["target"].get("shape") == "composite_spacecraft":
             # A missing source policy field cannot inherit a newly generated
@@ -325,10 +372,30 @@ class MissionCheckpoint:
                 saved, following = np.asarray(values), np.asarray(proposed[name])
                 if saved.shape[:1] != (len(record["anom_history"]),) or saved.shape[1:] != following.shape[1:]:
                     raise ValueError("Saved target kinematic history has an incompatible shape")
+        runtime = self.arrival_runtime()
+        if runtime is not None:
+            from orbexa.simulation.arrival_policy import exact_outer_step
+            guarded = metadata.get('continuous_execution_certificate') or {}
+            exact_end = guarded.get('exact_end_anomaly')
+            if exact_end is None and self.committed_updates == 0 and self.anomaly == 0.:
+                exact_end = '0'
+            if (exact_end is None or guarded.get('admitted_holds') !=
+                    self.committed_updates * scenario.config.tube.feedback_substeps):
+                raise ValueError('Arrival restart requires the original exact clock and complete outer-grid prefix')
+            if runtime.commitment is not None:
+                runtime.commitment.check_clock(self.committed_updates, exact_end, exact_outer_step(scenario.config))
         return current
 
     def restore(self, scenario):
         self.validate_scenario(scenario, self.mission)
+        return self._restore_validated(scenario)
+
+    def _restore_validated(self, scenario):
+        """Shared restoration after ordinary validation or an explicit transition.
+
+        The transition API separately checks every non-arrival configuration and
+        policy field. Guard.restore below retains all original physical gates.
+        """
         record, metadata = self.source_record, self.source_record["metadata"]
         ids = list(record["actual_trajectories"])
         chasers = [ChaserConfig(**copy.deepcopy(value)) for value in metadata["chaser_assignments"]]
@@ -339,6 +406,9 @@ class MissionCheckpoint:
             phi={key: np.asarray(diagnostics[key]["phi"][-1], dtype=float).copy() for key in ids},
             omega={key: np.asarray(diagnostics[key]["omega"][-1], dtype=float).copy() for key in ids},
             bandwidth={key: np.asarray(diagnostics[key]["bandwidth"][-1], dtype=float).copy() for key in ids})
+        arrival = self.arrival_runtime()
+        if arrival is not None:
+            state.arrival_commitment = arrival.commitment
         lam = np.asarray(scenario.config.tube.sliding_gains)
         for key in ids:
             error = state.states[key] - state.centers[key]

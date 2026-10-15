@@ -18,6 +18,7 @@ from typing import Dict, Sequence, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
+    from orbexa.simulation.arrival_policy import ArrivalCommitment
     from orbexa.core.config import SimulationConfig
     from orbexa.simulation.mission_models import ChaserConfig
 
@@ -30,6 +31,7 @@ class CoupledMissionState:
     phi: Dict[str, np.ndarray]
     omega: Dict[str, np.ndarray]
     bandwidth: Dict[str, np.ndarray]
+    arrival_commitment: ArrivalCommitment | None = None
 
     @classmethod
     def initialize(cls, chasers: Sequence[ChaserConfig], config: SimulationConfig) -> "CoupledMissionState":

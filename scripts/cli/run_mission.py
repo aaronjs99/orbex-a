@@ -26,6 +26,12 @@ def main(argv=None):
     parser.add_argument("--steps", type=int, help="Maximum new control updates: 550 for a fresh run, or the remaining original preview domain on restart; a cap is not completion")
     parser.add_argument("--resume", type=Path, help="Numerically continue an unfinished mission_data.json or its directory; preserve the committed prefix")
     parser.add_argument("--source-context", type=Path, help="Explicit frozen-source context for legacy restart records missing checkpoint/guard declarations")
+    parser.add_argument('--arrival-policy', type=Path,
+        help='Explicit ArrivalPolicyConfig JSON including sourced reference errors and required terminal region; composite defaults to the configuration-name sibling if present')
+    parser.add_argument('--historical-terminal-policy', action='store_true',
+        help='Explicitly reproduce the historical distance-gated approach; no arrival commitment is claimed')
+    parser.add_argument('--transition-arrival-policy', action='store_true',
+        help='With --resume, introduce arrival as a separate source-bound cohort; all original physical settings must match')
     parser.add_argument("--chasers", type=int, default=8)
     parser.add_argument('--target-model',choices=('composite','cylinder-baseline'),default='composite',
         help='Explicit component spacecraft by default; cylinder is retained for paper-baseline reproduction')
@@ -39,11 +45,27 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.source_context is not None and args.resume is None:
         parser.error("--source-context requires --resume")
+    if args.arrival_policy is not None and args.historical_terminal_policy:
+        parser.error('--arrival-policy conflicts with --historical-terminal-policy')
+    if args.transition_arrival_policy and (args.resume is None or args.historical_terminal_policy):
+        parser.error('--transition-arrival-policy requires --resume and an enabled arrival policy')
     journal = None
     try:
         config = SimulationConfig.load(str(args.config))
         config.num_chasers = args.chasers
         config.__post_init__()
+        arrival_policy = None
+        arrival_path = args.arrival_policy
+        if args.target_model == 'composite' and not args.historical_terminal_policy and arrival_path is None:
+            candidate = args.config.with_name(args.config.stem + '-arrival.json')
+            if not candidate.is_file():
+                raise ValueError('Composite arrival requires an explicit --arrival-policy JSON with sourced reference errors/region; use --historical-terminal-policy only for an identified historical replay')
+            arrival_path = candidate
+        if arrival_path is not None:
+            from orbexa.simulation.arrival_policy import ArrivalPolicyConfig
+            arrival_policy = ArrivalPolicyConfig.from_dict(json.loads(arrival_path.read_text(encoding='utf-8')))
+            if arrival_policy.required_terminal_region is None:
+                raise ValueError('The physical mission CLI requires an explicitly sourced required_terminal_region; a pose ball alone is insufficient for handoff')
         prior = ParameterBelief(**json.loads(args.prior.read_text(encoding="utf-8")))
         admission = ContinuousAdmissionOptions(**json.loads(args.admission.read_text(encoding="utf-8")))
         input_bound = max(abs(float(bound[key])) for bound in config.mpc.input_bounds for key in ("lower", "upper"))
@@ -112,8 +134,20 @@ def main(argv=None):
                 initial_body_spin_rad_s=spin, gravity_gradient=not args.disable_gravity_gradient),
             admission=admission, certificate_sink=certificate_sink, target_anomaly_domain=domain,
             target_bound_scope=target_scope,target=target,deployment_options=deployment,
-            vehicle_design=None if design is None else design.as_dict())
-        if checkpoint is not None:
+            vehicle_design=None if design is None else design.as_dict(), arrival_policy=arrival_policy)
+        transition = None
+        if args.transition_arrival_policy:
+            if arrival_policy is None:
+                raise ValueError('An explicit arrival transition requires --arrival-policy')
+            from orbexa.simulation.mission_transition import MissionPolicyTransition
+            source_profile = PhysicalApproachScenario(config, initial_belief=prior, maximum_updates=steps,
+                options=PhysicalApproachOptions(body_radius_m=radius, com_standoff_m=standoff,
+                    initial_body_spin_rad_s=spin, gravity_gradient=not args.disable_gravity_gradient),
+                admission=admission, target_anomaly_domain=domain, target_bound_scope=target_scope,
+                target=target, deployment_options=deployment, vehicle_design=None if design is None else design.as_dict())
+            transition = MissionPolicyTransition.prepare(source_checkpoint=checkpoint,
+                source_scenario=source_profile.scenario, target_scenario=profile.scenario)
+        elif checkpoint is not None:
             checkpoint.validate_scenario(profile.scenario, "single" if args.chasers == 1 else "multi")
         from orbexa.simulation.capture import ChaserPhysicalProperties
         from orbexa.simulation.chaser_attitude import ChaserAttitudeTracker
@@ -125,9 +159,12 @@ def main(argv=None):
             approach_runner=approach_runner, attitude_tracker=tracker,
             ))
         store = CompleteMissionStore(args.output_dir)
+        if transition is not None:
+            transition.save(store.directory / 'policy-transition-prepared.json')
         journal = gzip.open(store.directory / "continuous-certificates.jsonl.gz", "wt", encoding="utf-8")
         runner.stage_sink=store.record
-        result = (runner.run(mission="single" if args.chasers == 1 else "multi", steps=steps)
+        result = (runner.complete(approach_runner.transition(transition, steps=steps)) if transition is not None else
+                  runner.run(mission="single" if args.chasers == 1 else "multi", steps=steps)
                   if checkpoint is None else runner.complete(approach_runner.resume(checkpoint, steps=steps)))
         output = store.finish(result)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, ImportError) as error:

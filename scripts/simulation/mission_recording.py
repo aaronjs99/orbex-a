@@ -72,9 +72,11 @@ class MissionRecorder:
         self.source_uncommitted_planning = {}
         self.source_kinematics = None
         self.source_kinematic_nodes = 0
+        self.arrival_runtime = None
+        self.policy_transition_history = []
 
     @classmethod
-    def from_checkpoint(cls, scenario, chasers, state, belief, checkpoint):
+    def from_checkpoint(cls, scenario, chasers, state, belief, checkpoint, *, preserve_source_stats=False):
         """Retain the complete committed prefix and every original solve attempt."""
         source = checkpoint.source_record
         metadata, count = source['metadata'], checkpoint.committed_updates
@@ -95,9 +97,10 @@ class MissionRecorder:
             archived[key] = dict(
                 nominal_trajectories=copy.deepcopy(source['nominal_trajectories'][key][count:]),
                 tube_profiles=copy.deepcopy(source['tube_profiles'][key][count:]))
-            for index, attempt in enumerate(recorder.stats[key]):
-                attempt.setdefault('anomaly', source['anom_history'][min(index, count)])
-                attempt.setdefault('source_checkpoint_identity', checkpoint.identity)
+            if not preserve_source_stats:
+                for index, attempt in enumerate(recorder.stats[key]):
+                    attempt.setdefault('anomaly', source['anom_history'][min(index, count)])
+                    attempt.setdefault('source_checkpoint_identity', checkpoint.identity)
         recorder.source_uncommitted_planning[checkpoint.identity] = archived
         recorder.diagnostics = copy.deepcopy(source['tube_diagnostics'])
         recorder.q_history = list(source['anom_history'])
@@ -119,6 +122,7 @@ class MissionRecorder:
             setattr(recorder, attr, np.inf if value is None else float(value))
         recorder.max_nominal_discretization_residual = float(metadata.get('max_nominal_discretization_residual', 0.))
         recorder.numerical_restart_history = copy.deepcopy(metadata.get('numerical_restart_history', []))
+        recorder.policy_transition_history = copy.deepcopy(metadata.get('policy_transition_history', []))
         recorder.numerical_restart_history.append(checkpoint.restart_record(scenario))
         recorder.numerical_restart_history[-1]['uncommitted_phase_attempts'] = list(source['phase_history'][count:])
         return recorder
@@ -216,6 +220,21 @@ class MissionRecorder:
             self.diagnostics[key]['terminal_position_bound'].append(float(pb))
             self.diagnostics[key]['terminal_velocity_bound'].append(float(vb))
             admissible &= self.scenario.reference.terminal_bounds_admissible(pb, vb)
+        if self.arrival_runtime is not None and phase.operation == 'docking':
+            region = self.arrival_runtime.policy.required_terminal_region
+            if region is not None:
+                from orbexa.simulation.arrival_policy import exact_mission_clock
+                exact_q = exact_mission_clock(self.scenario, state)
+                guard = self.scenario.execution_guard
+                entry = {chaser.chaser_id: (chaser.chaser_id in guard.endpoints and
+                    region.contains_endpoint(guard.endpoints[chaser.chaser_id],
+                        self.scenario.target.docking_state(chaser.docking_point_body, state.anomaly), exact_q,
+                        query_anomaly=state.anomaly))
+                    for chaser in self.chasers}
+                admissible &= all(entry.values())
+                self.arrival_runtime.events.append(dict(status='REQUIRED_ENDPOINT_REGION_SCREEN',
+                    exact_anomaly=str(exact_q), contained=entry,
+                    scope='Carried endpoint membership only; physical terminal certificate and fleet admission remain separate'))
         return bool(admissible)
 
     def result(self, *, mission: str, steps: int, belief: ParameterBelief, adaptation: MissionAdaptation,
@@ -312,4 +331,7 @@ class MissionRecorder:
                 controls_semantics='Mean applied outer inputs; exact held ancillary substep inputs passed to SMID, squared effort from dense inputs',
                 tightened_margin_semantics='Persistent nominal center with own matched-node position tube',
                 terminal_dwell_semantics='Consecutive outer endpoint membership, with dense containment and physical safety throughout',
-                chaser_assignments=[c.assignment_metadata() for c in self.chasers], primary_smid_chaser=self.ids[0]))
+                chaser_assignments=[c.assignment_metadata() for c in self.chasers], primary_smid_chaser=self.ids[0],
+                **({'arrival_state': self.arrival_runtime.as_metadata(),
+                    'arrival_activation': self.arrival_runtime.activation_marker()} if self.arrival_runtime is not None else {}),
+                **({'policy_transition_history': copy.deepcopy(self.policy_transition_history)} if self.policy_transition_history else {})))

@@ -45,9 +45,9 @@ class ADTMPCMissionRunner:
                  config: Optional[SimulationConfig] = None, horizon_steps: Optional[int] = None,
                  actuation_steps: Optional[int] = None, scenario: Optional[MissionScenario] = None,
                  target: Optional[TargetGeometry] = None, point_estimator: Optional[PointEstimator] = None,
-                 controller_factory: Optional[ControllerFactory] = None):
+                 controller_factory: Optional[ControllerFactory] = None, arrival_policy=None):
         if scenario is not None:
-            if any(value is not None for value in (config, horizon_steps, actuation_steps, target, point_estimator, controller_factory)):
+            if any(value is not None for value in (config, horizon_steps, actuation_steps, target, point_estimator, controller_factory, arrival_policy)):
                 raise ValueError('Inject dependencies into the supplied MissionScenario')
             if solver_backend != 'gekko' and solver_backend != scenario.solver_backend:
                 raise ValueError('solver_backend conflicts with the supplied MissionScenario')
@@ -58,11 +58,12 @@ class ADTMPCMissionRunner:
             self.scenario = MissionScenario(
                 config=config, target=target, point_estimator=point_estimator,
                 controller_factory=controller_factory, horizon_steps=horizon_steps,
-                actuation_steps=actuation_steps, solver_backend=solver_backend, approximation=approximation)
+                actuation_steps=actuation_steps, solver_backend=solver_backend, approximation=approximation,
+                arrival_policy=arrival_policy)
 
-    def run(self, *, mission: str, steps: int, checkpoint=None) -> ADTMPCMissionResult:
+    def run(self, *, mission: str, steps: int, checkpoint=None, transition=None) -> ADTMPCMissionResult:
         from orbexa.simulation.coupled_mission import CoupledTubeMission
-        return CoupledTubeMission(self.scenario).run(mission=mission, steps=steps, checkpoint=checkpoint)
+        return CoupledTubeMission(self.scenario).run(mission=mission, steps=steps, checkpoint=checkpoint, transition=transition)
 
     def resume(self, checkpoint, *, steps: int) -> ADTMPCMissionResult:
         """Continue an unfinished saved mission for additional numerical updates."""
@@ -70,6 +71,13 @@ class ADTMPCMissionRunner:
         if not isinstance(checkpoint, MissionCheckpoint):
             raise TypeError('Provide a source-qualified MissionCheckpoint')
         return self.run(mission=checkpoint.mission, steps=steps, checkpoint=checkpoint)
+
+    def transition(self, transition, *, steps: int) -> ADTMPCMissionResult:
+        """Start a separately bound arrival-policy cohort from a retained prefix."""
+        from orbexa.simulation.mission_transition import MissionPolicyTransition
+        if not isinstance(transition, MissionPolicyTransition):
+            raise TypeError('Provide an explicitly prepared MissionPolicyTransition')
+        return self.run(mission=transition.source_checkpoint.mission, steps=steps, transition=transition)
 
     def save_result(self, result: ADTMPCMissionResult, output_dir: Path) -> Path:
         return MissionResultStore.save(result, output_dir)

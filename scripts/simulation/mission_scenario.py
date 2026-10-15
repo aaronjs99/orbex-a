@@ -62,6 +62,7 @@ class MissionScenario:
                  controller_factory: Optional[ControllerFactory] = None,
                  initial_belief: Optional[ParameterBelief] = None,
                  execution_guard=None,
+                  arrival_policy=None,
                  vehicle_design: Optional[Dict[str, Any]] = None,
                  adaptation_mode: str = 'adaptive',
                  horizon_steps: Optional[int] = None,
@@ -80,6 +81,13 @@ class MissionScenario:
             raise ValueError("adaptation_mode must be 'adaptive' or 'frozen'")
         self.adaptation_mode = adaptation_mode
         self.execution_guard = execution_guard
+        if arrival_policy is not None:
+            from orbexa.simulation.arrival_policy import ArrivalPolicyConfig
+            if not isinstance(arrival_policy, ArrivalPolicyConfig):
+                raise TypeError('Inject a typed ArrivalPolicyConfig')
+            if execution_guard is None:
+                raise ValueError('Arrival policy requires a continuous execution guard and its exact inherited clock')
+        self.arrival_policy = arrival_policy
         self.target = target if target is not None else TumblingCylinderTarget.from_config(self.config)
         if callable(getattr(self.target,'anomaly_clock',None)):
             for name in ('eccentricity','alpha','mu','semi_major_axis'):
@@ -112,6 +120,8 @@ class MissionScenario:
                 'chaser_body_bounding_radius_m': self.safety.chaser_body_radius}
         if self.vehicle_design is not None:
             metadata['vehicle_design']=copy.deepcopy(self.vehicle_design)
+        if self.arrival_policy is not None:
+            metadata['arrival_policy'] = self.arrival_policy.as_dict()
         return metadata
 
     def require_coupled_execution(self) -> None:

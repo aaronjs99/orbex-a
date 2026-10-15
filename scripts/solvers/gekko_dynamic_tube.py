@@ -8,6 +8,7 @@ used. The caller supplies interval-valid coefficient and disturbance bounds.
 
 import time
 from dataclasses import replace
+from numbers import Real
 import numpy as np
 from scipy.linalg import expm
 from gekko import GEKKO
@@ -15,6 +16,7 @@ from gekko import GEKKO
 from orbexa.solvers.base import SolverResult
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
 from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION
+from orbexa.control.terminal_region import TerminalRegion
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 from orbexa.utils.solver_options import gekko_memory_exponent, composite_geometry_mode
 
@@ -28,6 +30,34 @@ class GekkoDynamicTube:
         self.max_memory = gekko_memory_exponent(config.get("max_memory", 4))
         self.composite_geometry_mode = composite_geometry_mode(config.get("composite_geometry_mode", "free"))
         self.spec = problem.extra_params["dynamic_tube"]
+        self.explicit_terminal_policy = any(self.spec.get(key) is not None
+            for key in ("terminal_start_index", "terminal_region", "terminal_planning_fraction"))
+        fraction = self.spec.get("terminal_planning_fraction", 1.)
+        if fraction is None:
+            fraction = 1.
+        if (isinstance(fraction, bool) or not isinstance(fraction, Real) or not np.isfinite(float(fraction))
+                or not 0 < fraction <= 1):
+            raise ValueError("Terminal planning fraction must be a finite real in (0,1]")
+        self.terminal_planning_fraction = float(fraction)
+        self.terminal_start_index = self.spec.get("terminal_start_index")
+        if self.terminal_start_index is None:
+            self.terminal_start_index = problem.num_steps - 1
+        if (isinstance(self.terminal_start_index, bool) or
+                not isinstance(self.terminal_start_index, (int, np.integer)) or
+                not 0 <= self.terminal_start_index < problem.num_steps):
+            raise ValueError("Terminal suffix start must be an integer index inside the prediction horizon")
+        self.terminal_region = self.spec.get("terminal_region")
+        if self.terminal_region is not None:
+            if isinstance(self.terminal_region, dict):
+                self.terminal_region = TerminalRegion.from_dict(self.terminal_region)
+            if not isinstance(self.terminal_region, TerminalRegion) or self.terminal_region.frame != 'physical-lvlh-v1':
+                raise ValueError("Terminal region must use the declared physical-lvlh-v1 state frame")
+            start = problem.extra_params.get("start_anom", 0.)
+            if any(not self.terminal_region.contains_anomaly(start + k * problem.anom_step)
+                   for k in range(self.terminal_start_index, problem.num_steps)):
+                raise ValueError("Terminal suffix lies outside its reference error declaration domain")
+        if self.explicit_terminal_policy and self.spec.get("enforce_terminal") is not True:
+            raise ValueError("Explicit terminal suffix/region requires enabled terminal constraints")
         self.model = GEKKO(remote=config.get("remote", False))
         self.residuals = []
         self.residual_descriptions = []
@@ -365,6 +395,7 @@ class GekkoDynamicTube:
 
     def _constraints(self):
         p, m, spec = self.problem, self.model, self.spec
+        lam = np.asarray(spec['lambda_gain'], dtype=float)
         target = p.extra_params.get("target_params") or {}
         center = np.asarray(target.get("center", np.zeros(3)), dtype=float)
         if center.shape != (3,) or not np.all(np.isfinite(center)):
@@ -462,21 +493,75 @@ class GekkoDynamicTube:
                 robust = sum(abs(float(row[i]))*envelope[i] for i in range(len(row)))
                 self._ge(sum(float(row[i])*x[i] for i in range(len(row)))+offset,robust)
         if spec.get("enforce_terminal",False):
-            self.constraint_context = 'normalized_terminal_pose'
-            for offset,key,tube in ((0,"terminal_position_tolerance",self.omega[-1]),
-                                    (3,"terminal_velocity_tolerance",velocity)):
-                tolerance = spec.get(key)
-                if tolerance is None or not np.isfinite(float(tolerance)) or float(tolerance) <= 0:
-                    raise ValueError("Hard terminal constraints require positive %s" % key)
-                error = [self.states[-1][offset+i]-float(p.reference_states[offset+i,-1]) for i in range(3)]
-                # Exact box worst-case Euclidean error, with convex absolute
-                # epigraphs. Squaring avoids the zero-norm derivative.
-                absolute_error = [self._abs(error[i]) for i in range(3)]
-                self._ge(1.,sum(((absolute_error[i]+tube[i])/float(tolerance))**2 for i in range(3)))
+            for k in range(self.terminal_start_index, p.num_steps):
+                # Fixed data at node zero must satisfy the outer admission set;
+                # every future node reserves the explicit planning interior for
+                # numerical carrying and the independent endpoint enclosure.
+                fraction = self.terminal_planning_fraction if k > 0 else 1.
+                self.constraint_context = ('normalized_terminal_pose[%s]' % k if self.explicit_terminal_policy
+                                           else 'normalized_terminal_pose')
+                velocity = [self.phi[k][i] + lam[i] * self.omega[k][i] for i in range(3)]
+                for offset,key,tube in ((0,"terminal_position_tolerance",self.omega[k]),
+                                         (3,"terminal_velocity_tolerance",velocity)):
+                    tolerance = spec.get(key)
+                    if tolerance is None or not np.isfinite(float(tolerance)) or float(tolerance) <= 0:
+                        raise ValueError("Hard terminal constraints require positive %s" % key)
+                    tolerance = float(tolerance) * fraction
+                    error = [self.states[k][offset+i]-float(p.reference_states[offset+i,k]) for i in range(3)]
+                    # Exact box worst-case Euclidean error, with convex absolute
+                    # epigraphs. Squaring avoids the zero-norm derivative.
+                    absolute_error = [self._abs(error[i]) for i in range(3)]
+                    self._ge(1.,sum(((absolute_error[i]+tube[i])/float(tolerance))**2 for i in range(3)))
+                if self.terminal_region is not None:
+                    self.constraint_context = 'required_terminal_region[%s]' % k
+                    region = self.terminal_region.scaled(fraction)
+                    ep = [self.states[k][i] - float(p.reference_states[i,k]) for i in range(3)]
+                    ev = [self.states[k][i+3] - float(p.reference_states[i+3,k]) for i in range(3)]
+                    for i in range(3):
+                        position = self._abs(ep[i]) + self.omega[k][i] + float(region.reference_state_error_abs[i])
+                        sliding = (self._abs(ev[i] + float(region.lambda_gain[i]) * ep[i]) + self.phi[k][i]
+                            + abs(float(region.lambda_gain[i]) - lam[i]) * self.omega[k][i]
+                            + float(region.reference_state_error_abs[i+3]
+                                    + region.lambda_gain[i] * region.reference_state_error_abs[i]))
+                        self._ge(1., position / float(region.omega[i]))
+                        self._ge(1., sliding / float(region.phi[i]))
 
     @staticmethod
     def _values(rows):
         return np.array([[float(value.value[0]) for value in row] for row in rows])
+
+    def _terminal_suffix_readback(self, states, tube):
+        """Recheck the printed full tube at every explicitly requested suffix node."""
+        if not self.explicit_terminal_policy:
+            return None
+        spec, region = self.spec, self.terminal_region
+        lam = np.asarray(spec['lambda_gain'], dtype=float)
+        nodes, violation = [], 0.
+        for k in range(self.terminal_start_index, self.problem.num_steps):
+            fraction = self.terminal_planning_fraction if k > 0 else 1.
+            position_tolerance = float(spec['terminal_position_tolerance']) * fraction
+            velocity_tolerance = float(spec['terminal_velocity_tolerance']) * fraction
+            reference = self.problem.reference_states[:, k]
+            dp = float(np.linalg.norm(np.abs(states[:3,k] - reference[:3]) + tube['omega'][k]))
+            dv = float(np.linalg.norm(np.abs(states[3:,k] - reference[3:]) + tube['phi'][k] + lam*tube['omega'][k]))
+            violation = max(violation, (dp / position_tolerance)**2 - 1., (dv / velocity_tolerance)**2 - 1.)
+            row = dict(index=k, whole_position_bound_m=dp, whole_velocity_bound_m_per_rad=dv,
+                planning_fraction=fraction, position_tolerance_m=position_tolerance,
+                velocity_tolerance_m_per_rad=velocity_tolerance)
+            if region is not None:
+                node_region = region.scaled(fraction)
+                position, sliding = node_region.tube_margins(states[:,k], reference, tube['phi'][k], tube['omega'][k], lam)
+                row.update(position_region_margins=[float(value) for value in position],
+                           sliding_region_margins=[float(value) for value in sliding])
+                violation = max(violation, *(float(-value / bound) for value, bound in zip(position, node_region.omega)),
+                                *(float(-value / bound) for value, bound in zip(sliding, node_region.phi)))
+            nodes.append(row)
+        return dict(start_index=int(self.terminal_start_index), checked_nodes=nodes,
+                    maximum_normalized_violation=violation,
+                    planning_fraction=self.terminal_planning_fraction,
+                    fixed_node_zero_policy='Unchanged outer admission; all future suffix nodes use the planning interior',
+                    required_region=None if region is None else region.as_dict(),
+                    scope='Numerical whole-tube suffix/entry screen; continuous flow and physical terminal certification are separate')
 
     def _solve_once(self):
         started = time.time()
@@ -502,6 +587,9 @@ class GekkoDynamicTube:
                 geometry_margins = self.composite_geometry.numerical_margins(states, tube["omega"])
                 geometry_info = self.composite_geometry.summary(geometry_margins)
                 violation = max(violation, -geometry_info["minimum_support_margin_m"])
+            terminal_info = self._terminal_suffix_readback(states, tube)
+            if terminal_info is not None:
+                violation = max(violation, terminal_info['maximum_normalized_violation'])
             lower_alpha, upper_alpha = map(float,self.spec["alpha_bounds"])
             violation = max(violation,float(np.max(-tube["phi"])),float(np.max(-tube["omega"])),
                             float(np.max(lower_alpha-tube["alpha"])),
@@ -530,6 +618,7 @@ class GekkoDynamicTube:
                                              "terminal_residual_scaling":"squared box error divided by squared physical tolerance",
                                              "tube_seed_diagnostics":list(self.seed_diagnostics),
                                              "constraint_sampling":"nonlinear geometry and state constraints at prediction nodes",
+                                              **({"terminal_suffix":terminal_info} if terminal_info is not None else {}),
                                              "dynamic_tube":tube})
         except Exception as error:
             return SolverResult(success=False,solve_time=time.time()-started,

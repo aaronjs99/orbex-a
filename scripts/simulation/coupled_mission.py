@@ -51,19 +51,32 @@ class CoupledTubeMission:
         self.config = self.scenario.config
         self.scenario.require_coupled_execution()
 
-    def run(self, *, mission: str, steps: int, checkpoint=None) -> ADTMPCMissionResult:
+    def run(self, *, mission: str, steps: int, checkpoint=None, transition=None) -> ADTMPCMissionResult:
         if mission not in ('single', 'multi'):
             raise ValueError(f'Unknown ADTMPC mission: {mission}')
         if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)) or steps < 1:
             raise ValueError('steps must be a positive integer number of MPC updates')
         scenario, cfg = self.scenario, self.config
-        if checkpoint is not None:
+        if checkpoint is not None and transition is not None:
+            raise ValueError('Choose ordinary strict resume or an explicit policy transition')
+        if transition is not None:
+            from orbexa.simulation.mission_transition import MissionPolicyTransition
+            if not isinstance(transition, MissionPolicyTransition) or transition.source_checkpoint.mission != mission:
+                raise TypeError('Provide a prepared transition for the same mission')
+            chasers, state, belief, phase, dwell = transition.consume(scenario)
+            checkpoint = transition.source_checkpoint
+            recorder = MissionRecorder.from_checkpoint(scenario, chasers, state, belief, checkpoint,
+                                                       preserve_source_stats=True)
+            recorder.policy_transition_history.append(transition.as_dict())
+            update_offset = checkpoint.committed_updates
+        elif checkpoint is not None:
             from orbexa.simulation.mission_checkpoint import MissionCheckpoint
             if not isinstance(checkpoint, MissionCheckpoint):
                 raise TypeError('Provide a source-qualified MissionCheckpoint')
             checkpoint.validate_scenario(scenario, mission)
             chasers, state, belief, phase, dwell = checkpoint.restore(scenario)
-            recorder = MissionRecorder.from_checkpoint(scenario, chasers, state, belief, checkpoint)
+            recorder = MissionRecorder.from_checkpoint(scenario, chasers, state, belief, checkpoint,
+                                                       preserve_source_stats=scenario.arrival_policy is not None)
             update_offset = checkpoint.committed_updates
         else:
             chasers = scenario.fleet.chasers(mission)
@@ -73,6 +86,18 @@ class CoupledTubeMission:
             recorder = MissionRecorder(scenario, chasers, state, belief)
             phase, dwell, update_offset = scenario.reference.initial_phase(), 0, 0
             recorder.sample_phases[0] = phase.name
+        arrival = None
+        if scenario.arrival_policy is not None:
+            from orbexa.simulation.arrival_policy import ArrivalRuntime
+            arrival = (ArrivalRuntime(scenario.arrival_policy, transition_identity=transition.identity,
+                           enabled_at_update=checkpoint.committed_updates,
+                           exact_enabled_anomaly=transition.record['exact_start_anomaly'])
+                       if transition is not None else checkpoint.arrival_runtime() if checkpoint is not None
+                       else ArrivalRuntime(scenario.arrival_policy))
+            if arrival is None:
+                raise ValueError('Ordinary arrival resume requires its persisted policy state')
+            recorder.arrival_runtime = arrival
+            state.arrival_commitment = arrival.commitment
         controller = scenario.create_controller()
         planner = CoupledMissionPlanner(scenario, controller)
         adaptation = MissionAdaptation(cfg, scenario.truth, scenario.point_estimator,
@@ -94,17 +119,43 @@ class CoupledTubeMission:
             selected_phase = scenario.reference.select_phase(phase, state, chasers)
             if selected_phase != phase:
                 phase = selected_phase
-                recorder.sample_phases[-1] = phase.name
+                if transition is None or update > 0:
+                    recorder.sample_phases[-1] = phase.name
             recorder.phases.append(phase.name)
             # Plan the whole fleet and check simultaneous two-tube separation.
-            planning = planner.plan(state, belief, phase, chasers, previous_plans)
+            arrival_step = None
+            try:
+                if arrival is not None and phase.operation == 'docking':
+                    from orbexa.simulation.arrival_policy import exact_mission_clock, exact_outer_step
+                    arrival_step = arrival.planning_step(update_offset + update, exact_mission_clock(scenario, state),
+                        exact_outer_step(cfg), scenario.reference.horizon_steps_for_phase(phase))
+                planning = planner.plan(state, belief, phase, chasers, previous_plans, arrival_step=arrival_step)
+            except (ValueError, FloatingPointError, OverflowError) as error:
+                if arrival is None:
+                    raise
+                valid = False
+                messages.append(f'Arrival policy refused planning before motion: {error}')
+                arrival.events.append(dict(status='POLICY_REFUSED', update=update_offset + update, reason=str(error)))
+                break
             recorder.record_planning(planning, state.anomaly)
             messages.extend(planning.messages)
             valid = planning.success
+            if arrival_step is not None:
+                if valid:
+                    try:
+                        arrival.accept_candidate(arrival_step, planning, expected_chaser_ids=[c.chaser_id for c in chasers])
+                        state.arrival_commitment = arrival.commitment
+                    except (ValueError, FloatingPointError, OverflowError) as error:
+                        valid = False
+                        messages.append(f'Arrival fleet candidate could not be retained: {error}')
+                if not valid:
+                    arrival.refuse_candidate(arrival_step, planning.messages + messages[-1:])
             if not valid:
                 break
             # Every dense transition commits all chasers on one shared clock.
             execution = executor.advance(state, planning, phase, truth_matrices)
+            if arrival_step is not None:
+                arrival.record_execution(arrival_step, execution, exact_mission_clock(scenario, state))
             messages.extend(execution.messages)
             valid = execution.success
             if not execution.committed:
@@ -122,5 +173,8 @@ class CoupledTubeMission:
             previous_plans = planning.plans
             if completed or not valid:
                 break
-        return recorder.result(mission=mission, steps=update_offset + int(steps), belief=belief, adaptation=adaptation,
-                               valid=valid, completed=completed, dwell=dwell, messages=messages)
+        result = recorder.result(mission=mission, steps=update_offset + int(steps), belief=belief, adaptation=adaptation,
+                                 valid=valid, completed=completed, dwell=dwell, messages=messages)
+        if transition is not None:
+            transition.validate_result_prefix(result)
+        return result

@@ -71,7 +71,7 @@ class PhysicalApproachScenario:
                  admission: ContinuousAdmissionOptions | None = None,
                  certificate_sink=None, adaptation_mode='adaptive', controller_factory=None,
                  target_anomaly_domain=None, target_bound_scope=None, target=None,
-                 vehicle_design=None):
+                 vehicle_design=None, arrival_policy=None):
         from orbexa.core.rigid_body_target import RigidBodyCylinderTarget
         if isinstance(maximum_updates, bool) or not isinstance(maximum_updates, (int, np.integer)) or maximum_updates < 1:
             raise ValueError('maximum_updates must be a positive integer')
@@ -167,5 +167,7 @@ class PhysicalApproachScenario:
             dependencies['controller_factory'] = controller_factory
         if vehicle_design is not None:
             dependencies['vehicle_design'] = vehicle_design
+        if arrival_policy is not None:
+            dependencies['arrival_policy'] = arrival_policy
         self.scenario = self.deployment.create_scenario(**dependencies)
         self.scenario.require_coupled_execution()

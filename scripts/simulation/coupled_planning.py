@@ -39,6 +39,7 @@ class ChaserPlan:
     profile: TubeProfile
     spec: DynamicTubeSpec
     tube: Dict[str, Any]
+    arrival_context: Dict[str, Any] | None = None
 
 
 @dataclass
@@ -88,10 +89,23 @@ class CoupledMissionPlanner:
             terminal_velocity_tolerance=self.config.mpc.docking_velocity_tolerance, enforce_terminal=False)
 
     def plan(self, state: CoupledMissionState, belief: ParameterBelief, phase: MissionPhase,
-             chasers: Sequence[ChaserConfig], previous_plans: Dict[str, ChaserPlan]) -> PlanningStep:
+             chasers: Sequence[ChaserConfig], previous_plans: Dict[str, ChaserPlan], *, arrival_step=None) -> PlanningStep:
         scenario, cfg = self.scenario, self.config
         q = state.anomaly
         count = scenario.reference.horizon_steps_for_phase(phase)
+        arrival_policy = scenario.arrival_policy
+        if arrival_policy is not None and phase.operation == 'docking':
+            from orbexa.simulation.arrival_policy import ArrivalPlanningStep
+            if (not isinstance(arrival_step, ArrivalPlanningStep)
+                    or arrival_step.policy.fingerprint != arrival_policy.fingerprint):
+                raise ValueError('Docking with an arrival policy requires its inherited exact deadline context')
+            region = arrival_policy.required_terminal_region
+            if region is not None and any(not region.supports_query(
+                    arrival_step.exact_anomaly + k * arrival_step.exact_outer_step,
+                    q + k * cfg.anom_step) for k in range(arrival_step.terminal_start_index, count)):
+                raise ValueError('Arrival suffix queries exceed the finite reference-error clock/domain declaration')
+        elif arrival_step is not None:
+            raise ValueError('An arrival deadline context applies only to its enabled docking policy')
         params = belief.dynamics_params(scenario.truth)
         matrices = orbital_ellp_drag(anom_step=cfg.anom_step, **params)[0]
         outcome = PlanningStep(matrices=matrices, parameters=params)
@@ -122,6 +136,14 @@ class CoupledMissionPlanner:
             # Completion always checks that set, including the current tube.
             spec.enforce_terminal = bool(phase.operation == 'docking' and
                 np.linalg.norm(state.centers[key][:3] - goal[:3]) < cfg.mission.terminal_activation_distance)
+            if arrival_step is not None:
+                # The absolute deadline does not recede when a new horizon is
+                # solved. A stricter planning subset leaves the outer gate intact.
+                spec.enforce_terminal = True
+                spec.terminal_start_index = arrival_step.terminal_start_index
+                spec.terminal_planning_fraction = arrival_policy.planning_fraction
+                if arrival_policy.required_terminal_region is not None:
+                    spec.terminal_region = arrival_policy.required_terminal_region
             pairwise = []
             for other in ids:
                 if other == key:
@@ -182,7 +204,15 @@ class CoupledMissionPlanner:
                     'phi_peak', 'omega_peak', 'velocity_peak', 'error_peak',
                     'velocity_derivative_bound', 'error_derivative_bound', 'sliding_derivative_bound',
                     'A_variation')})
-            outcome.plans[key] = ChaserPlan(result=result, profile=profile, spec=spec, tube=tube)
+            arrival_context = None
+            if arrival_step is not None:
+                arrival_context = dict(reference_states=references, reference_inputs=feedforward,
+                    target_params=target, pairwise_constraints=pairwise, bounds=cfg.mpc.bounds(),
+                    state_cost_matrix=kwargs['state_cost_matrix'], input_cost_matrix=cfg.mpc.R,
+                    terminal_cost_matrix=kwargs.get('terminal_cost_matrix'),
+                    solver_options=cfg.solver.options(), start_anomaly=q, anomaly_step=cfg.anom_step)
+            outcome.plans[key] = ChaserPlan(result=result, profile=profile, spec=spec, tube=tube,
+                                           arrival_context=arrival_context)
         if outcome.success:
             outcome.messages.extend(scenario.safety.planned_separation_messages(outcome.plans))
             outcome.success = not outcome.messages

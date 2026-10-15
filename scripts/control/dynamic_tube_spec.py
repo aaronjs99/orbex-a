@@ -19,7 +19,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields
 from typing import Any, Dict, Mapping, Tuple
+from numbers import Real
 import numpy as np
+from orbexa.control.terminal_region import TerminalRegion
 
 
 @dataclass
@@ -42,6 +44,9 @@ class DynamicTubeSpec:
     terminal_position_tolerance: float
     terminal_velocity_tolerance: float
     enforce_terminal: bool = False
+    terminal_start_index: int | None = None
+    terminal_region: TerminalRegion | None = None
+    terminal_planning_fraction: float | None = None
 
     def __post_init__(self) -> None:
         delta_a = np.asarray(self.delta_A, dtype=float)
@@ -79,6 +84,23 @@ class DynamicTubeSpec:
                 raise ValueError(f"dynamic_tube.{name} must be finite and positive")
         if not isinstance(self.enforce_terminal, bool):
             raise ValueError("dynamic_tube.enforce_terminal must be a boolean")
+        if self.terminal_start_index is not None:
+            if (isinstance(self.terminal_start_index, bool) or
+                    not isinstance(self.terminal_start_index, (int, np.integer)) or
+                    not 0 <= self.terminal_start_index < self.horizon_steps or not self.enforce_terminal):
+                raise ValueError("An enabled terminal suffix requires an integer start index inside the horizon")
+            self.terminal_start_index = int(self.terminal_start_index)
+        if self.terminal_region is not None:
+            if isinstance(self.terminal_region, dict):
+                self.terminal_region = TerminalRegion.from_dict(self.terminal_region)
+            if not isinstance(self.terminal_region, TerminalRegion) or not self.enforce_terminal:
+                raise ValueError("A required terminal region needs enabled terminal constraints")
+        if self.terminal_planning_fraction is not None:
+            fraction = self.terminal_planning_fraction
+            if (isinstance(fraction, bool) or not isinstance(fraction, Real) or not np.isfinite(float(fraction))
+                    or not 0 < fraction <= 1 or not self.enforce_terminal):
+                raise ValueError("An enabled terminal planning fraction must lie in (0,1]")
+            self.terminal_planning_fraction = float(fraction)
 
     @property
     def horizon_steps(self) -> int:
@@ -86,7 +108,15 @@ class DynamicTubeSpec:
 
     def to_extra_params(self) -> Dict[str, Any]:
         """Return the current backend's dynamic-tube mapping without reformulation."""
-        return {item.name: getattr(self, item.name) for item in fields(self)}
+        result = {item.name: getattr(self, item.name) for item in fields(self)
+                  if item.name not in ("terminal_start_index", "terminal_region", "terminal_planning_fraction")}
+        if self.terminal_start_index is not None:
+            result["terminal_start_index"] = self.terminal_start_index
+        if self.terminal_region is not None:
+            result["terminal_region"] = self.terminal_region.as_dict()
+        if self.terminal_planning_fraction is not None:
+            result["terminal_planning_fraction"] = self.terminal_planning_fraction
+        return result
 
     @classmethod
     def from_extra_params(cls, parameters: Mapping[str, Any]) -> "DynamicTubeSpec":
