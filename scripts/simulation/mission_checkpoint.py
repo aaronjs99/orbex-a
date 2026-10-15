@@ -74,11 +74,20 @@ def _policy_signature(metadata):
     if deployment:
         names = ("kind", "options", "count", "initial_anomaly", "launch_radius", "launch_azimuth",
                  "initial_pitch", "initial_spacing", "final_spacing", "arc_span", "assignment_strategy")
+        if deployment.get("kind") == "compact_component_aware_patch_routes":
+            composite = ("geometry_id", "geometry_fingerprint", "release_center_body_m",
+                         "common_direction_position", "initial_pitch_m", "staging_anomaly",
+                         "route_order", "routes")
+            if any(name not in deployment for name in composite):
+                raise ValueError("Composite numerical restart requires the complete route and geometry policy")
+            names += composite
         result["deployment"] = {name: deployment[name] for name in names if name in deployment}
     for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m", "vehicle_design"):
         if name in metadata:
             result[name] = metadata[name]
-    return result
+    # Persisted JSON turns tuples/NumPy scalars into lists/Python scalars.
+    # Compare supported policy values in that same representation on both sides.
+    return plain(result)
 
 
 def _target_signature(metadata):
@@ -291,7 +300,12 @@ class MissionCheckpoint:
             raise ValueError("Numerical restart changed the target motion, geometry, clock or epoch")
         old_policy = _policy_signature(source.get("policy", metadata.get("scenario", {})))
         new_policy = _policy_signature(current["policy"])
-        if any(name not in new_policy or new_policy[name] != value for name, value in old_policy.items()):
+        policy_changed = any(name not in new_policy or new_policy[name] != value for name, value in old_policy.items())
+        if record["target"].get("shape") == "composite_spacecraft":
+            # A missing source policy field cannot inherit a newly generated
+            # composite route, schedule or installed-vehicle declaration.
+            policy_changed = old_policy != new_policy
+        if policy_changed:
             raise ValueError("Numerical restart changed the reference/deployment policy")
         if source.get("body_radius") != current["body_radius"] or source.get("adaptation_mode", "adaptive") != current["adaptation_mode"]:
             raise ValueError("Numerical restart changed body geometry or belief-update mode")
@@ -357,6 +371,8 @@ class MissionCheckpoint:
             committed_updates=self.committed_updates, anomaly=self.anomaly,
             adaptation_window="Reset to the saved current primary state; mean outer inputs cannot recover the exact dense window",
             planning_warm_starts="Cold start; unavailable complete control horizons are not reconstructed",
+            source_solver_options=plain(old.get("configuration", {}).get("solver", {})),
+            resumed_solver_options=plain(scenario.config.solver),
             source_fingerprints=old.get("source_fingerprints", {}), resumed_source_fingerprints=source_fingerprints(),
             scope="Numerical continuation of a retained prefix; not a matched statistical trial or a formal safe-backup theorem")
 

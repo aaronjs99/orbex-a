@@ -112,6 +112,10 @@ class MissionStudio:
                         if target not in document_links:
                             return '<span title="Document not included in this bundle">' + text + '</span>'
                         url = document_links[target] + ("#" + fragment if separator else "")
+                    elif relative and ":" not in relative and not relative.startswith("//"):
+                        target = (studio / relative).resolve()
+                        if not target.is_relative_to(studio.parent) or not target.is_file():
+                            return '<span title="Source file not included in this bundle">' + text + '</span>'
                     return super().link(text, url, title)
             markdown = mistune.create_markdown(renderer=DocumentRenderer(escape=True), plugins=["table", "math", "url"])
             body = markdown(document_text[index])

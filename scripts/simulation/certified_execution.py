@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction
+import json
 from typing import Callable, Mapping, Any
 import numpy as np
 
@@ -258,7 +259,11 @@ class CertifiedExecutionGuard:
             if not isinstance(target_context, dict):
                 raise ValueError('Complete continuous target bound declarations are required')
             proposed = self._target_context(self.target_bounds(float(exact) if exact is not None else anomaly, hold_width))
-            if proposed != target_context:
+            # Compare the same JSON representation for live tuple-based proof
+            # fields and persisted lists; retain all exact rational values.
+            normalized_proposed = json.loads(json.dumps(proposed, allow_nan=False))
+            normalized_recorded = json.loads(json.dumps(target_context, allow_nan=False))
+            if normalized_proposed != normalized_recorded:
                 raise ValueError('Continuous restart changed target occupied-shape, pose or rate assumptions')
         clock_difference = float(metadata.get('max_reported_clock_difference_rad', 0))
         if not np.isfinite(clock_difference) or not 0 <= clock_difference <= 1e-10:
