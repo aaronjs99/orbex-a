@@ -46,8 +46,8 @@ orbit:
   target_drag: 2.0e-9
   chaser_drag: 4.5e-9
   time_periapsis: 0.0
-  # Explicit composite deployment replaces this point with its screened cluster.
-  initial_conditions: [-1.105, 0.009, 4.5, 0.0, 0.0, 0.0]
+  # The deployment service adds the finite dispenser offsets to this distant LVLH centre.
+  initial_conditions: [0.0, 0.0, 300.0, 0.0, 0.0, 0.0]
 
 mpc:
   terminal_cost_enabled: true

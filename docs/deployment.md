@@ -1,4 +1,28 @@
-# Compact post-release free-flight deployment
+# Carrier deployment and compact free flight
+
+The Envisat profile starts eight separated buses in one payload-sized region
+300 m from the target. `CarrierTransferReference` moves their common centre in
+LVLH coordinates before the component-aware proximity routes begin. The
+distant centre is never multiplied by target rotation. Only the small local
+dispenser offsets rotate, so release does not acquire a spurious angular-rate
+times 300 m velocity.
+
+Let $C$ denote the distant LVLH centre, $c$ the close-route body-frame centre,
+$\delta_i$ a fixed dispenser offset, $R(q)$ the target rotation, and $s(q)$ a
+quintic progress function over the declared transfer duration. The parallel
+reference is
+
+$$p_i=(1-s)C+R(q)(sc+\delta_i).$$
+
+Both derivatives of $s$ vanish at each end. Position, anomaly velocity and
+acceleration therefore join the delayed body-frame proximity routes
+continuously. Pair differences are $R(q)(\delta_i-\delta_j)$, preserving the
+compact grid's reference spacing. This does not prove target clearance or
+control feasibility: all eleven components, actual controls and continuous
+swept admission remain binding for every executed hold. The displayed carrier
+is initial release context; launch and mechanical ejection are not simulated.
+
+The following compact-arc profile remains available for the cylinder studies.
 
 `CompactArcDeployment` adds an optional finite compact start to the maintained
 nonlinear ADTMPC mission. All chasers begin after separation and acquisition of

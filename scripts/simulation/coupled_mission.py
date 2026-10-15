@@ -115,6 +115,7 @@ class CoupledTubeMission:
         previous_plans = {}
         completed, valid = False, True
         messages = []
+        recorder.emit_progress('start')
         for update in range(int(steps)):
             selected_phase = scenario.reference.select_phase(phase, state, chasers)
             if selected_phase != phase:
@@ -171,10 +172,12 @@ class CoupledTubeMission:
             dwell = dwell + 1 if admissible and valid else 0
             completed = dwell >= cfg.mpc.terminal_dwell_updates
             previous_plans = planning.plans
+            recorder.emit_progress('committed')
             if completed or not valid:
                 break
         result = recorder.result(mission=mission, steps=update_offset + int(steps), belief=belief, adaptation=adaptation,
                                  valid=valid, completed=completed, dwell=dwell, messages=messages)
         if transition is not None:
             transition.validate_result_prefix(result)
+        recorder.emit_progress('complete', result=result)
         return result

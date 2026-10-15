@@ -211,6 +211,55 @@ class MissionRecorder:
         self.feasible.append(serial_ranges(belief.feasible_sets))
         self.estimates.append(serial_estimates(belief.estimates))
 
+    def recorded_target_kinematics(self):
+        """Retain source-prefix facts when projecting a resumed recording."""
+        target = self.scenario.target
+        if self.source_kinematics is None:
+            return target.recorded_kinematics(self.q_history) if self.records_kinematics else None
+        kinematics = copy.deepcopy(self.source_kinematics)
+        new_clock = self.q_history[self.source_kinematic_nodes:]
+        if new_clock:
+            additions = target.recorded_kinematics(new_clock)
+            kinematics = {name: np.concatenate((np.asarray(values), np.asarray(additions[name])), axis=0)
+                          for name, values in kinematics.items()}
+        return kinematics
+
+    def emit_progress(self, kind: str, *, result=None) -> None:
+        """Publish a detached display snapshot, never an unexecuted proposal.
+
+        A blocking sink may pause execution here, between fleet updates. No
+        plotting or projection work runs when the caller supplied no sink.
+        """
+        sink = self.scenario.progress_sink
+        if sink is None:
+            return
+        if kind not in ('start', 'committed', 'complete'):
+            raise ValueError('Unknown committed mission progress event')
+        from orbexa.visualization.studio_data import StudioDataset
+        if result is None:
+            kinematics = self.recorded_target_kinematics()
+            elapsed = (self.elapsed if kinematics is None else
+                       np.asarray(kinematics['physical_time'], dtype=float).tolist())
+            cfg = self.config
+            record = dict(anom_history=self.q_history, actual_trajectories=self.actual,
+                sample_phase_history=self.sample_phases, target=self.scenario.target.as_dict(),
+                target_attitude_history=self.attitudes, target_angular_velocity_history=self.rates,
+                docking_points={c.chaser_id: c.docking_point_body.tolist() for c in self.chasers},
+                tube_diagnostics=self.diagnostics, success=False, message='approach_in_progress',
+                metadata=dict(model_version=PHYSICAL_MODEL_ID, controller=COUPLED_CONTROLLER_ID,
+                    scenario=self.scenario.scenario_metadata(), target_kinematics=kinematics,
+                    elapsed_time_seconds=elapsed, mission_complete=False,
+                    lambda_gain=np.asarray(cfg.tube.sliding_gains).tolist(),
+                    docking_position_tolerance=cfg.mpc.docking_position_tolerance,
+                    min_chaser_separation=self.scenario.safety.min_chaser_separation,
+                    chaser_assignments=[c.assignment_metadata() for c in self.chasers]))
+            projection = StudioDataset(record).to_dict()
+            projection['outcome']['label'] = 'Computing approach'
+        else:
+            projection = StudioDataset(result).to_dict()
+        sink(copy.deepcopy(dict(kind=kind, update=len(self.q_history) - 1,
+            anomaly=float(self.q_history[-1]), projection=projection)))
+
     def record_terminal_bounds(self, state: CoupledMissionState, phase: MissionPhase) -> bool:
         admissible = phase.operation == 'docking'
         for chaser in self.chasers:
@@ -260,17 +309,7 @@ class MissionRecorder:
             messages.append('max_mpc_updates_reached_before_terminal_tube_dwell')
         scenario_metadata = scenario.scenario_metadata()
         target_metadata = target.as_dict()
-        if self.source_kinematics is not None:
-            # Historical target queries remain facts of their original source;
-            # a solver-source restart cannot recompute and overwrite them.
-            kinematics = copy.deepcopy(self.source_kinematics)
-            new_clock = self.q_history[self.source_kinematic_nodes:]
-            if new_clock:
-                additions = target.recorded_kinematics(new_clock)
-                kinematics = {name: np.concatenate((np.asarray(values), np.asarray(additions[name])), axis=0)
-                              for name, values in kinematics.items()}
-        else:
-            kinematics = target.recorded_kinematics(self.q_history) if self.records_kinematics else None
+        kinematics = self.recorded_target_kinematics()
         if kinematics is not None:
             self.elapsed = np.asarray(kinematics['physical_time'], dtype=float).tolist()
         # Assignment belongs to the scenario/fleet, while the target geometry

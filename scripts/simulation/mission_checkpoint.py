@@ -75,13 +75,19 @@ def _policy_signature(metadata):
     if deployment:
         names = ("kind", "options", "count", "initial_anomaly", "launch_radius", "launch_azimuth",
                  "initial_pitch", "initial_spacing", "final_spacing", "arc_span", "assignment_strategy")
-        if deployment.get("kind") == "compact_component_aware_patch_routes":
+        if deployment.get("kind") in ("compact_component_aware_patch_routes", "carrier_cluster_to_component_aware_patch_routes"):
             composite = ("geometry_id", "geometry_fingerprint", "release_center_body_m",
                          "common_direction_position", "initial_pitch_m", "staging_anomaly",
                          "route_order", "routes")
             if any(name not in deployment for name in composite):
                 raise ValueError("Composite numerical restart requires the complete route and geometry policy")
             names += composite
+            if deployment.get('kind') == 'carrier_cluster_to_component_aware_patch_routes':
+                carrier = ('carrier_center_lvlh_m', 'transfer_end_anomaly', 'initial_states_lvlh',
+                           'close_route_start_body_m', 'carrier_context')
+                if any(name not in deployment for name in carrier):
+                    raise ValueError('Carrier restart requires the complete release/transfer policy')
+                names += carrier
         result["deployment"] = {name: deployment[name] for name in names if name in deployment}
     for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m", "vehicle_design", "arrival_policy"):
         if name in metadata:

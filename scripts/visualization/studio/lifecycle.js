@@ -5,8 +5,26 @@ import { SceneVideoExporter, downloadVideo } from './recorder.js';
 
 const $ = id => document.getElementById(id);
 const views = [];
-let data, index = 0, playing = false, started = 0, startTime = 0, visible = true, exporting = false;
-window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='orbexa.lifecycle.visibility'){visible=event.data.active;if(!visible)stop();}});
+const parameters = new URLSearchParams(location.search);
+const session = parameters.get('session');
+const controlled = window.parent !== window && parameters.get('controlled') === '1' && Boolean(session);
+document.body.classList.toggle('parent-controlled', controlled);
+let data, index = 0, playing = false, started = 0, startTime = 0, visible = !controlled, exporting = false;
+let receiveParentData;
+window.addEventListener('message', event => {
+  if (!controlled || event.origin !== location.origin || event.source !== window.parent || event.data?.session !== session) return;
+  if (event.data.type === 'orbexa.lifecycle.load' && receiveParentData && event.data.data?.schema === 'orbexa.lifecycle.studio.v1') {
+    receiveParentData(event.data.data);
+    receiveParentData = null;
+  }
+  if (event.data.type === 'orbexa.lifecycle.visibility' && typeof event.data.active === 'boolean') {
+    const becomingVisible = !visible && event.data.active;
+    visible = event.data.active;
+    if (!visible) stop();
+    if (becomingVisible) views.forEach(item => item.resize());
+  }
+  if (event.data.type === 'orbexa.lifecycle.seek' && data && Number.isInteger(event.data.index) && event.data.index >= 0 && event.data.index < data.time_s.length) seek(event.data.index);
+});
 
 function view(container, distance) {
   const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -17,8 +35,9 @@ function view(container, distance) {
   const controls = new OrbitControls(camera,renderer.domElement); controls.enableDamping = true;
   scene.add(new THREE.AmbientLight('#c1d3e4',1.9));
   const light = new THREE.DirectionalLight('#e8f3ff',3); light.position.set(-4,-6,8); scene.add(light);
-  new ResizeObserver(() => {const w=container.clientWidth,h=container.clientHeight;if(w&&h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}}).observe(container);
-  const result={renderer,scene,camera,controls}; views.push(result); return result;
+  const resize = () => {const w=container.clientWidth,h=container.clientHeight;if(w&&h){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}};
+  new ResizeObserver(resize).observe(container);
+  const result={renderer,scene,camera,controls,resize}; views.push(result); return result;
 }
 
 function setup() {
@@ -69,18 +88,25 @@ function paint(){
   $('life-fuel').textContent=data.fuel_kg[index].toFixed(3)+' kg';
   $('life-altitude').textContent=(data.altitude_m[index]/1000).toFixed(2)+' km';
   $('life-perigee').textContent=(data.perigee_altitude_m[index]/1000).toFixed(2)+' km';
-  if(window.parent!==window)window.parent.postMessage({type:'orbexa.lifecycle.clock',elapsed:data.elapsed_s[index],index,count:data.time_s.length},location.origin);
+  if(window.parent!==window)window.parent.postMessage({type:'orbexa.lifecycle.clock',session,time:data.time_s[index],elapsed:data.elapsed_s[index],index,count:data.time_s.length},location.origin);
 }
 function stop(){playing=false;$('life-play').textContent='Play';}
 function seek(i){if(exporting)return;stop();index=Math.max(0,Math.min(data.time_s.length-1,Number(i)));paint();}
 $('life-play').addEventListener('click',()=>{if(exporting)return;if(playing){stop();return;}if(index===data.time_s.length-1)index=0;playing=true;started=performance.now();startTime=data.elapsed_s[index];$('life-play').textContent='Pause';});
 $('life-first').addEventListener('click',()=>seek(0));$('life-last').addEventListener('click',()=>seek(data.time_s.length-1));$('life-seek').addEventListener('input',()=>seek($('life-seek').value));
 try{
-  const path=new URLSearchParams(location.search).get('data');
-  if(!path)throw new Error('No saved lifecycle was selected.');
-  const url=new URL(path,location.href);if(url.origin!==location.origin)throw new Error('Lifecycle replay requires a local saved dataset.');
-  const response=await fetch(url);if(!response.ok)throw new Error('Saved lifecycle data is unavailable.');
-  data=await response.json();
+  const path=parameters.get('data');
+  if (controlled && parameters.get('source') === 'parent') {
+    data = await new Promise(resolve => {
+      receiveParentData = resolve;
+      window.parent.postMessage({type:'orbexa.lifecycle.request',session},location.origin);
+    });
+  } else {
+    if(!path)throw new Error('No saved lifecycle was selected.');
+    const url=new URL(path,location.href);if(url.origin!==location.origin)throw new Error('Lifecycle replay requires a local saved dataset.');
+    const response=await fetch(url);if(!response.ok)throw new Error('Saved lifecycle data is unavailable.');
+    data=await response.json();
+  }
   if(data.schema!=='orbexa.lifecycle.studio.v1'||!data.time_s?.length)throw new Error('Unsupported lifecycle replay dataset.');
   $('life-provenance').textContent=data.synthetic?'Synthetic physics fixture · no ADTMPC approach inferred':data.provenance;
   const contactCount=Object.keys(data.surface_contacts ?? {}).length;
@@ -88,9 +114,10 @@ try{
   const terminal=data.terminal_handoff?.terminal_execution;
   if(terminal&&Number.isFinite(terminal.physical_duration_seconds))$('life-provenance').textContent+=` · Terminal handoff: ${terminal.physical_duration_seconds.toFixed(2)} s / ${terminal.holds} admitted holds.`;
   $('life-scope').textContent=data.scope;
-  $('life-raw').href=path;$('life-seek').max=data.time_s.length-1;
+  $('life-raw').href=path || URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));$('life-raw').download='ORBEX-A-lifecycle.json';$('life-seek').max=data.time_s.length-1;
   setup();paint();
+  if (controlled) window.parent.postMessage({type:'orbexa.lifecycle.ready',session,count:data.time_s.length,firstTime:data.time_s[0],lastTime:data.time_s.at(-1)},location.origin);
   const actions=document.createElement('div');actions.className='replay-actions';const status=document.createElement('span');status.setAttribute('role','status');const button=document.createElement('button');button.textContent='Export mission video';button.disabled=!SceneVideoExporter.supported();actions.append(status,button);document.querySelector('main').append(actions);
   button.addEventListener('click',async()=>{if(exporting)return;stop();exporting=true;button.disabled=true;const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=640;const ctx=canvas.getContext('2d');const adapter={renderer:{domElement:canvas},render(){ctx.fillStyle='#010306';ctx.fillRect(0,0,1280,640);views.forEach((v,i)=>{v.renderer.render(v.scene,v.camera);const source=v.renderer.domElement;const scale=Math.min(630/source.width,620/source.height);const w=source.width*scale,h=source.height*scale;ctx.drawImage(source,i*640+(640-w)/2,(640-h)/2,w,h);});}};try{const file=await new SceneVideoExporter().record(adapter,data,data.synthetic?'Synthetic post-capture physics fixture':'Attachment, detumbling and orbital delivery',{onFrame:i=>{index=i;paint();},onProgress:p=>status.textContent=`Exporting recorded lifecycle · ${p}%`});downloadVideo(file.blob,`ORBEX-A-physical-lifecycle.${file.extension}`);status.textContent='Mission video created. Download requested.';}catch(error){status.textContent=error.message;}finally{exporting=false;button.disabled=false;}});
-  function animate(now){if(visible&&!exporting){if(playing){const time=startTime+(now-started)*.3;while(index<data.time_s.length-1&&data.elapsed_s[index+1]<=time)index++;paint();if(index===data.time_s.length-1)stop();}for(const v of views){v.controls.update();v.renderer.render(v.scene,v.camera);}}requestAnimationFrame(animate);}requestAnimationFrame(animate);
-}catch(error){$('life-error').hidden=false;$('life-error').textContent=error.message;for(const id of ['life-play','life-first','life-last','life-seek'])$(id).disabled=true;}
+  function animate(now){if(visible&&!exporting){if(playing&&!controlled){const time=startTime+(now-started)/1000*30;while(index<data.time_s.length-1&&data.elapsed_s[index+1]<=time)index++;paint();if(index===data.time_s.length-1)stop();}for(const v of views){v.controls.update();v.renderer.render(v.scene,v.camera);}}requestAnimationFrame(animate);}requestAnimationFrame(animate);
+}catch(error){$('life-error').hidden=false;$('life-error').textContent=error.message;for(const id of ['life-play','life-first','life-last','life-seek'])$(id).disabled=true;if(controlled)window.parent.postMessage({type:'orbexa.lifecycle.error',session,message:error.message},location.origin);}

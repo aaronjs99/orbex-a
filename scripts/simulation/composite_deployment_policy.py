@@ -14,10 +14,12 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         self.deployment = deployment
 
     def initial_phase(self):
-        return MissionPhase("deployment", "rendezvous")
+        return MissionPhase('carrier_departure' if self.deployment.carrier_transfer is not None else 'deployment', 'rendezvous')
 
     def select_phase(self, phase, state, chasers):
         if phase.operation == "docking": return phase
+        if state.anomaly < self.deployment.transfer_anomaly:
+            return MissionPhase('carrier_departure' if state.anomaly == 0. else 'transfer', 'rendezvous')
         if state.anomaly < self.deployment.staging_anomaly:
             return MissionPhase("deployment", "rendezvous")
         if all(value >= 0 for value in self.staging_margins(state, chasers).values()):

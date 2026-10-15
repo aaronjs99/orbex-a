@@ -16,12 +16,12 @@ The Envisat study uses eleven explicit bus, solar-wing and appendage components
 and eight candidate structural patches. Planning, exclusion, capture and replay
 consume the same geometry. [Its model and sources](docs/envisat.md) distinguish
 published dimensions and mass/inertia from inferred layout and unknown current
-state. The closed Envisat recording completes 175 nonlinear fleet updates,
-a separately verified physical terminal window, eight modeled attachments,
-581 s of detumbling including the 30 s dwell, and a finite burn followed by
-descending delivery to the 120 km entry interface. About 115 kg of assembly
-propellant remains. Contact is idealized, and the orbital endpoint precedes
-atmospheric entry physics. The earlier cylinder baseline remains a separate study.
+state. The current profile releases eight separated chasers in a common payload
+cluster 300 m away, transfers them toward the target, and assigns component-aware
+routes to eight surface patches. Attachment, detumbling and orbital lowering
+remain gated physical stages. A completed close-start recording does not qualify
+this changed departure. Contact is idealized, and the orbital endpoint precedes
+atmospheric entry physics.
 
 The approach plant is the paper's analytical relative-motion approximation.
 An independent Cartesian SI dynamics service includes nonlinear central gravity,
@@ -119,12 +119,6 @@ translation channels. Its 2.4°/s spin is a historical-range study input, not a
 current Envisat estimate. Actuator, fuel, constant-inertia and contact gates
 can still refuse completion.
 
-Select the paper-scale cylinder profile explicitly when reproducing it:
-
-```bash
-orbexa-run-mission --target-model cylinder-baseline --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --output-dir ../orbexa-output/cylinder-eight --steps 550
-```
-
 See [physical lifecycle](docs/mission-lifecycle.md),
 [chaser attitude](docs/chaser-attitude.md),
 [continuous safety](docs/continuous-safety.md),
@@ -135,14 +129,27 @@ See [physical lifecycle](docs/mission-lifecycle.md),
 ## Mission Studio
 
 Open the [published Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site)
-for the recorded 3D missions, plots, videos and illustrated theory. The Site is
-private and uses ChatGPT sign-in. Envisat and cylinder-baseline recordings retain
-their separate models, outcomes and qualification records.
+for one Envisat mission, plots and illustrated theory. The Site is private and
+uses ChatGPT sign-in. Its visible catalog excludes older cylinder and comparison
+recordings.
+
+Start the real local simulation service from this checkout:
+
+```bash
+python serve.py
+```
+
+The published page connects to `127.0.0.1:8882`. Release distance, cluster spacing
+and target spin start a fresh nonlinear GEKKO/IPOPT run. Only committed fleet
+samples update the scene; pause takes effect between fleet updates. Reset keeps
+the previous job's output. When the service is absent the page says
+“Local simulator offline” and its physics controls are disabled. The service
+binds only loopback and permits only the named Studio origins.
 
 `MissionStudio` exports explicitly selected saved missions into a local browser
 workspace: a black-space 3D replay, synchronized goal/tube/reserve charts,
 camera controls, finite-body envelopes, recorded video, mathematical documents
-and a separate two-view post-capture replay. `LifecycleRenderer` produces
+and one timeline through post-capture flight. `LifecycleRenderer` produces
 scientific plots, GIF and MP4 from the same SI state records. Browser video
 export stays on the local computer. No controller is run inside the viewer.
 
@@ -150,9 +157,10 @@ The renderer, equation fonts and licenses are included in the package, so the
 Studio needs no third-party network requests. Serve the exported directory with
 an ordinary local HTTP server; open its `studio/` page. Raw source hashes,
 sample identities, modeled assumptions, failed outcomes and synthetic fixtures
-remain visible. Generated evidence belongs outside this checkout.
-The workspaces are Mission, Plots and Theory. A phase selector shares approach
-and attached-flight replay without duplicate navigation.
+are available under the source details. Generated evidence belongs outside this
+checkout. The workspaces are Mission, Plots and Theory. Millimetre position tubes
+have a true-size x-ray outline and a magnified error-space detail; magnification
+does not alter physical geometry or controller bounds.
 
 ## Generate ADTMPC Mission Artifacts
 

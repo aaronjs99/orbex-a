@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 from orbexa.planning.attachment_routes import CompositeAttachmentPlanner, _point, _positive
+from orbexa.planning.carrier_transfer import CarrierTransferReference
 from orbexa.simulation.deployment import _quintic
 from orbexa.simulation.fleet import FleetInitializer
 from orbexa.simulation.mission_models import ChaserConfig
@@ -20,6 +21,8 @@ class CompositeDeploymentOptions:
 
     release_direction_body: tuple[float, float, float] = (0., -1., 0.)
     release_center_body_m: tuple[float, float, float] | None = None
+    carrier_center_lvlh_m: tuple[float, float, float] | None = None
+    carrier_transfer_duration_rad: float = .18
     release_clearance_m: float = 4.
     separation_buffer_m: float = .10
     staging_offset_m: float = 2.
@@ -39,6 +42,10 @@ class CompositeDeploymentOptions:
         object.__setattr__(self, "release_direction_body", tuple(direction / np.linalg.norm(direction)))
         if self.release_center_body_m is not None:
             object.__setattr__(self, "release_center_body_m", tuple(_point(self.release_center_body_m, "Release center")))
+        if self.carrier_center_lvlh_m is not None:
+            object.__setattr__(self, 'carrier_center_lvlh_m', tuple(_point(self.carrier_center_lvlh_m, 'Carrier LVLH centre')))
+        object.__setattr__(self, 'carrier_transfer_duration_rad', _positive(
+            self.carrier_transfer_duration_rad, 'Carrier transfer duration'))
         for name in ("release_clearance_m", "separation_buffer_m", "staging_offset_m", "route_buffer_m",
                      "reference_speed_m_per_rad", "reference_acceleration_m_per_rad2", "minimum_segment_duration_rad",
                      "staging_position_tolerance_m", "staging_velocity_tolerance_m_per_rad"):
@@ -94,9 +101,17 @@ class CompositePatchDeployment:
         self.release_pitch = (config.mpc.min_chaser_separation + 2 * self.options.reference_tube_radius_m
                               + self.options.separation_buffer_m)
         self.initial_body_positions = self.release_center + self.release_pitch * offsets
+        self.carrier_transfer = (None if self.options.carrier_center_lvlh_m is None else CarrierTransferReference(
+            self.options.carrier_center_lvlh_m, tuple(self.release_center), self.options.carrier_transfer_duration_rad))
+        if self.carrier_transfer is not None:
+            rotation = self.rotation_kinematics(0.)[0]
+            for point in self.initial_body_positions:
+                actual = np.asarray(self.options.carrier_center_lvlh_m) + rotation @ (point-self.release_center)
+                if not self.planner.segment_clear(rotation.T @ actual, rotation.T @ actual):
+                    raise ValueError('Carrier release cluster intersects an inflated spacecraft component')
         self.routes = self.planner.plan(self.initial_body_positions, com_standoff_m=target.docking_standoff,
             staging_offset_m=self.options.staging_offset_m, patch_ids=self.options.attachment_patch_ids)
-        self.schedule, clock = {}, 0.
+        self.schedule, clock = {}, self.transfer_anomaly
         for route in sorted(self.routes, key=lambda value:value.release_order):
             segments = []
             for first, last in zip(route.waypoints_body_m, route.waypoints_body_m[1:]):
@@ -111,6 +126,10 @@ class CompositePatchDeployment:
         domain = getattr(target, "anomaly_domain", None)
         if domain is not None and not domain[0] <= 0 < self.staging_anomaly < domain[1]:
             raise ValueError(f"Target domain must extend beyond the complete staged reference ({self.staging_anomaly:.9g} rad)")
+
+    @property
+    def transfer_anomaly(self):
+        return 0. if self.carrier_transfer is None else self.carrier_transfer.duration_rad
 
     @property
     def staging_anomaly(self):
@@ -141,6 +160,9 @@ class CompositePatchDeployment:
     def kinematics(self, index, anomaly):
         point, velocity, acceleration = self.body_kinematics(index, anomaly)
         rotation, derivative, second = self.rotation_kinematics(float(anomaly))
+        if self.carrier_transfer is not None and anomaly < self.transfer_anomaly:
+            return self.carrier_transfer.kinematics(anomaly, self.initial_body_positions[index]-self.release_center,
+                rotation, derivative, second)
         position = rotation @ point
         rate = derivative @ point + rotation @ velocity
         force = second @ point + 2 * derivative @ velocity + rotation @ acceleration
@@ -157,7 +179,7 @@ class CompositePatchDeployment:
             attachment_component_id=route.component_id)
 
     def scenario_metadata(self):
-        return dict(deployment=dict(kind="compact_component_aware_patch_routes", options=asdict(self.options),
+        metadata = dict(deployment=dict(kind="compact_component_aware_patch_routes", options=asdict(self.options),
             geometry_id=self.target.geometry.geometry_id, geometry_fingerprint=self.target.geometry.fingerprint,
             count=self.count, initial_anomaly=0., release_center_body_m=self.release_center.tolist(),
             common_direction_position=(self.rotation_kinematics(0.)[0] @ self.release_center).tolist(),
@@ -170,6 +192,19 @@ class CompositePatchDeployment:
                 schedule_anomaly=[[row[0], row[1]] for row in self.schedule[route.chaser_index]]) for route in self.routes],
             reference_geometry_only=True,
             scope="Numerically screened finite-bus reference routes around all declared components; no carrier/ejection model, actuator feasibility or swept-flow proof is implied"))
+        if self.carrier_transfer is not None:
+            metadata['deployment'].update(
+                kind='carrier_cluster_to_component_aware_patch_routes',
+                carrier_center_lvlh_m=list(self.carrier_transfer.center_lvlh_m),
+                transfer_end_anomaly=self.transfer_anomaly,
+                initial_states_lvlh=[self.kinematics(i, 0.)[0].tolist() for i in range(self.count)],
+                close_route_start_body_m=self.initial_body_positions.tolist(),
+                common_direction_position=list(self.carrier_transfer.center_lvlh_m),
+                carrier_context=dict(role='illustrative_release_vehicle',
+                    position_lvlh_m=(np.asarray(self.carrier_transfer.center_lvlh_m)+np.array([0.,0.,8.])).tolist(),
+                    scope='Initial cleared dispenser context; carrier propulsion, launch and ejection dynamics are not simulated'),
+                scope='Declared finite post-release cluster with a fixed LVLH centre and small rotating dispenser offsets; parallel far transfer followed by screened close routes. Actual nonlinear control and all-component swept admission remain mandatory. No carrier ascent or ejection dynamics are claimed.')
+        return metadata
 
     def create_scenario(self, *, horizon_steps=None, **dependencies):
         from orbexa.simulation.composite_deployment_policy import CompositeDeploymentPolicy

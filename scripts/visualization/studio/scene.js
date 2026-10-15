@@ -1,6 +1,35 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { representativeSpacecraft, compositeSpacecraft, starField } from './spacecraft.js';
+import { releaseContextVisible } from './mission-timeline.js';
+
+// A stationary release-location marker, not a propagated carrier or ejection model.
+function releaseDispenser(data) {
+  const center = data.deployment?.carrier_center_lvlh_m;
+  if (!Array.isArray(center) || center.length !== 3 || !center.every(Number.isFinite)) return null;
+  const declared = data.deployment.carrier_context?.position_lvlh_m;
+  if (declared !== undefined && (!Array.isArray(declared) || declared.length !== 3 || !declared.every(Number.isFinite))) return null;
+  const position = declared || [center[0], center[1], center[2] + 8];
+  const group = new THREE.Group();
+  group.position.set(...position);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 8, 32), new THREE.MeshStandardMaterial({ color: '#a8b1bc', metalness: .7, roughness: .4 }));
+  body.rotation.x = Math.PI / 2;
+  group.add(body);
+  for (const z of [-3.7, 3.7]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(2.43, .12, 8, 40), new THREE.MeshStandardMaterial({ color: '#c5a962', metalness: .6, roughness: .4 }));
+    band.position.z = z;
+    group.add(band);
+  }
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(.65, 1.2, 1.8, 24, 1, true), new THREE.MeshStandardMaterial({ color: '#566170', side: THREE.DoubleSide, metalness: .7, roughness: .5 }));
+  nozzle.rotation.x = Math.PI / 2;
+  nozzle.position.z = 4.8;
+  group.add(nozzle);
+  const deck = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, .3, 8), new THREE.MeshStandardMaterial({ color: '#d1b574', metalness: .5, roughness: .5 }));
+  deck.rotation.x = Math.PI / 2;
+  deck.position.z = -4.2;
+  group.add(deck);
+  return group;
+}
 
 /** Recorded geometry. Finite chasers use their declared spherical body radius. */
 export class MissionScene {
@@ -42,7 +71,7 @@ export class MissionScene {
     });
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
-    this.mode = 'overview';
+    this.mode = 'mission';
     this.options = { paths: true, tubes: true };
   }
 
@@ -60,7 +89,9 @@ export class MissionScene {
     this.data = data;
     this.index = 0;
     this.selected = 0;
+    this.frameKey = null;
     const bounds = new THREE.Box3();
+    const targetBounds = new THREE.Box3();
     const radius = data.chaser_body_radius_m || 0;
     for (const track of data.tracks) for (const row of track.states) {
       const position = new THREE.Vector3(...row.slice(0, 3));
@@ -76,12 +107,16 @@ export class MissionScene {
         component.exact_vertices_body_m.map(row => row.map(rational)));
       for (const rotation of data.rotations || [[[1,0,0],[0,1,0],[0,0,1]]]) {
         const matrix = new THREE.Matrix3().set(...rotation.flat());
-        for (const vertex of vertices) bounds.expandByPoint(new THREE.Vector3(...vertex).applyMatrix3(matrix));
+        for (const vertex of vertices) targetBounds.expandByPoint(new THREE.Vector3(...vertex).applyMatrix3(matrix));
       }
     } else {
-      bounds.expandByPoint(new THREE.Vector3(-1, -1, -1));
-      bounds.expandByPoint(new THREE.Vector3(1, 1, 1));
+      targetBounds.expandByPoint(new THREE.Vector3(-1, -1, -1));
+      targetBounds.expandByPoint(new THREE.Vector3(1, 1, 1));
     }
+    this.targetBounds = targetBounds;
+    bounds.union(targetBounds);
+    this.releaseContext = releaseDispenser(data);
+    if (this.releaseContext) { this.model.add(this.releaseContext); bounds.expandByObject(this.releaseContext); }
     this.bounds = bounds;
     this.center = bounds.getCenter(new THREE.Vector3());
     this.extent = Math.max(...bounds.getSize(new THREE.Vector3()).toArray()) * 0.55;
@@ -171,20 +206,21 @@ export class MissionScene {
     this.mode = mode;
     if (!this.data) return;
     this.camera.up.set(0, mode === 'top' ? 1 : 0, mode === 'top' ? 0 : 1);
-    const center = mode === 'docking' && this.data.tracks[this.selected].goal_body && this.data.rotations ? new THREE.Vector3(...this.data.tracks[this.selected].goal_body).applyMatrix4(this.target.matrix) : mode === 'follow' ? new THREE.Vector3(...this.data.tracks[this.selected].states[this.index].slice(0, 3)) : mode === 'overview' ? this.center : new THREE.Vector3();
+    const bounds = mode === 'mission' ? this.currentBounds() : this.bounds;
+    const center = mode === 'docking' && this.data.tracks[this.selected].goal_body && this.data.rotations ? new THREE.Vector3(...this.data.tracks[this.selected].goal_body).applyMatrix4(this.target.matrix) : mode === 'follow' ? new THREE.Vector3(...this.data.tracks[this.selected].states[this.index].slice(0, 3)) : mode === 'overview' || mode === 'mission' ? bounds.getCenter(new THREE.Vector3()) : new THREE.Vector3();
     const extent = mode === 'docking' || mode === 'follow' ? Math.max(1.0,this.data.chaser_body_radius_m*5 || 1.5) : this.extent;
     this.controls.target.copy(center);
     const offset = mode === 'top' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-2.1, -2.5, 1.8).normalize();
     let distance = extent * 3.8;
-    if (mode === 'overview' || mode === 'top') {
+    if (mode === 'overview' || mode === 'mission' || mode === 'top') {
       const right = new THREE.Vector3().crossVectors(this.camera.up, offset).normalize();
       const up = new THREE.Vector3().crossVectors(offset, right).normalize();
       const tangentY = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
       const tangentX = tangentY * this.camera.aspect;
       distance = 0;
-      for (const x of [this.bounds.min.x, this.bounds.max.x])
-        for (const y of [this.bounds.min.y, this.bounds.max.y])
-          for (const z of [this.bounds.min.z, this.bounds.max.z]) {
+      for (const x of [bounds.min.x, bounds.max.x])
+        for (const y of [bounds.min.y, bounds.max.y])
+          for (const z of [bounds.min.z, bounds.max.z]) {
             const delta = new THREE.Vector3(x, y, z).sub(center);
             distance = Math.max(distance, delta.dot(offset) + Math.abs(delta.dot(right)) / tangentX,
               delta.dot(offset) + Math.abs(delta.dot(up)) / tangentY);
@@ -198,11 +234,24 @@ export class MissionScene {
     this.controls.update();
   }
 
+  currentBounds() {
+    const bounds = this.targetBounds.clone();
+    const radius = this.data.chaser_body_radius_m || 0;
+    for (const track of this.data.tracks) {
+      const position = new THREE.Vector3(...track.states[this.index].slice(0, 3));
+      bounds.expandByPoint(position.clone().addScalar(-radius));
+      bounds.expandByPoint(position.clone().addScalar(radius));
+    }
+    if (this.releaseContext?.visible) bounds.expandByObject(this.releaseContext);
+    return bounds;
+  }
+
   update(index, selected, options) {
     if (!this.data) return;
     this.index = index;
     this.selected = selected;
     this.options = options;
+    if (this.releaseContext) this.releaseContext.visible = releaseContextVisible(this.data, index);
     this.grid.visible = this.axes.visible = Boolean(options.grid);
     if (this.envelope) this.envelope.visible = this.envelopeEdges.visible = Boolean(options.envelope);
     const rotation = this.data.rotations?.[index];
@@ -218,6 +267,9 @@ export class MissionScene {
       this.traces[number].material.opacity = number === selected ? 0.95 : 0.33;
       const tube = options.tubes && track.center && track.omega;
       this.boxes[number].visible = Boolean(tube);
+      this.boxes[number].material.depthTest = number !== selected;
+      this.boxes[number].material.depthWrite = false;
+      this.boxes[number].renderOrder = number === selected ? 50 : 0;
       this.centers[number].visible = Boolean(tube);
       if (tube) {
         this.boxes[number].position.set(...track.center[index]);
@@ -230,6 +282,12 @@ export class MissionScene {
       const offset = this.camera.position.clone().sub(this.controls.target);
       this.controls.target.copy(position);
       this.camera.position.copy(position).add(offset);
+    }
+    if (this.mode === 'mission') {
+      const size = Math.max(...this.currentBounds().getSize(new THREE.Vector3()).toArray());
+      const scale = Math.max(1, this.data.target.bounding_sphere_radius || 1);
+      const key = `${this.data.phases[index]}:${Math.ceil(Math.log2(Math.max(1, size / scale)))}`;
+      if (key !== this.frameKey) { this.frameKey = key; this.setCamera('mission'); }
     }
   }
 

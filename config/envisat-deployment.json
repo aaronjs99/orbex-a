@@ -1,8 +1,10 @@
 {
   "release_direction_body": [0.0, 0.0, 1.0],
   "release_center_body_m": [-1.105, 0.009, 4.5],
+  "carrier_center_lvlh_m": [0.0, 0.0, 300.0],
+  "carrier_transfer_duration_rad": 0.18,
   "release_clearance_m": 1.5,
-  "separation_buffer_m": 0.2,
+  "separation_buffer_m": 0.48,
   "staging_offset_m": 1.5,
   "route_buffer_m": 0.05,
   "reference_tube_radius_m": 0.01,

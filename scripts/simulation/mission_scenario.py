@@ -13,7 +13,7 @@
 """Explicit dependencies and policy services for a coupled tube mission."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Callable, Dict, Optional, Protocol
 import copy
 import json
 import numpy as np
@@ -62,7 +62,8 @@ class MissionScenario:
                  controller_factory: Optional[ControllerFactory] = None,
                  initial_belief: Optional[ParameterBelief] = None,
                  execution_guard=None,
-                  arrival_policy=None,
+                 arrival_policy=None,
+                 progress_sink: Optional[Callable[[Dict[str, Any]], None]] = None,
                  vehicle_design: Optional[Dict[str, Any]] = None,
                  adaptation_mode: str = 'adaptive',
                  horizon_steps: Optional[int] = None,
@@ -81,6 +82,11 @@ class MissionScenario:
             raise ValueError("adaptation_mode must be 'adaptive' or 'frozen'")
         self.adaptation_mode = adaptation_mode
         self.execution_guard = execution_guard
+        if progress_sink is not None and not callable(progress_sink):
+            raise TypeError('progress_sink must be callable')
+        # Observation happens only at shared committed endpoints. It cannot
+        # replace a controller, alter a proposed input or admit an interval.
+        self.progress_sink = progress_sink
         if arrival_policy is not None:
             from orbexa.simulation.arrival_policy import ArrivalPolicyConfig
             if not isinstance(arrival_policy, ArrivalPolicyConfig):

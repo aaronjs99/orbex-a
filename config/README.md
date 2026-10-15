@@ -2,7 +2,11 @@
 
 `envisat.yaml` supplies the prospective eight-chaser composite study.
 `spacecraft/envisat.json` declares the occupied components;
-`envisat-deployment.json` declares routes from one compact release cluster.
+`envisat-deployment.json` declares one compact payload cluster 300 m away in
+LVLH coordinates, a parallel transfer, and component-aware close-approach routes.
+The carrier centre does not rotate with the tumbling target. The finite release
+grid has an explicitly declared small spin about its own centre; rocket ascent
+and mechanical ejection are outside this post-release initial condition.
 The separate `envisat-prior.json` does not read plant truth to center the belief.
 `envisat-admission.json` identifies assumed sensing/model/evaluation envelopes.
 `envisat-arrival.json` supplies the fixed-deadline planning region and reference

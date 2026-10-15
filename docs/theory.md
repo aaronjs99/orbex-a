@@ -382,8 +382,9 @@ The running quadratic cost uses the outer-step factor $h$. Let $Q,R$ be running
 state/input weights, $A_d,B_d$ a frozen discrete model, and $P$ its local Riccati
 tail. The consistent construction is $P=\operatorname{DARE}(A_d,B_d,hQ,hR)$.
 DARE homogeneity gives $P=h\operatorname{DARE}(A_d,B_d,Q,R)$. Omitting $h$
-overweights the tail by $1/h$, about 63.662 at the default step. A stronger tail
-can be intentional tuning, but should be an explicit multiplier. This local
+overweights the tail by $1/h$, about 63.662 at the paper profile's step and
+1000 at the Envisat profile's 0.001 rad step. A stronger tail can be intentional
+tuning, but should be an explicit multiplier. This local
 penalty supplies no terminal invariance theorem for the moving nonlinear task.
 
 ## 8. What the present formulation establishes

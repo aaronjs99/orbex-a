@@ -107,6 +107,7 @@ class StudioDataset:
             "phases": samples.phases, "tracks": tracks,
             "rotations": None if samples.rotations is None else samples.rotations.tolist(),
             "target": samples.target, "notes": samples.notes,
+            "deployment": metadata.get('scenario', {}).get('deployment'),
             "chaser_body_radius_m": metadata.get('scenario', {}).get('chaser_body_bounding_radius_m', 0.0),
             "collision_envelope": None if samples.cylinder() is None else
                 {"shape": "cylinder", "radius": samples.cylinder()[0], "half_length": samples.cylinder()[1],
@@ -114,7 +115,7 @@ class StudioDataset:
             "outcome": {"success": successful, "complete": complete,
                         "label": "Synthetic physics fixture" if synthetic else "Recorded criteria passed" if complete and successful else
                                  "Recorded checkpoint" if checkpoint else
-                                 "Recorded update limit reached" if update_limit else
+                                 "Approach unfinished" if update_limit else
                                  "Recorded failure" if not successful else "Recorded mission incomplete",
                         "message": message},
             "model": metadata.get("model_version", "unspecified"),
