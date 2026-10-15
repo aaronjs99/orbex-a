@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
-from orbexa.utils.solver_options import DEFAULT_GEKKO_MAX_MEMORY, gekko_memory_exponent
+from orbexa.utils.solver_options import DEFAULT_GEKKO_MAX_MEMORY, gekko_memory_exponent, composite_geometry_mode
 
 def _positive_integer(value: Any, name: str, minimum: int = 1) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < minimum:
@@ -392,12 +392,16 @@ class SolverConfig:
     max_iter: int = 400
     max_memory: int = DEFAULT_GEKKO_MAX_MEMORY
     """APMonitor base-ten sparsity-storage exponent, in the range 2 through 10."""
+    composite_geometry_mode: str = "free"
+    """Optional reference corridor fixes component support normals; free is the default."""
 
     def __post_init__(self) -> None:
         if not isinstance(self.remote, bool) or not isinstance(self.disp, bool):
             raise ValueError("solver.remote and solver.disp must be booleans")
         _positive_integer(self.max_iter, "solver.max_iter")
         gekko_memory_exponent(self.max_memory)
+        composite_geometry_mode(self.composite_geometry_mode)
 
     def options(self) -> Dict[str, Any]:
-        return dict(remote=self.remote, disp=self.disp, max_iter=self.max_iter, max_memory=self.max_memory)
+        return dict(remote=self.remote, disp=self.disp, max_iter=self.max_iter, max_memory=self.max_memory,
+                    composite_geometry_mode=self.composite_geometry_mode)

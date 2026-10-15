@@ -18,3 +18,4 @@
 @media(max-width:850px){.replay-workspace>.viewport{height:56vh;min-height:360px}.chart svg{height:210px}.plot-gallery{grid-template-columns:1fr}.inspector{padding:5px}.inspector dl div{padding:5px 0}#theory-diagram{overflow-x:auto}#theory-diagram svg{min-width:620px}.record-source dl>div{grid-template-columns:1fr;gap:4px}.app-header nav{gap:25px}.header-actions select{max-width:100%;min-width:0}}
 .mission-view-control{flex-wrap:wrap;gap:8px 14px}.mission-view-control span{overflow-wrap:anywhere}
 @media(max-width:850px){#theory-diagram{overflow:visible}#theory-diagram svg{min-width:0;max-height:none}}
+.prose img{display:block;max-width:100%;height:auto;margin:24px 0}

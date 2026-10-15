@@ -41,6 +41,22 @@ attempt, with maximum residual approximately `1.52e-12`. This qualifies that
 numerical problem; it does not establish a complete Envisat mission or universal
 solver convergence.
 
+For composite spacecraft, `solver.composite_geometry_mode` defaults to `free`.
+The explicit `reference_corridor` option fixes one reference support witness per
+component and node. It keeps every component, the original finite-body/tube and
+uncertainty supports, the normalized component-margin postcheck and the
+continuous-flow guard. It removes free normal/absolute-value decision variables
+and retains their restricted objective constants. It is a stricter feasible
+set, so a safe detour using another component face may be rejected. Invalid
+modes or nonseparating reference witnesses refuse; there is no automatic mode
+fallback. See the [support equations, trapping example and same-problem timing
+evidence](composite-approach.md#optional-reference-support-corridor).
+
+Solver diagnostics record the selected mode, including failed numerical
+attempts. Checkpoint restarts may explicitly change solver settings and record
+their source/options as a new numerical segment. Such a restart is not a matched
+comparison cohort and cannot replace the original failed result.
+
 A separate retained fixed-bandwidth problem previously failed warm and cold
 attempts. The corrected parameter representation and hard-bound policy solved
 that identical problem with residual below `1e-14`. A full mission comparison

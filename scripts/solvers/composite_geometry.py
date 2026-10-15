@@ -7,6 +7,10 @@ No enclosing cylinder/sphere, binary variable or complementarity max is used.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+from numbers import Integral
 import numpy as np
 
 
@@ -124,8 +128,142 @@ class GekkoCompositeGeometry:
 
     def summary(self, margins):
         return dict(model="per-component-unit-support-plane-v1", geometry_id=self.geometry.geometry_id,
+                    mode="free", stricter_reference_corridor=False,
                     geometry_fingerprint=self.geometry.fingerprint, component_count=len(self.geometry.components),
                     checked_component_nodes=len(margins),
                     attachment_corridor_patch_id=None if self.corridor_patch is None else self.corridor_patch.id,
                     minimum_support_margin_m=min(row["separation_margin_m"] for row in margins),
                     scope="Nonlinear numerical node constraints for the complete declared OBB union; continuous admission is separate")
+
+
+class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
+    """Prescribe one reference witness per component/node, keeping all supports.
+
+    Fixing these normals restricts the free-normal feasible set: a safe detour
+    on another face may be excluded. Support coefficients and the six original
+    absolute-value objective terms become numerical constants. The nonlinear
+    dynamics, tube, input and terminal problem and original normalized geometry
+    postcheck remain active. This supplies no continuous-flow certificate.
+    """
+
+    def __init__(self, target, rotations, center):
+        super().__init__(target, rotations, center)
+        if self.geometry.frame != "target_body_COM":
+            raise ValueError("The reference corridor requires target_body_COM geometry")
+        raw = np.asarray(rotations)
+        if (raw.dtype.kind not in "iuf" or self.rotations.ndim != 3 or not len(self.rotations)
+                or self.rotations.shape[1:] != (3, 3) or not np.all(np.isfinite(self.rotations))):
+            raise ValueError("Reference-corridor rotations require finite numeric (T,3,3) data")
+        if (not np.allclose(self.rotations.transpose(0, 2, 1) @ self.rotations, np.eye(3), atol=1e-7, rtol=0)
+                or not np.allclose(np.linalg.det(self.rotations), 1., atol=1e-7, rtol=0)):
+            raise ValueError("Reference-corridor target matrices must be proper rotations")
+        self.center = self._vector(center, "Reference-corridor target center")
+        self.witnesses = []
+        self.normal_parameters = []
+        self.constant_geometry_objective = 0.
+
+    @staticmethod
+    def _vector(value, name, *, nonnegative=False):
+        raw = np.asarray(value)
+        if raw.shape != (3,) or raw.dtype.kind not in "iuf":
+            raise ValueError(name + " requires three real numeric scalars")
+        result = raw.astype(float)
+        if not np.all(np.isfinite(result)) or (nonnegative and np.any(result < 0)):
+            raise ValueError(name + " requires finite scalars with valid signs")
+        return result
+
+    @classmethod
+    def _unit(cls, value):
+        value = cls._vector(value, "Reference-corridor normal")
+        norm = math.hypot(*value)
+        if not math.isfinite(norm) or abs(norm - 1.) > 1e-12:
+            raise ValueError("A reference-corridor normal must be finite, nonzero and unit length")
+        return value
+
+    @staticmethod
+    def _numeric_dot(matrix, vector):
+        # Match the scalar operation order of the original support expression.
+        return np.array([sum(float(a) * float(b) for a, b in zip(row, vector) if a != 0) for row in matrix])
+
+    @classmethod
+    def _reference_margin(cls, normal, offset, half, local, omega, uncertainty, target_local, reserve):
+        normal = cls._unit(normal)
+        offset = cls._vector(offset, "Reference-corridor component displacement")
+        half = cls._vector(half, "Reference-corridor component half extents", nonnegative=True)
+        local = cls._vector(local, "Reference-corridor local normal")
+        omega = cls._vector(omega, "Reference tube seed", nonnegative=True)
+        target_local = cls._vector(target_local, "Reference-corridor body normal")
+        value = (float(normal @ offset) - float(half @ np.abs(local)) - float(np.abs(normal) @ omega)
+                 - float(uncertainty) * math.sqrt(float(target_local @ target_local) + 1e-20) - float(reserve))
+        if not math.isfinite(value) or value < 0:
+            raise ValueError("The reference witness does not separate its finite seed tube from the component; "
+                             "this does not establish dynamic infeasibility")
+        return value
+
+    def add_node(self, backend, node, position_minus_target_center, omega, reference_position):
+        if isinstance(node, (bool, np.bool_)) or not isinstance(node, Integral) or not 0 <= node < len(self.rotations):
+            raise ValueError("A reference-corridor node must name a prediction node")
+        reference = self._vector(reference_position, "Reference-corridor reference position")
+        seed_omega = self._vector([float(np.ravel(getattr(v.value, "value", v.value))[0]) for v in omega],
+                                  "Reference tube seed", nonnegative=True)
+        rotation = self.rotations[node]
+        try:
+            with np.errstate(over="raise", invalid="raise", divide="raise"):
+                body_reference = rotation.T @ (reference - self.center)
+                for component in self.geometry.components:
+                    self._add_component(backend, node, position_minus_target_center, omega, reference,
+                                        seed_omega, rotation, body_reference, component)
+        except (FloatingPointError, OverflowError) as error:
+            raise ValueError("Reference-corridor witness arithmetic is not finite") from error
+
+    def _add_component(self, backend, node, position, omega, reference, seed_omega, rotation, body_reference, component):
+        component_rotation = np.asarray(component.rotation_component_to_body, dtype=float)
+        local_guess = component_rotation.T @ (body_reference - component.center_m)
+        candidate = rotation @ component_rotation @ self._initial_normal(local_guess, np.asarray(component.half_extents_m))
+        candidate /= math.hypot(*candidate)
+        normal = self._unit(candidate)
+        combined = rotation @ component_rotation
+        local = self._numeric_dot(combined.T, normal)
+        target_local = self._numeric_dot(rotation.T, normal)
+        world_center = rotation @ np.asarray(component.center_m)
+        reserve = self._component_reserve(component)
+        reference_margin = self._reference_margin(normal, reference - self.center - world_center,
+            component.half_extents_m, local, seed_omega, component.uncertainty_m, target_local, reserve)
+        box = float(np.asarray(component.half_extents_m) @ np.abs(local))
+        uncertainty = float(component.uncertainty_m) * math.sqrt(float(target_local @ target_local) + 1e-20)
+        parameters = [backend.model.Param(value=float(value)) for value in normal]
+        self.normal_parameters.extend(parameters)
+        backend.constraint_context = f"reference_component_support[{node}:{component.id}]"
+        backend._ge(sum(parameters[i] * (position[i] - float(world_center[i])) for i in range(3)),
+                    box + uncertainty + reserve + sum(abs(float(normal[i])) * omega[i] for i in range(3)))
+        # Restrict the original epigraph objective too, including its constants.
+        for coefficient in list(np.abs(local)) + list(np.abs(normal)):
+            term = 1e-6 * float(coefficient)
+            backend.model.Minimize(term)
+            self.constant_geometry_objective += term
+        if self.corridor_patch is not None and self.corridor_patch.component_id == component.id:
+            face = rotation @ np.asarray(self.corridor_patch.normal_body)
+            face /= np.linalg.norm(face)
+            face_support = np.abs(combined.T @ face) @ np.asarray(component.half_extents_m)
+            face_uncertainty = component.uncertainty_m * np.linalg.norm(rotation.T @ face)
+            backend._ge(sum(float(face[i]) * (position[i] - float(world_center[i])) for i in range(3)),
+                        float(face_support + face_uncertainty + reserve)
+                        + sum(abs(float(face[i])) * omega[i] for i in range(3)))
+        self.normals.append((node, component, parameters))
+        self.witnesses.append(dict(node=int(node), component_id=component.id, reference_position_m=reference.tolist(),
+            seed_tube_halfwidths_m=seed_omega.tolist(), normal_world=normal.tolist(),
+            normal_squared_norm=float(normal @ normal), local_projection=local.tolist(),
+            tube_support_coefficients=np.abs(normal).tolist(), box_support=box, uncertainty_support=uncertainty,
+            physical_and_pose_reserve=reserve, reference_seed_tube_margin_m=reference_margin))
+
+    def summary(self, margins):
+        context = dict(geometry_fingerprint=self.geometry.fingerprint, target_center_m=self.center.tolist(),
+                       target_rotations=self.rotations.tolist(), witnesses=self.witnesses)
+        fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+        return dict(super().summary(margins), mode="reference_corridor", stricter_reference_corridor=True,
+                    witness_policy="reference-component-support-v1", witness_count=len(self.witnesses),
+                    witness_fingerprint=fingerprint, witness_source="per-node reference position and initial predicted tube",
+                    constant_geometry_objective=self.constant_geometry_objective,
+                    minimum_reference_seed_tube_margin_m=min(row["reference_seed_tube_margin_m"] for row in self.witnesses),
+                    restriction="Prescribed reference support normals; safe detours on other faces may be excluded",
+                    continuous_proof_claim=False)

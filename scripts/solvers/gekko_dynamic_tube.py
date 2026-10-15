@@ -16,7 +16,7 @@ from orbexa.solvers.base import SolverResult
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
 from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
-from orbexa.utils.solver_options import gekko_memory_exponent
+from orbexa.utils.solver_options import gekko_memory_exponent, composite_geometry_mode
 
 
 class GekkoDynamicTube:
@@ -26,6 +26,7 @@ class GekkoDynamicTube:
         self.problem = problem
         self.config = config
         self.max_memory = gekko_memory_exponent(config.get("max_memory", 4))
+        self.composite_geometry_mode = composite_geometry_mode(config.get("composite_geometry_mode", "free"))
         self.spec = problem.extra_params["dynamic_tube"]
         self.model = GEKKO(remote=config.get("remote", False))
         self.residuals = []
@@ -385,8 +386,10 @@ class GekkoDynamicTube:
         if not np.allclose(rotations.transpose(0,2,1) @ rotations,np.eye(3),atol=1e-7) or not np.allclose(np.linalg.det(rotations),1.,atol=1e-7):
             raise ValueError("Target rotation matrices must be proper orthogonal matrices")
         if target.get("shape") == "composite":
-            from orbexa.solvers.composite_geometry import GekkoCompositeGeometry
-            self.composite_geometry = GekkoCompositeGeometry(target, rotations, center)
+            from orbexa.solvers.composite_geometry import GekkoCompositeGeometry, GekkoReferenceCorridorGeometry
+            geometry_class = (GekkoReferenceCorridorGeometry if self.composite_geometry_mode == "reference_corridor"
+                              else GekkoCompositeGeometry)
+            self.composite_geometry = geometry_class(target, rotations, center)
         pairs = p.extra_params.get("pairwise_constraints") or target.get("pairwise_constraints") or []
         pair_data = []
         for pair in pairs:
@@ -517,6 +520,7 @@ class GekkoDynamicTube:
                                              "max_constraint_violation":violation,
                                              "largest_constraint_residuals":residual_details,
                                              "bandwidth_mode":self.bandwidth_mode,
+                                             "composite_geometry_mode":self.composite_geometry_mode,
                                              "composite_geometry":geometry_info,
                                              "residual_tolerance":tolerance,
                                              "comparison_replay_tolerance":1e-8,
@@ -529,7 +533,8 @@ class GekkoDynamicTube:
                                              "dynamic_tube":tube})
         except Exception as error:
             return SolverResult(success=False,solve_time=time.time()-started,
-                                message="Coupled GEKKO dynamic-tube solve failed: %s" % error)
+                                message="Coupled GEKKO dynamic-tube solve failed: %s" % error,
+                                solver_info={"composite_geometry_mode":self.composite_geometry_mode})
 
     def solve(self):
         """Bounded initialization and numerical-accuracy retries after failure.
