@@ -285,6 +285,8 @@ class GekkoDynamicTube:
         # These values are prescribed data, not optimization directions. In
         # particular, Omega0==0 together with its nonnegative variable bound
         # creates a redundant active constraint and singular norm curvature.
+        self.prescribed_initial = {name: tuple(float(value) for value in values)
+            for name, values in (('state', initial_state), ('phi', phi0), ('omega', omega0))}
         self.states = [[m.Param(value=float(initial_state[i])) if k == 0 else
                         m.Var(value=float(xguess[i,k])) for i in range(6)] for k in range(count)]
         self.inputs = [[m.Var(value=float(uguess[i,k])) for i in range(3)] for k in range(count-1)]
@@ -538,8 +540,17 @@ class GekkoDynamicTube:
                         self._ge(1., sliding / (float(region.phi[i])*native_fraction))
 
     @staticmethod
-    def _values(rows):
-        return np.array([[float(value.value[0]) for value in row] for row in rows])
+    def _values(rows, *, prescribed_first=None):
+        # Initial nodes are fixed Param inputs. APMonitor's printed parameter
+        # report can lose digits at large anomaly velocities; it is not a new
+        # optimizer choice. Read those inputs from their retained declaration.
+        # Every free future node still comes directly from the native result.
+        if prescribed_first is None:
+            return np.array([[float(value.value[0]) for value in row] for row in rows])
+        first = np.asarray(prescribed_first, dtype=float)
+        if first.shape != (len(rows[0]),) or not np.all(np.isfinite(first)):
+            raise ValueError('Prescribed initial parameter readback has invalid dimensions or values')
+        return np.array([first.tolist()] + [[float(value.value[0]) for value in row] for row in rows[1:]])
 
     def _terminal_suffix_readback(self, states, tube):
         """Recheck the printed full tube at every explicitly requested suffix node."""
@@ -582,9 +593,10 @@ class GekkoDynamicTube:
         started = time.time()
         try:
             self.model.solve(disp=self.config.get("disp",False))
-            states = self._values(self.states).T
+            states = self._values(self.states, prescribed_first=self.prescribed_initial['state']).T
             controls = self._values(self.inputs).T
-            tube = {"phi":self._values(self.phi), "omega":self._values(self.omega),
+            tube = {"phi":self._values(self.phi, prescribed_first=self.prescribed_initial['phi']),
+                    "omega":self._values(self.omega, prescribed_first=self.prescribed_initial['omega']),
                     "alpha":self._values(self.alpha), "input_reserve":self._values(self.reserve),
                     "disturbance_bound":self._values(self.disturbance_bounds),
                     "nominal_enclosure":self._values(self.nominal_enclosures),
@@ -592,6 +604,9 @@ class GekkoDynamicTube:
                     "A_variation":np.asarray(self.spec['A_variation']).copy(),
                     "hold_width":float(self.spec['hold_width'])}
             tube.update({name:self._values(rows) for name,rows in self.stage_terms.items()})
+            parameter_export_difference = {name: float(np.max(np.abs(
+                np.asarray([float(value.value[0]) for value in rows[0]]) - self.prescribed_initial[name])))
+                for name, rows in (('state', self.states), ('phi', self.phi), ('omega', self.omega))}
             residuals = [(float(value.value[0]),equality) for value,equality in self.residuals]
             violation = max([abs(value) if equality else max(0.,-value) for value,equality in residuals]+[0.])
             residual_details = sorted((dict(index=i,context=self.residual_descriptions[i],
@@ -627,6 +642,9 @@ class GekkoDynamicTube:
                                              "composite_geometry":geometry_info,
                                              "residual_tolerance":tolerance,
                                              "comparison_replay_tolerance":1e-8,
+                                             "initial_parameter_readback":dict(
+                                                 source='Retained fixed Param declarations; future optimization variables remain native readback',
+                                                 maximum_printed_export_difference=parameter_export_difference),
                                              "rtol":float(self.model.options.RTOL),
                                              "otol":float(self.model.options.OTOL),
                                              "native_solver_options":list(self.model.solver_options),

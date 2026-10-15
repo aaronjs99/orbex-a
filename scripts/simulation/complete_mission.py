@@ -181,7 +181,8 @@ class CompleteMissionRunner:
                  attitude_tracker: Optional[ChaserAttitudeTracker] = None,
                  capture_options: Optional[CaptureOptions] = None,
                  detumbling=None, deorbit=None, propulsion_factory: Optional[Callable] = None,
-                 stage_sink: Optional[Callable[[str, object], None]] = None):
+                 stage_sink: Optional[Callable[[str, object], None]] = None,
+                 translation_accountant=None):
         self.options = options
         self.approach_runner = approach_runner
         self.attitude_tracker = attitude_tracker or ChaserAttitudeTracker()
@@ -197,12 +198,21 @@ class CompleteMissionRunner:
             moment_arm_m=self.attitude_tracker.actuators.moment_arm_m,
             specific_impulse_s=options.specific_impulse_s)
         self.stage_sink = stage_sink
+        if translation_accountant is not None and not callable(getattr(translation_accountant, "translation_budget", None)):
+            raise TypeError("translation_accountant must supply translation_budget")
+        self.translation_accountant = translation_accountant
 
     def _record(self, stage, result):
         if self.stage_sink is not None:
             self.stage_sink(stage, result)
 
-    def translation_budget(self, approach: ADTMPCMissionResult) -> ApproachPropellantBudget:
+    def translation_budget(self, approach: ADTMPCMissionResult, *, terminal_handoff=None) -> ApproachPropellantBudget:
+        if self.translation_accountant is not None:
+            return self.translation_accountant.translation_budget(approach, options=self.options,
+                attitude_tracker=self.attitude_tracker, terminal_handoff=terminal_handoff)
+        if terminal_handoff is not None:
+            terminal_handoff.verify_approach(approach)
+            approach = terminal_handoff.trajectory
         from orbexa.control.physical_terminal import bound_orbital_clock
         from orbexa.control.reachability import OrbitalModelBounds
         anomalies = np.asarray(approach.anom_history, dtype=float)
@@ -282,7 +292,7 @@ class CompleteMissionRunner:
                 self._record("terminal_handoff", terminal_handoff)
             geometry = bind_approach_body_geometry(approach, self.attitude_tracker.chasers,
                                                   self.attitude_tracker.default_chaser, terminal_handoff=verified_handoff)
-            budget = self.translation_budget(execution)
+            budget = self.translation_budget(approach, terminal_handoff=verified_handoff)
             self._record("translation_budget", budget)
             attitude = self.attitude_tracker.track(execution, translation_fuel_debit_kg=budget.translation_fuel_debit_kg)
             self._record("chaser_attitude", attitude)

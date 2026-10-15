@@ -2,7 +2,7 @@
 
 `orbexa.simulation.chaser_attitude` propagates the attitude of each finite chaser bus over a saved approach in physical seconds. Translation alone supplies no bus orientation or spin. This module starts the buses from declared attitudes, applies bounded external nozzle couples, retains the complete numerical attitude and actuator histories, and exposes the final physical states to the capture model.
 
-The default bus is a representative 12 kg spherical mass distribution of radius 0.15 m, with 8 kg dry mass and 4 kg initial propellant. Its constant wet inertia is 0.108 kg m² about each axis. These values describe an injectable simulation vehicle, not identified flight hardware. The bus starts with zero inertial angular velocity and a body-frame rotation-vector offset `[0.4, -0.3, 0.2]` rad from its assigned mounting attitude. That offset has magnitude 0.5385 rad; alignment is simulated.
+The Envisat mission uses a representative 130 kg initial wet bus of radius 0.55 m, with 30 kg dry mass and 100 kg initial propellant. Its constant initial wet inertia is 15.73 kg m² about each axis. These are declared vehicle-concept properties. The bus starts with zero inertial angular velocity and a body-frame rotation-vector offset `[0.4, -0.3, 0.2]` rad from its assigned mounting attitude. That offset has magnitude 0.5385 rad; alignment is simulated.
 
 ## Reference and frames
 
@@ -37,7 +37,7 @@ $$
 
 This is the geometric rigid-body tracking structure of [Lee, Leok and McClamroch](https://arxiv.org/abs/1003.2005), applied to the rotational subsystem with an explicit spacecraft actuator model. The implementation uses held feedback, saturation and a sampled interpolated reference. The paper's continuous ideal-controller stability result is not automatically a theorem for this implementation, and no global saturated tracking guarantee is claimed.
 
-Each of three independent torque axes has a pure couple. For axis `i`, two equal signed nozzle commands act in opposite directions at opposite offsets of length `l`. The positive moment arm `l` is 0.1 m by default. Each active physical nozzle has magnitude at most `F_max = 0.2 N`; signed commands mean that a colocated opposed nozzle is selected when the sign changes. The requested nozzle command is clipped before forces and torque are reconstructed from the actual geometry. The ideal pair cancels net force, and the maximum axis torque is `2lF_max = 0.04 N m`.
+Each of three independent torque axes has a pure couple. For axis `i`, two equal signed nozzle commands act in opposite directions at opposite offsets of length `l`. The Envisat concept uses `l = 0.4 m` and active-nozzle magnitude at most `F_max = 3 N`; signed commands mean that a colocated opposed nozzle is selected when the sign changes. The requested nozzle command is clipped before forces and torque are reconstructed from the actual geometry. The ideal pair cancels net force, and the maximum axis torque is `2lF_max = 2.4 N m`.
 
 Let `f_i` be the signed force at each location of the axis-i couple. Let `I_sp` be the specified impulse, defaulting to 300 s, and let `g_0 = 9.80665 m/s²` be standard gravity. The actual torque and total mass flow are
 
@@ -61,11 +61,11 @@ $$
 
 Feedback is recomputed at most every 0.5 s and at every original approach sample. Internal integration steps are at most 0.25 s by default. No Euler chart is used. The integration also accumulates ECI angular impulse and rotational work, permitting numerical checks of angular momentum and work-energy balance. These checks are numerical evidence, not validated ODE enclosures.
 
-The caller must provide a nonnegative translational propellant debit for every bus. It is reserved from available fuel before attitude propagation and carried into capture with the attitude fuel debit. It is a caller-supplied conservative allowance, not a reconstructed or measured translation fuel history. Insufficient installed fuel is rejected; exhaustion during tracking stops before the first unexecutable hold and returns a failed result with the common fleet prefix.
+The caller must provide a nonnegative translational propellant debit for every bus. It is reserved before attitude propagation and carried into capture with the attitude fuel debit. The complete runner can derive this allowance from authenticated held-input interval proofs, using the [per-hold bound](mission-lifecycle.md#held-command-propellant-bound). Insufficient installed fuel is rejected; exhaustion during tracking stops before the first unexecutable hold and returns a failed result with the common fleet prefix.
 
 Inertia remains the initial wet-bus inertia during this replay. The total mass debit, including translation and attitude propellant, is restricted to 2% of initial wet mass by default. Exceeding that scope fails before the next hold. This bounds the permitted mass-change fraction; it is not a proof that an unknown tank layout has the same fractional inertia error. Capture receives the remaining physical mass and spherical specific inertia. A larger-depletion or tank-resolved simulation requires a variable-inertia open-system attitude model.
 
-Attitude and translation remain decoupled. The saved approach positions are not moved, relabeled, reoptimized or modified. The spherical bus envelope is orientation independent, and nozzles must lie inside it. The gripper is assumed stowed during approach; the attitude replay does not establish safe arm deployment or the swept geometry of extended appendages. Actual COM positions must separately satisfy the finite-body approach and capture gates. In particular, historical 5 mm point-mass standoff records cannot be turned into 0.15 m bus trajectories by adding an attitude history.
+Attitude and translation remain decoupled. The saved approach positions remain unchanged. The spherical bus envelope is orientation independent, and nozzles must lie inside it. The gripper is assumed stowed during approach; the attitude replay does not establish safe arm deployment or the swept geometry of extended appendages. Actual COM positions must separately satisfy the finite-body approach and capture gates.
 
 ## Capture interface
 

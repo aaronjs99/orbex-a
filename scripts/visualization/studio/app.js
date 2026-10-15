@@ -508,14 +508,17 @@ requestAnimationFrame(tick);
 
 try {
   catalog = await readJSON('catalog.json');
-  if (catalog.schema !== 'orbexa.mission.studio.catalog.v1' || !catalog.entries.length) throw new Error('No recorded mission catalog is available');
+  if (catalog.schema !== 'orbexa.mission.studio.catalog.v1' || !Array.isArray(catalog.entries) || !catalog.entries.length && catalog.live !== true) throw new Error('No recorded mission catalog is available');
   $('scenario').replaceChildren(...catalog.entries.map(entry => option(entry.key, entry.title)));
   $('theory-select').replaceChildren(...catalog.theory.map((document, index) => option(String(index), document.title)));
   showTheory();
-  const requested = new URLSearchParams(location.search).get('mission');
-  const key = catalog.entries.some(entry => entry.key === requested) ? requested : catalog.entries[0].key;
-  $('scenario').value = key;
-  await loadScenario(key);
+  if (!catalog.entries.length) resetLiveView();
+  else {
+    const requested = new URLSearchParams(location.search).get('mission');
+    const key = catalog.entries.some(entry => entry.key === requested) ? requested : catalog.entries[0].key;
+    $('scenario').value = key;
+    await loadScenario(key);
+  }
 } catch (error) {
   $('error').hidden = false;
   $('error').textContent = error.message;

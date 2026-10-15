@@ -84,7 +84,8 @@ class SpacecraftMissionDesign:
             initial_body_angular_velocity=initial_body_spin_rad_s,anomaly_domain=anomaly_domain,
             gravity_gradient=gravity_gradient,docking_standoff=self.com_standoff_m)
 
-    def completion_runner(self,*,input_component_bound,approach_runner=None,stage_sink=None):
+    def completion_runner(self,*,input_component_bound,approach_runner=None,stage_sink=None,
+                          translation_accountant=None):
         tracker=ChaserAttitudeTracker(default_chaser=self.chaser,actuators=ChaserAttitudeActuators(
             moment_arm_m=self.attitude_moment_arm_m,nozzle_force_limit_n=self.attitude_nozzle_force_n,
             specific_impulse_s=self.specific_impulse_s))
@@ -97,7 +98,8 @@ class SpacecraftMissionDesign:
             deorbit=DeorbitSimulator(pointing_policy=ThrustPointingPolicy(
                 self.pointing_attitude_gain_nm,self.pointing_rate_gain_nm_s,
                 compensate_gravity_gradient=True), burn_axis_planner=AxialBurnPlanner(),
-                burn_throttle_planner=FiniteBurnThrottlePlanner()),stage_sink=stage_sink)
+                burn_throttle_planner=FiniteBurnThrottlePlanner()),stage_sink=stage_sink,
+            translation_accountant=translation_accountant)
 
     def as_dict(self):
         return dict(geometry_id=self.geometry.geometry_id,geometry_fingerprint=self.geometry.fingerprint,

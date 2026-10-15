@@ -48,8 +48,11 @@ class MissionStudio:
             raise ValueError(f"Studio link must resolve to an existing file inside the output root: {value}")
         return value
 
-    def export(self, entries: Sequence[StudioEntry], *, theory_documents: Mapping[str, Path] | None = None) -> Path:
-        if not entries or len({entry.key for entry in entries}) != len(entries):
+    def export(self, entries: Sequence[StudioEntry], *, theory_documents: Mapping[str, Path] | None = None,
+               live: bool = False) -> Path:
+        if type(live) is not bool:
+            raise TypeError('live must be a boolean')
+        if (not entries and not live) or len({entry.key for entry in entries}) != len(entries):
             raise ValueError("Studio requires a nonempty catalog with unique keys")
         if any(not re.fullmatch(r"[A-Za-z0-9_-]+", entry.key) for entry in entries):
             raise ValueError("Studio entry keys may contain only letters, digits, underscores and hyphens")
@@ -97,7 +100,7 @@ class MissionStudio:
         asset_version = hashlib.sha256(asset_bytes + document_bytes).hexdigest()[:16]
         document_links = {path: name + '?v=' + asset_version for path, name in document_links.items()}
         catalog = {"schema": "orbexa.mission.studio.catalog.v1", "asset_version": asset_version,
-                   "entries": [], "theory": []}
+                   "entries": [], "theory": [], "live": live}
         for entry, dataset, raw, video, evidence, lifecycle in projected:
             filename = f"mission-{entry.key}.json"
             (studio / filename).write_text(json.dumps(dataset, allow_nan=False, separators=(",", ":")), encoding="utf-8")

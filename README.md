@@ -139,12 +139,19 @@ Start the real local simulation service from this checkout:
 python serve.py
 ```
 
-The published page connects to `127.0.0.1:8882`. Release distance, cluster spacing
-and target spin start a fresh nonlinear GEKKO/IPOPT run. Only committed fleet
+Open `http://127.0.0.1:8881/studio/` for live control through the local API at
+`127.0.0.1:8882`. The published page also offers the local viewer when its browser
+cannot connect directly. Release distance, cluster spacing and target spin start
+a fresh nonlinear GEKKO/IPOPT run. Only committed fleet
 samples update the scene; pause takes effect between fleet updates. Reset keeps
-the previous job's output. When the service is absent the page says
-“Local simulator offline” and its physics controls are disabled. The service
+the previous job's output. Unavailable connections disable the physics controls;
+the hosted page offers **Open live simulator**. The service
 binds only loopback and permits only the named Studio origins.
+
+To continue an unfinished saved approach, launch with
+`python serve.py --resume /path/to/approach/mission_data.json`. Its complete
+guard journal must remain adjacent. The first Run requires the saved knob
+values and preserves the original update cap; later runs start fresh.
 
 `MissionStudio` exports explicitly selected saved missions into a local browser
 workspace: a black-space 3D replay, synchronized goal/tube/reserve charts,

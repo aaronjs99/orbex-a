@@ -31,7 +31,7 @@ export class LocalMissionClient {
   }
 
   async command(name, body = {}) {
-    if (!this.connected) throw new Error('Local simulator offline');
+    if (!this.connected) throw new Error('Live connection unavailable');
     const state = await this.request('/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 15000);
     this.receive(state);
     return state;
@@ -63,13 +63,15 @@ export class LocalMissionClient {
 export function simulationControls({ onState, onReset, onFollow, onError }) {
   const get = id => document.getElementById(id);
   const knobs = [['release-distance', 'release_distance_m', ' m'], ['cluster-spacing', 'cluster_spacing_m', ' m'], ['target-spin', 'target_spin_deg_s', '°/s']];
-  let state, connected = false, busy = false, dirty = false, timer;
+  let state, connected = false, connectionFailed = false, busy = false, dirty = false, timer;
+  const hosted = location.protocol === 'https:';
   let resetQueue = Promise.resolve();
   const values = () => Object.fromEntries(knobs.map(([id, name]) => [name, Number(get(id).value)]));
   const labels = () => knobs.forEach(([id, , unit]) => { get(id + '-value').textContent = get(id).value + unit; });
   const paint = () => {
-    get('live-connection').textContent = !connected ? 'Local simulator offline' : busy ? 'Updating…' : dirty ? 'Ready' : ({idle:'Ready',starting:'Starting…',running:'Computing approach',pausing:'Pausing…',paused:'Paused',completing:'Completing mission…',completed:'Complete',stopped:'Stopped',failed:'Stopped · see details',cancelled:'Ready'})[state?.status] || 'Connected';
+    get('live-connection').textContent = !connected ? hosted ? connectionFailed ? 'Live connection unavailable' : 'Connecting…' : 'Local simulator offline' : busy ? 'Updating…' : dirty ? 'Ready' : ({idle:'Ready',starting:'Starting…',running:'Computing approach',pausing:'Pausing…',paused:'Paused',completing:'Completing mission…',completed:'Complete',stopped:'Stopped',failed:'Stopped · see details',cancelled:'Ready'})[state?.status] || 'Connected';
     get('live-connection').dataset.connected = String(connected);
+    get('open-live-simulator').hidden = !(hosted && connectionFailed && !connected);
     knobs.forEach(([id]) => { get(id).disabled = !connected || busy; });
     get('live-run').disabled = !connected || busy;
     get('live-pause').disabled = !connected || busy || !['running','pausing','paused'].includes(state?.status);
@@ -77,7 +79,7 @@ export function simulationControls({ onState, onReset, onFollow, onError }) {
     get('live-reset').disabled = !connected || busy;
   };
   const client = new LocalMissionClient({
-    onConnection(value, error) { connected = value; get('live-connection').title = error || ''; paint(); },
+    onConnection(value, error) { connected = value; connectionFailed = !value; get('live-connection').title = error || ''; paint(); },
     onState(value) {
       state = value;
       if (!dirty && value.parameters) {

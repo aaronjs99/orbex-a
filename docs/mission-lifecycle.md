@@ -77,32 +77,47 @@ physical approach setting unless explicitly configured otherwise.
 
 ## Representative geometry and mass
 
-The default target mass is 1000 kg, with body inertia
-`diag(190, 190, 320)` kg m². Those values are consistent with a uniform solid
-cylinder of radius 0.8 m and full length 0.6 m, but that agreement does not
-identify an observed target. Mass and inertia are configurable and checked for
-positive definiteness, the principal-moment triangle rule, and necessary bounds
-imposed by the declared cylinder envelope.
+The current Envisat design retains the 7827.867 kg target mass and full inertia
+tensor in [the source-qualified geometry declaration](envisat.md). Bus, solar
+wing and appendages remain separate occupied components throughout approach
+and capture.
 
-Each default chaser has 8 kg dry mass and 4 kg fuel. In a direct `CaptureModel`
-call this fuel is the **remaining amount at attachment**. The complete-mission
-runner instead interprets it as initially installed fuel, subtracts a conservative
-translation allowance and modeled free-bus attitude consumption, then passes
-the remaining tanks to capture. No approach propellant is silently restored.
-Its declared 0.150 m
-spherical bus has the solid-sphere specific inertia `0.4 R² I`; wet inertia is
-therefore `diag(0.108, 0.108, 0.108)` kg m². Fuel distribution is approximated as
-proportional to the component's dry mass distribution. The 0.160 m inward
-gripper offset is measured from its actual COM along the assigned outward
-surface normal. The 0.010 m latch stroke bridges the remaining finite gap.
+Each chaser starts with 30 kg dry mass and 100 kg propellant. Its 0.55 m
+spherical envelope uses the specific inertia `0.4 R² I`, giving an initial
+wet inertia of `diag(15.73, 15.73, 15.73)` kg m². Fuel distribution is
+approximated as proportional to the dry mass distribution. The complete runner
+subtracts conservative translational consumption and modeled attitude-nozzle
+consumption before capture; capture receives the remaining tanks.
 
-The approach position is a literal chaser COM by default. A COM docking
-standoff of 0.165 m places the gripper approximately 5 mm from the surface and
-leaves at least 15 mm nominal radial bus clearance. The old 5 mm **COM**
-standoff cannot fit this bus and is rejected. A separately declared
-capture-reference trajectory can be accepted only with
-`assume_approach_point_is_capture_reference=True`; that option is an explicit
-change of input semantics, never a reinterpretation of a recorded COM run.
+The tracked point is the actual chaser COM. The 0.85 m COM standoff and 0.8 m
+inward gripper offset leave a nominal 50 mm tip gap. The declared 100 mm closure
+reach must cover the admitted position and orientation errors as well as that
+gap. No free-flight COM is placed inside the hull.
+
+### Held-command propellant bound
+
+`HeldInputPropellantAccountant` binds the raw approach, its complete ordered
+guard journals and the immutable producer source. It reconstructs the original
+interval-flow and swept-geometry witnesses before using their held actuator
+boxes. Missing or refused holds, changed clocks, mismatched states or incomplete
+source lineage refuse the smaller allowance. A restarted mission requires its
+complete original journal followed by every new admitted hold.
+
+For hold $j$, let $U_{ij}$ bound the absolute anomaly-acceleration command in
+component $i$, let $\bar\nu_j$ bound the anomaly rate in physical seconds, and
+let $\bar\Delta t_j$ bound its physical duration. The initial wet mass $m_0$
+bounds later mass. The sum of absolute body-nozzle forces $F_{1j}$ is bounded
+for any proper attitude by
+
+$$F_{1j}\le m_0\bar\nu_j^2\sqrt{3\sum_i U_{ij}^2},\qquad
+\Delta m\le\frac{\sum_j F_{1j}\bar\Delta t_j}{g_0 I_{sp}}.$$
+
+Here $g_0$ is standard gravity and $I_{sp}$ is specific impulse. Square roots
+and sums are rounded outward; applied-input means are insufficient for this
+bound. The installed-force, fuel and 2% constant-inertia gates remain binding.
+The global input-cap allowance remains available when no authenticated journal
+accountant is supplied. These are conservative fuel debits under the recorded
+actuation assumptions, rather than measurements of consumption.
 
 ## Attachment gates and conservation
 

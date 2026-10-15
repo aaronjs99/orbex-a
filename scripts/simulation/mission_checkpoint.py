@@ -422,7 +422,7 @@ class MissionCheckpoint:
                     np.abs(error[3:] + lam * error[:3]) - state.phi[key]) > 1e-8:
                 raise ValueError("The saved actual state is outside its persistent tube")
         name = record["sample_phase_history"][-1]
-        if name not in ("deployment", "staging", "rendezvous", "docking"):
+        if name not in ("carrier_departure", "transfer", "deployment", "staging", "rendezvous", "docking"):
             raise ValueError("Unknown phase operation requires an explicit phase restoration interface")
         phase = MissionPhase(name, "docking" if name == "docking" else "rendezvous")
         if scenario.execution_guard is not None:

@@ -70,6 +70,7 @@ class LiveServiceSettings:
     deployment_path: Path
     spacecraft_path: Path
     maximum_updates: int = 1200
+    resume_path: Path | None = None
 
     def __post_init__(self):
         for name in ("output_dir", "config_path", "prior_path", "admission_path", "deployment_path", "spacecraft_path"):
@@ -77,6 +78,11 @@ class LiveServiceSettings:
             if name != "output_dir" and not path.is_file():
                 raise ValueError(f"Missing explicit {name}: {path}")
             object.__setattr__(self, name, path)
+        if self.resume_path is not None:
+            path = Path(self.resume_path).expanduser().resolve()
+            if not path.is_file():
+                raise ValueError(f"Missing explicit resume record: {path}")
+            object.__setattr__(self, 'resume_path', path)
         if isinstance(self.maximum_updates, bool) or not isinstance(self.maximum_updates, int) or not 1 <= self.maximum_updates <= 1200:
             raise ValueError("maximum_updates must be an integer in [1, 1200]")
         checkout = Path(__file__).resolve().parents[2]
@@ -97,6 +103,40 @@ def _sha(path):
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def _resume_source(path, parameters=None):
+    """Read only the explicitly selected local record and its adjacent journal."""
+    path = Path(path).resolve()
+    payload = json.loads(path.read_bytes())
+    record = payload.get('result', payload)
+    try:
+        deployment = record['metadata']['scenario']['deployment']
+        options = deployment['options']
+        center = options['carrier_center_lvlh_m']
+        pitch = deployment['initial_pitch_m']
+        spin = record['target']['initial_body_angular_velocity_rad_s']
+        if (record['mission'] != 'multi' or record['metadata'].get('mission_complete')
+                or record['target']['shape'] != 'composite_spacecraft'
+                or deployment['kind'] != 'carrier_cluster_to_component_aware_patch_routes'
+                or len(center) != 3 or center[:2] != [0., 0.]
+                or len(spin) != 3 or spin[:2] != [0., 0.]):
+            raise ValueError('Resume requires the same unfinished eight-chaser carrier deployment')
+        if parameters is not None and (center[2] != parameters.release_distance_m
+                or pitch != parameters.cluster_spacing_m
+                or spin[2] != math.radians(parameters.target_spin_deg_s)):
+            raise ValueError('This launcher must first resume the saved distance, spacing and spin; restart without --resume to use different knobs')
+        # A raw result is either beside its journal or in the runner's approach/
+        # directory. Never search elsewhere or infer a journal from a checkout.
+        candidates = [path.parent / 'continuous-certificates.jsonl.gz']
+        if path.parent.name == 'approach':
+            candidates.append(path.parent.parent / 'continuous-certificates.jsonl.gz')
+        journals = [candidate for candidate in candidates if candidate.is_file()]
+        if len(journals) != 1:
+            raise ValueError('Resume requires one complete adjacent continuous-certificates.jsonl.gz journal')
+        return record, journals[0]
+    except (KeyError, IndexError, TypeError) as error:
+        raise ValueError('Resume record lacks the explicit carrier/target/source declarations') from error
 
 
 def _freeze_job(settings, directory):
@@ -122,9 +162,94 @@ def _freeze_job(settings, directory):
             raise RuntimeError('An explicit input changed during job snapshot')
         changes[name] = frozen
         input_records[name] = dict(original=str(original), frozen=str(frozen.relative_to(directory)), sha256=expected)
+    if settings.resume_path is not None:
+        _record, source_journal = _resume_source(settings.resume_path)
+        for name, original, filename in (('resume_path', settings.resume_path, 'resume-mission_data.json'),
+                ('resume_journal', source_journal, 'continuous-certificates.jsonl.gz')):
+            frozen = inputs / filename
+            expected = _sha(original)
+            shutil.copyfile(original, frozen)
+            if _sha(original) != expected or _sha(frozen) != expected:
+                raise RuntimeError('A resume source changed during job snapshot')
+            if name == 'resume_path':
+                changes[name] = frozen
+            input_records[name] = dict(original=str(original), frozen=str(frozen.relative_to(directory)), sha256=expected)
     _write_json(directory / 'snapshot-manifest.json', dict(package_files=before, inputs=input_records,
         scope='Per-job coherent source/input snapshot; scientific modules execute only these frozen bytes'))
     return replace(settings, **changes)
+
+
+def _append_resume_journal(checkpoint, path, destination):
+    """Bind the complete saved prefix before appending newly executed holds.
+
+    This authenticates the retained record/clock/enclosure linkage. The public
+    propellant accountant separately reproduces every flow and swept witness
+    before consuming the combined journal for a smaller fuel allowance.
+    """
+    from orbexa.control.reachability import IntervalBox, OrbitalModelBounds
+    from orbexa.simulation.certified_execution import CertifiedExecutionGuard
+    from orbexa.simulation.mission_checkpoint import digest
+    record = checkpoint.source_record
+    guard = record['metadata']['continuous_execution_certificate']
+    ids = tuple(record['actual_trajectories'])
+    q, end = Fraction(record['anom_history'][0]), Fraction(guard['exact_end_anomaly'])
+    previous, observed, sample_index, last_context, last_width = {}, 0, 1, None, None
+    def require(condition, reason):
+        if not condition:
+            raise ValueError('Resume journal refused: ' + reason)
+    def box(value, size):
+        result = IntervalBox(tuple(map(Fraction, value['exact_lower'])), tuple(map(Fraction, value['exact_upper'])))
+        require(result.dimension == size, 'box dimension changed')
+        return result
+    model = OrbitalModelBounds(**guard['model_bounds'])
+    disturbance = IntervalBox.from_center_radius([0.]*3, guard['acceleration_radius'])
+    inputs = IntervalBox(guard['input_lower'], guard['input_upper'])
+    require(len(ids) == 8 and guard['method'] == 'arb-picard-continuous-v1'
+        and guard['rejected_holds'] == 0 and guard['start_anomaly'] == float(q), 'missing complete admitted prefix')
+    with gzip.open(path, 'rt', encoding='utf-8') as stream:
+        for line in stream:
+            row = json.loads(line)
+            require(row.get('admitted') is True and tuple(row['chaser_ids']) == ids
+                and set(row['flows']) == set(ids), 'refused or incomplete fleet hold')
+            q0, q1, width = Fraction(row['exact_start_anomaly']), Fraction(row['exact_end_anomaly']), Fraction(row['width'])
+            require(q0 == q and q1 == q0 + width and width > 0 and q1 <= end
+                and abs(float(q0)-row['anomaly']) <= 1e-10, 'noncontiguous exact hold clock')
+            next_boxes = {}
+            for key in ids:
+                flow = row['flows'][key]
+                request = flow['request']
+                initial = box(request['initial_state'], 6)
+                require(flow['status'] == 'PROVEN' and flow['method'] == guard['method']
+                    and OrbitalModelBounds(**flow['model_bounds']) == model
+                    and tuple(map(Fraction, request['start_anomaly'])) == (q0, q0)
+                    and tuple(map(Fraction, request['hold_width'])) == (width, width)
+                    and box(request['acceleration_disturbance'], 3) == disturbance
+                    and inputs.contains(box(request['held_input'], 3)), 'flow/model/actuator request changed')
+                if previous:
+                    require(previous[key].contains(initial), 'request leaves preceding endpoint')
+                else:
+                    require(initial == IntervalBox.from_center_radius(record['actual_trajectories'][key][0],
+                        guard['measurement_radius']), 'release measurement differs from source')
+                next_boxes[key] = box(flow['endpoint'], 6)
+            require(row['collision']['status'] == 'PROVEN_SAFE'
+                and CertifiedExecutionGuard._shape_identity(row['target_bound_context'])
+                == CertifiedExecutionGuard._shape_identity(guard['target_bound_context']), 'swept target admission changed')
+            if sample_index < len(record['anom_history']) and abs(float(q1)-record['anom_history'][sample_index]) <= 1e-10:
+                require(all(next_boxes[key].contains(IntervalBox.point(record['actual_trajectories'][key][sample_index]))
+                    for key in ids), 'endpoint misses source sample')
+                sample_index += 1
+            elif sample_index < len(record['anom_history']):
+                require(float(q1) < record['anom_history'][sample_index]-1e-10, 'source sample skipped')
+            destination.write(line if line.endswith('\n') else line + '\n')
+            q, previous, observed = q1, next_boxes, observed+1
+            last_context, last_width = row['target_bound_context'], width
+    require(observed == guard['admitted_holds'] and q == end and sample_index == len(record['anom_history'])
+        and last_width == Fraction(guard['last_hold_width'])
+        and digest(last_context) == digest(guard['target_bound_context'])
+        and all(previous[key] == box(guard['endpoint_boxes'][key], 6) for key in ids), 'incomplete final clock/enclosures/count')
+    return dict(admitted_holds=observed, committed_updates=checkpoint.committed_updates,
+        exact_start_anomaly=str(Fraction(record['anom_history'][0])), exact_end_anomaly=str(q),
+        scope='Unchanged source journal prefix; clock/request/sample/endpoint linkage checked, not newly executed or relabeled')
 
 
 class _WorkerTree:
@@ -200,9 +325,12 @@ class LiveSimulationService:
         self._condition = threading.Condition(threading.RLock())
         self._operation = threading.Lock()
         self._process = self._tree = self._messages = self._run_event = None
+        self._resume_pending = settings.resume_path is not None
         self._state = dict(revision=0, session_id=uuid.uuid4().hex, job_id=None, status="idle", parameters=None,
             projection=None, lifecycle=None, progress={}, message="Ready for a new bounded simulation", paused=False,
-            scope="Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification")
+            scope="Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification",
+            resume_pending=self._resume_pending,
+            resume_source=None if settings.resume_path is None else str(settings.resume_path))
 
     @property
     def worker_alive(self):
@@ -242,13 +370,17 @@ class LiveSimulationService:
     def start(self, parameters):
         parameters = parameters if isinstance(parameters, LiveParameters) else LiveParameters.from_dict(parameters)
         with self._operation:
+            from dataclasses import replace
+            if self._resume_pending:
+                _resume_source(self.settings.resume_path, parameters)
+            job_settings = self.settings if self._resume_pending else replace(self.settings, resume_path=None)
             self._stop("Replaced by an explicitly requested new parameter set; outputs preserved")
             job_id = time.strftime("%Y%m%dT%H%M%S", time.gmtime()) + "-" + uuid.uuid4().hex[:12]
             directory = self.settings.output_dir / job_id
             directory.mkdir(exist_ok=False)
             _write_json(directory / "parameters.json", parameters.as_dict())
             try:
-                frozen_settings = _freeze_job(self.settings, directory)
+                frozen_settings = _freeze_job(job_settings, directory)
             except (OSError, RuntimeError) as error:
                 _write_json(directory / 'job-status.json', dict(job_id=job_id, status='failed',
                     message=str(error), worker_started=False))
@@ -270,6 +402,8 @@ class LiveSimulationService:
                 self._publish(status="failed", message="Worker process isolation failed before solver launch")
                 raise
             self._process, self._tree, self._messages, self._run_event = process, tree, messages, run_event
+            self._resume_pending = False
+            self._publish(resume_pending=False, origin='strict_checkpoint_resume' if frozen_settings.resume_path else 'fresh_parameters')
             threading.Thread(target=self._collect, args=(job_id, process, messages), daemon=True).start()
             launch_event.set()
             return self.state()
@@ -435,7 +569,7 @@ def _execute_job(settings, parameters, directory, messages, run_event):
     from orbexa.visualization.studio_data import StudioDataset
     from orbexa.control.mpc_controller import MPCController
     from orbexa.solvers.gekko_dynamic_tube import GekkoDynamicTube
-    from orbexa.simulation.mission_checkpoint import plain
+    from orbexa.simulation.mission_checkpoint import MissionCheckpoint, physical_target_from_snapshot, plain
     import tempfile
     import gekko
     native = directory / 'native'; native.mkdir(exist_ok=True)
@@ -485,6 +619,8 @@ def _execute_job(settings, parameters, directory, messages, run_event):
         runtime_python_sha256={str(path.relative_to(Path(__file__).parents[1])): _sha(path)
             for path in Path(__file__).parents[1].rglob("*.py")},
         parameters=parameters.as_dict(), maximum_updates=settings.maximum_updates,
+        origin='fresh_parameters' if settings.resume_path is None else 'strict_checkpoint_resume',
+        resume_source=None if settings.resume_path is None else str(settings.resume_path),
         transfer_duration_rule=".18*sqrt(release_distance_m/300)rad; unchanged hardware/input caps"))
     cfg = SimulationConfig.load(str(settings.config_path))
     if cfg.solver.remote:
@@ -504,16 +640,55 @@ def _execute_job(settings, parameters, directory, messages, run_event):
     cfg.target.inertia = np.asarray(design.geometry.metadata['mass_properties']['inertia_kg_m2'])
     spin = (0., 0., math.radians(parameters.target_spin_deg_s))
     end = (max(settings.maximum_updates, cfg.num_update_steps) + max(cfg.mpc.horizon_steps.values()) + 2) * cfg.anom_step
-    target = design.target(cfg, initial_body_spin_rad_s=spin, anomaly_domain=(0., end), gravity_gradient=True)
+    checkpoint, target_scope, additional_updates = None, None, settings.maximum_updates
+    if settings.resume_path is None:
+        target = design.target(cfg, initial_body_spin_rad_s=spin, anomaly_domain=(0., end), gravity_gradient=True)
+    else:
+        from orbexa.simulation.arrival_policy import exact_outer_step
+        _resume_source(settings.resume_path, parameters)
+        manifest = json.loads((directory / 'snapshot-manifest.json').read_bytes())
+        for name in ('resume_path', 'resume_journal'):
+            row = manifest['inputs'][name]
+            if _sha(directory / row['frozen']) != row['sha256']:
+                raise ValueError('Frozen resume input identity changed before checkpoint construction')
+        checkpoint = MissionCheckpoint.from_file(settings.resume_path, source_context={
+            'source_reference': manifest['inputs']['resume_path']['original']})
+        saved = checkpoint.source_record
+        target = physical_target_from_snapshot(saved['target'])
+        guard = saved['metadata']['continuous_execution_certificate']
+        target_scope = guard['target_bound_context']['scope']
+        remaining_cap = saved['metadata']['checkpoint_context']['configuration']['num_update_steps'] - checkpoint.committed_updates
+        remaining_domain = ((Fraction(target.anomaly_domain[1])-Fraction(guard['exact_end_anomaly']))
+            // exact_outer_step(cfg)) - max(cfg.mpc.horizon_steps.values()) - 1
+        additional_updates = min(settings.maximum_updates, remaining_cap, remaining_domain)
+        if additional_updates < 1:
+            raise ValueError('No new update fits the original total cap and target preview domain')
     options = PhysicalApproachOptions(body_radius_m=design.chaser.body_radius_m,
         com_standoff_m=design.com_standoff_m, initial_body_spin_rad_s=spin, gravity_gradient=True)
     with gzip.open(directory / "continuous-certificates.jsonl.gz", "wt", encoding="utf-8") as journal:
         def certificate_sink(record):
             journal.write(json.dumps(record, allow_nan=False) + "\n")
-        profile = PhysicalApproachScenario(cfg, initial_belief=prior, maximum_updates=settings.maximum_updates,
+        profile = PhysicalApproachScenario(cfg, initial_belief=prior, maximum_updates=additional_updates,
             options=options, target=target, deployment_options=deployment, admission=admission,
-            certificate_sink=certificate_sink, vehicle_design=design.as_dict(), controller_factory=TrackedController)
+            certificate_sink=certificate_sink, target_bound_scope=target_scope,
+            vehicle_design=design.as_dict(), controller_factory=TrackedController)
         profile.scenario.arrival_policy = _arrival_policy(profile, prior, admission, directory)
+        if checkpoint is not None:
+            checkpoint.validate_scenario(profile.scenario, 'multi')
+            checkpoint.save(directory / 'source-checkpoint.json')
+            prefix = _append_resume_journal(checkpoint, settings.resume_path.parent / 'continuous-certificates.jsonl.gz', journal)
+            journal.flush()
+            if any(_sha(directory / manifest['inputs'][name]['frozen']) != manifest['inputs'][name]['sha256']
+                    for name in ('resume_path', 'resume_journal')):
+                raise ValueError('Frozen resume identity changed during prefix validation')
+            _write_json(directory / 'resume-source.json', dict(checkpoint_identity=checkpoint.identity,
+                source_record_sha256=checkpoint.source_record_sha256,
+                source_canonical_sha256=checkpoint.source_canonical_sha256,
+                frozen_inputs={name:manifest['inputs'][name] for name in ('resume_path', 'resume_journal')},
+                prefix=prefix, additional_update_cap=additional_updates,
+                original_total_update_cap=remaining_cap+checkpoint.committed_updates,
+                target_anomaly_domain=list(target.anomaly_domain),
+                scope='Numerical continuation with the public strict checkpoint; original failed attempts/source history retained. Cold plans and dense adaptation-window reset are explicit.'))
         def progress(event):
             kind = event.get("kind", event.get("type", "committed"))
             projection = event.get("projection")
@@ -533,8 +708,12 @@ def _execute_job(settings, parameters, directory, messages, run_event):
                 messages.put(dict(kind="running"))
         profile.scenario.progress_sink = progress
         runner = ADTMPCMissionRunner(scenario=profile.scenario)
-        approach = runner.run(mission="multi", steps=settings.maximum_updates)
+        approach = (runner.run(mission="multi", steps=additional_updates) if checkpoint is None
+            else runner.resume(checkpoint, steps=additional_updates))
         MissionResultStore.save(approach, directory / "approach")
+        # Close the complete source journal before authenticating and replaying
+        # its interval proofs for conservative held-command fuel accounting.
+        journal.close()
         projection = StudioDataset(approach).to_dict()
         _write_json(directory / "committed-projection.json", projection)
         messages.put(dict(kind="committed", projection=projection, update=len(approach.anom_history)-1,
@@ -544,7 +723,17 @@ def _execute_job(settings, parameters, directory, messages, run_event):
             store.record(stage, result)
             messages.put(dict(kind="stage", message="Physical completion: " + stage))
         bound = max(abs(float(b[k])) for b in cfg.mpc.input_bounds for k in ("lower", "upper"))
-        completion = design.completion_runner(input_component_bound=bound, stage_sink=stage_sink).complete(approach)
+        accountant = None
+        if approach.success and approach.metadata.get('mission_complete') is True:
+            from orbexa.simulation.held_propellant import HeldInputPropellantAccountant
+            raw_path = directory / 'approach' / MissionResultStore.filename
+            journal_path = directory / 'continuous-certificates.jsonl.gz'
+            accountant = HeldInputPropellantAccountant.from_files(raw_path, [journal_path],
+                expected_approach_sha256=_sha(raw_path), expected_journal_sha256=[_sha(journal_path)],
+                producer_package_root=Path(__file__).parents[1])
+            messages.put(dict(kind='stage', message='Verifying held-command propellant bounds'))
+        completion = design.completion_runner(input_component_bound=bound, stage_sink=stage_sink,
+            translation_accountant=accountant).complete(approach)
         store.finish(completion)
         payload = dict(kind="finished", success=bool(completion.success), message=completion.message,
             projection=projection)
