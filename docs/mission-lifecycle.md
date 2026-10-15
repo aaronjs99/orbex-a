@@ -314,6 +314,25 @@ to the moving retrograde direction, and the same axis defines the requested
 burn force. Bounded attitude motion, actual allocation, changing tanks/inertia,
 pointing/rate gates and orbital events remain authoritative at every hold.
 
+`FiniteBurnThrottlePlanner` then compares 0.65, 0.8, 0.9 and 0.95 of that
+coupled capacity. A Cartesian two-body preview starts at the predicted
+osculating apoapsis, applies retrograde **transverse** thrust, decreases total
+mass and uses the operational allocator's static owner-specific fuel rates.
+Each preview stops at the first perigee goal, descending entry, burn-duration
+cap or owner fuel reserve. A declared 10% reserve is retained in every owner
+tank. Selection minimizes predicted fuel among candidates reaching the perigee
+goal, and saves every candidate including refused previews. Missing feasible
+predictions authorize no burn. Nozzle ratings, installed tanks, actual burn
+cap, pointing gates and final orbital events are unchanged.
+
+This forecast includes finite-burn timing that an impulsive rocket-equation
+allowance omits. Its static allocation and omitted attitude/inertia evolution
+remain approximations; the 10% reserve is a planning margin, not a bound on
+their errors. The predicted apoapsis is never assigned to the actual spacecraft.
+The actual orbital state, bounded attitude maneuver, changing mass/inertia,
+allocator and tanks are propagated independently and must satisfy the original
+perigee and descending-interface gates.
+
 The nominal burn cutoff is the root of the actual osculating-perigee event at
 80 km altitude. If fuel is exhausted after an entry-intersecting orbit has
 already been reached, the model can coast to the interface and separately

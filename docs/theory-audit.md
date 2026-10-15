@@ -163,6 +163,20 @@ membership. A source-qualified initialized eight-port window exercised 204 held
 intervals and 1,632 continuously enclosed orbital flows. Initialization inside
 that set does not establish admission of a different approach endpoint.
 
+A separate actual Envisat approach subsequently reached five accepted terminal
+endpoints. Its literal final fleet passed fresh full-inertia midpoint admission
+and a 32-hold physical terminal window. Serialized reproof checks every held
+command, all 256 orbital flows and all component/pair swept guards. That evidence
+retains the original approach, clock, full parameter prior and physical limits;
+it is distinct from the initialized fixture.
+
+The preserved first complete eight-agent arrival candidate also received a
+separate 352-hold, full-prior joint-tail proof with authenticated endpoint
+refinement. All eight whole endpoint boxes strictly enter a finite physical
+midpoint region after transporting the original spin enclosure. This is a
+prospective post-hoc proof, with no execution of that full stored tail and no
+retroactive or runtime fallback availability claim.
+
 The ordinary guarded approach still needs an already admissible backup before
 claiming continued physical safety after an NLP failure. Numerical checkpoint
 restart preserves evidence and state; it does not supply that control proof.

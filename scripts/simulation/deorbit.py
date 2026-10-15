@@ -158,10 +158,12 @@ class DeorbitResult:
 
 class DeorbitSimulator:
     def __init__(self, *, options: Optional[DeorbitOptions] = None,
-                 pointing_policy: Optional[ThrustPointingPolicy] = None, burn_axis_planner=None):
+                 pointing_policy: Optional[ThrustPointingPolicy] = None, burn_axis_planner=None,
+                 burn_throttle_planner=None):
         self.options = options or DeorbitOptions()
         self.pointing_policy = pointing_policy or ThrustPointingPolicy()
         self.burn_axis_planner = burn_axis_planner
+        self.burn_throttle_planner = burn_throttle_planner
 
     def _record(self, assembly, state, phase):
         record = assembly.state_record(state)
@@ -276,6 +278,7 @@ class DeorbitSimulator:
         alignment_start, burn_start = state.time_s, None
         pointing_policy = self.pointing_policy
         axis = np.asarray(getattr(pointing_policy, 'thrust_axis_body', (1., 0., 0.)))
+        plan = None
         if self.burn_axis_planner is not None:
             if not callable(getattr(pointing_policy, 'with_thrust_axis', None)):
                 raise ValueError('A selected burn axis requires a pointing policy with with_thrust_axis')
@@ -288,6 +291,14 @@ class DeorbitSimulator:
             default_force = .65 * sum(thruster.max_force_n * abs(float(np.dot(thruster.direction_body, axis)))
                                       for thruster in propulsion.thrusters)
         burn_force = default_force if options.burn_force_n is None else options.burn_force_n
+        if self.burn_throttle_planner is not None:
+            if plan is None or options.burn_force_n is not None:
+                raise ValueError('Finite throttle planning requires a coupled axis plan and no conflicting force override')
+            throttle = self.burn_throttle_planner.select(assembly, state, propulsion, plan, options)
+            audit['finite_burn_plan'] = throttle
+            if throttle['status'] != 'FINITE_BURN_PREDICTED':
+                return finish(False, 'deorbit_no_admitted_finite_burn_preview')
+            burn_force = throttle['commanded_force_n']
         audit.update(commanded_burn_force_n=burn_force, planned_apoapsis_time_s=apo_time,
                      thrust_axis_body=axis.tolist())
         while True:

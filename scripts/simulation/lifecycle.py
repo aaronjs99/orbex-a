@@ -70,6 +70,8 @@ class MissionLifecycle:
                     deorbit=dict(options=asdict(self.deorbit.options), pointing_policy=policy(self.deorbit.pointing_policy)))
         if self.deorbit.burn_axis_planner is not None:
             configuration['deorbit']['burn_axis_planner'] = policy(self.deorbit.burn_axis_planner)
+        if self.deorbit.burn_throttle_planner is not None:
+            configuration['deorbit']['burn_throttle_planner'] = policy(self.deorbit.burn_throttle_planner)
         return configuration
 
     def run(self, approach, *, capture_truth=None, chaser_attitudes=None,

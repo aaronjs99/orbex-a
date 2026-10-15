@@ -17,6 +17,7 @@ from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleStore
 from orbexa.simulation.mission_result import MissionResultStore
 from orbexa.simulation.propulsion import ThrusterSystem
 from orbexa.simulation.burn_axis import AxialBurnPlanner
+from orbexa.simulation.finite_burn import FiniteBurnThrottlePlanner
 
 
 def main(argv=None):
@@ -98,7 +99,8 @@ def main(argv=None):
                 .2 if design is None else design.pointing_attitude_gain_nm,
                 20. if design is None else design.pointing_rate_gain_nm_s,
                 compensate_gravity_gradient=design is not None),
-                burn_axis_planner=None if design is None else AxialBurnPlanner())
+                burn_axis_planner=None if design is None else AxialBurnPlanner(),
+                burn_throttle_planner=None if design is None else FiniteBurnThrottlePlanner())
         propulsion = partial(ThrusterSystem.for_assembly, translation_force_n=args.translation_force_n,
                              attitude_force_n=args.attitude_force_n, specific_impulse_s=args.specific_impulse_s,
                              moment_arm_m=args.attitude_moment_arm_m)

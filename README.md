@@ -16,8 +16,12 @@ The Envisat study uses eleven explicit bus, solar-wing and appendage components
 and eight candidate structural patches. Planning, exclusion, capture and replay
 consume the same geometry. [Its model and sources](docs/envisat.md) distinguish
 published dimensions and mass/inertia from inferred layout and unknown current
-state. The completed eight-chaser recording is a **cylinder baseline**, not
-Envisat mission qualification.
+state. The closed Envisat recording completes 175 nonlinear fleet updates,
+a separately verified physical terminal window, eight modeled attachments,
+581 s of detumbling including the 30 s dwell, and a finite burn followed by
+descending delivery to the 120 km entry interface. About 115 kg of assembly
+propellant remains. Contact is idealized, and the orbital endpoint precedes
+atmospheric entry physics. The earlier cylinder baseline remains a separate study.
 
 The approach plant is the paper's analytical relative-motion approximation.
 An independent Cartesian SI dynamics service includes nonlinear central gravity,
@@ -132,8 +136,8 @@ See [physical lifecycle](docs/mission-lifecycle.md),
 
 Open the [published Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site)
 for the recorded 3D missions, plots, videos and illustrated theory. The Site is
-private and uses ChatGPT sign-in. Envisat approach evidence and completed
-cylinder-baseline mission results retain their separate outcomes.
+private and uses ChatGPT sign-in. Envisat and cylinder-baseline recordings retain
+their separate models, outcomes and qualification records.
 
 `MissionStudio` exports explicitly selected saved missions into a local browser
 workspace: a black-space 3D replay, synchronized goal/tube/reserve charts,

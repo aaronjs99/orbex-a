@@ -12,6 +12,7 @@ from orbexa.simulation.complete_mission import CompleteMissionOptions, CompleteM
 from orbexa.simulation.deorbit import DeorbitSimulator, ThrustPointingPolicy
 from orbexa.simulation.detumbling import DetumblingSimulator, RateDampingPolicy
 from orbexa.simulation.burn_axis import AxialBurnPlanner
+from orbexa.simulation.finite_burn import FiniteBurnThrottlePlanner
 
 
 @dataclass(frozen=True)
@@ -95,7 +96,8 @@ class SpacecraftMissionDesign:
                 compensate_gravity_gradient=True)),
             deorbit=DeorbitSimulator(pointing_policy=ThrustPointingPolicy(
                 self.pointing_attitude_gain_nm,self.pointing_rate_gain_nm_s,
-                compensate_gravity_gradient=True), burn_axis_planner=AxialBurnPlanner()),stage_sink=stage_sink)
+                compensate_gravity_gradient=True), burn_axis_planner=AxialBurnPlanner(),
+                burn_throttle_planner=FiniteBurnThrottlePlanner()),stage_sink=stage_sink)
 
     def as_dict(self):
         return dict(geometry_id=self.geometry.geometry_id,geometry_fingerprint=self.geometry.fingerprint,

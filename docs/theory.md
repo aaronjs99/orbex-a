@@ -395,11 +395,13 @@ penalty supplies no terminal invariance theorem for the moving nonlinear task.
 | Contractor preserves consistent parameters | Conditional on its specified held-input interval RK4 map, measurement boxes and enclosure arithmetic. |
 | Nodewise tube/target exclusion and pair separation | Sufficient geometry constraints at checked nodes, subject to feasible numerical solution. |
 | Whole-tube standoff tolerance at accepted endpoints | Direct component-box bound, conditional on error containment; consecutive endpoints are explicitly counted. |
+| Fixed-deadline whole-tube arrival | Accepted joint plans anchor an immutable absolute deadline and required reference-centered suffix region. Actual endpoint gates remain separate; this does not guarantee that a local NLP succeeds. |
 | Numerical mission completion | Evidence for each saved run and its exact source/configuration; not a universal theorem. |
 | Continuous held-input orbital flow and finite-body collision exclusion | Implemented Arb Picard enclosures and swept separating geometry. Conditional on the declared initial/model/input/clock/target-pose bounds; unresolved holds refuse execution. An RK4 trajectory is not substituted for this certificate. |
 | Admissible continuation on performance-solver failure | Implemented stored backup-chain supervisor. Admission requires swept safety and a successor enclosure inside the next certified entry set. Request/flow/geometry identities are bound together; stale or incomplete certificates refuse admission. |
 | Robust reference-centered terminal tracking | Exact rational sufficient conditions establish invariance over their declared scope. Eccentric-orbit and rigid-target coefficient bounds are derived continuously on a finite anomaly domain. Entry membership is mandatory; ordinary endpoint dwell does not imply it. |
 | Recursive feasibility of every nonlinear performance optimization | Not claimed. The continuation supervisor preserves an already certified backup; it does not prove that every GEKKO problem has a feasible solution or that the ordinary approach has such a backup. |
+| Preserved eight-agent joint tail and physical-terminal successor | A source-bound saved candidate passed a separate full-prior 352-hold swept-set proof and all eight complete endpoint boxes strictly enter the declared midpoint terminal region. This finite prospective post-hoc proof does not wire an operational fallback into the ordinary mission. |
 | Attachment, detumbling and orbital delivery | Implemented distinct physical stages with finite-bus/reach/attitude gates, inelastic momentum balance, external nozzle forces, propellant depletion and descending entry-event localization. Successful runs establish numerical evidence under the recorded representative assumptions. |
 | Real-time eight-agent execution, sensing accuracy, physical release/contact and atmospheric demise | Require separate engineering or experimental evidence. Offline simulation and interval arithmetic do not establish these properties. |
 
@@ -431,6 +433,17 @@ held-feedback forcing, input authority, whole-box pose tolerance and finite-body
 geometry together. Membership of the real endpoint enclosure is checked against
 the declared reference-evaluation box; the implementation never projects a
 refused endpoint into the set.
+
+The componentwise composite construction additionally uses full-inertia
+rigid-body port jets and a typed midpoint feedforward law. Its finite-window
+certificate bounds actual hold widths, query-clock/evaluation error and
+held forcing without replacing the true reference derivative by a smaller one.
+See [physical terminal bounds](physical-terminal.md),
+[fixed-deadline arrival](arrival-policy.md), and
+[authenticated orbital endpoints](orbital-held-flow.md). The saved joint-tail
+proof transports the original spin enclosure to its successor without a future
+spin measurement. It does not retroactively establish that a backup was available
+when the original mission executed, or prove general recursive feasibility.
 
 The matched empirical study uses an independently fixed prior, compact physical
 deployment and the same truth/reference for adaptive, genuinely frozen-belief,
