@@ -15,7 +15,8 @@ bounds. The maintained ADTMPC backend therefore sets native
 the intended hard bounds; it does not weaken the independent residual gate.
 See the [official IPOPT option definition](https://coin-or.github.io/Ipopt/OPTIONS.html#OPT_bound_relax_factor).
 
-In a reconstructed eight-chaser problem, the earlier backend returned success
+In one chaser MPC subproblem reconstructed from an eight-chaser sequential run,
+the earlier backend returned success
 while the normalized terminal-velocity constraint had residual approximately
 `5.22233e-6`. Tightening only the outer GEKKO convergence settings did not repair
 it. Disabling native bound relaxation solved the same problem with maximum

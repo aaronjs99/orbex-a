@@ -6,7 +6,7 @@ The independent `orbexa.core.inertial_dynamics` service supplies nonlinear Carte
 
 ## Force model and frame
 
-For spacecraft (i), let (r_i\in\mathbb R^3) be its inertial position in metres, (v_i\in\mathbb R^3) its inertial velocity in metres per second, (R_i=\lVert r_i\rVert_2) its radius, and $\mu>0$ the body's gravitational parameter. The independent variable is SI time (t). The declared applied inertial acceleration is (a_{u,i}). The service integrates
+For spacecraft $i$, let $r_i\in\mathbb R^3$ be its inertial position in metres, $v_i\in\mathbb R^3$ its inertial velocity in metres per second, $R_i=\lVert r_i\rVert_2$ its radius, and $\mu>0$ the body's gravitational parameter. The independent variable is SI time $t$. The declared applied inertial acceleration is $a_{u,i}$. The service integrates
 
 
 $$
@@ -17,7 +17,7 @@ $$
 $$
 
 
-For J2, let (J_2) be the unnormalized zonal coefficient, (R_e>0) its reference radius, (n_i=r_i/R_i), (k_I) the declared unit symmetry axis fixed in the inertial frame, and (s_i=n_i^T k_I). The optional acceleration is
+For J2, let $J_2$ be the unnormalized zonal coefficient, $R_e>0$ its reference radius, $n_i=r_i/R_i$, $k_I$ the declared unit symmetry axis fixed in the inertial frame, and $s_i=n_i^T k_I$. The optional acceleration is
 
 
 $$
@@ -28,9 +28,9 @@ $$
 $$
 
 
-This is the usual J2-only Cartesian expression, expressed for an arbitrary fixed axis. The sign convention is (J_2=-C_{20}) for an unnormalized zonal coefficient. A nonzero J2 requires an explicit reference radius; the service does not infer an Earth orientation or gravity-field product. The equation agrees with the primary implementation in [Orekit's J2-only perturbation](https://raw.githubusercontent.com/CS-SI/Orekit/13.1.2/src/main/java/org/orekit/forces/gravity/J2OnlyPerturbation.java).
+This is the usual J2-only Cartesian expression, expressed for an arbitrary fixed axis. The sign convention is $J_2=-C_{20}$ for an unnormalized zonal coefficient. A nonzero J2 requires an explicit reference radius; the service does not infer an Earth orientation or gravity-field product. The equation agrees with the primary implementation in [Orekit's J2-only perturbation](https://raw.githubusercontent.com/CS-SI/Orekit/13.1.2/src/main/java/org/orekit/forces/gravity/J2OnlyPerturbation.java).
 
-For drag, let $\rho(t,r)\ge0$ be the declared density in kilograms per cubic metre, (v_{\mathrm{air}}(t,r)) the declared inertial atmosphere velocity, and $\sigma_i=C_{D,i}A_i/m_i\ge0$ the spacecraft's isotropic drag area per mass in square metres per kilogram. Define (w_i=v_i-v_{\mathrm{air}}(t,r_i)). The service uses the full vector law
+For drag, let $\rho(t,r)\ge0$ be the declared density in kilograms per cubic metre, $v_{\mathrm{air}}(t,r)$ the declared inertial atmosphere velocity, and $\sigma_i=C_{D,i}A_i/m_i\ge0$ the spacecraft's isotropic drag area per mass in square metres per kilogram. Define $w_i=v_i-v_{\mathrm{air}}(t,r_i)$. The service uses the full vector law
 
 
 $$
@@ -42,7 +42,7 @@ $$
 
 Both speed and direction use the atmosphere-relative velocity. A missing atmosphere-velocity callback explicitly means a stationary atmosphere in the declared inertial frame. This implements the [NASA drag equation](https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/drag-equation/) in vector form, consistent with an [isotropic orbital drag model](https://raw.githubusercontent.com/CS-SI/Orekit/13.1.2/src/main/java/org/orekit/forces/drag/IsotropicDrag.java). It is not an atmosphere estimator: density, winds, rotation, area, mass and their provenance remain caller declarations. The present isotropic coefficient is fixed for each propagation; attitude-dependent aerodynamics and fuel-driven mass changes need a further model.
 
-For the relative frame, let (e_r=r_t/\lVert r_t\rVert), (e_n=(r_t\times v_t)/\lVert r_t\times v_t\rVert), and (e_\theta=e_n\times e_r), where subscript (t) denotes the target. The frame matrix is
+For the relative frame, let $e_r=r_t/\lVert r_t\rVert$, $e_n=(r_t\times v_t)/\lVert r_t\times v_t\rVert$, and $e_\theta=e_n\times e_r$, where subscript $t$ denotes the target. The frame matrix is
 
 
 $$
@@ -52,7 +52,7 @@ $$
 $$
 
 
-Thus relative (x) points opposite transverse motion, (y) points radially outward and (z) points along orbit normal, matching the maintained elliptical dynamics. `LVLHFrame` computes both (C) and its physical-time derivative $\dot C$ from the supplied target state and acceleration, including normal-vector motion under out-of-plane forces. If (p) is relative position and (w=\dot p) is relative velocity **in m/s**, its transformation is
+Thus relative $x$ points opposite transverse motion, $y$ points radially outward and $z$ points along orbit normal, matching the maintained elliptical dynamics. `LVLHFrame` computes both $C$ and its physical-time derivative $\dot C$ from the supplied target state and acceleration, including normal-vector motion under out-of-plane forces. If $p$ is relative position and $w=\dot p$ is relative velocity **in m/s**, its transformation is
 
 
 $$
@@ -62,7 +62,7 @@ $$
 $$
 
 
-The inverse includes the same rotation-rate term. For the analytical state `[p, dp/dq]`, conversion first requires (w=\nu p'), with $\nu=dq/dt$ from an explicitly chosen clock. Feeding `dp/dq` directly to this API is a unit error. The service does not infer the analytical anomaly clock from a perturbed orbit.
+The inverse includes the same rotation-rate term. For the analytical state `[p, dp/dq]`, conversion first requires $w=\nu p'$, with $\nu=dq/dt$ from an explicitly chosen clock. Feeding `dp/dq` directly to this API is a unit error. The service does not infer the analytical anomaly clock from a perturbed orbit.
 
 ## Public propagation API
 
@@ -135,7 +135,7 @@ Further independent checks found J2 acceleration agreement with a finite-differe
 
 For the model discrepancy, the retained source is the immutable 418-update stopped prefix saved in `physical-fleet-eight-resumed/checkpoint.json`, whose file SHA-256 is `2e58f7e1ecf61cb59fa5bcca00750d25b22fa6d45a95357a33b2022b091d4930`. It has eight chasers, $e=0.18$, $\alpha=2\times10^{-7}$, $\beta=4.5\times10^{-7}$, and final recorded anomaly approximately `6.56593 rad`. The comparison deliberately retains that stopped prefix and does not relabel it as a successful run.
 
-To isolate the paper approximation, the full vector drag uses $\rho(r)=K/r$, a stationary inertial atmosphere and $\sigma_t=2\alpha/K$, $\sigma_c=2\beta/K$, with (K=2\times10^{-5}\,\mathrm{kg/m^2}$. Thus its inertial target and chaser forces are exactly $-\alpha\lVert v_t\rVert v_t/r_t$ and $-\beta\lVert v_c\rVert v_c/r_c$. This is a mathematical normalization, not a calibrated physical atmosphere. The primary [Carter–Humi paper](https://doi.org/10.2514/2.5010) starts from the vector quadratic-drag law and makes small-relative-motion and radial-speed approximations; the maintained relative factory is an analytical approximation to that law.
+To isolate the paper approximation, the full vector drag uses $\rho(r)=K/r$, a stationary inertial atmosphere and $\sigma_t=2\alpha/K$, $\sigma_c=2\beta/K$, with $K=2\times10^{-5}\,\mathrm{kg/m^2}$. Thus its inertial target and chaser forces are exactly $-\alpha\lVert v_t\rVert v_t/r_t$ and $-\beta\lVert v_c\rVert v_c/r_c$. This is a mathematical normalization, not a calibrated physical atmosphere. The primary [Carter–Humi paper](https://doi.org/10.2514/2.5010) starts from the vector quadratic-drag law and makes small-relative-motion and radial-speed approximations; the maintained relative factory is an analytical approximation to that law.
 
 At 25 predetermined saved nodes, all eight chasers were compared instantaneously in a common physical LVLH frame and clock:
 
@@ -163,7 +163,7 @@ The outside evidence bundle `work/completion-2026-10-14/dynamics-fidelity/` cont
 
 This subsection supplies an analytical route to a bound, **not a certificate that its hypotheses hold in the mission**. It covers central gravity and stationary inverse-radius vector drag only. J2, atmosphere rotation/wind, general density laws, unknown input orientation and uncertain sensing require additional terms or an augmented validated plant.
 
-Assume the full target moves in a fixed plane under central gravity and drag $-\alpha\lVert v_t\rVert v_t/r$. Use its actual increasing polar-angle clock (q), with $\nu=dq/dt>0$. Define (r=\lVert r_t\rVert$, (k=r'/r$, (c=\mu/(r^3\nu^2)$, and the fixed skew matrix
+Assume the full target moves in a fixed plane under central gravity and drag $-\alpha\lVert v_t\rVert v_t/r$. Use its actual increasing polar-angle clock $q$, with $\nu=dq/dt>0$. Define $r=\lVert r_t\rVert$, $k=r'/r$, $c=\mu/(r^3\nu^2)$, and the fixed skew matrix
 
 
 $$
@@ -173,7 +173,7 @@ $$
 $$
 
 
-Let (p,p') be the actual relative state in the stated LVLH frame. Define (w_t=(-r,rk,0)^T$, (w=w_t+p'+Zp$, (s=\lVert(0,r,0)^T+p\rVert_2$, and (L=\sqrt{1+k^2}$. The target's exact angular-momentum equation gives $\dot\nu/\nu^2=-\alpha L-2k$. The full relative anomaly equation, before applied control, is therefore
+Let $p,p'$ be the actual relative state in the stated LVLH frame. Define $w_t=(-r,rk,0)^T$, $w=w_t+p'+Zp$, $s=\lVert(0,r,0)^T+p\rVert_2$, and $L=\sqrt{1+k^2}$. The target's exact angular-momentum equation gives $\dot\nu/\nu^2=-\alpha L-2k$. The full relative anomaly equation, before applied control, is therefore
 
 
 $$
@@ -187,7 +187,7 @@ $$
 $$
 
 
-The maintained Carter–Humi coefficients, evaluated with these **same actual** (r,k,c$, give
+The maintained Carter–Humi coefficients, evaluated with these **same actual** $r,k,c$, give
 
 
 $$
@@ -198,7 +198,7 @@ $$
 $$
 
 
-In particular, even at (p=p'=0$, their difference is
+In particular, even at $p=p'=0$, their difference is
 
 
 $$
@@ -210,7 +210,7 @@ $$
 
 This bias vanishes for a circular target clock or equal drag constants, but need not vanish at a nonzero eccentric radial speed. It explains why centering the tracking tube or merely shrinking relative position does not remove this model error.
 
-For a uniform regional bound, declare positive (R_-\le r\le R_+$, (0<c\le C_+$, $|k|\le K$, $\lVert p\rVert_2\le P<R_-$, and $\lVert p'\rVert_2\le V$. Let $\Gamma\ge|\beta-\alpha|$, $B_+\ge\beta\ge0$, $L_*\ge\sqrt{1+K^2}$, and (D=P+V$, treating radians as dimensionless in the inequalities. Euclidean acceleration-error bounds for the gravity and drag remainders are
+For a uniform regional bound, declare positive radius bounds $R_-\le r\le R_+$, $0<c\le C_+$, $|k|\le K$, $\lVert p\rVert_2\le P<R_-$, and $\lVert p'\rVert_2\le V$. Let $\Gamma\ge|\beta-\alpha|$, $B_+\ge\beta\ge0$, $L_*\ge\sqrt{1+K^2}$, and $D=P+V$, treating radians as dimensionless in the inequalities. Euclidean acceleration-error bounds for the gravity and drag remainders are
 
 
 $$
@@ -224,7 +224,7 @@ $$
 $$
 
 
-For completeness, the directional Hessian of central gravity at radius (R$, along a unit direction (h$, is $\mu R^{-4}[6(n^Th)h+(3-15(n^Th)^2)n]$, with (n$ the unit radius vector. Its norm is at most (6\mu/R^4$; Taylor's integral remainder yields (E_G$. For drag, the reverse triangle inequality gives $|\lVert w\rVert/s-L|\le(D+L_*P)/(r-P)$, while $\lVert w\rVert\le rL_*+D$. Separating the omitted (L-1$ term yields (E_D$. Thus $\lVert p''_{\mathrm{full}}-p''_{\mathrm{CH}}\rVert_2\le E_G+E_D$; the same number bounds each component.
+For completeness, the directional Hessian of central gravity at radius $R$, along a unit direction $h$, is $\mu R^{-4}[6(n^Th)h+(3-15(n^Th)^2)n]$, with $n$ the unit radius vector. Its norm is at most $6\mu/R^4$; Taylor's integral remainder yields $E_G$. For drag, the reverse triangle inequality gives $|\lVert w\rVert/s-L|\le(D+L_*P)/(r-P)$, while $\lVert w\rVert\le rL_*+D$. Separating the omitted $L-1$ term yields $E_D$. Thus $\lVert p''_{\mathrm{full}}-p''_{\mathrm{CH}}\rVert_2\le E_G+E_D$; the same number bounds each component.
 
 The implemented reference orbit uses its own $r_a,k_a,c_a$. To compare with those coefficients at the **same actual clock**, also require continuous bounds $|r-r_a|\le E_r$, $|k-k_a|\le E_k$, $|c-c_a|\le E_c$, with both orbits in the declared radius/curvature region. Their additional coefficient discrepancy is bounded by
 
@@ -236,7 +236,7 @@ $$
 $$
 
 
-If physical input is scaled with the analytical rate $\nu_a^2$ rather than the actual $\nu^2$, let (C_->0$ bound (c_a$ below, $\lVert u\rVert_2\le U$, and require (E_c<C_-$, (E_r<R_-$. Because $\nu_a^2/\nu^2=cr^3/(c_ar_a^3)$, define
+If physical input is scaled with the analytical rate $\nu_a^2$ rather than the actual $\nu^2$, let $C_->0$ bound $c_a$ below, $\lVert u\rVert_2\le U$, and require $E_c<C_-$, $E_r<R_-$. Because $\nu_a^2/\nu^2=cr^3/(c_ar_a^3)$, define
 
 
 $$
@@ -247,23 +247,23 @@ $$
 $$
 
 
-so an additional input discrepancy bound is (E_U=U\max(H_+-1,1-H_-)$. This assumes the input direction is expressed in the exact actual LVLH frame; a frame estimate needs its own bound. Numerical process error and sensing/reference uncertainty are additional, separate allowances.
+so an additional input discrepancy bound is $E_U=U\max(H_+-1,1-H_-)$. This assumes the input direction is expressed in the exact actual LVLH frame; a frame estimate needs its own bound. Numerical process error and sensing/reference uncertainty are additional, separate allowances.
 
-As an explicitly conditional illustration, choose radii `[6.5e6,1e7] m`, $|k|\le1/4$, curvatures `[0.65,1.5]`, (P=20\,\mathrm m$, (V=100\,\mathrm{m/rad}$, (U=174\,\mathrm{m/rad^2}$, $\alpha\in[1.5,2.5]\times10^{-7}$, $\beta\in[3.5,5.5]\times10^{-7}$, (E_r=10\,\mathrm m$, and (E_k=E_c=10^{-5}$. Using the exact rational outward bound (L_*=51539/50000$, whose square exceeds (1+(1/4)^2$, exact rational arithmetic evaluates
+As an explicitly conditional illustration, choose radii `[6.5e6,1e7] m`, $|k|\le1/4$, curvatures `[0.65,1.5]`, $P=20\,\mathrm m$, $V=100\,\mathrm{m/rad}$, $U=174\,\mathrm{m/rad^2}$, $\alpha\in[1.5,2.5]\times10^{-7}$, $\beta\in[3.5,5.5]\times10^{-7}$, $E_r=10\,\mathrm m$, and $E_k=E_c=10^{-5}$. Using the exact rational outward bound $L_*=51539/50000$, whose square exceeds $1+(1/4)^2$, exact rational arithmetic evaluates
 
 | Conditional term | Upper bound, m/rad² |
 | --- | ---: |
-| (E_G$ | `0.000276926486` |
-| (E_D$ | `0.126990831775` |
-| (E_O$ | `0.002845` |
-| (E_U$ | `0.003480013591` |
+| $E_G$ | `0.000276926486` |
+| $E_D$ | `0.126990831775` |
+| $E_O$ | `0.002845` |
+| $E_U$ | `0.003480013591` |
 | Sum, rounded upward for display | `0.133592771851` |
 
 **Those target/reference/clock hypotheses have not been proven or enforced by the maintained mission guard. This number is not a default allowance, and is not a certificate for the saved mission.** The outside `continuous-bound-qualification.json` retains the exact rational values. A separate 512-state numerical comparison cross-checked the compact full relative equation against the independent inertial force/frame transform, with maximum component disagreement `8.01e-9 m/rad²`; those samples check the algebra, rather than prove continuous domain containment.
 
 ## What remains before a nonlinear safety claim
 
-The current Arb backend exposes the maintained analytical `enclose_orbital(HeldInputRequest, OrbitalModelBounds)` and constant `enclose_affine` inclusions. Its orbital request accepts a componentwise `acceleration_disturbance` box. A rigorously bounded additive discrepancy could use that interface **only after** all operating-region, model, input, target and clock hypotheses are bound to and checked throughout each proposed hold. Existing candidate relative boxes can help bound (p,p'$; they do not supply a validated full target orbit, its deviation from the analytical orbit, or its physical clock.
+The current Arb backend exposes the maintained analytical `enclose_orbital(HeldInputRequest, OrbitalModelBounds)` and constant `enclose_affine` inclusions. Its orbital request accepts a componentwise `acceleration_disturbance` box. A rigorously bounded additive discrepancy could use that interface **only after** all operating-region, model, input, target and clock hypotheses are bound to and checked throughout each proposed hold. Existing candidate relative boxes can help bound $p,p'$; they do not supply a validated full target orbit, its deviation from the analytical orbit, or its physical clock.
 
 Central gravity and the matched vector-drag discrepancy are continuously boundable away from zero radius, as above. Arb arithmetic can also enclose their algebraic norm, square-root and inverse expressions over a positive-radius domain. The maintained backend does not yet provide the augmented nonlinear inertial/target vector field and validated physical-time propagation needed to do that automatically. Its present physical-time and target-kinematic bounds use the analytical orbit. A larger relative forcing box alone does not correct those clocks, target geometry, or the parameter contractor's model assumptions.
 

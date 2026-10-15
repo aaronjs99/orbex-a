@@ -422,8 +422,11 @@ committed evidence and reports failure.
 
 The terminal layer measures error relative to the physical reference, rather
 than the last MPC shooting center. Its finite-domain construction bounds orbital
-coefficients and their derivatives with Arb, bounds rigid-body spin by a
-first-exit comparison, and uses rotation-invariant port distances. It checks
+coefficients and their derivatives with Arb and uses rotation-invariant port
+distances. Cylinder terminal bounds retain the scalar first-exit spin comparison.
+Composite terminal bounds select the tighter of an energy comparison and an
+independently validated scalar first-exit bound; the composite approach rotation
+rate uses the energy and orbital-clock certificate. It checks
 held-feedback forcing, input authority, whole-box pose tolerance and finite-body
 geometry together. Membership of the real endpoint enclosure is checked against
 the declared reference-evaluation box; the implementation never projects a
