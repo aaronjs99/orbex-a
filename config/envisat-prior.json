@@ -1,0 +1,12 @@
+{
+  "feasible_sets": {
+    "eccentricity": [0.0004, 0.0018],
+    "alpha": [1e-9, 4e-9],
+    "beta": [2e-9, 9e-9]
+  },
+  "estimates": {
+    "eccentricity": 0.0009,
+    "alpha": 2.5e-9,
+    "beta": 5.5e-9
+  }
+}

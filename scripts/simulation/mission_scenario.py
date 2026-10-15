@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Protocol
+import copy
+import json
 import numpy as np
 
 from orbexa.core.config import SimulationConfig
@@ -60,6 +62,7 @@ class MissionScenario:
                  controller_factory: Optional[ControllerFactory] = None,
                  initial_belief: Optional[ParameterBelief] = None,
                  execution_guard=None,
+                 vehicle_design: Optional[Dict[str, Any]] = None,
                  adaptation_mode: str = 'adaptive',
                  horizon_steps: Optional[int] = None,
                  actuation_steps: Optional[int] = None,
@@ -78,6 +81,17 @@ class MissionScenario:
         self.adaptation_mode = adaptation_mode
         self.execution_guard = execution_guard
         self.target = target if target is not None else TumblingCylinderTarget.from_config(self.config)
+        if callable(getattr(self.target,'anomaly_clock',None)):
+            for name in ('eccentricity','alpha','mu','semi_major_axis'):
+                if not hasattr(self.target,name) or float(getattr(self.target,name))!=float(getattr(self.truth,name)):
+                    raise ValueError(f'Physical target clock {name} must match the translational plant truth')
+            if self.truth.time_periapsis!=0.:
+                raise ValueError('The physical target clock currently requires the declared zero anomaly origin')
+        self.vehicle_design = copy.deepcopy(vehicle_design)
+        if self.vehicle_design is not None:
+            if not isinstance(self.vehicle_design,dict):
+                raise TypeError('vehicle_design must be explicit JSON-compatible metadata')
+            json.dumps(self.vehicle_design,allow_nan=False)
         self.fleet = fleet if fleet is not None else FleetInitializer(self.config, self.target)
         self.reference = reference if reference is not None else MissionReferencePolicy(self.config, self.target, horizon_steps)
         self.safety = safety if safety is not None else MissionSafety(self.config, self.target)
@@ -92,10 +106,13 @@ class MissionScenario:
 
     def scenario_metadata(self) -> Dict[str, Any]:
         """Record optional scenario policy without coupling the recorder to it."""
-        return {**self.reference.scenario_metadata(),
+        metadata = {**self.reference.scenario_metadata(),
                 'tracked_reference_point': 'chaser_center_of_mass',
                 'belief_update_mode': self.adaptation_mode,
                 'chaser_body_bounding_radius_m': self.safety.chaser_body_radius}
+        if self.vehicle_design is not None:
+            metadata['vehicle_design']=copy.deepcopy(self.vehicle_design)
+        return metadata
 
     def require_coupled_execution(self) -> None:
         if self.approximation != "nonlinear" or self.solver_backend != "gekko":
@@ -106,6 +123,12 @@ class MissionScenario:
                   list(self.config.mpc.actuation_steps.values()))
         if any(count != 1 for count in counts):
             raise ValueError("Coupled ADTMPC replans every outer interval; actuation_steps must be one")
+        if getattr(self.target, "geometry", None) is not None:
+            for chaser in self.fleet.chasers("single" if self.config.num_chasers == 1 else "multi"):
+                margin = self.target.geometry.signed_distance(chaser.docking_point_body)
+                if margin <= self.config.mission.target_barrier_clearance + self.safety.chaser_body_radius:
+                    raise ValueError("Assigned spacecraft COM goals leave no finite-body component clearance")
+            return
         if self.target.docking_standoff <= (self.target.radius * self.target.tolerance +
                 self.config.mission.target_barrier_clearance + self.safety.chaser_body_radius):
             raise ValueError("The docking standoff leaves no free-flight tube clearance; contact requires an explicit contact model")

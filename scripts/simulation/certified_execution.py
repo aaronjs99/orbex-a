@@ -17,6 +17,7 @@ from orbexa.control.reachability import (
     IntervalBox, OrbitalModelBounds, HeldInputRequest, ValidatedFlowEncloser,
     SweptCollisionGuard, RotatingCylinderBounds,
 )
+from orbexa.control.composite_geometry import CompositeSweptCollisionGuard, RotatingCompositeBounds
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class CertifiedExecutionGuard:
     def __init__(self, *, model: OrbitalModelBounds, measurement_radius,
                  acceleration_radius, body_radius: float,
                  input_lower, input_upper, minimum_pair_separation: float,
-                 target_bounds: Callable[[float, float], RotatingCylinderBounds],
+                 target_bounds: Callable[[float, float], RotatingCylinderBounds | RotatingCompositeBounds],
                  flow_encloser=None, record_sink: Callable[[dict], None] | None = None):
         self.model, self.target_bounds = model, target_bounds
         self.measurement_radius = self._vector(measurement_radius, 6, 'measurement_radius', nonnegative=True)
@@ -54,6 +55,7 @@ class CertifiedExecutionGuard:
         self.body_radius, self.pair_separation = float(body_radius), float(minimum_pair_separation)
         self.encloser = flow_encloser if flow_encloser is not None else ValidatedFlowEncloser()
         self.collision = SweptCollisionGuard()
+        self.composite_collision = CompositeSweptCollisionGuard()
         self.record_sink = record_sink
         self.endpoints: dict[str, IntervalBox] = {}
         self.last_end: float | None = None
@@ -73,6 +75,31 @@ class CertifiedExecutionGuard:
         if value.shape != (count,) or not np.all(np.isfinite(value)) or (nonnegative and np.any(value < 0)):
             raise ValueError(f'{name} must be a finite {count}-vector' + (' with nonnegative components' if nonnegative else ''))
         return value.copy()
+
+    @staticmethod
+    def _target_context(target):
+        if isinstance(target, RotatingCompositeBounds):
+            names = ('shape', 'geometry', 'geometry_fingerprint', 'angular_rate_per_anomaly',
+                     'center_speed_per_anomaly', 'orientation_matrix_error', 'frame', 'scope')
+        elif isinstance(target, RotatingCylinderBounds):
+            # Preserve the exact context schema of the qualified cylinder baseline.
+            names = ('radius', 'half_length', 'angular_rate_per_anomaly', 'center_speed_per_anomaly',
+                     'orientation_matrix_error', 'frame', 'scope')
+        else:
+            raise TypeError('Unsupported occupied target geometry; explicit cylinder or composite bounds required')
+        record = target.as_dict()
+        result = {name: record[name] for name in names}
+        if isinstance(target, RotatingCompositeBounds) and 'rotation_rate_bounds' in record:
+            result['rotation_rate_bounds'] = record['rotation_rate_bounds']
+        return result
+
+    @staticmethod
+    def _shape_identity(context):
+        if context.get('shape') == 'composite_spacecraft':
+            return ('composite_spacecraft', context.get('geometry_fingerprint'), context.get('geometry'))
+        if 'shape' in context:
+            raise ValueError('Unsupported continuous target geometry identity')
+        return ('cylinder', context.get('radius'), context.get('half_length'))
 
     def prepare(self, states: Mapping[str, Any], inputs: Mapping[str, Any], anomaly: float, width: float) -> GuardDecision:
         """Prove a complete hold without advancing the committed proof clock."""
@@ -115,11 +142,14 @@ class CertifiedExecutionGuard:
             if not flow.proven:
                 return self._reject(f'{key}: {flow.reason}', evidence)
             flows.append(flow)
-        target = self.target_bounds(float(exact_start), float(width))
-        target_record = target.as_dict()
-        target_context = {name: target_record[name] for name in
-            ('radius', 'half_length', 'angular_rate_per_anomaly', 'center_speed_per_anomaly',
-             'orientation_matrix_error', 'frame', 'scope')}
+        try:
+            target = self.target_bounds(float(exact_start), float(width))
+            target_context = self._target_context(target)
+            if (self.target_bound_context is not None and self._shape_identity(target_context)
+                    != self._shape_identity(self.target_bound_context)):
+                return self._reject('Occupied target geometry changed inside a continuous certificate', evidence)
+        except (ValueError, TypeError, KeyError) as error:
+            return self._reject(f'Unsupported or invalid target geometry: {error}', evidence)
         evidence['target_bound_context'] = target_context
         pose_clock_error = abs(Fraction.from_float(float(exact_start)) - exact_start)
         if pose_clock_error:
@@ -132,7 +162,8 @@ class CertifiedExecutionGuard:
                                  tuple(v + center_padding for v in target.center_at_start.upper))
             target = replace(target, center_at_start=center,
                 orientation_matrix_error=target.orientation_matrix_error + target.angular_rate_per_anomaly * pose_clock_error)
-        collision = self.collision.check(flows, [self.body_radius] * len(ids),
+        collision_guard = self.composite_collision if isinstance(target, RotatingCompositeBounds) else self.collision
+        collision = collision_guard.check(flows, [self.body_radius] * len(ids),
             target=target, minimum_pair_center_distance=self.pair_separation)
         evidence['collision'] = collision.as_dict()
         if not collision.admissible:
@@ -224,12 +255,10 @@ class CertifiedExecutionGuard:
                 raise ValueError('Older continuous records require explicit frozen-source target bound context')
             target_context = context['target_bound_context']
         if target_context is not None:
-            required = {'radius', 'half_length', 'angular_rate_per_anomaly', 'center_speed_per_anomaly',
-                        'orientation_matrix_error', 'frame', 'scope'}
-            if not isinstance(target_context, dict) or set(target_context) != required:
+            if not isinstance(target_context, dict):
                 raise ValueError('Complete continuous target bound declarations are required')
-            proposed = self.target_bounds(float(exact) if exact is not None else anomaly, hold_width).as_dict()
-            if any(proposed.get(name) != value for name, value in target_context.items()):
+            proposed = self._target_context(self.target_bounds(float(exact) if exact is not None else anomaly, hold_width))
+            if proposed != target_context:
                 raise ValueError('Continuous restart changed target occupied-shape, pose or rate assumptions')
         clock_difference = float(metadata.get('max_reported_clock_difference_rad', 0))
         if not np.isfinite(clock_difference) or not 0 <= clock_difference <= 1e-10:

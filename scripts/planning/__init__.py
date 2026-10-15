@@ -20,6 +20,9 @@ from importlib import import_module
 
 _EXPORTS = {
     "TaskAllocationSystem": "orbexa.planning.task_allocation",
+    'CompositeAttachmentPlanner': 'orbexa.planning.attachment_routes',
+    'AttachmentRoute': 'orbexa.planning.attachment_routes',
+    'assign_composite_docking_targets': 'orbexa.planning.composite_assignment',
     "target_deflect": "orbexa.planning.deflection",
     "observe_optimizer": "orbexa.planning.observation",
 }

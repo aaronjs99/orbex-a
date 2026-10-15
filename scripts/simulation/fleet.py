@@ -109,6 +109,8 @@ class FleetInitializer:
                 docking_surface=str(assignment["surface"]),
                 docking_standoff=float(assignment["standoff"]),
                 docking_candidate_index=int(assignment["candidate_index"]),
+                attachment_patch_id=assignment.get("attachment_patch_id"),
+                attachment_component_id=assignment.get("attachment_component_id"),
             )
             for idx, assignment in enumerate(assignments)
         ]

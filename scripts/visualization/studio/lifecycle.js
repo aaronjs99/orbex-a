@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { representativeSpacecraft, starField } from './spacecraft.js';
+import { representativeSpacecraft, compositeSpacecraft, starField } from './spacecraft.js';
 import { SceneVideoExporter, downloadVideo } from './recorder.js';
 
 const $ = id => document.getElementById(id);
@@ -22,11 +22,13 @@ function view(container, distance) {
 }
 
 function setup() {
-  const near=view($('life-near'),2.5), orbit=view($('life-orbit'),2.8);
+  const composite=data.target.shape==='composite_spacecraft';
+  const near=view($('life-near'),composite ? data.target.bounding_sphere_radius*1.9 : 2.5), orbit=view($('life-orbit'),2.8);
   const assembly = new THREE.Group(); near.scene.add(assembly); near.assembly=assembly;
   near.structure=new THREE.Group(); assembly.add(near.structure);
-  near.structure.add(representativeSpacecraft(data.target.radius,data.target.height || 2*data.target.half_length));
-  const envelope=new THREE.Mesh(new THREE.CylinderGeometry(data.target.radius,data.target.radius,data.target.height||2*data.target.half_length,48),new THREE.MeshBasicMaterial({color:'#a5b7ca',wireframe:true,transparent:true,opacity:.1}));envelope.rotation.x=Math.PI/2;near.structure.add(envelope);
+  if(composite)near.structure.add(compositeSpacecraft(data.target.geometry));
+  else if(data.target.shape==='cylinder')near.structure.add(representativeSpacecraft(data.target.radius,data.target.height || 2*data.target.half_length));
+  else throw new Error('Unsupported recorded target geometry.');
   for(const component of data.components.filter(x=>x.name!=='target')){
     const size=(data.body_radii_m?.[component.name] ?? data.body_radius_m)*2/Math.sqrt(3);
     const bus=new THREE.Mesh(new THREE.BoxGeometry(size,size,size),new THREE.MeshStandardMaterial({color:'#5bd4bd',metalness:.65,roughness:.32}));
@@ -37,7 +39,7 @@ function setup() {
     const anchor=new THREE.Mesh(new THREE.SphereGeometry(.012,8,6),new THREE.MeshBasicMaterial({color:'#f5b567'}));
     const contact=data.surface_contacts?.[component.name];
     const surface=new THREE.Vector3(...(contact?.surface_point_body_m ?? component.position_body_m));
-    if(!contact){const radial=Math.hypot(surface.x,surface.y);surface.x*=data.target.radius/radial;surface.y*=data.target.radius/radial;}
+    if(!contact){if(composite)throw new Error('Composite attachment replay requires actual recorded surface contacts.');const radial=Math.hypot(surface.x,surface.y);surface.x*=data.target.radius/radial;surface.y*=data.target.radius/radial;}
     anchor.position.copy(surface);near.structure.add(anchor);
     const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([surface,bus.position]),new THREE.LineBasicMaterial({color:'#f5b567'}));near.structure.add(line);
   }
@@ -82,13 +84,13 @@ try{
   if(data.schema!=='orbexa.lifecycle.studio.v1'||!data.time_s?.length)throw new Error('Unsupported lifecycle replay dataset.');
   $('life-provenance').textContent=data.synthetic?'Synthetic physics fixture · no ADTMPC approach inferred':data.provenance;
   const contactCount=Object.keys(data.surface_contacts ?? {}).length;
-  if(data.attachment_success){const summary=document.createElement('p');summary.className='sample-note';summary.textContent=`${contactCount} chasers attached at selected hull surface points · idealized chaser attachment interface · no target docking hardware`;document.querySelector('.section-title').after(summary);}
+  $('life-contact-count').textContent=data.attachment_success?`${contactCount} attachments · idealized contact`:'Attachment incomplete';
   const terminal=data.terminal_handoff?.terminal_execution;
-  if(terminal&&Number.isFinite(terminal.physical_duration_seconds)){const summary=document.createElement('p');summary.className='sample-note';summary.textContent=`Attachment follows ${terminal.physical_duration_seconds.toFixed(2)} s of recorded certified terminal tracking · ${terminal.holds} admitted fleet holds · original approach preserved`;document.querySelector('.section-title').after(summary);}
+  if(terminal&&Number.isFinite(terminal.physical_duration_seconds))$('life-provenance').textContent+=` · Terminal handoff: ${terminal.physical_duration_seconds.toFixed(2)} s / ${terminal.holds} admitted holds.`;
   $('life-scope').textContent=data.scope;
   $('life-raw').href=path;$('life-seek').max=data.time_s.length-1;
   setup();paint();
-  const actions=document.createElement('div');actions.className='replay-actions';const status=document.createElement('span');status.setAttribute('role','status');status.textContent='Export both camera views as a 20 second video.';const button=document.createElement('button');button.textContent='Export mission video';button.disabled=!SceneVideoExporter.supported();actions.append(status,button);document.querySelector('main').append(actions);
+  const actions=document.createElement('div');actions.className='replay-actions';const status=document.createElement('span');status.setAttribute('role','status');const button=document.createElement('button');button.textContent='Export mission video';button.disabled=!SceneVideoExporter.supported();actions.append(status,button);document.querySelector('main').append(actions);
   button.addEventListener('click',async()=>{if(exporting)return;stop();exporting=true;button.disabled=true;const canvas=document.createElement('canvas');canvas.width=1280;canvas.height=640;const ctx=canvas.getContext('2d');const adapter={renderer:{domElement:canvas},render(){ctx.fillStyle='#010306';ctx.fillRect(0,0,1280,640);views.forEach((v,i)=>{v.renderer.render(v.scene,v.camera);const source=v.renderer.domElement;const scale=Math.min(630/source.width,620/source.height);const w=source.width*scale,h=source.height*scale;ctx.drawImage(source,i*640+(640-w)/2,(640-h)/2,w,h);});}};try{const file=await new SceneVideoExporter().record(adapter,data,data.synthetic?'Synthetic post-capture physics fixture':'Attachment, detumbling and orbital delivery',{onFrame:i=>{index=i;paint();},onProgress:p=>status.textContent=`Exporting recorded lifecycle · ${p}%`});downloadVideo(file.blob,`ORBEX-A-physical-lifecycle.${file.extension}`);status.textContent='Mission video created. Download requested.';}catch(error){status.textContent=error.message;}finally{exporting=false;button.disabled=false;}});
   function animate(now){if(visible&&!exporting){if(playing){const time=startTime+(now-started)*.3;while(index<data.time_s.length-1&&data.elapsed_s[index+1]<=time)index++;paint();if(index===data.time_s.length-1)stop();}for(const v of views){v.controls.update();v.renderer.render(v.scene,v.camera);}}requestAnimationFrame(animate);}requestAnimationFrame(animate);
 }catch(error){$('life-error').hidden=false;$('life-error').textContent=error.message;for(const id of ['life-play','life-first','life-last','life-seek'])$(id).disabled=true;}

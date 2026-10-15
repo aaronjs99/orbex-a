@@ -227,6 +227,10 @@ class MissionRecorder:
             tr[key], td[key] = [], []
             for qi, center, bound in zip(self.q_history, self.diagnostics[key]['nominal_center'], self.diagnostics[key]['omega']):
                 radius = np.linalg.norm(bound) + safety.chaser_body_radius
+                if getattr(target, 'geometry', None) is not None:
+                    margin = safety.composite_margin(np.asarray(center)[:3], qi, radius)
+                    tr[key].append(margin); td[key].append(margin)
+                    continue
                 tr[key].append(float(np.linalg.norm(np.asarray(center)[:3]) - target.rendezvous_radius - radius))
                 radial, axial = target.cylinder_constraint(qi, tube_radius=radius).margins(np.asarray(center)[:3])
                 td[key].append(float(max(radial, axial)))

@@ -25,6 +25,7 @@ class StudioEntry:
     video_href: str | None = None
     evidence_href: str | None = None
     lifecycle_href: str | None = None
+    figures: Sequence[Mapping[str, str]] = ()
 
 
 class MissionStudio:
@@ -55,6 +56,8 @@ class MissionStudio:
         # Resolve and project all inputs before changing the export directory.
         projected = [(entry, StudioDataset(entry.result).to_dict(), self._link(entry.data_href),
                       self._link(entry.video_href), self._link(entry.evidence_href), self._link(entry.lifecycle_href)) for entry in entries]
+        figures = {entry.key: [dict(title=str(figure['title']),href=self._link(figure['href']))
+                              for figure in entry.figures] for entry in entries}
         lifecycle_outcomes = {}
         for entry, dataset, raw, _, _, lifecycle in projected:
             payload = json.loads((self.output_dir / 'studio' / raw).read_text(encoding='utf-8'))
@@ -98,6 +101,7 @@ class MissionStudio:
             catalog["entries"].append({"key": entry.key, "title": entry.title, "dataset": filename,
                 "data_href": raw, "video_href": video, "evidence_href": evidence, "lifecycle_href": lifecycle,
                 "physical_outcome": lifecycle_outcomes.get(entry.key),
+                "figures": figures[entry.key],
                 "raw_sha256": hashlib.sha256((studio / raw).read_bytes()).hexdigest()})
         for index, (title, source) in enumerate(documents):
             class DocumentRenderer(mistune.HTMLRenderer):

@@ -27,7 +27,7 @@ Python API also supports the SciPy and optional CasADi adapters.
 
 ```bash
 python -m pip install -e ".[certification,studio,video]"
-orbexa-run-mission --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --output-dir ../orbexa-output/physical-eight --steps 550
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --output-dir ../orbexa-output/envisat-eight
 ```
 
 `certification` supplies python-flint/Arb for continuous held-motion enclosures;
@@ -40,7 +40,11 @@ The physical runner reserves a new output directory, uses finite buses and a
 gravity-gradient target, saves the approach and continuous certificate journal,
 then records chaser attitude control, attachment, detumbling and orbital delivery.
 It preserves failed and completed prefixes. The update cap does not imply
-completion. Commands operate on a numerical representative spacecraft model.
+completion. Envisat has source dimensions and an explicitly inferred layout;
+the chasers are a declared vehicle concept. Supply `--spacecraft GEOMETRY.json`
+when the asset is not beside the scenario configuration. Use
+`--target-model cylinder-baseline` with `config/default.yaml` and the
+`physical-*.json` inputs for the earlier paper-scale profile.
 
 Use `--resume PATH_TO_UNFINISHED_APPROACH --steps ADDITIONAL_UPDATES` with the
 same configuration/prior/admission and a new output directory to numerically
@@ -51,7 +55,7 @@ for legacy source context and the distinction from safe backup control.
 To finish an already successful physical COM approach:
 
 ```bash
-orbexa-complete-mission PATH/mission_data.json --output-dir NEW_DIRECTORY --input-component-bound 100
+orbexa-complete-mission PATH/mission_data.json --output-dir NEW_DIRECTORY --input-component-bound 100000
 ```
 
 The bound is a declaration about all actual held approach inputs, not merely
@@ -59,6 +63,9 @@ saved means. It supports conservative translation fuel accounting; actual
 bounded chaser attitude replay is the default. Physical capture refuses missing
 attitude, unsafe bus geometry or insufficient gripper reach. See
 [the lifecycle](docs/mission-lifecycle.md) for independently injectable stage APIs.
+Use the bound recorded for the selected run: 100 for the cylinder baseline,
+100000 m/rad² for the declared Envisat study. Composite completion binds the
+installed vehicle properties recorded during approach.
 
 ## Run ADTMPC Missions
 

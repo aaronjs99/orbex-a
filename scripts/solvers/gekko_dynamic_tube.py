@@ -16,6 +16,7 @@ from orbexa.solvers.base import SolverResult
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
 from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.solver_options import gekko_memory_exponent
 
 
 class GekkoDynamicTube:
@@ -24,10 +25,12 @@ class GekkoDynamicTube:
     def __init__(self, problem, config):
         self.problem = problem
         self.config = config
+        self.max_memory = gekko_memory_exponent(config.get("max_memory", 4))
         self.spec = problem.extra_params["dynamic_tube"]
         self.model = GEKKO(remote=config.get("remote", False))
         self.residuals = []
         self.residual_descriptions = []
+        self.composite_geometry = None
         self.constraint_context = 'formulation'
         try:
             self._build()
@@ -145,6 +148,20 @@ class GekkoDynamicTube:
         phi0 = self._array("phi_initial", (3,), True)
         omega0 = self._array("omega_initial", (3,), True)
         alpha0 = self._array("alpha_initial", (3,), True)
+        initial_state = np.asarray(p.initial_state, dtype=float)
+        if initial_state.shape != (6,) or not np.all(np.isfinite(initial_state)):
+            raise ValueError("Dynamic tube initial state must contain six finite values")
+        initial_envelope = np.r_[omega0, phi0 + lam * omega0]
+        if not np.all(np.isfinite(initial_envelope)):
+            raise ValueError("Dynamic tube initial state envelope must be finite")
+        # Initial values become parameters below. Validate their complete box
+        # explicitly so parameterization cannot bypass a declared state bound.
+        for i, bound in enumerate((p.state_bounds or [])[:6]):
+            lower, upper = self._bound(bound, "lower"), self._bound(bound, "upper")
+            if np.isnan(lower) or np.isnan(upper) or lower > upper:
+                raise ValueError("Dynamic tube state bounds must be ordered and not NaN")
+            if initial_state[i] - initial_envelope[i] < lower or initial_state[i] + initial_envelope[i] > upper:
+                raise ValueError("Initial dynamic-tube state box violates a declared state bound")
         da = self._array("delta_A", (count-1, 3, 6), True)
         dd = self._array("delta_d", (count-1, 3), True)
         eta = self._array("eta", (3,), True)
@@ -224,10 +241,16 @@ class GekkoDynamicTube:
                 omega_peak_guess[k] = np.maximum(omega_guess[k], omega_guess[k+1])
                 self.seed_diagnostics.append(dict(stage=k, initialization='finite_uncoupled_initial_iterate',
                                                   reason=str(error)))
-        self.states = [[m.Var(value=float(xguess[i,k])) for i in range(6)] for k in range(count)]
+        # These values are prescribed data, not optimization directions. In
+        # particular, Omega0==0 together with its nonnegative variable bound
+        # creates a redundant active constraint and singular norm curvature.
+        self.states = [[m.Param(value=float(initial_state[i])) if k == 0 else
+                        m.Var(value=float(xguess[i,k])) for i in range(6)] for k in range(count)]
         self.inputs = [[m.Var(value=float(uguess[i,k])) for i in range(3)] for k in range(count-1)]
-        self.phi = [[m.Var(value=float(phi_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
-        self.omega = [[m.Var(value=float(omega_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
+        self.phi = [[m.Param(value=float(phi0[i])) if k == 0 else
+                     m.Var(value=float(phi_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
+        self.omega = [[m.Param(value=float(omega0[i])) if k == 0 else
+                       m.Var(value=float(omega_guess[k,i]), lb=0) for i in range(3)] for k in range(count)]
         # A prescribed gain is a parameter. Equal variable bounds plus two
         # zero-rate inequalities create redundant active NLP constraints.
         self.alpha = [[m.Param(value=float(alpha0[i])) if fixed_bandwidth else
@@ -241,13 +264,6 @@ class GekkoDynamicTube:
             "base_forcing", "hold_forcing", "velocity_peak", "error_peak",
             "velocity_derivative_bound", "error_derivative_bound", "sliding_derivative_bound")}
         self.phi_peaks, self.omega_peaks = [], []
-        self.constraint_context = 'initial_state'
-        for i in range(6):
-            self._eq(self.states[0][i], float(p.initial_state[i]))
-        self.constraint_context = 'initial_tube'
-        for i in range(3):
-            self._eq(self.phi[0][i], float(phi0[i]))
-            self._eq(self.omega[0][i], float(omega0[i]))
         for k in range(count-1):
             self.constraint_context = f'nominal_dynamics[{k}]'
             x, u, alpha = self.states[k], self.inputs[k], self.alpha[k]
@@ -338,7 +354,7 @@ class GekkoDynamicTube:
         # These are hard tube/geometry bounds, so keep them unrelaxed.
         m.solver_options = ["bound_relax_factor 0"]
         m.options.MAX_ITER = self.config.get("max_iter", 3000)
-        m.options.MAX_MEMORY = self.config.get("max_memory", 512)
+        m.options.MAX_MEMORY = self.max_memory
         # Keep the optimizer's feasibility tolerance below the existing 1e-8
         # runtime comparison replay check. This is numerical consistency, not
         # an integration or floating-point enclosure certificate.
@@ -368,6 +384,9 @@ class GekkoDynamicTube:
             raise ValueError("target rotation_matrices must have shape (T,3,3)")
         if not np.allclose(rotations.transpose(0,2,1) @ rotations,np.eye(3),atol=1e-7) or not np.allclose(np.linalg.det(rotations),1.,atol=1e-7):
             raise ValueError("Target rotation matrices must be proper orthogonal matrices")
+        if target.get("shape") == "composite":
+            from orbexa.solvers.composite_geometry import GekkoCompositeGeometry
+            self.composite_geometry = GekkoCompositeGeometry(target, rotations, center)
         pairs = p.extra_params.get("pairwise_constraints") or target.get("pairwise_constraints") or []
         pair_data = []
         for pair in pairs:
@@ -392,7 +411,10 @@ class GekkoDynamicTube:
                     self._ge(upper,x[i]+envelope[i])
             radius_tube = self._norm(omega)
             pos = [x[i]-float(center[i]) for i in range(3)]
-            if target.get("operation") == "rendezvous":
+            if self.composite_geometry is not None:
+                self.composite_geometry.add_node(self, k, pos, omega, p.reference_states[:3,k])
+                self.constraint_context = f'geometry_and_state_bounds[{k}]'
+            elif target.get("operation") == "rendezvous":
                 radius = float(target.get("rendezvous_radius",target.get("target_radius",0.)))
                 self._ge(sum(v*v for v in pos),(radius+radius_tube)**2)
             elif target.get("operation") == "docking" and target.get("shape") == "cylinder":
@@ -472,6 +494,11 @@ class GekkoDynamicTube:
             residual_details = sorted((dict(index=i,context=self.residual_descriptions[i],
                 equality=equality,residual=value,violation=abs(value) if equality else max(0.,-value))
                 for i,(value,equality) in enumerate(residuals)), key=lambda x:x['violation'],reverse=True)[:8]
+            geometry_info = None
+            if self.composite_geometry is not None:
+                geometry_margins = self.composite_geometry.numerical_margins(states, tube["omega"])
+                geometry_info = self.composite_geometry.summary(geometry_margins)
+                violation = max(violation, -geometry_info["minimum_support_margin_m"])
             lower_alpha, upper_alpha = map(float,self.spec["alpha_bounds"])
             violation = max(violation,float(np.max(-tube["phi"])),float(np.max(-tube["omega"])),
                             float(np.max(lower_alpha-tube["alpha"])),
@@ -490,6 +517,7 @@ class GekkoDynamicTube:
                                              "max_constraint_violation":violation,
                                              "largest_constraint_residuals":residual_details,
                                              "bandwidth_mode":self.bandwidth_mode,
+                                             "composite_geometry":geometry_info,
                                              "residual_tolerance":tolerance,
                                              "comparison_replay_tolerance":1e-8,
                                              "rtol":float(self.model.options.RTOL),

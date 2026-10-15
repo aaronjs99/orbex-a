@@ -14,6 +14,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from orbexa.core.attitude import finite_vector
+from orbexa.core.mounting import mounting_frame
 from orbexa.simulation.assembly import AttachedAssembly, AssemblyState, MassElement, finite_scalar, physical_inertia, positive
 from orbexa.utils.anomaly import orbital_radius_terms
 
@@ -239,12 +240,26 @@ class CaptureModel:
             if not np.isclose(truth.anomaly, expected_anomaly, atol=1e-12, rtol=0):
                 return refused("capture_truth_anomaly_does_not_match_approach")
             target_rotation = Rotation.from_quat(truth.quaternion_body_to_eci).as_matrix()
-            radius, half_length = float(approach.target["radius"]), float(approach.target["half_length"])
-            diagonal = np.diag(self.target.inertia_kg_m2)
-            if (diagonal[2] > self.target.mass_kg * radius**2 + 1e-10
-                    or max(diagonal[:2]) > self.target.mass_kg * (radius**2 + half_length**2) + 1e-10
-                    or np.trace(self.target.inertia_kg_m2) > 2 * self.target.mass_kg * (radius**2 + half_length**2) + 1e-10):
-                return refused("target_mass_inertia_inconsistent_with_declared_cylinder_envelope")
+            composite = None
+            if approach.target.get('shape') == 'composite_spacecraft':
+                from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+                composite = SpacecraftGeometry.from_dict(approach.target['geometry'])
+                if composite.fingerprint != approach.target.get('geometry_fingerprint'):
+                    return refused('target_geometry_fingerprint_mismatch')
+                if not np.isclose(self.target.mass_kg,approach.target['mass_kg'],rtol=0,atol=1e-9):
+                    return refused('capture_mass_conflicts_with_physical_target')
+                if not np.allclose(self.target.inertia_kg_m2,approach.target['inertia_kg_m2'],rtol=1e-10,atol=1e-10):
+                    return refused('capture_inertia_conflicts_with_physical_target')
+                assumptions.append('Composite contact uses the nominal declared structural patch. Geometry uncertainty reserves free-flight clearance; it does not locate the actual hull, certify patch strength or guarantee contact on an unknown surface.')
+            elif approach.target.get('shape') == 'cylinder':
+                radius, half_length = float(approach.target['radius']), float(approach.target['half_length'])
+                diagonal = np.diag(self.target.inertia_kg_m2)
+                if (diagonal[2] > self.target.mass_kg * radius**2 + 1e-10
+                        or max(diagonal[:2]) > self.target.mass_kg * (radius**2 + half_length**2) + 1e-10
+                        or np.trace(self.target.inertia_kg_m2) > 2 * self.target.mass_kg * (radius**2 + half_length**2) + 1e-10):
+                    return refused('target_mass_inertia_inconsistent_with_declared_cylinder_envelope')
+            else:
+                return refused('unsupported_target_geometry_at_capture')
             lvlh_rotation = truth.rotation_lvlh_to_eci
             body_to_lvlh = lvlh_rotation.T @ target_rotation
             target_spin_eci = target_rotation @ truth.angular_velocity_body_rad_s
@@ -276,7 +291,15 @@ class CaptureModel:
                 normal /= np.linalg.norm(normal)
                 standoff = positive(assignment["docking_standoff"], "Recorded standoff", allow_zero=True)
                 surface = point - standoff * normal
-                if (assignment.get("docking_surface") != "cylinder_side"
+                patch = None
+                if composite is not None:
+                    patch = composite.attachment_patch(assignment['attachment_patch_id'])
+                    if (assignment.get('docking_surface') != 'attachment_patch'
+                            or assignment.get('attachment_component_id') != patch.component_id
+                            or not patch.contains(surface)
+                            or not np.allclose(normal,patch.normal_body,atol=1e-10,rtol=0)):
+                        return refused(f'{key}: anchor_is_not_on_declared_structural_patch')
+                elif (assignment.get("docking_surface") != "cylinder_side"
                         or abs(np.linalg.norm(surface[:2]) - float(approach.target["radius"])) > 1e-8
                         or abs(surface[2]) > float(approach.target["half_length"]) + 1e-10
                         or not np.allclose(normal, np.r_[surface[:2] / np.linalg.norm(surface[:2]), 0.], atol=1e-9, rtol=0)):
@@ -302,9 +325,7 @@ class CaptureModel:
                 nominal_velocity = truth.anomaly_rate_rad_s * (nominal[3:] + np.cross([0, 0, 1.], nominal[:3])) - np.cross(spin_lvlh, nominal[:3])
                 speed_bound = float(np.linalg.norm(nominal_velocity) + truth.anomaly_rate_rad_s * velocity_radius
                     + np.linalg.norm(truth.anomaly_rate_rad_s * np.array([0, 0, 1.]) - spin_lvlh) * position_radius)
-                tangent = np.cross([0., 0, 1], normal)
-                tangent /= np.linalg.norm(tangent)
-                mount = np.column_stack((normal, tangent, np.cross(normal, tangent)))
+                mount = mounting_frame(normal)
                 expected = target_rotation @ mount
                 if chaser_attitudes is None:
                     chaser_rotation, spin_eci = expected, target_spin_eci
@@ -331,6 +352,31 @@ class CaptureModel:
                 # the contained actual endpoint lies on an outward-facing edge.
                 bus_clearance = float(np.dot(nominal_com_body - surface, normal)
                                       - properties.body_radius_m - position_radius)
+                patch_margin = None
+                if composite is not None:
+                    actual_bus_clearance = min(actual_bus_clearance,
+                        composite.signed_distance(actual_com_body)-properties.body_radius_m)
+                    bus_clearance = min(bus_clearance,composite.signed_distance(nominal_com_body)
+                        -properties.body_radius_m-position_radius)
+                    # A successful COM gate also reserves patch edge margin
+                    # for every possible articulating-tip endpoint.
+                    delta = nominal_body+tip_offset-np.asarray(patch.point_body_m)
+                    patch_margin = min(patch.half_extents_m[0]-patch.margin_m
+                        -abs(delta@patch.tangent_u_body)-position_radius,
+                        patch.half_extents_m[1]-patch.margin_m
+                        -abs(delta@patch.tangent_v_body)-position_radius)
+                    # The straight segment must remain separated from every
+                    # other occupied appendage. Distance to a convex solid
+                    # along this short segment is bounded by its midpoint
+                    # distance minus half length (1-Lipschitz).
+                    tip_start = nominal_body+tip_offset
+                    nominal_segment_length = float(np.linalg.norm(tip_start-surface))
+                    for component in composite.components:
+                        if component.id == patch.component_id:
+                            continue
+                        midpoint = (tip_start+surface)/2
+                        if component.signed_distance(midpoint)-nominal_segment_length/2-position_radius <= 0:
+                            return refused(f'{key}: contact_segment_not_clear_of_{component.id}')
                 tube_membership = float(min(np.min(omega - np.abs(state[:3] - nominal[:3])),
                     np.min(phi - np.abs(state[3:] - nominal[3:] + current_gain * (state[:3] - nominal[:3])))))
                 tip_gap_lower = float(np.dot(nominal_body + tip_offset - surface, normal) - position_radius)
@@ -357,7 +403,12 @@ class CaptureModel:
                     and spin_error <= self.options.max_spin_error_rad_s
                     and tube_membership >= -1e-10 and tip_gap_lower >= 0
                     and actual_bus_clearance >= self.options.minimum_bus_clearance_m
-                    and bus_clearance >= self.options.minimum_bus_clearance_m)
+                    and bus_clearance >= self.options.minimum_bus_clearance_m
+                    and (patch_margin is None or patch_margin >= 0))
+                if composite is not None:
+                    gate.update(attachment_patch_id=patch.id,geometry_fingerprint=composite.fingerprint,
+                        whole_tube_patch_edge_margin_m=float(patch_margin),
+                        whole_tube_all_component_clearance_lower_bound_m=bus_clearance)
                 gates[key] = gate
                 if not gate["passed"]:
                     return refused(f"{key}: capture_envelope_or_pose_gate_failed")

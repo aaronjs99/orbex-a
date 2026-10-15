@@ -22,11 +22,10 @@ import numpy as np
 from orbexa.control.physical_terminal import PhysicalTerminalBoundsBuilder, PhysicalTerminalErrorBounds
 from orbexa.control.reachability import (
     HeldInputRequest, IntervalBox, OrbitalModelBounds, ReachabilityConfig,
-    RotatingCylinderBounds, _exact, _float_outward,
+    _exact, _float_outward,
 )
-from orbexa.core.rigid_body_target import RigidBodyCylinderTarget
 from orbexa.simulation.capture import CaptureModel, CaptureTruth, TargetPhysicalProperties
-from orbexa.simulation.mission_checkpoint import digest, plain, _target_signature
+from orbexa.simulation.mission_checkpoint import digest, plain, _target_signature, physical_target_from_snapshot
 from orbexa.simulation.mission_result import ADTMPCMissionResult
 from orbexa.simulation.physical_terminal_execution import (
     EXECUTION_METHOD, PhysicalTerminalRunner, TerminalObservation,
@@ -56,19 +55,16 @@ def _builder(value):
     for name in ("entry_spin", "input_limits"):
         arguments[name] = _box(arguments[name])
     arguments["errors"] = PhysicalTerminalErrorBounds(**arguments["errors"])
+    if "target_geometry" in arguments:
+        from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+        from orbexa.control.composite_terminal import CompositePhysicalTerminalBoundsBuilder
+        arguments["target_geometry"] = SpacecraftGeometry.from_dict(arguments["target_geometry"])
+        return CompositePhysicalTerminalBoundsBuilder(**arguments)
     return PhysicalTerminalBoundsBuilder(**arguments)
 
 
 def _target(spec):
-    clock, integration = spec["clock_parameters"], spec["integration"]
-    return RigidBodyCylinderTarget(radius=spec["radius"], half_length=spec["half_length"],
-        initial_quaternion=spec["initial_quaternion"],
-        initial_body_angular_velocity=spec["initial_body_angular_velocity_rad_s"],
-        inertia=spec["inertia_kg_m2"], eccentricity=clock["eccentricity"], alpha=clock["alpha"],
-        mu=clock["mu"], semi_major_axis=clock["semi_major_axis"], anomaly_domain=spec["anomaly_domain"],
-        tolerance=spec["tolerance"], docking_standoff=spec["docking_standoff"],
-        gravity_gradient=spec["gravity_gradient"], integration_rtol=integration["rtol"],
-        integration_atol=integration["atol"], integration_max_step=integration["max_anomaly_step"])
+    return physical_target_from_snapshot(spec)
 
 
 def _readonly(values):
@@ -284,13 +280,7 @@ class PhysicalTerminalHandoff:
                      and hold.get("numerical_endpoint_contained") == [True] * count,
                      f"hold {index} proof fingerprint or endpoint flags differ")
             first = builders[0]
-            geometry = RotatingCylinderBounds(radius=first.target_radius * (1 + first.target_tolerance),
-                half_length=first.target_half_length * (1 + first.target_tolerance),
-                orientation_matrix_at_start=target.rotation_matrix_at(float(q)),
-                orientation_matrix_error=runner.orientation_matrix_error,
-                angular_rate_per_anomaly=max(controller.result.derived["rotation_derivative_operator_bounds"][0]
-                    for controller in runner.fleet.controllers),
-                scope="Derived global physical terminal rotation-rate bound and explicitly declared matrix evaluation error")
+            geometry = runner.geometry_bounds_at(q)
             collision = runner.guard.check(flows, tuple(builder.body_radius for builder in builders), target=geometry,
                 clearance=first.clearance + max(builder.errors.target_solid_position_error_radius for builder in builders),
                 minimum_pair_center_distance=runner.minimum_pair_center_distance)

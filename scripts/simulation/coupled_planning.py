@@ -109,10 +109,14 @@ class CoupledMissionPlanner:
                 target['rotation_matrices'] = [rotation_at(q + k * cfg.anom_step).tolist() for k in range(count)]
             else:
                 target['orientations'] = [scenario.target.orientation_at(q + k * cfg.anom_step).tolist() for k in range(count)]
-            target.update(robust_side_corridor=phase.operation == 'docking',
+            target.update(robust_side_corridor=phase.operation == 'docking' and target.get('shape') == 'cylinder',
                 docking_normal_body=chaser.docking_normal_body,
                 safety_reserve=cfg.mission.target_barrier_clearance + scenario.safety.chaser_body_radius)
-            if phase.operation == 'rendezvous':
+            if target.get('shape') == 'composite':
+                target.update(attachment_patch_id=chaser.attachment_patch_id,
+                    attachment_component_id=chaser.attachment_component_id,
+                    robust_attachment_corridor=phase.operation == 'docking')
+            if phase.operation == 'rendezvous' and target.get('shape') != 'composite':
                 target['rendezvous_radius'] += scenario.safety.chaser_body_radius
             # Arm an explicit terminal set only near the final approach.
             # Completion always checks that set, including the current tube.

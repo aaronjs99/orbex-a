@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orbexa"
-version = "2.1.0"
+version = "2.2.0"
 description = "Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC"
 authors = [
   { name = "Aaron John Sabu", email = "aaronjs@g.ucla.edu" },

@@ -30,6 +30,8 @@ class ChaserConfig:
     docking_surface: str = "cylinder_side"
     docking_standoff: float = 0.0
     docking_candidate_index: int = 0
+    attachment_patch_id: str | None = None
+    attachment_component_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.chaser_id, str) or not self.chaser_id:
@@ -43,9 +45,15 @@ class ChaserConfig:
             raise ValueError("docking_azimuth must be finite")
         if not np.isfinite(self.docking_standoff) or self.docking_standoff < 0:
             raise ValueError("docking_standoff must be finite and nonnegative")
+        for name in ("attachment_patch_id", "attachment_component_id"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError(name + " must be a nonempty explicit identifier")
+        if (self.attachment_patch_id is None) != (self.attachment_component_id is None):
+            raise ValueError("Attachment assignments require both patch and component IDs")
 
     def assignment_metadata(self) -> Dict[str, Any]:
-        return {
+        result = {
             "chaser_id": self.chaser_id,
             "initial_state": self.initial_state.tolist(),
             "docking_point_body": self.docking_point_body.tolist(),
@@ -55,6 +63,10 @@ class ChaserConfig:
             "docking_standoff": float(self.docking_standoff),
             "docking_candidate_index": int(self.docking_candidate_index),
         }
+        if self.attachment_patch_id is not None:
+            result.update(attachment_patch_id=self.attachment_patch_id,
+                          attachment_component_id=self.attachment_component_id)
+        return result
 
 
 @dataclass(frozen=True)

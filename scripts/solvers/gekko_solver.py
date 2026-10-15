@@ -23,6 +23,7 @@ from gekko import GEKKO
 from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
 from orbexa.utils.anomaly import dt_dq
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.solver_options import gekko_memory_exponent
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class GekkoSolver(SolverBase):
     Configuration options:
         remote (bool): Use remote GEKKO server. Default: False
         max_iter (int): Maximum solver iterations. Default: 3000
-        max_memory (int): Maximum memory in MB. Default: 512
+        max_memory (int): Base-ten sparsity-storage exponent (2..10). Default: 4
         solver_type (int): GEKKO solver type (3=IPOPT). Default: 3
         disp (bool): Display solver output. Default: False
     """
@@ -43,7 +44,7 @@ class GekkoSolver(SolverBase):
         super().__init__(config)
         self.remote = self.config.get("remote", False)
         self.max_iter = self.config.get("max_iter", 3000)
-        self.max_memory = self.config.get("max_memory", 512)
+        self.max_memory = gekko_memory_exponent(self.config.get("max_memory", 4))
         self.solver_type = self.config.get("solver_type", 3)
         self.disp = self.config.get("disp", False)
         self._model = None

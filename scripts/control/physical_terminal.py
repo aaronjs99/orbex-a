@@ -409,6 +409,38 @@ class PhysicalTerminalBoundsBuilder:
             finally:
                 flint.ctx.cap = old_cap
 
+    def _geometry_distance(self, ar, point):
+        """Default cylinder geometry; explicit composite builders override it.
+
+        Keeping geometry behind this hook leaves the previously qualified
+        cylinder assumptions, bound arithmetic and serialized results intact.
+        """
+        radial_squared = point[0] ** 2 + point[1] ** 2
+        radial = ar.box((ar.scalar(radial_squared).sqrt(),)).lower[0]
+        distance = radial - self.target_radius * (1 + self.target_tolerance) - self.errors.target_solid_position_error_radius
+        if distance < 0:
+            raise ValueError("The selected port does not have a positive radial distance to the inflated target solid")
+        return distance, {}
+
+    def _geometry_proof_reference(self):
+        return PHYSICAL_TERMINAL_METHOD
+
+    def _spin_bound(self, ar, entry_norm, duration, quadratic, constant, jmin):
+        """Original scalar first-exit comparison, retained for cylinder records."""
+        c = entry_norm + constant * duration
+        discriminant = 1 - 4 * quadratic * duration * c
+        if discriminant <= 0:
+            raise ValueError("Spin first-exit comparison has no finite certified branch; shorten the window")
+        if quadratic:
+            root = 2 * ar.scalar(c) / (1 + ar.scalar(discriminant).sqrt())
+            spin = _upper(ar, root) * Fraction(1000000000001, 1000000000000) + Fraction(1, 10 ** 30)
+        else:
+            spin = c + Fraction(1, 10 ** 30)
+        margin = spin - entry_norm - (quadratic * spin * spin + constant) * duration
+        if margin <= 0:
+            raise ValueError("The exact spin self-inclusion inequality was not strict")
+        return spin, discriminant, margin, {}
+
     def _derive(self, flint, ar, assumptions):
         q_error = self.errors.anomaly_evaluation_error_abs
         domain = (self.start_anomaly - q_error, self.end_anomaly + q_error)
@@ -427,20 +459,8 @@ class PhysicalTerminalBoundsBuilder:
         torque_factor = 3 * self.target_orbit.mu / radius.lower[0] ** 3 if self.gravity_gradient else Fraction(0)
         quadratic = spread / jmin
         constant = torque_factor * spread / (2 * jmin)
-        c = entry_norm + constant * duration
-        discriminant = 1 - 4 * quadratic * duration * c
-        if discriminant <= 0:
-            raise ValueError("Spin first-exit comparison has no finite certified branch; shorten the window")
-        if quadratic:
-            # Stable smaller root of a*T*W^2-W+c=0. An exact rational check
-            # below, not its approximate evaluation, establishes self-inclusion.
-            root = 2 * ar.scalar(c) / (1 + ar.scalar(discriminant).sqrt())
-            spin = _upper(ar, root) * Fraction(1000000000001, 1000000000000) + Fraction(1, 10 ** 30)
-        else:
-            spin = c + Fraction(1, 10 ** 30)
-        spin_margin = spin - entry_norm - (quadratic * spin * spin + constant) * duration
-        if spin_margin <= 0:
-            raise ValueError("The exact spin self-inclusion inequality was not strict")
+        spin, discriminant, spin_margin, spin_evidence = self._spin_bound(
+            ar, entry_norm, duration, quadratic, constant, jmin)
         # Center J by (Jmax+Jmin)/2 I to remove its isotropic component.
         spin_dot = spread * (spin * spin + torque_factor) / (2 * jmin)
         radius_log_prime = _abs(ar, target["radius_log_derivative"][0])
@@ -486,11 +506,7 @@ class PhysicalTerminalBoundsBuilder:
             _dot(matrix_error, _add(reference_state, error_state, self.errors.sensing_error_abs)),
             _dot(matrix_abs, reference_error))
         actuator = _add(self.errors.actuator_error_abs, evaluation_input_error)
-        radial_squared = point[0] ** 2 + point[1] ** 2
-        radial = ar.box((ar.scalar(radial_squared).sqrt(),)).lower[0]
-        target_distance = radial - self.target_radius * (1 + self.target_tolerance) - self.errors.target_solid_position_error_radius
-        if target_distance < 0:
-            raise ValueError("The selected port does not have a positive radial distance to the inflated target solid")
+        target_distance, geometry_evidence = self._geometry_distance(ar, point)
         peer_radius_squared = (sum(v * v for v in self.omega) if self.peer_position_radius_squared_upper is None
                                else self.peer_position_radius_squared_upper)
         peer_geometry = []
@@ -500,7 +516,7 @@ class PhysicalTerminalBoundsBuilder:
             distance = ar.box((ar.scalar(sum((a - b) ** 2 for a, b in zip(point, peer))).sqrt(),)).lower[0]
             peer_geometry.append((distance, peer_radius_squared, self.body_radius))
         scope = BoundScope(self.start_anomaly, self.end_anomaly,
-            proof_kind="validated-interval-global", proof_reference=PHYSICAL_TERMINAL_METHOD,
+            proof_kind="validated-interval-global", proof_reference=self._geometry_proof_reference(),
             assumptions=("Arb interval jets enclose the analytical orbit over the complete finite anomaly domain",
                          "The entry spin box encloses the true target spin; fixed physical inertia and central gravity-gradient torque only",
                          "All assigned body ports share the actual target rigid rotation and peers obey the declared terminal bounds",
@@ -529,6 +545,8 @@ class PhysicalTerminalBoundsBuilder:
             peer_position_radius_squared_upper=peer_radius_squared,
             precision_bits=int(self.precision_bits), backend_version=getattr(flint, "__version__", "unknown"),
             sampled_maxima_used=False)
+        derived.update(geometry_evidence)
+        derived.update(spin_evidence)
         attempts = []
         last = None
         for bandwidth in self.bandwidth_candidates:
@@ -639,6 +657,11 @@ class PhysicalTerminalFleet:
                   "body_radius", "clearance", "gravity_gradient")
         if any(getattr(item, name) != getattr(first, name) for item in builders for name in shared):
             raise ValueError("Joint terminal builders need a common physical target, scope and peer geometry context")
+        geometries = tuple(getattr(item, "target_geometry", None) for item in builders)
+        if any(value is not None for value in geometries):
+            if any(value is None for value in geometries) or any(
+                    value.fingerprint != geometries[0].fingerprint for value in geometries):
+                raise ValueError("Every terminal member must share the same explicit composite geometry; mixed geometry refuses")
         for index, item in enumerate(builders):
             peer_limit = (sum(v * v for v in item.omega) if item.peer_position_radius_squared_upper is None
                           else item.peer_position_radius_squared_upper)

@@ -53,6 +53,8 @@ class MissionSafety:
         self, state: np.ndarray, anom: float, phase: MissionPhase
     ) -> float:
         position = np.asarray(state[:3], dtype=float)
+        if getattr(self.target, "geometry", None) is not None:
+            return self.composite_margin(position, anom, self.chaser_body_radius)
         if phase.operation == "docking":
             cylinder = self.target.cylinder_constraint(anom, tube_radius=self.chaser_body_radius)
             radial, axial = cylinder.margins(position)
@@ -62,6 +64,20 @@ class MissionSafety:
             target_radius=self.target.rendezvous_radius,
             tube_radius=self.chaser_body_radius,
         )
+
+    def composite_margin(self, position, anomaly, expansion=0.):
+        """Numerical union distance in the declared moving target frame."""
+        collision = self.target.collision_params("docking", anomaly)
+        if collision.get("shape") != "composite":
+            raise ValueError("Geometry-bearing targets must declare composite collision data")
+        center = np.asarray(collision.get("center"), dtype=float)
+        point = np.asarray(position, dtype=float)
+        if center.shape != (3,) or point.shape != (3,) or not np.all(np.isfinite(center)) or not np.all(np.isfinite(point)):
+            raise ValueError("Composite margin needs a finite point and target center")
+        if not np.isfinite(expansion) or expansion < 0:
+            raise ValueError("Composite margin expansion must be finite and nonnegative")
+        body = self.target.rotation_matrix_at(anomaly).T @ (point - center)
+        return float(self.target.geometry.signed_distance(body) - expansion)
 
 
     def safety_margins(
@@ -100,6 +116,13 @@ class MissionSafety:
                 tube_radius = tube_radius_history[min(idx, len(tube_radius_history) - 1)]
                 phase = sample_phase_history[min(idx, len(sample_phase_history) - 1)]
                 position = np.asarray(state[:3], dtype=float)
+                if getattr(self.target, "geometry", None) is not None:
+                    physical = self.composite_margin(position, anom, self.chaser_body_radius)
+                    tightened = self.composite_margin(position, anom, tube_radius+self.chaser_body_radius)
+                    physical_rv_values.append(physical); physical_dock_values.append(physical)
+                    tightened_rv_values.append(tightened); tightened_dock_values.append(tightened)
+                    active_values.append(physical)
+                    continue
                 physical_rv_values.append(
                     rendezvous_margin(
                         position,

@@ -75,7 +75,7 @@ def _policy_signature(metadata):
         names = ("kind", "options", "count", "initial_anomaly", "launch_radius", "launch_azimuth",
                  "initial_pitch", "initial_spacing", "final_spacing", "arc_span", "assignment_strategy")
         result["deployment"] = {name: deployment[name] for name in names if name in deployment}
-    for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m"):
+    for name in ("tracked_reference_point", "belief_update_mode", "chaser_body_bounding_radius_m", "vehicle_design"):
         if name in metadata:
             result[name] = metadata[name]
     return result
@@ -85,8 +85,34 @@ def _target_signature(metadata):
     names = ("shape", "radius", "height", "half_length", "tolerance", "docking_standoff",
              "initial_orientation", "angular_velocity", "attitude_model", "motion_model",
              "gravity_gradient", "initial_quaternion", "initial_body_angular_velocity_rad_s",
-             "inertia_kg_m2", "clock_parameters", "anomaly_domain", "integration")
+             "inertia_kg_m2", "clock_parameters", "anomaly_domain", "integration",
+             "geometry", "geometry_fingerprint", "geometry_model", "mass_kg")
     return {name: metadata[name] for name in names if name in metadata}
+
+
+def physical_target_from_snapshot(snapshot):
+    """Reconstruct an explicitly identified physical shape without substitution.
+
+    Composite geometry is loaded by its own validated target adapter.  The
+    cylinder branch is retained solely for previously declared cylinder runs.
+    Missing or unsupported shapes never select that branch implicitly.
+    """
+    shape = snapshot.get("shape")
+    if shape == "composite_spacecraft":
+        from orbexa.core.spacecraft_target import RigidBodySpacecraftTarget
+        return RigidBodySpacecraftTarget.from_dict(snapshot)
+    if shape != "cylinder":
+        raise ValueError("Unsupported physical target snapshot geometry; no cylinder fallback is available")
+    from orbexa.core.rigid_body_target import RigidBodyCylinderTarget
+    clock, integration = snapshot["clock_parameters"], snapshot["integration"]
+    return RigidBodyCylinderTarget(radius=snapshot["radius"], half_length=snapshot["half_length"],
+        initial_quaternion=snapshot["initial_quaternion"],
+        initial_body_angular_velocity=snapshot["initial_body_angular_velocity_rad_s"],
+        inertia=snapshot["inertia_kg_m2"], eccentricity=clock["eccentricity"], alpha=clock["alpha"],
+        mu=clock["mu"], semi_major_axis=clock["semi_major_axis"], anomaly_domain=snapshot["anomaly_domain"],
+        tolerance=snapshot["tolerance"], docking_standoff=snapshot["docking_standoff"],
+        gravity_gradient=snapshot["gravity_gradient"], integration_rtol=integration["rtol"],
+        integration_atol=integration["atol"], integration_max_step=integration["max_anomaly_step"])
 
 
 @dataclass(frozen=True)
@@ -148,6 +174,11 @@ class MissionCheckpoint:
         if self.identity != digest(payload):
             raise ValueError("Checkpoint identity does not match its source and context")
         record, metadata = self.source_record, self.source_record["metadata"]
+        if record["target"].get("shape") == "composite_spacecraft":
+            from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+            geometry = SpacecraftGeometry.from_dict(record["target"]["geometry"])
+            if record["target"].get("geometry_fingerprint") != geometry.fingerprint:
+                raise ValueError("Composite checkpoint target geometry identity is missing or inconsistent")
         if (metadata.get("model_version") != PHYSICAL_MODEL_ID
                 or metadata.get("controller") != COUPLED_CONTROLLER_ID
                 or metadata.get("tube_model_version") != TUBE_MODEL_VERSION):

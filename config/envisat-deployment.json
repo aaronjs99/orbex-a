@@ -1,0 +1,18 @@
+{
+  "release_direction_body": [0.0, 0.0, 1.0],
+  "release_center_body_m": [-1.105, 0.009, 4.5],
+  "release_clearance_m": 1.5,
+  "separation_buffer_m": 0.2,
+  "staging_offset_m": 1.5,
+  "route_buffer_m": 0.05,
+  "reference_tube_radius_m": 0.01,
+  "reference_speed_m_per_rad": 400.0,
+  "reference_acceleration_m_per_rad2": 80000.0,
+  "minimum_segment_duration_rad": 0.005,
+  "staging_position_tolerance_m": 0.15,
+  "staging_velocity_tolerance_m_per_rad": 0.2,
+  "attachment_patch_ids": [
+    "bus_upper_01", "bus_upper_02", "bus_upper_03", "bus_upper_04",
+    "bus_upper_05", "bus_upper_06", "bus_upper_07", "bus_upper_08"
+  ]
+}

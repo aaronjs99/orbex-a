@@ -357,11 +357,8 @@ class ChaserAttitudeTracker:
             if normal_norm == 0:
                 raise ValueError(f"{key}: docking normal cannot be zero")
             normal /= normal_norm
-            tangent = np.cross([0., 0., 1.], normal)
-            if np.linalg.norm(tangent) <= 1e-10:
-                raise ValueError(f"{key}: mounting frame requires a normal transverse to target body z")
-            tangent /= np.linalg.norm(tangent)
-            mounts[key] = np.column_stack((normal, tangent, np.cross(normal, tangent)))
+            from orbexa.core.mounting import mounting_frame
+            mounts[key] = mounting_frame(normal)
             prop = properties[key] = self.chasers.get(key, self.default_chaser)
             if not isinstance(prop, ChaserPhysicalProperties):
                 raise TypeError("Physical bus properties must be ChaserPhysicalProperties instances")

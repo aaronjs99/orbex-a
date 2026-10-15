@@ -1,6 +1,7 @@
 import { MissionScene } from './scene.js';
 import { MetricChart } from './charts.js';
 import { SceneVideoExporter, downloadVideo } from './recorder.js';
+import { renderTheoryFigure } from './theory-figures.js';
 
 const $ = id => document.getElementById(id);
 const state = { index: 0, selected: 0, playing: false, tab: 'replay', generation: 0 };
@@ -35,7 +36,7 @@ function paintFooter() {
     $('footer-outcome').textContent = dataset.synthetic ? 'Synthetic post-capture physics fixture' : outcomeLabel();
     $('footer-clock').textContent = lifecycleClock ? `t = ${lifecycleClock.elapsed.toFixed(1)} s after attachment · node ${lifecycleClock.index + 1} / ${lifecycleClock.count}` : 'Post-capture timeline';
   } else {
-    $('footer-outcome').textContent = `${outcomeLabel()} · recorded model evidence`;
+    $('footer-outcome').textContent = 'Recorded simulation';
     $('footer-clock').textContent = `q = ${dataset.q[state.index].toFixed(4)} rad · node ${state.index + 1} / ${dataset.q.length} · ${dataset.tracks.length} ${dataset.tracks.length === 1 ? 'chaser' : 'chasers'}`;
   }
 }
@@ -123,13 +124,16 @@ function paint() {
 
 function showTab(name) {
   if (state.exporting) return;
+  if (name === 'mission') name = $('mission-view').value;
   state.tab = name;
   if (name !== 'replay') stop();
-  if (name !== 'videos') $('mission-video').pause();
-  for (const section of ['replay', 'lifecycle', 'videos', 'evidence', 'theory']) {
+  if (name !== 'plots') $('mission-video').pause();
+  for (const section of ['replay', 'lifecycle', 'plots', 'theory']) {
     $(section).hidden = section !== name;
-    $(`tab-${section}`).setAttribute('aria-selected', String(section === name));
   }
+  const workspace = ['replay','lifecycle'].includes(name) ? 'mission' : name;
+  for (const section of ['mission','plots','theory']) $(`tab-${section}`).setAttribute('aria-selected',String(section===workspace));
+  $('mission-view-control').hidden = workspace !== 'mission';
   if (name === 'replay') scene?.resize();
   if (name === 'lifecycle' && !$('lifecycle-frame').getAttribute('src') && $('lifecycle-frame').dataset.source) $('lifecycle-frame').src = $('lifecycle-frame').dataset.source;
   $('lifecycle-frame').contentWindow?.postMessage({type:'orbexa.lifecycle.visibility',active:name==='lifecycle'},location.origin);
@@ -154,7 +158,8 @@ async function loadScenario(key) {
     state.index = 0;
     state.selected = 0;
     $('mission-title').textContent = entry.title;
-    $('mission-subtitle').textContent = `${data.synthetic ? 'Synthetic physics fixture' : 'Recorded adaptive tube MPC mission'} · ${data.q.length} shared state ${data.q.length === 1 ? 'sample' : 'samples'}`;
+    $('mission-subtitle').textContent = data.synthetic ? 'Synthetic physics fixture' : `${data.tracks.length} chasers · adaptive tube MPC`;
+    $('mission-model').textContent = data.target.shape === 'composite_spacecraft' ? 'Declared component model' : 'Cylinder baseline';
     $('outcome').textContent = outcomeLabel();
     $('outcome').classList.toggle('failed', !(entry.physical_outcome?.success ?? data.outcome.success));
     $('footer-outcome').textContent = `${data.outcome.label} · sampled model evidence`;
@@ -163,7 +168,7 @@ async function loadScenario(key) {
     $('scrub').max = String(data.q.length - 1);
     $('play').disabled = data.q.length < 2;
     $('scrub').disabled = $('chaser').disabled = false;
-    $('export-scene').disabled = !scene || !SceneVideoExporter.supported();
+    $('export-scene').disabled = !scene || data.q.length<2 || !SceneVideoExporter.supported();
     $('timeline-start').textContent = data.q[0].toFixed(2);
     $('timeline-end').textContent = data.q.at(-1).toFixed(2);
     $('speed').title = data.elapsed_s ? 'Multiplier of recorded physical elapsed time' : 'Multiplier of a normalized 30 second presentation; elapsed physical time was not recorded';
@@ -171,6 +176,16 @@ async function loadScenario(key) {
     setLink('raw-evidence', entry.data_href);
     setLink('family-evidence', entry.evidence_href);
     setLink('video-download', entry.video_href);
+    $('plot-gallery').replaceChildren(...(entry.figures || []).map(figure=>{
+      const link=document.createElement('a'),image=document.createElement('img');
+      link.href=figure.href; image.src=figure.href;image.alt=figure.title;image.loading='lazy';
+      link.append(image);return link;
+    }));
+    $('mission-view').options[1].disabled = !entry.lifecycle_href;
+    if (!entry.lifecycle_href && $('mission-view').value === 'lifecycle') {
+      $('mission-view').value = 'replay';
+      if (state.tab === 'lifecycle') showTab('mission');
+    }
     $('lifecycle-frame').hidden = !entry.lifecycle_href;
     $('lifecycle-unavailable').hidden = Boolean(entry.lifecycle_href);
     $('lifecycle-frame').dataset.source = entry.lifecycle_href ? `lifecycle.html?data=${encodeURIComponent(entry.lifecycle_href)}` : '';
@@ -189,7 +204,7 @@ async function loadScenario(key) {
       row.append(dt, dd);
       return row;
     }));
-    const notes = [...data.notes, 'Actual markers are display glyphs; no chaser body volume or attitude is inferred.', 'Tubes use each chaser’s own component bounds at its recorded nominal center.', 'The three charts and geometry share one selected recorded node. Video playback is separate.'];
+    const notes = [...data.notes, 'Replay shows recorded nodes. Paths include later samples. Stars are decorative.', 'Hull dots mark surface points; orange markers mark COM goals.', 'Tubes belong to each recorded nominal center. Occupancy 1 is the boundary; reserve covers the preceding interval.'];
     $('dataset-notes').replaceChildren(...notes.map(text => { const li = document.createElement('li'); li.textContent = text; return li; }));
     scene?.load(data);
     charts.forEach(chart => chart.load(data));
@@ -227,6 +242,7 @@ function clearMission() {
   $('scope-text').textContent = '';
   $('provenance').replaceChildren();
   $('dataset-notes').replaceChildren();
+  $('plot-gallery').replaceChildren();
   $('mission-subtitle').textContent = 'No recorded dataset selected';
   $('footer-outcome').textContent = 'No recorded dataset selected';
   $('footer-clock').textContent = 'No recorded node selected';
@@ -238,6 +254,7 @@ function showTheory() {
   $('theory-frame').hidden = !document;
   setLink('theory-open', document?.href);
   if (document) $('theory-frame').src = document.href;
+  renderTheoryFigure($('theory-diagram'),document?.title || '');
 }
 
 $('scenario').addEventListener('change', () => loadScenario($('scenario').value));
@@ -255,19 +272,21 @@ $('fullscreen').addEventListener('click', async () => {
   try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('viewport').requestFullscreen(); }
   catch (error) { $('scene-help').textContent = 'Full screen is unavailable in this browser.'; }
 });
-for (const name of ['replay', 'lifecycle', 'videos', 'evidence', 'theory']) $(`tab-${name}`).addEventListener('click', () => showTab(name));
+for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).addEventListener('click', () => showTab(name));
+$('mission-view').addEventListener('change',()=>showTab('mission'));
 $('theory-select').addEventListener('change', showTheory);
 $('export-scene').disabled = !scene || !SceneVideoExporter.supported();
 $('cancel-export').addEventListener('click', () => exportAbort?.abort());
 $('export-scene').addEventListener('click', async () => {
-  if (!dataset || !scene || state.exporting) return;
+  if (!dataset || dataset.q.length<2 || !scene || state.exporting) return;
   stop();
   state.exporting = true;
   exportAbort = new AbortController();
   $('export-scene').disabled = true;
   $('cancel-export').hidden = false;
   $('scenario').disabled = $('scrub').disabled = $('chaser').disabled = true;
-  for (const name of ['lifecycle', 'videos', 'evidence', 'theory']) $(`tab-${name}`).disabled = true;
+  for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).disabled = true;
+  $('mission-view').disabled=true;
   try {
     const output = await new SceneVideoExporter().record(scene, dataset, currentEntry.title, {
       signal: exportAbort.signal,
@@ -282,7 +301,8 @@ $('export-scene').addEventListener('click', async () => {
     $('export-scene').disabled = false;
     $('cancel-export').hidden = true;
     $('scenario').disabled = $('scrub').disabled = $('chaser').disabled = false;
-    for (const name of ['lifecycle', 'videos', 'evidence', 'theory']) $(`tab-${name}`).disabled = false;
+    for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).disabled = false;
+    $('mission-view').disabled=false;
     paint();
   }
 });

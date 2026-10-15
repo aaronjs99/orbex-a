@@ -1,5 +1,45 @@
 import * as THREE from 'three';
 
+/** The same component declaration used by planning, continuous admission and capture. */
+export function compositeSpacecraft(geometry, { envelope = false } = {}) {
+  if (geometry?.schema !== 'orbexa.spacecraft-geometry.v1' || !geometry.components?.length)
+    throw new Error('Composite replay requires its recorded component geometry.');
+  const craft = new THREE.Group();
+  const materials = {
+    bus: new THREE.MeshStandardMaterial({color:'#c8a452',metalness:.67,roughness:.47}),
+    solar_array: new THREE.MeshStandardMaterial({color:'#163953',metalness:.46,roughness:.33}),
+    antenna: new THREE.MeshStandardMaterial({color:'#b9c4cb',metalness:.68,roughness:.4}),
+    structure: new THREE.MeshStandardMaterial({color:'#8798a6',metalness:.72,roughness:.39}),
+  };
+  for(const component of geometry.components){
+    const c=component.center_m,h=component.half_extents_m,m=component.rotation_component_to_body;
+    if(![...c,...h,...m.flat()].every(Number.isFinite)||h.some(x=>x<=0))throw new Error('Invalid recorded spacecraft component.');
+    if(envelope){
+      const rational=value=>{const [n,d]=String(value).split('/');return Number(n)/(d===undefined?1:Number(d));};
+      const points=component.exact_vertices_body_m.map(row=>row.map(rational)),vertices=[];
+      for(let i=0;i<8;i++)for(const bit of [1,2,4])if((i&bit)===0)vertices.push(...points[i],...points[i|bit]);
+      craft.add(new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(vertices,3)),
+        new THREE.LineBasicMaterial({color:'#b8d5e9',transparent:true,opacity:.3})));
+      continue;
+    }
+    const material=materials[component.role] || materials.structure;
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(...h.map(v=>2*v)),material);
+    mesh.name=component.id; mesh.position.set(...c);
+    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(m[0][0],m[0][1],m[0][2],0,m[1][0],m[1][1],m[1][2],0,m[2][0],m[2][1],m[2][2],0,0,0,0,1));
+    craft.add(mesh);
+    const edges=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry),new THREE.LineBasicMaterial({color:component.role==='solar_array'?'#6385a3':'#d4c392',transparent:true,opacity:.5}));
+    edges.position.copy(mesh.position);edges.quaternion.copy(mesh.quaternion);craft.add(edges);
+    if(component.role==='solar_array'){
+      const cells=[];
+      for(let i=1;i<16;i++){const x=-h[0]+2*h[0]*i/16;cells.push(x,-h[1],h[2],x,h[1],h[2]);}
+      for(let i=1;i<8;i++){const y=-h[1]+2*h[1]*i/8;cells.push(-h[0],y,h[2],h[0],y,h[2]);}
+      const lines=new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position',new THREE.Float32BufferAttribute(cells,3)),new THREE.LineBasicMaterial({color:'#7698b7',transparent:true,opacity:.48}));
+      lines.position.copy(mesh.position);lines.quaternion.copy(mesh.quaternion);craft.add(lines);
+    }
+  }
+  return craft;
+}
+
 /** Representative cylindrical spacecraft with the modeled contact surface.
  * Cladding and flush panels describe a concept, not an identified flight asset.
  */

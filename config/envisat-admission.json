@@ -1,0 +1,6 @@
+{
+  "measurement_radius": [1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4],
+  "acceleration_radius": [1e-5, 1e-5, 1e-5],
+  "target_rotation_operator_error": 1e-8,
+  "target_relative_angular_rate_bound": 100.0
+}

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
-import { representativeSpacecraft, starField } from './spacecraft.js';
+import { representativeSpacecraft, compositeSpacecraft, starField } from './spacecraft.js';
 
-/** Numerical geometry only. Vehicle glyphs do not claim physical size or attitude. */
+/** Recorded geometry. Finite chasers use their declared spherical body radius. */
 export class MissionScene {
   constructor(container, onSelect) {
     this.container = container;
@@ -60,8 +60,29 @@ export class MissionScene {
     this.data = data;
     this.index = 0;
     this.selected = 0;
-    const points = data.tracks.flatMap(track => track.states.map(row => new THREE.Vector3(...row.slice(0, 3))));
-    const bounds = new THREE.Box3().setFromPoints([...points, new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1)]);
+    const bounds = new THREE.Box3();
+    const radius = data.chaser_body_radius_m || 0;
+    for (const track of data.tracks) for (const row of track.states) {
+      const position = new THREE.Vector3(...row.slice(0, 3));
+      bounds.expandByPoint(position.clone().addScalar(-radius));
+      bounds.expandByPoint(position.clone().addScalar(radius));
+    }
+    if(data.target.shape==='composite_spacecraft'){
+      const rational = value => {
+        const [n, d] = String(value).split('/');
+        return Number(n) / (d === undefined ? 1 : Number(d));
+      };
+      const vertices = data.target.geometry.components.flatMap(component =>
+        component.exact_vertices_body_m.map(row => row.map(rational)));
+      for (const rotation of data.rotations || [[[1,0,0],[0,1,0],[0,0,1]]]) {
+        const matrix = new THREE.Matrix3().set(...rotation.flat());
+        for (const vertex of vertices) bounds.expandByPoint(new THREE.Vector3(...vertex).applyMatrix3(matrix));
+      }
+    } else {
+      bounds.expandByPoint(new THREE.Vector3(-1, -1, -1));
+      bounds.expandByPoint(new THREE.Vector3(1, 1, 1));
+    }
+    this.bounds = bounds;
     this.center = bounds.getCenter(new THREE.Vector3());
     this.extent = Math.max(...bounds.getSize(new THREE.Vector3()).toArray()) * 0.55;
     const grid = new THREE.GridHelper(Math.max(4, Math.ceil(this.extent * 2)), 20, '#2a4054', '#1b2b3b');
@@ -79,6 +100,13 @@ export class MissionScene {
     this.target = new THREE.Group();
     this.target.matrixAutoUpdate = false;
     this.model.add(this.target);
+    this.envelope=this.envelopeEdges=null;
+    if(data.target.shape==='composite_spacecraft'){
+      this.target.add(compositeSpacecraft(data.target.geometry));
+      this.envelope=compositeSpacecraft(data.target.geometry,{envelope:true});
+      this.envelopeEdges=new THREE.Group();
+      this.target.add(this.envelope,this.envelopeEdges);
+    }
     if (data.target.shape === 'cylinder' && data.target.radius > 0 && data.rotations) {
       const radius = data.target.radius;
       const height = data.target.height || 2 * data.target.half_length;
@@ -109,7 +137,7 @@ export class MissionScene {
       const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.states.map(row => new THREE.Vector3(...row.slice(0, 3)))), new THREE.LineBasicMaterial({ color: track.color, transparent: true, opacity: 0.56 }));
       this.model.add(path);
       this.traces.push(path);
-      const glyph = new THREE.Mesh(new THREE.OctahedronGeometry(0.045), new THREE.MeshStandardMaterial({ color: track.color, emissive: track.color, emissiveIntensity: 0.23, roughness: 0.5 }));
+      const glyph = new THREE.Mesh(data.chaser_body_radius_m > 0 ? new THREE.SphereGeometry(data.chaser_body_radius_m,24,16) : new THREE.OctahedronGeometry(0.045), new THREE.MeshStandardMaterial({ color: track.color, emissive: track.color, emissiveIntensity: 0.23, roughness: 0.45,metalness:.5 }));
       if (data.chaser_body_radius_m > 0) {
         const envelope = new THREE.Mesh(new THREE.SphereGeometry(data.chaser_body_radius_m, 20, 12), new THREE.MeshBasicMaterial({color:track.color,wireframe:true,transparent:true,opacity:0.18}));
         // Child scale is undone in update: physical radius never changes when
@@ -135,19 +163,38 @@ export class MissionScene {
         this.target.add(patch);
       }
     }
-    this.setCamera(this.mode);
     this.update(0, 0, this.options);
+    this.setCamera(this.mode);
   }
 
   setCamera(mode) {
     this.mode = mode;
     if (!this.data) return;
     this.camera.up.set(0, mode === 'top' ? 1 : 0, mode === 'top' ? 0 : 1);
-    const center = mode === 'follow' ? new THREE.Vector3(...this.data.tracks[this.selected].states[this.index].slice(0, 3)) : mode === 'overview' ? this.center : new THREE.Vector3();
-    const extent = mode === 'docking' || mode === 'follow' ? Math.max(1.0, this.data.target.radius * 1.9 || 1.5) : this.extent;
+    const center = mode === 'docking' && this.data.tracks[this.selected].goal_body && this.data.rotations ? new THREE.Vector3(...this.data.tracks[this.selected].goal_body).applyMatrix4(this.target.matrix) : mode === 'follow' ? new THREE.Vector3(...this.data.tracks[this.selected].states[this.index].slice(0, 3)) : mode === 'overview' ? this.center : new THREE.Vector3();
+    const extent = mode === 'docking' || mode === 'follow' ? Math.max(1.0,this.data.chaser_body_radius_m*5 || 1.5) : this.extent;
     this.controls.target.copy(center);
-    const offset = mode === 'top' ? new THREE.Vector3(0, 0, 3.8) : new THREE.Vector3(-2.1, -2.5, 1.8);
-    this.camera.position.copy(center).addScaledVector(offset, extent);
+    const offset = mode === 'top' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-2.1, -2.5, 1.8).normalize();
+    let distance = extent * 3.8;
+    if (mode === 'overview' || mode === 'top') {
+      const right = new THREE.Vector3().crossVectors(this.camera.up, offset).normalize();
+      const up = new THREE.Vector3().crossVectors(offset, right).normalize();
+      const tangentY = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const tangentX = tangentY * this.camera.aspect;
+      distance = 0;
+      for (const x of [this.bounds.min.x, this.bounds.max.x])
+        for (const y of [this.bounds.min.y, this.bounds.max.y])
+          for (const z of [this.bounds.min.z, this.bounds.max.z]) {
+            const delta = new THREE.Vector3(x, y, z).sub(center);
+            distance = Math.max(distance, delta.dot(offset) + Math.abs(delta.dot(right)) / tangentX,
+              delta.dot(offset) + Math.abs(delta.dot(up)) / tangentY);
+          }
+      distance = Math.max(1, distance * 1.18);
+    }
+    this.controls.maxDistance = Math.max(150, distance * 3);
+    this.camera.far = Math.max(1000, distance * 5);
+    this.camera.updateProjectionMatrix();
+    this.camera.position.copy(center).addScaledVector(offset, distance);
     this.controls.update();
   }
 
@@ -164,7 +211,8 @@ export class MissionScene {
     }
     this.data.tracks.forEach((track, number) => {
       this.vehicles[number].position.set(...track.states[index].slice(0, 3));
-      this.vehicles[number].scale.setScalar(number === selected ? 1.2 : 0.8);
+      this.vehicles[number].scale.setScalar(this.data.chaser_body_radius_m > 0 ? 1 : number === selected ? 1.2 : 0.8);
+      this.vehicles[number].material.emissiveIntensity=number===selected?.28:.06;
       this.vehicles[number].children.forEach(child => { child.scale.setScalar(1 / this.vehicles[number].scale.x); child.visible = Boolean(options.envelope); });
       this.traces[number].visible = options.paths;
       this.traces[number].material.opacity = number === selected ? 0.95 : 0.33;
@@ -177,8 +225,8 @@ export class MissionScene {
         this.centers[number].position.set(...track.center[index]);
       }
     });
-    if (this.mode === 'follow') {
-      const position = this.vehicles[selected].position;
+    if (this.mode === 'follow' || this.mode === 'docking' && this.data.tracks[selected].goal_body && rotation) {
+      const position = this.mode === 'docking' ? new THREE.Vector3(...this.data.tracks[selected].goal_body).applyMatrix4(this.target.matrix) : this.vehicles[selected].position;
       const offset = this.camera.position.clone().sub(this.controls.target);
       this.controls.target.copy(position);
       this.camera.position.copy(position).add(offset);
@@ -192,6 +240,7 @@ export class MissionScene {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    if (this.data) this.setCamera(this.mode);
   }
 
   render() { this.controls.update(); this.renderer.render(this.scene, this.camera); }

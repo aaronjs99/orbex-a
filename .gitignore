@@ -99,6 +99,10 @@ results/
 *.json
 !config/physical-prior.json
 !config/physical-admission.json
+!config/envisat-prior.json
+!config/envisat-admission.json
+!config/envisat-deployment.json
+!config/spacecraft/*.json
 !scripts/visualization/studio/vendor/manifest.json
 
 # Temporary editor backup files

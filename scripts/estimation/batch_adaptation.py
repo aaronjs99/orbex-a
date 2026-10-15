@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Any, Optional, Union
 from scipy.optimize import least_squares
 from orbexa.core.dynamics import orbital_ellp_drag
+from orbexa.utils.solver_options import gekko_memory_exponent
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ def gen_adaptor_data(
     A_act, B_act, _, _, d_act = matrices
 
     remote = kwargs.get("remote", False)
+    max_memory = gekko_memory_exponent(kwargs.get("max_memory", 4))
     solver = GEKKO(remote=remote)
 
     solver.time = np.linspace(
@@ -88,7 +90,7 @@ def gen_adaptor_data(
     solver.Equations(eqs)
     solver.options.IMODE = 6
     solver.options.SOLVER = 1
-    solver.options.MAX_MEMORY = 512
+    solver.options.MAX_MEMORY = max_memory
 
     disp = kwargs.get("disp", False)
     solver.solve(disp=disp)
@@ -121,7 +123,9 @@ def run_adaptor_op(
     w_f = W[-1]
     flag = False
 
+    max_memory = gekko_memory_exponent(kwargs.get("max_memory", 4))
     solver = GEKKO(remote=kwargs.get("remote", False))
+    solver.options.MAX_MEMORY = max_memory
     solver.time = np.linspace(0, dt * (len(W) - 1), len(W))
 
     final = np.zeros(len(solver.time))

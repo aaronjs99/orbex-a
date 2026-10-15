@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from orbexa.core.attitude import body_rates_to_euler_rates, finite_vector, inertia_matrix
+from orbexa.utils.solver_options import gekko_memory_exponent
 
 if TYPE_CHECKING:
     from orbexa.core.target_spacecraft import Target
@@ -36,7 +37,7 @@ class DeflectionSolverOptions:
     disp: bool = False
     solver_type: int = 3
     max_iter: int = 3000
-    max_memory: int = 512
+    max_memory: int = 4
     nodes: int = 3
     chart_margin: float = 1e-3
 
@@ -47,7 +48,7 @@ class DeflectionSolverOptions:
         if self.solver_type not in (1, 2, 3):
             raise ValueError("GEKKO solver must be 1, 2 or 3")
         _integer(self.max_iter, "maxIter")
-        _integer(self.max_memory, "max_memory")
+        gekko_memory_exponent(self.max_memory)
         _integer(self.nodes, "nodes", 2)
         if self.nodes > 6:
             raise ValueError("GEKKO nodes must be between 2 and 6")
@@ -281,7 +282,7 @@ def target_deflect(target: Target, discretize_dockers=True, ellipsoid_points=Non
         raise ValueError("Target deflection supports backend='gekko'")
     options = DeflectionSolverOptions(remote=kwargs.get("remote", False), disp=kwargs.get("disp", False),
                                       solver_type=kwargs.get("solver", 3), max_iter=kwargs.get("maxIter", 3000),
-                                      max_memory=kwargs.get("max_memory", 512), nodes=kwargs.get("nodes", 3),
+                                      max_memory=kwargs.get("max_memory", 4), nodes=kwargs.get("nodes", 3),
                                       chart_margin=kwargs.get("chart_margin", 1e-3))
     problem = DeflectionProblem.from_inputs(target, discretize_dockers, ellipsoid_points, cylinder_points, options, kwargs)
     return TargetDeflectionPlanner(options, kwargs.get("model_factory")).solve(problem)

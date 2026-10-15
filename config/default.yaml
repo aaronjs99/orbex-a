@@ -30,7 +30,8 @@ solver:
   remote: false
   disp: false
   max_iter: 400
-  max_memory: 512
+  # APMonitor sparsity exponent: 4 means 10000 elements per equation, not MB.
+  max_memory: 4
 
 orbit:
   mu: 3.986004418e14

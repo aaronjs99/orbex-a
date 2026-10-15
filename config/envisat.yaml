@@ -1,0 +1,104 @@
+# Prospective Envisat composite-geometry study. This is not flight telemetry.
+# Physical target spin is supplied explicitly by the spacecraft mission profile;
+# the prescribed Euler-rate field below is not a body-rate measurement.
+seed: 0
+anom_step: 0.001
+total_anom: 1.2
+num_update_steps: 1200
+decoupled_mode: true
+num_chasers: 8
+
+mission:
+  rendezvous_standoff: 0.5
+  rendezvous_capture_radius: 3.5
+  rendezvous_position_tolerance: 0.15
+  rendezvous_velocity_tolerance: 5.0
+  docking_position_weight_factor: 6.0
+  docking_velocity_weight_factor: 1.5
+  target_safety_tolerance: 1.0e-7
+  target_barrier_buffer: 0.04
+  target_barrier_clearance_fraction: 0.05
+  terminal_activation_distance: 0.035
+
+adaptation:
+  error_bound: 0.001
+  prediction_error_threshold: 0.00001
+  max_iter: 90
+  minimum_widths: {eccentricity: 0.00001, alpha: 1.0e-11, beta: 1.0e-11}
+  prior_eccentricity_half_width: 0.0008
+  prior_drag_factors: [0.4, 2.0]
+  window_intervals: 8
+
+solver:
+  remote: false
+  disp: false
+  max_iter: 1200
+  # APMonitor base-10 sparsity exponent: 4 means 10000 elements/equation.
+  max_memory: 4
+
+orbit:
+  mu: 3.986004418e14
+  semi_major_axis: 7178137.0
+  central_body_radius: 6378137.0
+  eccentricity: 0.001
+  target_drag: 2.0e-9
+  chaser_drag: 4.5e-9
+  time_periapsis: 0.0
+  # Explicit composite deployment replaces this point with its screened cluster.
+  initial_conditions: [-1.105, 0.009, 4.5, 0.0, 0.0, 0.0]
+
+mpc:
+  terminal_cost_enabled: true
+  reference_preview_enabled: true
+  docking_position_tolerance: 0.002
+  docking_velocity_tolerance: 0.08
+  terminal_dwell_updates: 5
+  horizon_steps: {rendezvous: 12, docking: 12}
+  actuation_steps: {rendezvous: 1, docking: 1}
+  state_bounds:
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+    - {lower: "-Inf", upper: "+Inf"}
+  input_bounds:
+    - {lower: -100000.0, upper: 100000.0}
+    - {lower: -100000.0, upper: 100000.0}
+    - {lower: -100000.0, upper: 100000.0}
+  Q: [1, 1, 1, 1, 1, 1]
+  R: [0.0000001, 0.0000001, 0.0000001]
+  min_chaser_separation: 1.3
+
+target:
+  shape: composite_spacecraft
+  center: [0.0, 0.0, 0.0]
+  limits: {}
+  tolerance: 0.0
+  docking_standoff: 0.85
+  assignment_strategy: composite_accessible_patch_routes
+  initial_orientation: [0.0, 0.2, -0.1]
+  initial_angular_velocity: [0.0, 0.0, 0.0]
+  # Published COM-frame study tensor; geometry metadata retains its sources.
+  inertia:
+    - [17023.3, 397.1, -2171.1]
+    - [397.1, 124825.7, 344.2]
+    - [-2171.1, 344.2, 129112.2]
+  stop_time: 5.0
+  discretize_dockers: true
+  observation_error: {angular_position: 4.0e-8, angular_velocity: 4.0e-8}
+
+tube:
+  run_tube: true
+  bandwidth_0: [80.0, 80.0, 80.0]
+  boundary_layer_0: [0.002, 0.002, 0.002]
+  sliding_gains: [20.0, 20.0, 20.0]
+  feedback_substeps: 32
+  bandwidth_rate_limit: 1500.0
+  bandwidth_weight: 1.0e-7
+  tube_weight: 10.0
+  numerical_reserve: 1.0e-5
+  membership_error_bound: 1.0e-7
+  membership_box_budget: 32
+  membership_update_period: 5
+  bandwidth_range: {lower: 40.0, upper: 300.0}

@@ -1,0 +1,867 @@
+{
+  "schema": "orbexa.spacecraft-geometry.v1",
+  "geometry_id": "envisat-published-dimensions-inferred-layout-v1",
+  "frame": "target_body_COM",
+  "components": [
+    {
+      "id": "main_bus",
+      "center_m": [
+        -1.105,
+        0.009,
+        -0.003
+      ],
+      "half_extents_m": [
+        5.01,
+        1.375,
+        1.0375
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.02,
+      "role": "bus",
+      "provenance": {
+        "source_ids": [
+          "peters2018",
+          "corso2016"
+        ],
+        "dimension_status": "Length/width from Peters Table1; larger2.075m depth from Corso Table4.4 retained instead of Peters1.6m",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "solar_array",
+      "center_m": [
+        12.895,
+        0.009,
+        2.8
+      ],
+      "half_extents_m": [
+        7.014,
+        2.486,
+        0.005
+      ],
+      "rotation_component_to_body": [
+        [
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0.8660254037844387,
+          -0.49999999999999994
+        ],
+        [
+          0,
+          0.49999999999999994,
+          0.8660254037844387
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "solar_array",
+      "provenance": {
+        "source_ids": [
+          "peters2018",
+          "esa_operations"
+        ],
+        "dimension_status": "Published array dimensions; fixed30deg roll is a declared articulation assumption",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "solar_array_yoke",
+      "center_m": [
+        5.029,
+        0.009,
+        1.86
+      ],
+      "half_extents_m": [
+        1.5,
+        0.12,
+        0.12
+      ],
+      "rotation_component_to_body": [
+        [
+          0.8191520442889918,
+          0,
+          -0.573576436351046
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          0.573576436351046,
+          0,
+          0.8191520442889918
+        ]
+      ],
+      "uncertainty_m": 0.15,
+      "role": "deployment_structure",
+      "provenance": {
+        "source_ids": [
+          "corso2016"
+        ],
+        "dimension_status": "Published3m boom length; cross section and pose inferred",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "asar_antenna",
+      "center_m": [
+        -1.4,
+        0.009,
+        -1.55
+      ],
+      "half_extents_m": [
+        0.65,
+        5.0,
+        0.08
+      ],
+      "rotation_component_to_body": [
+        [
+          0.8973354133158912,
+          0,
+          0.4413492449401027
+        ],
+        [
+          0,
+          1,
+          0
+        ],
+        [
+          -0.4413492449401027,
+          0,
+          0.8973354133158912
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "radar_antenna",
+      "provenance": {
+        "source_ids": [
+          "esa_asar"
+        ],
+        "dimension_status": "Published10m by1.3m aperture; .16m support depth and26.19deg tilt are study assumptions",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "asar_mount",
+      "center_m": [
+        -1.4,
+        0.009,
+        -1.14
+      ],
+      "half_extents_m": [
+        0.225,
+        0.575,
+        0.325
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "deployment_structure",
+      "provenance": {
+        "source_ids": [
+          "esa_asar"
+        ],
+        "dimension_status": "Inferred occupied mounting-structure enclosure",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "ka_band_mast",
+      "center_m": [
+        -3.7,
+        0.65,
+        2.025
+      ],
+      "half_extents_m": [
+        0.09,
+        0.09,
+        1.0
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "communications_structure",
+      "provenance": {
+        "source_ids": [
+          "esa_br250"
+        ],
+        "dimension_status": "Published2m mast length; cross section and location inferred",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "ka_band_reflector",
+      "center_m": [
+        -3.7,
+        0.65,
+        3.2
+      ],
+      "half_extents_m": [
+        0.45,
+        0.45,
+        0.16
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "communications_antenna",
+      "provenance": {
+        "source_ids": [
+          "esa_br250"
+        ],
+        "dimension_status": "Published.90m reflector diameter; OBB thickness and steering pose inferred",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "payload_optical_envelope",
+      "center_m": [
+        -4.95,
+        0.009,
+        1.27
+      ],
+      "half_extents_m": [
+        1.0,
+        1.05,
+        0.375
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.15,
+      "role": "instrument_envelope",
+      "provenance": {
+        "source_ids": [
+          "esa_configuration"
+        ],
+        "dimension_status": "Inferred grouped optical instrument enclosure; not detailed instrument CAD",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "payload_nadir_envelope",
+      "center_m": [
+        -4.85,
+        0.009,
+        -1.36
+      ],
+      "half_extents_m": [
+        0.9,
+        1.225,
+        0.35
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.15,
+      "role": "instrument_envelope",
+      "provenance": {
+        "source_ids": [
+          "esa_configuration"
+        ],
+        "dimension_status": "Inferred grouped nadir instrument enclosure; not detailed instrument CAD",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "payload_side_envelope",
+      "center_m": [
+        -5.0,
+        1.55,
+        -0.003
+      ],
+      "half_extents_m": [
+        0.825,
+        0.325,
+        0.825
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.15,
+      "role": "instrument_envelope",
+      "provenance": {
+        "source_ids": [
+          "esa_configuration"
+        ],
+        "dimension_status": "Inferred grouped side instrument enclosure; not detailed instrument CAD",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    },
+    {
+      "id": "interface_ring_enclosure",
+      "center_m": [
+        3.97,
+        0.009,
+        -0.003
+      ],
+      "half_extents_m": [
+        0.11,
+        1.15,
+        1.15
+      ],
+      "rotation_component_to_body": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "uncertainty_m": 0.1,
+      "role": "legacy_launch_interface",
+      "provenance": {
+        "source_ids": [
+          "jaekel2018"
+        ],
+        "dimension_status": "Conservative cuboid enclosure of the existing launch interface; dimensions inferred, not a docking port",
+        "placement_status": "Inferred fixed deployed pose; not flight CAD or current appendage metrology",
+        "uncertainty_status": "Declared study radius; not a measured flight confidence interval"
+      }
+    }
+  ],
+  "attachment_patches": [
+    {
+      "id": "bus_upper_01",
+      "component_id": "main_bus",
+      "point_body_m": [
+        -2.4,
+        -0.74,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_02",
+      "component_id": "main_bus",
+      "point_body_m": [
+        -2.4,
+        0.758,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_03",
+      "component_id": "main_bus",
+      "point_body_m": [
+        -0.8,
+        -0.74,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_04",
+      "component_id": "main_bus",
+      "point_body_m": [
+        -0.8,
+        0.758,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_05",
+      "component_id": "main_bus",
+      "point_body_m": [
+        0.8,
+        -0.74,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_06",
+      "component_id": "main_bus",
+      "point_body_m": [
+        0.8,
+        0.758,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_07",
+      "component_id": "main_bus",
+      "point_body_m": [
+        2.4,
+        -0.74,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    },
+    {
+      "id": "bus_upper_08",
+      "component_id": "main_bus",
+      "point_body_m": [
+        2.4,
+        0.758,
+        1.0345
+      ],
+      "normal_body": [
+        0,
+        0,
+        1
+      ],
+      "tangent_u_body": [
+        1,
+        0,
+        0
+      ],
+      "tangent_v_body": [
+        0,
+        1,
+        0
+      ],
+      "half_extents_m": [
+        0.22,
+        0.2
+      ],
+      "margin_m": 0.03,
+      "provenance": {
+        "source_ids": [
+          "esa_configuration",
+          "jaekel2018"
+        ],
+        "status": "Inferred exposed bus-face location for planning; no target-installed docking fixture",
+        "structural_load_qualification": "Not established; no claim that MLI, radiators or every panel is load bearing",
+        "selection_scope": "Avoids all other modeled components for the declared fixed appendage pose; validated swept approach remains required"
+      }
+    }
+  ],
+  "metadata": {
+    "object": "ENVISAT",
+    "catalogue_id": 27386,
+    "source_retrieval_date": "2026-10-14",
+    "sources": [
+      {
+        "id": "peters2018",
+        "url": "https://hanspeterschaub.info/PapersPrivate/Peters2018.pdf",
+        "title": "Peters et al., Attitude control analysis of tethered de-orbiting",
+        "locator": "Acta Astronautica146(2018)316-331;Table1 and Figure1,p317",
+        "kind": "author-hosted research paper"
+      },
+      {
+        "id": "corso2016",
+        "url": "https://elib.dlr.de/109429/1/CORSO_Mario_Master_Thesis_elib.pdf",
+        "title": "Corso, Modelling, Dynamic Analysis and Robotic Control Strategies for the Deorbiting Operations of the ESA Satellite Envisat",
+        "locator": "DLR-IB-RM-OP-2016-327;Tables4.1/4.4 and Figure4.27",
+        "kind": "author thesis at DLR"
+      },
+      {
+        "id": "esa_operations",
+        "url": "https://www.esa.int/Enabling_Support/Operations/Envisat_operations",
+        "title": "ESA Envisat operations",
+        "locator": "The platform and payload",
+        "kind": "mission operator"
+      },
+      {
+        "id": "esa_asar",
+        "url": "https://www.esa.int/esapub/bulletin/bullet106/bul106_3.pdf",
+        "title": "ESA Bulletin106, ASAR instrument",
+        "locator": "Active phased-array antenna,p48",
+        "kind": "mission instrument team"
+      },
+      {
+        "id": "esa_br250",
+        "url": "https://www.esa.int/esapub/br/br250/br250.pdf",
+        "title": "ESA BR-250, Envisat",
+        "locator": "Satellite configuration;power;communications",
+        "kind": "mission operator brochure"
+      },
+      {
+        "id": "esa_configuration",
+        "url": "https://www.esa.int/Applications/Observing_the_Earth/Envisat_FAQs",
+        "title": "ESA Envisat FAQs",
+        "locator": "Envisat in a nutshell and instrument layout",
+        "kind": "mission operator"
+      },
+      {
+        "id": "jaekel2018",
+        "url": "https://doi.org/10.3389/frobt.2018.00100",
+        "title": "Jaekel et al., Design and Operational Elements of the Robotic Subsystem for the e.deorbit Debris Removal Mission",
+        "locator": "Operational strategy and clamping-interface selection",
+        "kind": "ESA/Airbus/DLR/MDA study authors"
+      }
+    ],
+    "fidelity": "Composite OBB study model of the real spacecraft; source dimensions plus explicitly inferred appendage/obstacle positions, not flight CAD",
+    "occupied_geometry": "Union of all11 components; every planning/swept-safety/capture consumer must use this union; no cylinder substitute",
+    "frame_definition": "Translate Peters2018 interface-origin axes by the published COM(-3.905,-.009,.003)m; no principal-axis rotation",
+    "articulation": {
+      "solar_array_roll_deg": 30.0,
+      "asar_tilt_deg": 26.19,
+      "status": "Declared fixed deployed-pose assumptions; current flight articulation is unknown and not certified by these radii"
+    },
+    "mass_properties": {
+      "nominal_mass_kg": 7827.867,
+      "inertia_kg_m2": [
+        [
+          17023.3,
+          397.1,
+          -2171.1
+        ],
+        [
+          397.1,
+          124825.7,
+          344.2
+        ],
+        [
+          -2171.1,
+          344.2,
+          129112.2
+        ]
+      ],
+      "inertia_about": "center_of_mass",
+      "source_id": "peters2018",
+      "cross_check_source_id": "corso2016",
+      "status": "Published Envisat study nominal, not a current in-flight measurement; never infer a uniform mass density from these collision boxes",
+      "mass_uncertainty_kg": null,
+      "inertia_uncertainty_kg_m2": null,
+      "uncertainty_status": "No source-backed present-day confidence interval located; any numerical uncertainty family must be a separately identified scenario assumption"
+    },
+    "source_disagreements": {
+      "body_depth_m": [
+        1.6,
+        2.075
+      ],
+      "deployed_dimensions_esa_m": [
+        [
+          26,
+          10,
+          5
+        ],
+        [
+          25,
+          10,
+          7
+        ]
+      ],
+      "treatment": "Retain larger published bus depth; do not interpret rounded deployed envelopes as precise component coordinates"
+    },
+    "unmodeled_detail": "Small harnesses, blankets, exact instrument silhouettes, reflector curvature, appendage flexibility/articulation and current damage state are not independently enclosed",
+    "attachment_scope": "Unprepared nominal bus-face candidate patches; no mechanical attachment/load/adhesion qualification. Published removal studies prefer existing launch-adapter structure."
+  }
+}

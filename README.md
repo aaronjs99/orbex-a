@@ -12,6 +12,13 @@ admission, terminal tracking, spacecraft attitude, contact gates, propulsion and
 recorded-data presentation. The mathematical claims and their assumptions are
 collected in [the theory](docs/theory.md).
 
+The Envisat study uses eleven explicit bus, solar-wing and appendage components
+and eight candidate structural patches. Planning, exclusion, capture and replay
+consume the same geometry. [Its model and sources](docs/envisat.md) distinguish
+published dimensions and mass/inertia from inferred layout and unknown current
+state. The completed eight-chaser recording is a **cylinder baseline**, not
+Envisat mission qualification.
+
 The approach plant is the paper's analytical relative-motion approximation.
 An independent Cartesian SI dynamics service includes nonlinear central gravity,
 full vector quadratic drag and optional J2. Its discrepancy replay identifies
@@ -34,7 +41,7 @@ pip install -e .
 ADTMPC missions use the coupled nonlinear GEKKO/IPOPT controller. Ordinary MPC
 and other solver adapters remain available through the Python API.
 
-## Complete physical mission
+## Run a spacecraft mission study
 
 Install continuously validated flow, local Studio and MP4 dependencies:
 
@@ -42,11 +49,11 @@ Install continuously validated flow, local Studio and MP4 dependencies:
 python -m pip install -e ".[certification,studio,video]"
 ```
 
-Run a new compact eight-bus mission using the explicit representative prior and
+Run the declared Envisat study with its explicit prior, deployment and assumed
 sensing/model envelopes in [config](config/README.md):
 
 ```bash
-orbexa-run-mission --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --output-dir ../orbexa-output/physical-eight --steps 550
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --output-dir ../orbexa-output/envisat-eight
 ```
 
 This is an actual nonlinear optimization run. The update cap is a resource bound;
@@ -61,7 +68,7 @@ An unfinished saved approach can be numerically restarted with the same physical
 configuration, prior, bounds and target domain:
 
 ```bash
-orbexa-run-mission --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --resume ../orbexa-output/physical-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --resume ../orbexa-output/envisat-eight/approach --output-dir ../orbexa-output/resumed-eight --steps 20
 ```
 
 The cap now counts additional updates. The original states, tubes, beliefs and
@@ -80,7 +87,7 @@ models and evidence.
 An already saved physical COM approach can be completed without repeating MPC:
 
 ```bash
-orbexa-complete-mission ../orbexa-output/approach/mission_data.json --output-dir ../orbexa-output/completed-eight --input-component-bound 100
+orbexa-complete-mission ../orbexa-output/envisat-eight/approach/mission_data.json --output-dir ../orbexa-output/completed-eight --input-component-bound 100000
 ```
 
 When a verified physical terminal window follows that exact approach, add
@@ -91,10 +98,18 @@ Attitude replay and propellant accounting include that extension. Capture uses
 its final reference-centered enclosure; the original MPC history remains intact.
 
 The input bound must cover **every actual held command**, including ancillary
-feedback. The default completion path controls chaser attitude; ideal exact
-matching requires the explicit `--assume-attitude-matched` option. A 5 mm COM
-standoff cannot fit a 0.15 m bus and is refused. The physical profile uses a
-0.165 m COM standoff, 0.16 m gripper offset and a 10 mm capture stroke.
+feedback. Composite completion binds installed bus, fuel and nozzle properties
+to the design recorded during approach. The Envisat concept uses eight 30 kg
+dry / 100 kg fuel buses, a 0.55 m body radius, 0.85 m COM standoff and 100 N
+translation channels. Its 2.4°/s spin is a historical-range study input, not a
+current Envisat estimate. Actuator, fuel, constant-inertia and contact gates
+can still refuse completion.
+
+Select the paper-scale cylinder profile explicitly when reproducing it:
+
+```bash
+orbexa-run-mission --target-model cylinder-baseline --config config/default.yaml --prior config/physical-prior.json --admission config/physical-admission.json --output-dir ../orbexa-output/cylinder-eight --steps 550
+```
 
 See [physical lifecycle](docs/mission-lifecycle.md),
 [chaser attitude](docs/chaser-attitude.md),
@@ -116,6 +131,8 @@ Studio needs no third-party network requests. Serve the exported directory with
 an ordinary local HTTP server; open its `studio/` page. Raw source hashes,
 sample identities, modeled assumptions, failed outcomes and synthetic fixtures
 remain visible. Generated evidence belongs outside this checkout.
+The workspaces are Mission, Plots and Theory. A phase selector shares approach
+and attached-flight replay without duplicate navigation.
 
 ## Generate ADTMPC Mission Artifacts
 

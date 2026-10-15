@@ -11,8 +11,8 @@ from orbexa.simulation.capture import CaptureModel, CaptureOptions, ChaserPhysic
 from orbexa.simulation.chaser_attitude import ChaserAttitudeActuators, ChaserAttitudeTracker
 from orbexa.simulation.complete_mission import (CompleteMissionOptions, CompleteMissionRunner, CompleteMissionStore,
                                                bind_approach_body_geometry)
-from orbexa.simulation.deorbit import DeorbitOptions, DeorbitSimulator
-from orbexa.simulation.detumbling import DetumblingOptions, DetumblingSimulator
+from orbexa.simulation.deorbit import DeorbitOptions, DeorbitSimulator, ThrustPointingPolicy
+from orbexa.simulation.detumbling import DetumblingOptions, DetumblingSimulator, RateDampingPolicy
 from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleStore
 from orbexa.simulation.mission_result import MissionResultStore
 from orbexa.simulation.propulsion import ThrusterSystem
@@ -26,16 +26,17 @@ def main(argv=None):
     parser.add_argument("--assume-attitude-matched", action="store_true", help="Explicit idealization; otherwise actual bounded chaser attitude tracking is required")
     parser.add_argument("--input-component-bound", type=float, help="Declared bound on EVERY actual held approach command in m/rad²; required for conservative translation fuel accounting")
     parser.add_argument("--approach-point-is-capture-reference", action="store_true", help="Alternate explicitly declared tip-reference input; COM remains the default")
-    parser.add_argument("--target-mass-kg", type=float, default=1000.)
-    parser.add_argument("--chaser-dry-mass-kg", type=float, default=8.)
-    parser.add_argument("--chaser-fuel-kg", type=float, default=4., help="Initially installed fuel for attitude replay; remaining-at-capture fuel only with --assume-attitude-matched")
-    parser.add_argument("--chaser-body-radius-m", type=float, default=.15)
-    parser.add_argument("--gripper-offset-m", type=float, default=.16)
-    parser.add_argument("--capture-reach-m", type=float, default=.01)
+    parser.add_argument("--target-mass-kg", type=float)
+    parser.add_argument("--chaser-dry-mass-kg", type=float)
+    parser.add_argument("--chaser-fuel-kg", type=float, help="Initially installed fuel for attitude replay; remaining-at-capture fuel only with --assume-attitude-matched")
+    parser.add_argument("--chaser-body-radius-m", type=float)
+    parser.add_argument("--gripper-offset-m", type=float)
+    parser.add_argument("--capture-reach-m", type=float)
     parser.add_argument("--capture-speed-m-s", type=float, default=.001)
-    parser.add_argument("--translation-force-n", type=float, default=10.)
-    parser.add_argument("--attitude-force-n", type=float, default=.2)
-    parser.add_argument("--specific-impulse-s", type=float, default=300.)
+    parser.add_argument("--translation-force-n", type=float)
+    parser.add_argument("--attitude-force-n", type=float)
+    parser.add_argument('--attitude-moment-arm-m',type=float)
+    parser.add_argument("--specific-impulse-s", type=float)
     parser.add_argument("--rate-tolerance-rad-s", type=float, default=1e-5)
     parser.add_argument("--detumbling-dwell-s", type=float, default=30.)
     parser.add_argument("--target-perigee-altitude-m", type=float, default=80000.)
@@ -51,6 +52,28 @@ def main(argv=None):
     path = args.approach_result / MissionResultStore.filename if args.approach_result.is_dir() else args.approach_result
     try:
         approach = MissionResultStore.load(path)
+        design=None
+        defaults=dict(target_mass_kg=1000.,chaser_dry_mass_kg=8.,chaser_fuel_kg=4.,
+            chaser_body_radius_m=.15,gripper_offset_m=.16,capture_reach_m=.01,
+            translation_force_n=10.,attitude_force_n=.2,attitude_moment_arm_m=.1,specific_impulse_s=300.)
+        if approach.target.get('shape')=='composite_spacecraft':
+            from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+            from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
+            record=approach.metadata.get('scenario',{}).get('vehicle_design')
+            if not isinstance(record,dict):
+                raise ValueError('Composite completion requires its recorded vehicle_design; installed bus/fuel/nozzle properties cannot be inferred from appearance')
+            design=SpacecraftMissionDesign.from_dict(SpacecraftGeometry.from_dict(approach.target['geometry']),record)
+            defaults.update(target_mass_kg=design.target_mass_kg,chaser_dry_mass_kg=design.chaser.dry_mass_kg,
+                chaser_fuel_kg=design.chaser.fuel_kg,chaser_body_radius_m=design.chaser.body_radius_m,
+                gripper_offset_m=design.chaser.gripper_offset_m,capture_reach_m=design.arm_reach_m,
+                translation_force_n=design.translation_force_n,attitude_force_n=design.attitude_nozzle_force_n,
+                attitude_moment_arm_m=design.attitude_moment_arm_m,specific_impulse_s=design.specific_impulse_s)
+        for key,value in defaults.items():
+            supplied=getattr(args,key)
+            if supplied is None:
+                setattr(args,key,value)
+            elif design is not None and supplied!=value:
+                raise ValueError(f'{key} conflicts with the installed vehicle design recorded during approach')
         handoff = None
         if args.terminal_execution is not None:
             from orbexa.simulation.terminal_handoff import PhysicalTerminalHandoff
@@ -67,11 +90,14 @@ def main(argv=None):
                 assume_approach_point_is_capture_reference=args.approach_point_is_capture_reference,
                 gravity_gradient=args.gravity_gradient)
         detumbling = DetumblingSimulator(options=DetumblingOptions(rate_tolerance_rad_s=args.rate_tolerance_rad_s,
-                                                                   dwell_s=args.detumbling_dwell_s))
+            dwell_s=args.detumbling_dwell_s),policy=RateDampingPolicy(20. if design is None else design.detumbling_gain_nm_s))
         deorbit = DeorbitSimulator(options=DeorbitOptions(target_perigee_altitude_m=args.target_perigee_altitude_m,
-                                                         entry_interface_altitude_m=args.entry_interface_altitude_m))
+            entry_interface_altitude_m=args.entry_interface_altitude_m),pointing_policy=ThrustPointingPolicy(
+                .2 if design is None else design.pointing_attitude_gain_nm,
+                20. if design is None else design.pointing_rate_gain_nm_s))
         propulsion = partial(ThrusterSystem.for_assembly, translation_force_n=args.translation_force_n,
-                             attitude_force_n=args.attitude_force_n, specific_impulse_s=args.specific_impulse_s)
+                             attitude_force_n=args.attitude_force_n, specific_impulse_s=args.specific_impulse_s,
+                             moment_arm_m=args.attitude_moment_arm_m)
         if args.assume_attitude_matched:
             args.output_dir.mkdir(parents=True, exist_ok=False)
             geometry = bind_approach_body_geometry(approach, {}, chaser,
@@ -86,6 +112,7 @@ def main(argv=None):
             store = CompleteMissionStore(args.output_dir)
             tracker = ChaserAttitudeTracker(default_chaser=chaser,
                 actuators=ChaserAttitudeActuators(nozzle_force_limit_n=args.attitude_force_n,
+                                                 moment_arm_m=args.attitude_moment_arm_m,
                                                  specific_impulse_s=args.specific_impulse_s))
             result = CompleteMissionRunner(options=CompleteMissionOptions(input_component_bound=args.input_component_bound,
                 target_mass_kg=args.target_mass_kg, translation_force_n=args.translation_force_n,

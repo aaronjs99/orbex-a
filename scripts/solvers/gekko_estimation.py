@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Any, Optional, Union
 from scipy.optimize import least_squares
 from orbexa.core.dynamics import orbital_ellp_drag
+from orbexa.utils.solver_options import gekko_memory_exponent
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +29,13 @@ from gekko import GEKKO
 
 
 class GekkoWindowEstimator:
-    def __init__(self, *, parameter_keys, error_bound, remote, disp, max_iter):
+    def __init__(self, *, parameter_keys, error_bound, remote, disp, max_iter, max_memory=4):
         self.parameter_keys = parameter_keys
         self.error_bound = error_bound
         self.remote = remote
         self.disp = disp
         self.max_iter = max_iter
+        self.max_memory = gekko_memory_exponent(max_memory)
 
     def solve_parameter_bound(
         self,
@@ -131,7 +133,7 @@ class GekkoWindowEstimator:
         solver.options.SOLVER = 3
         solver.options.MAX_ITER = self.max_iter
         solver.options.MAX_TIME = 30
-        solver.options.MAX_MEMORY = 512
+        solver.options.MAX_MEMORY = self.max_memory
         solver.options.OTOL = 1.0e-6
         solver.options.RTOL = 1.0e-6
 

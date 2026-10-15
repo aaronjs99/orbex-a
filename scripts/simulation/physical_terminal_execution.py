@@ -21,6 +21,7 @@ from orbexa.control.reachability import (
     RotatingCylinderBounds, SweptCollisionGuard, ValidatedFlowEncloser, _exact,
 )
 from orbexa.control.terminal_tracking import TerminalReferenceSample
+from orbexa.control.composite_geometry import CompositeSweptCollisionGuard, RotatingCompositeBounds
 
 
 EXECUTION_METHOD = "physical-terminal-held-execution-v1"
@@ -135,18 +136,33 @@ class PhysicalTerminalRunner:
         if (_exact(target.mu) != first.target_orbit.mu
                 or _exact(target.semi_major_axis) != first.target_orbit.semi_major_axis
                 or bool(target.gravity_gradient) != first.gravity_gradient
-                or tuple(tuple(map(_exact, row)) for row in target.inertia) != first.inertia
-                or _exact(target.radius) != first.target_radius
-                or _exact(target.half_length) != first.target_half_length
-                or _exact(target.tolerance) != first.target_tolerance):
+                or tuple(tuple(map(_exact, row)) for row in target.inertia) != first.inertia):
             raise ValueError("The actual physical target contradicts the certified terminal context")
+        shape = target.as_dict().get("shape")
+        geometries = tuple(getattr(builder, "target_geometry", None) for builder in self.builders)
+        self.composite_geometry = None
+        if shape == "composite_spacecraft":
+            from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+            geometry = getattr(target, "geometry", None)
+            if (not isinstance(geometry, SpacecraftGeometry) or any(value is None for value in geometries)
+                    or any(value.fingerprint != geometry.fingerprint for value in geometries)):
+                raise ValueError("The actual composite target and every terminal builder must share one explicit complete geometry")
+            self.composite_geometry = geometry
+        elif shape == "cylinder":
+            if (any(value is not None for value in geometries) or _exact(target.radius) != first.target_radius
+                    or _exact(target.half_length) != first.target_half_length
+                    or _exact(target.tolerance) != first.target_tolerance):
+                raise ValueError("The actual cylinder contradicts its explicit terminal geometry")
+        else:
+            raise ValueError("Unsupported physical terminal target geometry; no cylinder fallback is available")
         if not target.anomaly_domain[0] <= float(first.start_anomaly) < float(first.end_anomaly) <= target.anomaly_domain[1]:
             raise ValueError("The complete terminal window must belong to the actual target's numerical domain")
         entry_spin = IntervalBox.point(target.body_angular_velocity_at(float(first.start_anomaly)))
         if not first.entry_spin.contains(entry_spin):
             raise ValueError("The declared entry spin box does not enclose the actual numerical target spin")
         self.encloser = ValidatedFlowEncloser(reachability_config)
-        self.guard = SweptCollisionGuard(precision_bits=self.encloser.config.precision_bits)
+        guard_type = CompositeSweptCollisionGuard if self.composite_geometry is not None else SweptCollisionGuard
+        self.guard = guard_type(precision_bits=self.encloser.config.precision_bits)
         self.record_sink, self.acceleration_source = record_sink, acceleration_source
         self.source_context = dict(caller=dict(source_context or {}), truth=truth.as_dict(),
             target=target.as_dict(), observation_source="Explicit caller-supplied simulation observation contract",
@@ -183,6 +199,20 @@ class PhysicalTerminalRunner:
             result.append(TerminalReferenceSample(q, self.target.docking_state(port, float(q)),
                 self.target.docking_acceleration(port, float(q)), matrix, affine, builder.reference_id))
         return tuple(result)
+
+    def geometry_bounds_at(self, anomaly):
+        """The exact declared target shape with its finite-window pose contract."""
+        q = _exact(anomaly)
+        first = self.builders[0]
+        rotation_rate = max(controller.result.derived["rotation_derivative_operator_bounds"][0]
+                            for controller in self.fleet.controllers)
+        common = dict(orientation_matrix_at_start=self.target.rotation_matrix_at(float(q)),
+            orientation_matrix_error=self.orientation_matrix_error, angular_rate_per_anomaly=rotation_rate,
+            scope="Derived global physical terminal rotation-rate bound and explicitly declared matrix evaluation error")
+        if self.composite_geometry is not None:
+            return RotatingCompositeBounds(geometry=self.composite_geometry, **common)
+        return RotatingCylinderBounds(radius=first.target_radius * (1 + first.target_tolerance),
+                                      half_length=first.target_half_length * (1 + first.target_tolerance), **common)
 
     @staticmethod
     def _numerical_states(values, count):
@@ -268,15 +298,7 @@ class PhysicalTerminalRunner:
                 if self.record_sink:
                     self.record_sink(event)
                 return finish("REFUSED_FLOW", "; ".join(flow.reason for flow in flows if not flow.proven))
-            rotation_rate = max(controller.result.derived["rotation_derivative_operator_bounds"][0]
-                                for controller in self.fleet.controllers)
-            geometry = RotatingCylinderBounds(
-                radius=first.target_radius * (1 + first.target_tolerance),
-                half_length=first.target_half_length * (1 + first.target_tolerance),
-                orientation_matrix_at_start=self.target.rotation_matrix_at(float(q)),
-                orientation_matrix_error=self.orientation_matrix_error,
-                angular_rate_per_anomaly=rotation_rate,
-                scope="Derived global physical terminal rotation-rate bound and explicitly declared matrix evaluation error")
+            geometry = self.geometry_bounds_at(q)
             solid_error = max(builder.errors.target_solid_position_error_radius for builder in self.builders)
             collision = self.guard.check(flows, tuple(builder.body_radius for builder in self.builders),
                 target=geometry, clearance=first.clearance + solid_error,
