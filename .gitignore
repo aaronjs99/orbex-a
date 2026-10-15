@@ -101,6 +101,7 @@ results/
 !config/physical-admission.json
 !config/envisat-prior.json
 !config/envisat-admission.json
+!config/envisat-arrival.json
 !config/envisat-deployment.json
 !config/spacecraft/*.json
 !scripts/visualization/studio/vendor/manifest.json

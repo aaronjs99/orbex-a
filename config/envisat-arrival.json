@@ -1,0 +1,36 @@
+{
+  "mode": "deadline_terminal_suffix",
+  "planning_fraction": 0.8,
+  "required_terminal_region": {
+    "omega": [
+      0.00115,
+      0.00115,
+      0.00115
+    ],
+    "phi": [
+      0.02,
+      0.02,
+      0.02
+    ],
+    "lambda_gain": [
+      20,
+      20,
+      20
+    ],
+    "reference_state_error_abs": [
+      1.039062929292621e-06,
+      1.039062929292621e-06,
+      1.039062929292621e-06,
+      0.00012063371187349754,
+      0.00012063371187349754,
+      0.00012063371187349754
+    ],
+    "maximum_query_displacement": 1e-10,
+    "anomaly_domain": [
+      0.0,
+      1.214
+    ],
+    "frame": "physical-lvlh-v1",
+    "error_source": "Declared numerical reference errors 1e-6 m and 1e-4 m/rad, plus full-domain Arb rigid-body/orbit query-displacement bounds for the eight Envisat study COM points. Uniform direct errors and initial spin containment remain assumptions; this is a planning/entry screen, not a terminal-controller or flight certificate."
+  }
+}
