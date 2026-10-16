@@ -7,12 +7,17 @@ import hashlib
 import json
 import numpy as np
 
+from orbexa.utils.io_utils import convert_numpy_to_list
+
 
 class LifecycleDataset:
     """Physical assembly histories with explicit fixture/mission provenance."""
 
     def __init__(self, result):
-        self.result = result.to_dict() if hasattr(result, 'to_dict') else dict(result)
+        # Match persistence's recursive NumPy conversion before hashing or
+        # projecting live records, including arrays nested in approach metadata.
+        self.result = convert_numpy_to_list(
+            result.to_dict() if hasattr(result, 'to_dict') else dict(result))
 
     def to_dict(self):
         r = self.result

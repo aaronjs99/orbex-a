@@ -18,10 +18,12 @@ consume the same geometry. [Its model and sources](docs/envisat.md) distinguish
 published dimensions and mass/inertia from inferred layout and unknown current
 state. The current profile releases eight separated chasers in a common payload
 cluster 300 m away, transfers them toward the target, and assigns component-aware
-routes to eight surface patches. Attachment, detumbling and orbital lowering
-remain gated physical stages. A completed close-start recording does not qualify
-this changed departure. Contact is idealized, and the orbital endpoint precedes
-atmospheric entry physics.
+routes to eight surface patches. The published 300 m recording completes all
+eight attachments, detumbling and orbital lowering through a descending 120 km
+entry interface with an 80 km osculating perigee. Its saved-state review checks
+the approach, held-command accounting, attitude, capture, momentum, propulsion
+and disposal endpoint against that same source-bound record. Contact is
+idealized, and the orbital endpoint precedes atmospheric entry physics.
 
 The approach plant is the paper's analytical relative-motion approximation.
 An independent Cartesian SI dynamics service includes nonlinear central gravity,
@@ -129,9 +131,8 @@ See [physical lifecycle](docs/mission-lifecycle.md),
 ## Mission Studio
 
 Open the [published Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site)
-for one Envisat mission, plots and illustrated theory. The Site is private and
-uses ChatGPT sign-in. Its visible catalog excludes older cylinder and comparison
-recordings.
+for one current Envisat mission, plots and illustrated theory. Its visible
+catalog excludes older cylinder and comparison recordings.
 
 Start the real local simulation service from this checkout:
 

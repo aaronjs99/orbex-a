@@ -12,6 +12,32 @@ class MissionGeometry:
 
     def __init__(self, samples: MissionSamples):
         self.samples = samples
+        self._composite = None
+        if samples.target.get("shape") == "composite_spacecraft":
+            from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+            self._composite = SpacecraftGeometry.from_dict(samples.target["geometry"])
+            self._nominal_vertices = np.concatenate([
+                np.asarray(component.nominal_vertices_body_m, dtype=float)
+                for component in self._composite.components])
+            self._occupied_vertices = np.concatenate([
+                np.asarray(component.vertices_body_m, dtype=float)
+                for component in self._composite.components])
+
+    def target_vertices(self, index: int, *, include_uncertainty: bool = True):
+        """Saved target vertices in LVLH at this recorded pose, without propagation.
+
+        Composite occupied vertices include the declared uncertainty once;
+        nominal vertices describe the displayed component surfaces. A legacy
+        cylinder returns its existing surface mesh vertices. Missing poses or
+        unsupported target shapes return an empty (0, 3) array.
+        """
+        if self.samples.rotations is None or index < 0 or index >= len(self.samples.q):
+            return np.empty((0, 3))
+        if self._composite is not None:
+            body = self._occupied_vertices if include_uncertainty else self._nominal_vertices
+            return body @ self.samples.rotations[index].T
+        mesh = self.cylinder_mesh(index)
+        return np.empty((0, 3)) if mesh is None else mesh.reshape(3, -1).T
 
     def cylinder_mesh(self, index: int, *, theta_count: int = 48, z_count: int = 12):
         geometry = self.samples.cylinder()
@@ -63,6 +89,26 @@ class MissionGeometry:
                 for identifier, point in samples.goals_body.items()}
 
     def plot_target(self, ax, index: int, *, label: bool = True):
+        if self._composite is not None:
+            from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+            vertices = self.target_vertices(index, include_uncertainty=False)
+            if not len(vertices):
+                return None
+            # Core vertices use itertools.product((-1, 1), repeat=3).
+            faces = np.array([[0, 1, 3, 2], [4, 5, 7, 6], [0, 1, 5, 4],
+                              [2, 3, 7, 6], [0, 2, 6, 4], [1, 3, 7, 5]])
+            palette = {"bus": "#c8a452", "solar_array": "#244f73",
+                       "antenna": "#b9c4cb", "structure": "#8798a6"}
+            colors = [palette.get(component.role, "#8798a6")
+                      for component in self._composite.components for _ in faces]
+            polygons = np.concatenate([component[faces]
+                                       for component in vertices.reshape(-1, 8, 3)])
+            artist = Poly3DCollection(polygons, facecolors=colors, edgecolors="#455361",
+                                      linewidths=.45, alpha=.95)
+            ax.add_collection3d(artist)
+            if label:
+                ax.plot([], [], [], color="#c8a452", linewidth=6, label="recorded composite target")
+            return artist
         mesh = self.cylinder_mesh(index)
         if mesh is None:
             return None
@@ -90,6 +136,8 @@ class MissionGeometry:
         if self.samples.goals_body:
             extent = max(float(np.linalg.norm(value)) for value in self.samples.goals_body.values())
             points.append(np.array([[-extent] * 3, [extent] * 3]))
+        if self._composite is not None and self.samples.rotations is not None:
+            points.extend(self.target_vertices(index) for index in range(len(self.samples.q)))
         values = np.vstack(points)
         low, high = values.min(axis=0), values.max(axis=0)
         center = (low + high) / 2
