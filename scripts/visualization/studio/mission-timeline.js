@@ -117,6 +117,7 @@ export function phaseTitle(phase, hasRelease = false) {
 
 export function releaseContextVisible(data, index) {
   const phase = data.phases[index];
-  return phase === 'carrier_departure' || phase === 'transfer' && Array.isArray(data.elapsed_s) &&
+  return index === 0 && vector(data.deployment?.carrier_center_lvlh_m, 3) ||
+    phase === 'carrier_departure' || phase === 'transfer' && Array.isArray(data.elapsed_s) &&
     Number.isFinite(data.elapsed_s[index]) && data.elapsed_s[index] - data.elapsed_s[0] <= 5;
 }
