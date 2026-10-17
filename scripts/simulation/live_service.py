@@ -29,6 +29,8 @@ from urllib.parse import parse_qs, urlsplit
 import uuid
 
 
+LIVE_SERVICE = 'orbexa-live-v2'
+LIVE_PROTOCOL_VERSION = 2
 ALLOWED_ORIGINS = frozenset((
     "http://localhost:8879", "http://127.0.0.1:8879",
     "http://localhost:8881", "http://127.0.0.1:8881",
@@ -71,6 +73,7 @@ class LiveServiceSettings:
     spacecraft_path: Path
     maximum_updates: int = 1200
     resume_path: Path | None = None
+    historical_analytical_resume: bool = False
 
     def __post_init__(self):
         for name in ("output_dir", "config_path", "prior_path", "admission_path", "deployment_path", "spacecraft_path"):
@@ -83,6 +86,8 @@ class LiveServiceSettings:
             if not path.is_file():
                 raise ValueError(f"Missing explicit resume record: {path}")
             object.__setattr__(self, 'resume_path', path)
+        if not isinstance(self.historical_analytical_resume, bool) or bool(self.resume_path) != self.historical_analytical_resume:
+            raise ValueError('Saved analytical resume requires the explicit historical_analytical_resume flag and a resume path')
         if isinstance(self.maximum_updates, bool) or not isinstance(self.maximum_updates, int) or not 1 <= self.maximum_updates <= 1200:
             raise ValueError("maximum_updates must be an integer in [1, 1200]")
         checkout = Path(__file__).resolve().parents[2]
@@ -120,7 +125,9 @@ def _resume_source(path, parameters=None):
                 or record['target']['shape'] != 'composite_spacecraft'
                 or deployment['kind'] != 'carrier_cluster_to_component_aware_patch_routes'
                 or len(center) != 3 or center[:2] != [0., 0.]
-                or len(spin) != 3 or spin[:2] != [0., 0.]):
+                or len(spin) != 3 or spin[:2] != [0., 0.]
+                or record['metadata'].get('model_version') == 'nonlinear-reference-relative-v1'
+                or record['metadata'].get('continuous_execution_certificate', {}).get('method') != 'arb-picard-continuous-v1'):
             raise ValueError('Resume requires the same unfinished eight-chaser carrier deployment')
         if parameters is not None and (center[2] != parameters.release_distance_m
                 or pitch != parameters.cluster_spacing_m
@@ -145,10 +152,14 @@ def _freeze_job(settings, directory):
     source = Path(__file__).resolve().parents[1]
     destination = directory / 'runtime' / 'orbexa'
     def inventory():
-        return {str(path.relative_to(source)): _sha(path) for path in source.rglob('*')
-            if path.is_file() and '__pycache__' not in path.parts and path.suffix not in ('.pyc', '.pyo')}
+        return {str(path.relative_to(source)): _sha(path) for path in source.rglob('*.py')
+            if '__pycache__' not in path.parts}
     before = inventory()
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo'))
+    destination.mkdir(parents=True,exist_ok=False)
+    for name in before:
+        target=destination/name
+        target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(source/name,target)
     if inventory() != before or any(_sha(destination / name) != value for name, value in before.items()):
         raise RuntimeError('Source changed during job snapshot; retry with a coherent source')
     inputs = directory / 'inputs'; inputs.mkdir()
@@ -175,7 +186,8 @@ def _freeze_job(settings, directory):
                 changes[name] = frozen
             input_records[name] = dict(original=str(original), frozen=str(frozen.relative_to(directory)), sha256=expected)
     _write_json(directory / 'snapshot-manifest.json', dict(package_files=before, inputs=input_records,
-        scope='Per-job coherent source/input snapshot; scientific modules execute only these frozen bytes'))
+        package_scope='Python runtime; viewer assets are exported separately for the selected UI port',
+        scope='Per-job coherent Python/input snapshot; scientific modules execute only these frozen bytes'))
     return replace(settings, **changes)
 
 
@@ -329,6 +341,7 @@ class LiveSimulationService:
         self._state = dict(revision=0, session_id=uuid.uuid4().hex, job_id=None, status="idle", parameters=None,
             projection=None, lifecycle=None, progress={}, message="Ready for a new bounded simulation", paused=False,
             scope="Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification",
+            execution_model='historical_analytical_resume' if self._resume_pending else 'sensed_nonlinear',
             resume_pending=self._resume_pending,
             resume_source=None if settings.resume_path is None else str(settings.resume_path))
 
@@ -373,7 +386,8 @@ class LiveSimulationService:
             from dataclasses import replace
             if self._resume_pending:
                 _resume_source(self.settings.resume_path, parameters)
-            job_settings = self.settings if self._resume_pending else replace(self.settings, resume_path=None)
+            job_settings = self.settings if self._resume_pending else replace(self.settings, resume_path=None,
+                historical_analytical_resume=False)
             self._stop("Replaced by an explicitly requested new parameter set; outputs preserved")
             job_id = time.strftime("%Y%m%dT%H%M%S", time.gmtime()) + "-" + uuid.uuid4().hex[:12]
             directory = self.settings.output_dir / job_id
@@ -392,7 +406,8 @@ class LiveSimulationService:
                 directory, messages, run_event, launch_event), name="orbexa-live-" + job_id)
             self._publish(job_id=job_id, output_dir=str(directory), status="starting", parameters=parameters.as_dict(),
                 projection=None, lifecycle=None, progress={}, paused=False, success=None,
-                message="Constructing the real physical target and spin-specific reference-error bounds")
+                execution_model='historical_analytical_resume' if frozen_settings.resume_path else 'sensed_nonlinear',
+                message="Constructing the declared physical model, sensor prior and finite safety policy")
             try:
                 process.start()
                 tree = _WorkerTree(process)
@@ -403,7 +418,7 @@ class LiveSimulationService:
                 raise
             self._process, self._tree, self._messages, self._run_event = process, tree, messages, run_event
             self._resume_pending = False
-            self._publish(resume_pending=False, origin='strict_checkpoint_resume' if frozen_settings.resume_path else 'fresh_parameters')
+            self._publish(resume_pending=False, origin='historical_analytical_checkpoint' if frozen_settings.resume_path else 'fresh_nonlinear_parameters')
             threading.Thread(target=self._collect, args=(job_id, process, messages), daemon=True).start()
             launch_event.set()
             return self.state()
@@ -556,6 +571,183 @@ def _run_job(settings, parameters, directory, messages, run_event, launch_event)
 
 
 def _execute_job(settings, parameters, directory, messages, run_event):
+    if settings.resume_path is not None:
+        if not settings.historical_analytical_resume:
+            raise ValueError('Analytical resume must use the explicit historical route')
+        return _execute_historical_analytical_job(settings, parameters, directory, messages, run_event)
+    return _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
+
+
+def _native_controller(directory, messages):
+    """Retain native solver evidence inside the isolated job process only."""
+    from orbexa.control.mpc_controller import MPCController
+    from orbexa.solvers.gekko_dynamic_tube import GekkoDynamicTube
+    from orbexa.simulation.mission_checkpoint import plain
+    import tempfile
+    import gekko
+    native = directory / 'native'; native.mkdir(exist_ok=True)
+    tempfile.tempdir = str(native)
+    # Preserve every local APMonitor working directory, including failed/cold
+    # retry attempts. This changes file lifetime only, not the NLP or solver.
+    gekko.GEKKO.cleanup = lambda _self: None
+    original_solve = GekkoDynamicTube._solve_once
+    attempts, calls = 0, 0
+    counter_lock, current_call = threading.Lock(), threading.local()
+    def retained_attempt(problem):
+        nonlocal attempts
+        with counter_lock:
+            attempts += 1
+            number = attempts
+        problem.model.solver_options += ['output_file native-ipopt.txt', 'file_print_level 5']
+        result = None
+        try:
+            result = original_solve(problem)
+            return result
+        finally:
+            folder = Path(problem.model.path)
+            record = dict(attempt=number, controller_call=getattr(current_call, 'number', None), working_directory=str(folder.relative_to(directory)),
+                success=None if result is None else bool(result.success),
+                message=None if result is None else result.message,
+                solver_info=None if result is None else plain(result.solver_info),
+                files={str(p.relative_to(folder)): _sha(p) for p in folder.rglob('*') if p.is_file()},
+                scope='Unchanged native problem/acceptance; only transcript output and directory lifetime instrumented')
+            with counter_lock:
+                with (directory / 'native-attempts.jsonl').open('a', encoding='utf-8') as stream:
+                    stream.write(json.dumps(record, allow_nan=False) + '\n')
+    GekkoDynamicTube._solve_once = retained_attempt
+    class TrackedController:
+        solver_backend = 'gekko'
+        def __init__(self, **kwargs):
+            self.inner = MPCController(**kwargs)
+        def solve_step(self, **kwargs):
+            nonlocal calls
+            with counter_lock:
+                calls += 1
+                number = calls
+            current_call.number = number
+            messages.put(dict(kind='native', message=f'Actual nonlinear controller call {number}: solving fleet member',
+                native=dict(controller_call=number, anomaly=float(kwargs['start_anom']), status='solving')))
+            result = self.inner.solve_step(**kwargs)
+            messages.put(dict(kind='native', message=f'Nonlinear controller call {number}: '+result.message,
+                native=dict(controller_call=number, anomaly=float(kwargs['start_anom']), status='accepted' if result.success else 'refused')))
+            return result
+    return TrackedController
+
+
+def _execute_nonlinear_job(settings, parameters, directory, messages, run_event):
+    """Fresh observed nonlinear run, durable proofs and ordinary finite capture."""
+    from dataclasses import replace
+    import numpy as np
+    from orbexa.control.reachability import IntervalBox
+    from orbexa.core.config import SimulationConfig
+    from orbexa.simulation.complete_mission import CompleteMissionStore
+    from orbexa.simulation.mission_result import MissionResultStore
+    from orbexa.simulation.nonlinear_archive import NonlinearProofArchive
+    from orbexa.simulation.nonlinear_completion import complete_nonlinear_mission
+    from orbexa.simulation.nonlinear_mission import NonlinearMissionRunner
+    from orbexa.simulation.nonlinear_profile import NonlinearStudyOptions, IndependentTruthCase
+    from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
+    from orbexa.visualization.studio_data import StudioDataset
+    cfg = SimulationConfig.load(str(settings.config_path))
+    if cfg.solver.remote:
+        raise ValueError('The live service requires local GEKKO/IPOPT; remote solvers are not enabled')
+    cfg.num_chasers = 8
+    cfg.__post_init__()
+    design = SpacecraftMissionDesign.from_json(settings.spacecraft_path)
+    cfg.target.docking_standoff = design.com_standoff_m
+    cfg.target.inertia = np.asarray(design.geometry.metadata['mass_properties']['inertia_kg_m2'])
+    options = replace(NonlinearStudyOptions(), release_distance_m=parameters.release_distance_m,
+        release_pitch_m=parameters.cluster_spacing_m, nominal_spin_deg_s=parameters.target_spin_deg_s)
+    # These physical realization values are fixed prospectively, independent
+    # of the observed controller prior and the success/failure of this run.
+    case = IndependentTruthCase('live-prospective-study-v1', .0012, .026, .036,
+        parameters.target_spin_deg_s, 3817)
+    prior = IntervalBox.from_center_radius((0., 0., math.radians(parameters.target_spin_deg_s)), (.002, .002, .008))
+    inputs = {name: str(getattr(settings, name)) for name in
+        ('config_path', 'prior_path', 'admission_path', 'deployment_path', 'spacecraft_path')}
+    _write_json(directory / 'source-inputs.json', dict(paths=inputs,
+        sha256={name: _sha(path) for name, path in inputs.items()},
+        runtime_python_sha256={str(path.relative_to(Path(__file__).parents[1])): _sha(path)
+            for path in Path(__file__).parents[1].rglob('*.py')}, parameters=parameters.as_dict(),
+        maximum_updates=settings.maximum_updates, origin='fresh_nonlinear_parameters', execution_model='sensed_nonlinear',
+        nonlinear_study_options=options.as_dict(), independent_truth_case=asdict(case), initial_spin_prior=prior.as_dict(),
+        historical_only_inputs=('prior_path', 'admission_path', 'deployment_path'),
+        scope='Shared declared nonlinear physics/sensor/safety profile; requested study knobs and nonzero observed spin prior; no flight qualification'))
+    controller_factory = _native_controller(directory, messages)
+    with NonlinearProofArchive(directory / 'nonlinear-certificates.jsonl.gz') as archive:
+        def progress(event):
+            projection = event.get('projection')
+            if projection is None and event.get('result') is not None:
+                projection = StudioDataset(event['result']).to_dict()
+            if projection is None:
+                raise ValueError('Nonlinear runner must provide an actual committed projection')
+            _write_json(directory / 'committed-projection.json', projection)
+            archive.flush()
+            messages.put(dict(kind='ready' if event.get('kind') == 'start' else 'committed', projection=projection,
+                update=event.get('update', max(0, len(projection.get('q', []))-1)),
+                anomaly=projection['q'][-1], phase=projection.get('phases', ['unknown'])[-1],
+                message='Actual sensed nonlinear mission states'))
+            if not run_event.is_set():
+                messages.put(dict(kind='paused'))
+                run_event.wait()
+                messages.put(dict(kind='running'))
+
+        def checkpoint(update, runner, outcome):
+            archive.flush()
+            if archive.holds != len(runner.recorder.hold_records):
+                raise ValueError('Durable completed-hold archive does not match the committed mission index')
+            # Both owners confirmed these lists are evidence-only. Their
+            # full records already have durable archive receipts at this point.
+            runner.executor.journal.clear()
+            if runner.executor.runtime is not None:
+                runner.executor.runtime.events.clear()
+            _write_json(directory / 'archive-progress.json', dict(update=update, entries=archive.entries,
+                completed_holds=archive.holds, event_kinds=archive.kinds,
+                retained_executor_holds=len(runner.executor.journal),
+                retained_runtime_events=0 if runner.executor.runtime is None else len(runner.executor.runtime.events),
+                execution_exact_q=str(runner.truth_target.current_q), proof_scope='Producer witnesses streamed before motion'))
+
+        runner = NonlinearMissionRunner(cfg, design, case=case, options=options, progress_sink=progress,
+            certificate_sink=archive.append, checkpoint_sink=checkpoint, controller_factory=controller_factory,
+            initial_target_spin_prior=prior, streamed_hold_index=True, retain_journal=False)
+        approach = runner.run(mission='multi', steps=settings.maximum_updates)
+        source = archive.close()
+    # Publish the closed archive receipt after recording; no archive identity
+    # depends on the result that later names it.
+    approach.metadata['proof_archive'] = source.as_dict()
+    approach.metadata['live_execution_route'] = 'sensed_nonlinear'
+    manifest = directory / 'snapshot-manifest.json'
+    approach.metadata['live_source_binding'] = dict(source_inputs_sha256=_sha(directory / 'source-inputs.json'),
+        snapshot_manifest_sha256=_sha(manifest) if manifest.is_file() else None,
+        frozen_package=str(Path(__file__).resolve().parents[1]),
+        scope='Closed archive receipt and immutable job source/input manifests; recorded after production to avoid self-reference')
+    MissionResultStore.save(approach, directory / 'approach')
+    projection = StudioDataset(approach).to_dict()
+    _write_json(directory / 'committed-projection.json', projection)
+    messages.put(dict(kind='committed', projection=projection, update=len(approach.anom_history)-1,
+        anomaly=approach.anom_history[-1], phase=approach.sample_phase_history[-1]))
+    store = CompleteMissionStore(directory / 'completion')
+    def stage_sink(stage, result):
+        store.record(stage, result)
+        messages.put(dict(kind='stage', message='Physical completion: '+stage))
+    completion = complete_nonlinear_mission(approach, nonlinear_runner=runner, hold_records=source, stage_sink=stage_sink)
+    # The early incomplete result deliberately performs no post-approach stage;
+    # retain its original source in the same result directory nevertheless.
+    if not approach.success or not approach.metadata.get('mission_complete', False):
+        store.record('approach', approach)
+    store.finish(completion)
+    payload = dict(kind='finished', success=bool(completion.success), message=completion.message, projection=projection)
+    if completion.lifecycle is not None:
+        from orbexa.visualization.lifecycle_renderer import LifecycleDataset
+        payload['lifecycle'] = LifecycleDataset(completion.lifecycle).to_dict()
+        _write_json(directory / 'lifecycle-projection.json', payload['lifecycle'])
+    _write_json(directory / 'worker-result.json', {key: value for key, value in payload.items()
+        if key not in ('projection', 'lifecycle')})
+    messages.put(payload)
+
+
+def _execute_historical_analytical_job(settings, parameters, directory, messages, run_event):
+    """Explicit retained analytical restart; it never supplies a fresh run."""
     from dataclasses import replace
     import numpy as np
     from orbexa.core.config import SimulationConfig
@@ -567,51 +759,10 @@ def _execute_job(settings, parameters, directory, messages, run_event):
     from orbexa.simulation.physical_approach import ContinuousAdmissionOptions, PhysicalApproachOptions, PhysicalApproachScenario
     from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
     from orbexa.visualization.studio_data import StudioDataset
-    from orbexa.control.mpc_controller import MPCController
-    from orbexa.solvers.gekko_dynamic_tube import GekkoDynamicTube
     from orbexa.simulation.mission_checkpoint import MissionCheckpoint, physical_target_from_snapshot, plain
-    import tempfile
-    import gekko
-    native = directory / 'native'; native.mkdir(exist_ok=True)
-    tempfile.tempdir = str(native)
-    # Preserve every local APMonitor working directory, including failed/cold
-    # retry attempts. This changes file lifetime only, not the NLP or solver.
-    gekko.GEKKO.cleanup = lambda _self: None
-    original_solve = GekkoDynamicTube._solve_once
-    attempts, calls = 0, 0
-    def retained_attempt(problem):
-        nonlocal attempts
-        attempts += 1
-        number = attempts
-        problem.model.solver_options += ['output_file native-ipopt.txt', 'file_print_level 5']
-        result = None
-        try:
-            result = original_solve(problem)
-            return result
-        finally:
-            folder = Path(problem.model.path)
-            record = dict(attempt=number, controller_call=calls, working_directory=str(folder.relative_to(directory)),
-                success=None if result is None else bool(result.success),
-                message=None if result is None else result.message,
-                solver_info=None if result is None else plain(result.solver_info),
-                files={str(p.relative_to(folder)): _sha(p) for p in folder.rglob('*') if p.is_file()},
-                scope='Unchanged native problem/acceptance; only transcript output and directory lifetime instrumented')
-            with (directory / 'native-attempts.jsonl').open('a', encoding='utf-8') as stream:
-                stream.write(json.dumps(record, allow_nan=False) + '\n')
-    GekkoDynamicTube._solve_once = retained_attempt
-    class TrackedController:
-        solver_backend = 'gekko'
-        def __init__(self, **kwargs):
-            self.inner = MPCController(**kwargs)
-        def solve_step(self, **kwargs):
-            nonlocal calls
-            calls += 1
-            messages.put(dict(kind='native', message=f'Actual nonlinear controller call{calls}: solving fleet member',
-                native=dict(controller_call=calls, anomaly=float(kwargs['start_anom']), status='solving')))
-            result = self.inner.solve_step(**kwargs)
-            messages.put(dict(kind='native', message=f'Nonlinear controller call{calls}: '+result.message,
-                native=dict(controller_call=calls, anomaly=float(kwargs['start_anom']), status='accepted' if result.success else 'refused')))
-            return result
+    if not settings.historical_analytical_resume or settings.resume_path is None:
+        raise ValueError('Historical analytical execution requires its explicitly selected saved source')
+    TrackedController = _native_controller(directory, messages)
     inputs = {name: str(getattr(settings, name)) for name in
         ("config_path", "prior_path", "admission_path", "deployment_path", "spacecraft_path")}
     _write_json(directory / "source-inputs.json", dict(paths=inputs,
@@ -619,7 +770,7 @@ def _execute_job(settings, parameters, directory, messages, run_event):
         runtime_python_sha256={str(path.relative_to(Path(__file__).parents[1])): _sha(path)
             for path in Path(__file__).parents[1].rglob("*.py")},
         parameters=parameters.as_dict(), maximum_updates=settings.maximum_updates,
-        origin='fresh_parameters' if settings.resume_path is None else 'strict_checkpoint_resume',
+        origin='historical_analytical_checkpoint', execution_model='historical_analytical_resume',
         resume_source=None if settings.resume_path is None else str(settings.resume_path),
         transfer_duration_rule=".18*sqrt(release_distance_m/300)rad; unchanged hardware/input caps"))
     cfg = SimulationConfig.load(str(settings.config_path))
@@ -758,7 +909,7 @@ class _LiveHandler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         if host not in (f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"):
             raise PermissionError("Only the literal loopback host is accepted")
-        if origin is not None and origin not in ALLOWED_ORIGINS:
+        if origin is not None and origin not in self.server.allowed_origins:
             raise PermissionError("This browser origin is not allowed")
         return origin
 
@@ -766,7 +917,7 @@ class _LiveHandler(BaseHTTPRequestHandler):
         raw = b"" if status == 204 else json.dumps(payload, allow_nan=False).encode("utf-8")
         self.send_response(status)
         origin = self.headers.get("Origin")
-        if origin in ALLOWED_ORIGINS:
+        if origin in self.server.allowed_origins:
             self.send_header("Access-Control-Allow-Origin", origin)
             if preflight:
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -829,11 +980,13 @@ class _LiveHandler(BaseHTTPRequestHandler):
             self._origin()
             url = urlsplit(self.path)
             if url.path == "/health":
-                return self._reply(200, dict(service="orbexa-live-v1", status="ready",
+                state = self.server.service.state()
+                return self._reply(200, dict(service=LIVE_SERVICE, status="ready",
+                    protocol_version=LIVE_PROTOCOL_VERSION, execution_model=state['execution_model'],
                     bind="127.0.0.1", port=self.server.server_port, worker_alive=self.server.service.worker_alive,
-                    session_id=self.server.service.state()['session_id'],
+                    session_id=state['session_id'],
                     parameter_limits=PARAMETER_LIMITS, maximum_updates=self.server.service.settings.maximum_updates,
-                    source="Maintained GEKKO/IPOPT and CertifiedExecutionGuard worker; outcomes may refuse"))
+                    source="Maintained sensed nonlinear GEKKO/IPOPT with finite fleet admission and contact; explicit historical analytical resume available; outcomes may refuse"))
             if url.path != "/state":
                 return self._reply(404, dict(error="Unknown endpoint"))
             query = parse_qs(url.query, keep_blank_values=True)
@@ -852,7 +1005,15 @@ class _LiveHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             self._origin()
-            value = self._body()
+            envelope = self._body()
+            if (set(envelope) != {'protocol_version','session_id','payload'}
+                    or type(envelope.get('protocol_version')) is not int
+                    or envelope['protocol_version'] != LIVE_PROTOCOL_VERSION
+                    or envelope.get('session_id') != self.server.service.state()['session_id']):
+                raise RuntimeError('Simulator session or protocol changed; reconnect before a command')
+            value = envelope['payload']
+            if not isinstance(value,dict):
+                raise ValueError('Command payload must be a JSON object')
             if self.path == "/run":
                 return self._reply(202, self.server.service.start(LiveParameters.from_dict(value)))
             if self.path == "/pause":
@@ -874,13 +1035,18 @@ class _LiveHandler(BaseHTTPRequestHandler):
             self._reply(409, dict(error=str(error)))
 
 
-def make_server(service, *, port=8882):
+def make_server(service, *, port=8882, viewer_port=None):
     """Bind only IPv4 loopback; port0 is useful for isolated caller probes."""
     if not isinstance(service, LiveSimulationService):
         raise TypeError("Inject LiveSimulationService")
     if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:
         raise ValueError("Invalid loopback port")
+    if viewer_port is not None and (isinstance(viewer_port,bool) or not isinstance(viewer_port,int)
+            or not 1 <= viewer_port <= 65535):
+        raise ValueError('Invalid loopback viewer port')
     server = ThreadingHTTPServer(("127.0.0.1", port), _LiveHandler)
     server.daemon_threads = True
     server.service = service
+    server.allowed_origins = ALLOWED_ORIGINS | (frozenset() if viewer_port is None else frozenset((
+        f'http://127.0.0.1:{viewer_port}',f'http://localhost:{viewer_port}')))
     return server

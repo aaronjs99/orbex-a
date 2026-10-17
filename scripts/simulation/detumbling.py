@@ -68,7 +68,7 @@ class DetumblingSimulator:
     def run(self, assembly: AttachedAssembly, initial: AssemblyState,
             propulsion: ThrusterSystem) -> DetumblingResult:
         options, state = self.options, initial
-        history, controls = [assembly.state_record(state)], []
+        history, controls, refused_allocations = [assembly.state_record(state)], [], []
         authority = propulsion.authority(assembly, state.fuel_kg)
         impulse, flux = np.zeros(3), np.zeros(3)
         dwell, max_balance_error, saturated_steps = 0., 0., 0
@@ -86,7 +86,8 @@ class DetumblingSimulator:
                 fuel_corotation_angular_impulse_eci_kg_m2_s=flux.tolist(),
                 angular_momentum_balance_residual_kg_m2_s=float(np.linalg.norm(residual)),
                 max_step_angular_balance_residual_kg_m2_s=max_balance_error,
-                saturated_steps=saturated_steps, dwell_scope="consecutive controlled integration endpoints; no continuous-time enclosure"))
+                saturated_steps=saturated_steps, refused_allocations=refused_allocations,
+                dwell_scope="consecutive controlled integration endpoints; no continuous-time enclosure"))
 
         if authority["torque_rank"] < 3:
             return finish(False, "detumbling_insufficient_three_axis_torque_authority")
@@ -96,6 +97,8 @@ class DetumblingSimulator:
             torque = self.policy.torque_body_nm(assembly, state)
             allocation = propulsion.allocate(assembly, state, np.zeros(3), torque, duration)
             if not allocation.success:
+                refused_allocations.append(dict(time_s=state.time_s, duration_s=duration,
+                    requested_torque_body_nm=torque.tolist(), allocation=allocation.to_dict(), applied=False))
                 return finish(False, f"detumbling_{allocation.message}")
             next_state, audit = assembly.advance_with_audit(state, duration, allocation.force_body_n,
                                                           allocation.torque_body_nm, allocation.fuel_flow_kg_s)
@@ -107,6 +110,11 @@ class DetumblingSimulator:
                                  allocation=allocation.to_dict(), integration=audit))
             state = next_state
             history.append(assembly.state_record(state))
+            if assembly.attachment_limits:
+                endpoint = assembly.attachment_load_audit(state, propulsion, allocation.commands_n)
+                audit['attachment_load_endpoint'] = endpoint
+                if not endpoint['passed']:
+                    return finish(False, 'detumbling_attachment_capacity_exceeded')
             quiet = np.linalg.norm(state.angular_velocity_body_rad_s) <= options.rate_tolerance_rad_s
             dwell = dwell + duration if quiet and quiet_before else 0.
             if dwell >= options.dwell_s:

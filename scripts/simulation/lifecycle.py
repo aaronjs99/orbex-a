@@ -63,6 +63,7 @@ class MissionLifecycle:
             return dict(implementation=f"{type(value).__module__}.{type(value).__qualname__}",
                         parameters=asdict(value) if is_dataclass(value) else "injected policy; parameters supplied by caller")
         configuration = dict(capture=dict(options=asdict(self.capture.options), target_mass_kg=self.capture.target.mass_kg,
+                                 finite_contact_options=asdict(self.capture.contact_options),
                                  target_inertia_kg_m2=self.capture.target.inertia_kg_m2.tolist(),
                                  default_chaser=asdict(self.capture.default_chaser),
                                  chasers={key: asdict(value) for key, value in self.capture.chasers.items()}),
@@ -75,7 +76,7 @@ class MissionLifecycle:
         return configuration
 
     def run(self, approach, *, capture_truth=None, chaser_attitudes=None,
-            terminal_handoff=None) -> MissionLifecycleResult:
+            terminal_handoff=None, contact_feedback=None, contact_environment=None) -> MissionLifecycleResult:
         configuration = self.configuration()
         expected = (ValueError, RuntimeError, ArithmeticError, ImportError)
         def failure(stage, error):
@@ -89,6 +90,8 @@ class MissionLifecycle:
                 terminal_handoff.verify_approach(approach)
                 configuration["terminal_handoff"] = terminal_handoff.as_dict()
             arguments = dict(truth=capture_truth, chaser_attitudes=chaser_attitudes)
+            arguments['contact_feedback'] = contact_feedback
+            arguments['contact_environment'] = contact_environment
             if terminal_handoff is not None:
                 arguments["terminal_handoff"] = terminal_handoff
             attachment = self.capture.capture(approach, **arguments)
@@ -100,6 +103,8 @@ class MissionLifecycle:
                                           configuration=configuration, failure=failure("attachment", error))
         if not attachment.success:
             return MissionLifecycleResult(False, attachment.message, approach.to_dict(), attachment, configuration=configuration)
+        if not self.capture.options.idealized_instantaneous and not attachment.audit.get('finite_contact', {}).get('success'):
+            return MissionLifecycleResult(False, 'finite_contact_report_missing', approach.to_dict(), attachment, configuration=configuration)
         try:
             propulsion = self.propulsion_factory(attachment.assembly)
         except expected as error:
@@ -107,6 +112,13 @@ class MissionLifecycle:
                 approach.to_dict(), attachment, configuration=configuration, failure=failure("propulsion_setup", error))
         try:
             detumbling = self.detumbling.run(attachment.assembly, attachment.state, propulsion)
+            loads = attachment.assembly.attachment_history_audit(propulsion, detumbling.controls, detumbling.history)
+            detumbling.audit['attachment_loads'] = loads
+            attachment.audit.setdefault('downstream_attachment_loads', {})['detumbling'] = loads
+            if not loads['passed']:
+                return MissionLifecycleResult(False, 'detumbling_attachment_capacity_exceeded', approach.to_dict(),
+                    attachment, detumbling, propulsion=propulsion, configuration=configuration,
+                    failure=dict(stage='detumbling', message='Actual allocated nozzle loads exceed a declared pad capacity'))
         except expected as error:
             return MissionLifecycleResult(False, f"detumbling_exception: {type(error).__name__}: {error}",
                 approach.to_dict(), attachment, propulsion=propulsion, configuration=configuration,
@@ -116,6 +128,13 @@ class MissionLifecycle:
                                           propulsion=propulsion, configuration=configuration)
         try:
             deorbit = self.deorbit.run(attachment.assembly, detumbling.final_state, propulsion)
+            loads = attachment.assembly.attachment_history_audit(propulsion, deorbit.controls, deorbit.history)
+            deorbit.audit['attachment_loads'] = loads
+            attachment.audit.setdefault('downstream_attachment_loads', {})['deorbit'] = loads
+            if not loads['passed']:
+                return MissionLifecycleResult(False, 'deorbit_attachment_capacity_exceeded', approach.to_dict(),
+                    attachment, detumbling, deorbit, propulsion, configuration,
+                    failure=dict(stage='deorbit', message='Actual allocated nozzle loads exceed a declared pad capacity'))
         except expected as error:
             return MissionLifecycleResult(False, f"deorbit_exception: {type(error).__name__}: {error}",
                 approach.to_dict(), attachment, detumbling, propulsion=propulsion,

@@ -1,17 +1,25 @@
-# Research red-team review
+# Research review and evaluation contract
+
+The initial review below concerns the analytical standoff implementation. Its
+saved comparisons and timing observations retain that historical scope. The
+maintained [nonlinear mission](nonlinear-mission.md) now separates sensed
+approach, admitted fallback, [finite contact](finite-contact.md), detumbling and
+disposal. Those additions require their own source-bound outcomes; the earlier
+results establish neither their completion nor adaptive superiority.
 
 ## 1. Decision and Executive Verdict
 
-**Proceed conditionally.** The supported decision is to develop and evaluate
-ADTMPC for tube-contained spacecraft standoff rendezvous, including a congested
-post-release deployment phase. The falsifiable contribution is that conservative
+**Proceed conditionally.** The present research task is to evaluate ADTMPC for
+multi-chaser approach and attachment to an unprepared spacecraft, followed by
+detumbling and disposal. Standoff is the free-flight handoff to finite contact.
+The falsifiable contribution is that conservative
 nonlinear orbital set adaptation and optimized feedback bandwidth improve
 completion/accuracy/control tradeoffs under the same physical limits and sensing
 assumptions as credible competing methods. A working demonstration does not yet
 establish that comparative claim. Confidence in the narrower implementation
 claim is higher than confidence in adaptive superiority or flight readiness.
 
-## 2. Claim-Evidence Map
+## 2. Initial analytical claim-evidence map
 
 | Claim | Supplied evidence | Evidentiary dependence | Status | Decisive gap |
 |---|---|---|---|---|
@@ -70,7 +78,7 @@ to a false coding-error diagnosis. No vote was used to resolve it.
 | Onboard delay and ordinary-approach fallback | Major weakness for deployment claims | Historical fleet solve-time misses; plant clock paused during solve; separate supervisor requires an admitted backup | High | Offline success cannot establish onboard viability | Delay-aware propagation and admission of a backup for the actual approach state. |
 | Parameter confounding | Major weakness for full identification | Historical fits had rank one or two; no rank-three windows | High | Separate drag estimates can remain inaccurate | Report eccentricity and drag-difference sensitivity/accuracy. |
 | Statistical generality | Ordinary limitation | Deterministic seed-zero cases sharing one truth | High | Chasers/substeps are correlated, not independent trials | Prospectively selected truth/geometry/noise cases and reported failures. |
-| Capture/release fidelity | Ordinary limitation in numerical lifecycle scope | Rigid inelastic latch and bounded nozzle models are implemented; carrier release and contact loads are not | High | Numerical stages do not establish mechanical feasibility | Keep physical assumptions explicit and measure the missing hardware properties. |
+| Capture/release fidelity | Ordinary limitation in numerical lifecycle scope | The original instantaneous latch is retained only for explicit reproduction; the current finite-contact path has numerical force, bond, load and settling gates | High | Finite numerical contact does not establish manufactured mechanism feasibility or physical carrier release | Retain the declared compliance, massless-positioner and sampled structural-audit scope; qualify actual hardware separately. |
 
 ## 6. Decisive Tests or Analyses
 

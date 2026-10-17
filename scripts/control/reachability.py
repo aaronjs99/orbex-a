@@ -132,10 +132,21 @@ class IntervalBox:
                 tuple(_float_outward(v, True) for v in self.upper))
 
     def as_dict(self) -> dict:
-        lo, hi = self.float_bounds()
-        return {"lower": lo, "upper": hi,
-                "exact_lower": tuple(map(str, self.lower)),
-                "exact_upper": tuple(map(str, self.upper))}
+        # Repeated certificate fingerprints export the same immutable boxes.
+        # Cache only derived immutable tuples, with copied exact primitive
+        # endpoints as the guard. Even a caller bypassing the frozen dataclass
+        # or mutating a Fraction cannot hide changed bounds behind this cache.
+        key = (tuple((v.numerator, v.denominator) for v in self.lower),
+               tuple((v.numerator, v.denominator) for v in self.upper))
+        cached = getattr(self, "_export_cache", None)
+        if cached is None or cached[0] != key:
+            lo, hi = self.float_bounds()
+            values = (lo, hi, tuple(map(str, self.lower)), tuple(map(str, self.upper)))
+            cached = (key, values)
+            object.__setattr__(self, "_export_cache", cached)
+        lo, hi, exact_lo, exact_hi = cached[1]
+        # Callers own their dictionary; changing it never changes a later export.
+        return {"lower": lo, "upper": hi, "exact_lower": exact_lo, "exact_upper": exact_hi}
 
 
 @dataclass(frozen=True)

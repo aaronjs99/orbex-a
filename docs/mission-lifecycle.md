@@ -1,6 +1,29 @@
 # Physical mission lifecycle
 
-## Certified terminal handoff
+## Current nonlinear handoff
+
+The ordinary [sensed nonlinear mission](nonlinear-mission.md) continues through
+`complete_nonlinear_mission`. It requires a successful saved approach, timely
+whole-set terminal entry, consecutive accepted terminal dwell and the complete
+source-bound admitted-hold journal. An incomplete prefix or failed terminal gate
+cannot authorize attachment. The adapter supplies the literal executed endpoint,
+original reference clock, remaining tanks and declared design to
+[finite compliant capture](finite-contact.md).
+
+The target and all eight buses move through finite deployment, compliant contact,
+adhesion and settling before rigid assembly. Actual poses continue into external
+thruster detumbling, finite burn and coast. A failed stage stops continuation;
+successful delivery requires the actual descending entry-interface event.
+These are representative numerical spacecraft and pad models, not measured
+Envisat material properties, a flight-qualified gripper or a disposal approval.
+
+The nonlinear adapter preserves the same central/J2/co-rotating vector-drag law
+through contact and assembly, including the original inclined physical axes.
+It supplies acceleration beyond central gravity through the environment callback;
+configured gravity-gradient torque remains separate. A direct lifecycle without
+that callback uses its declared central-gravity baseline.
+
+## Optional analytical terminal handoff
 
 An optional `PhysicalTerminalHandoff` connects a successful physical terminal
 execution to its exact saved approach. The adapter binds the original file and
@@ -18,11 +41,9 @@ The physical stages and saved lifecycle retain the compact handoff provenance.
 This finite certified window remains conditional on its declared analytical
 plant and target bounds; it does not certify a different orbital plant.
 
-The paper's adaptive dynamic-tube MPC remains the approach controller. The
-post-approach model adds qualified attachment, external-thruster detumbling,
-and a finite-burn maneuver followed by a descending entry-interface handoff.
-It uses explicit representative spacecraft parameters, rather than a measured
-spacecraft, flight-qualified gripper, or validated disposal system.
+This optional analytical reproduction path does not supply nonlinear mission
+evidence. Its attachment stage still uses finite contact by default. Only
+`CaptureOptions.idealized_instantaneous=True` selects instantaneous reproduction.
 
 ## Interfaces and state conventions
 
@@ -38,11 +59,12 @@ saved successful approach. `CompleteMissionStore` reserves a new output director
 and records completed stages atomically. Expected stage exceptions and ordinary
 rejected outcomes retain the last completed physical state and its history.
 
-Positions and translational velocities after attachment use meters and meters
-per second in a fixed inertial basis. That basis is chosen coincident with the
-target's initial LVLH basis: it is a valid planar ECI coordinate choice, without
-an inferred terrestrial longitude, orbit inclination, or absolute epoch. The
-scalar-last quaternion maps the assembly body basis to that inertial basis.
+Positions and translational velocities during contact and after attachment use
+meters and meters per second in the retained fixed physical ECI basis. The
+nonlinear model declares its J2 and atmosphere rotation axes in that basis;
+they need not be global `z`. Approach relative states use the commanded
+reference-orbit frame. The scalar-last quaternion maps each body basis, or the
+post-lock assembly basis, to physical ECI.
 Angular velocity is the inertial body angular velocity, expressed in body
 components, in rad/s. Euler/anomaly derivatives are never treated as physical
 spin.
@@ -51,16 +73,19 @@ Let `q` denote the recorded unwrapped anomaly, `ν` its physical rate in rad/s,
 `C` the LVLH-to-ECI rotation, `x` the recorded relative position, and `x'` its
 recorded anomaly derivative. Let `r_t` and `v_t` denote the target's physical
 position and velocity. Let `k` be the positive orbit-normal unit vector. The
-adapter uses the existing analytical target orbit and its actual truth clock:
+nonlinear adapter uses the actual saved target Cartesian state and original
+commanded reference clock:
 
 $$
 r_c=r_t+Cx,\qquad v_c=v_t+C\nu(x'+k\times x).
 $$
 
-The frame-rate term is required even for a stationary LVLH point. The recorded
-elliptical model uses `x` opposite the transverse direction and `y` radially
-outward. Let `r(q)` be orbital radius and `r'(q)` its anomaly derivative. The
-target adapter therefore uses
+The frame-rate term is required even for a stationary reference-frame point.
+No analytical target ephemeris is substituted for the actual nonlinear state.
+For analytical reproduction only, the fixed ECI basis is chosen coincident with
+the initial LVLH basis. Its elliptical model uses `x` opposite the transverse
+direction and `y` radially outward. With orbital radius `r(q)` and its anomaly
+derivative `r'(q)`, that analytical adapter uses
 
 $$
 r_t=C(0,r,0)^T,\qquad v_t=C\nu(-r,r',0)^T.
@@ -96,7 +121,13 @@ gap. No free-flight COM is placed inside the hull.
 
 ### Held-command propellant bound
 
-`HeldInputPropellantAccountant` binds the raw approach, its complete ordered
+The nonlinear `NonlinearTranslationAccountant` binds the approach to every
+completed hold in its source-bound proof archive, verifies exact clock coverage
+and actual endpoint alignment, and rebuilds conservative fuel from applied-input
+boxes. It does not infer inputs from outer means or use the analytical CH journal.
+See [the continuation contract](finite-contact.md#nonlinear-mission-continuation).
+
+For analytical reproduction, `HeldInputPropellantAccountant` binds the raw approach, its complete ordered
 guard journals and the immutable producer source. It reconstructs the original
 interval-flow and swept-geometry witnesses before using their held actuator
 boxes. Missing or refused holds, changed clocks, mismatched states or incomplete
@@ -122,11 +153,13 @@ actuation assumptions, rather than measurements of consumption.
 ## Attachment gates and conservation
 
 The target is **unprepared**. Assigned surface points are planning coordinates,
-not docking ports or hardware mounted on the target. The default attachment
-interface is an idealized chaser-carried articulating tip. The COM follows its
-finite-body standoff reference; the tip closes the remaining qualified reach
-and then makes a rigid inelastic attachment. No part of this objective requires
-the actual COM to reach its uncertainty-tube boundary.
+not docking ports or hardware mounted on the target. The default interface uses
+representative chaser-carried compliant adhesive pads, with finite positioner
+reach, speed, acceleration, force and power. All nine bodies respond to contact
+wrenches. Unilateral compression, closing damping and friction precede adhesion;
+adhesion begins only after actual touch, preload and dwell. Lock requires all
+pads to satisfy the physical settling dwell. The full parameter and observation
+contracts are in [finite compliant capture](finite-contact.md).
 
 Capture requires the approach's consecutive terminal dwell, successful mission
 completion, recorded tube containment, physical safety, and docking phase. It
@@ -137,8 +170,12 @@ surface-anchor latch reach, stay outside the surface, and leave finite bus and
 pairwise bus clearance. The physical closing-speed bound includes the anomaly
 clock, rotating LVLH basis, tube velocity bound, and target spin.
 
-The default relative latch-speed limit is 0.001 m/s. The orientation and spin
-gates default to 0.01 rad and 0.0001 rad/s. The existing approach controls
+Direct `CaptureOptions` admission defaults are 0.001 m/s relative speed,
+0.01 rad orientation error and 0.0001 rad/s spin error. The nonlinear adapter
+explicitly uses 0.01 m/s, 0.01 rad and 0.001 rad/s, with the declared 40 mm
+whole-position terminal profile. These are precontact admission limits; finite
+contact retains its stricter 0.0001 m/s and 0.00001 rad/s physical settling
+gates and residual-lock-energy limit. The existing approach controls
 translation; the separate [chaser attitude controller](chaser-attitude.md) records
 actual bounded nozzle couples, quaternion/spin evolution and fuel. The complete
 runner requires that controller's successful final attitudes and rates. A direct
@@ -146,7 +183,28 @@ capture call without physical chaser attitudes refuses by default. Callers may
 also explicitly set `assume_attitude_matched=True` for a labeled idealization.
 The latter assumes exact alignment to each mounting frame and exact matching
 of the physical target spin. It remains visible in the saved assumptions and
-is not an attitude-control validation.
+is not an attitude-control validation. The nonlinear adapter uses causal past
+navigation observations for the separate attitude replay and declared biased
+contact observations. Actual physical states determine its final gates.
+
+Finite contact records external impulse/work, propellant flux, positioner work,
+bond-engagement work, spring energy and dissipation. Linear/angular momentum and
+energy/work balance gates must pass. The actual component positions and
+orientations define the assembly at lock. Only a bounded residual twist is
+projected to rigid motion, with its impulses, couples and kinetic loss logged;
+stored pad energy removed at lock is separate. No body is placed at a nominal
+patch. The same bond capacities are checked against actual nozzle and
+environmental loads during detumble, burn and recorded coast states. Contact
+guards and downstream loads are numerical checks, not continuous structural
+proofs.
+
+### Explicit instantaneous reproduction
+
+Only `CaptureOptions.idealized_instantaneous=True` selects the following ideal
+articulating-tip path and coincident inelastic latch. It has no finite deployment
+time, compliant force history, adhesive law or strength qualification. The
+analytic geometry and conservation formulas below are reproduction checks;
+they do not replace the ordinary finite-contact history or gates.
 
 Let `a` be a selected bare-hull point, `n` its outward supporting normal and
 `t₀` the actual tip before contact, all in target body coordinates. The remaining
@@ -184,12 +242,14 @@ $$
 
 All intrinsic spin momenta, including the chasers', and all lever arms are
 retained. The post-latch spin is `J⁻¹H`, after the explicit frame conversion.
-The actual COM positions remain in place at the instant of latching; only
-their velocities change through the ideal inelastic impulse. The reported
+The actual COM positions remain in place at this idealized latch; only their
+velocities change through the ideal inelastic impulse. The reported
 kinetic loss is pre-latch kinetic energy in the combined COM frame minus the
 resulting rigid rotational energy. Linear and angular momentum residuals,
 COM shift, and dissipated energy are recorded. Latch loads, impulse duration,
-flexibility, arm inertia, and mechanical strength remain unresolved.
+flexibility, arm inertia, and mechanical strength remain unresolved in this
+instantaneous reproduction. The finite model separately bounds loads, settling
+and residual rigidization within its stated rigid/massless-arm scope.
 
 Whole-tube bus and pair gates are centered on the **recorded nominal COM**,
 using the current component radii; actual-vehicle gates are checked separately.
@@ -222,17 +282,24 @@ $$
 
 Allocation residuals, saturation, rank, tank depletion, and failures are
 visible. Commands are uniformly reduced before a hold can consume unavailable
-fuel. A custom actuator layout can be injected; a missing torque axis or
+fuel. For finite-contact assemblies, a pre-motion load check also dilates the
+bounded command vector against the full environmental/inertial pad loads,
+with a declared 0.98 capacity utilization target. The unchanged force/moment
+capacities remain hard limits. An infeasible zero-command load, or a load that
+cannot meet that reserve, refuses the step. Applied endpoint and history load
+audits remain binding; this point check is not a continuous load enclosure.
+A custom actuator layout can be injected; a missing torque axis or
 insufficient wrench rank fails explicitly. Reaction wheels are not treated as
 an external angular-momentum sink.
 
 Let `Q=(u,s)` denote the vector and scalar quaternion parts, `ω` the body rate,
-and `τ_g` the optional gravity-gradient torque. The integrated rigid equations
+and `τ_g` the optional gravity-gradient torque. With `τ_env` denoting supplied
+extra environmental torque, the integrated rigid equations
 during each frozen-mass substep are:
 
 $$
 \dot Q=\tfrac12(s\omega+u\times\omega,-u\cdot\omega),\qquad
-J\dot\omega=\tau+\tau_g-\omega\times J\omega.
+J\dot\omega=\tau+\tau_g+\tau_{\mathrm{env}}-\omega\times J\omega.
 $$
 
 Fuel depletion uses symmetric splits around each RK4 substep, recomputing mass,
@@ -261,10 +328,11 @@ energy identity are
 $$
 \tau_g=\frac{3\mu}{r^3}\,e_r^B\times(Je_r^B),\qquad
 \tau_c=-K\omega-\tau_g,\qquad
-\dot T=-K\|\omega\|^2.
+\dot T=-K\|\omega\|^2+\omega^T\tau_{\mathrm{env}}.
 $$
 
-Pure rate damping leaves `τ_g` as a persistent forcing term; near zero spin,
+With zero extra intrinsic environmental torque this reduces to
+`T_dot = -K ||omega||²`. Pure rate damping leaves `τ_g` as a persistent forcing term; near zero spin,
 the scale `||τ_g||/K` can exceed the rate gate. Increasing the duration alone
 does not remove this mechanism. Compensation assumes the declared orbit,
 attitude and current mass properties are known. Allocation limits and the
@@ -355,6 +423,10 @@ report `target_perigee_achieved=False`. Otherwise it reports fuel failure.
 Successful completion requires a descending crossing of the configured 120 km
 entry interface, located by an event root. A powered-phase crossing is also
 located as an event. Merely lowering altitude or perigee is not completion.
+The 80 km value guides burn cutoff; it is not the hard delivery event. With
+perturbations, osculating perigee can change during the subsequent coast, so
+the final `target_perigee_achieved` flag can be false after an 80 km cutoff.
+The result retains that flag and the explicit entry/perigee outcome message.
 
 An initially entry-intersecting bound orbit can coast to that descending
 interface without requiring unused burn authority or fuel. The entry endpoint
@@ -365,10 +437,14 @@ The assembly is never propagated below the declared handoff before reporting it.
 
 The 120 km interface is an explicit rounded model boundary. NASA's published
 Starliner example uses 400,000 ft, or 121.92 km; an interface is a convention,
-not a universal atmospheric edge. This model stops there. Atmospheric drag,
-heating, breakup, demise, impact, geographic targeting, and public-risk
-assessment are not modeled. The baseline orbit uses two-body gravity; J2 and
-atmospheric perturbations are not included.
+not a universal atmospheric edge. This model stops there. Heating, breakup,
+demise, impact, geographic targeting and public-risk assessment are not modeled.
+Current nonlinear continuation retains its declared central/J2/vector-drag law
+through this event, with no force-parameter switch at capture. Its radial
+exponential atmosphere is a study force law, not an atmospheric reentry model.
+Direct calls without an extra-environment callback retain central gravity.
+The two-body osculating-element, vis-viva and burn-preview formulas are planning
+references; actual configured propagation and the terminal event decide completion.
 
 For the representative 1000 kg target orbit with eccentricity 0.18 and 300 km
 initial perigee, the impulsive reference to an 80 km perigee is about 57.74 m/s.
@@ -380,6 +456,22 @@ rocket-equation budget alone is insufficient.
 
 ## Use and records
 
+The current nonlinear path retains the actual runner or supplies the explicit
+typed model, clock, design and complete source-bound hold archive:
+
+```python
+from orbexa.simulation.nonlinear_completion import complete_nonlinear_mission
+
+result = complete_nonlinear_mission(approach, nonlinear_runner=runner,
+                                    hold_records=closed_hold_archive)
+```
+
+An incomplete approach returns an incomplete result. Saved-input continuation
+must pass the arrival and source-lineage checks in
+[the nonlinear continuation contract](finite-contact.md#nonlinear-mission-continuation).
+
+The following is explicitly idealized analytical reproduction:
+
 ```python
 from functools import partial
 from orbexa.simulation.capture import CaptureModel, CaptureOptions
@@ -387,7 +479,8 @@ from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleStore
 from orbexa.simulation.propulsion import ThrusterSystem
 
 engine = MissionLifecycle(
-    capture=CaptureModel(options=CaptureOptions(assume_attitude_matched=True)),
+    capture=CaptureModel(options=CaptureOptions(assume_attitude_matched=True,
+                                               idealized_instantaneous=True)),
     propulsion_factory=partial(ThrusterSystem.for_assembly,
                                translation_force_n=10., specific_impulse_s=300.),
 )
@@ -395,12 +488,15 @@ result = engine.run(qualified_physical_approach)
 MissionLifecycleStore.save(result, output_directory)
 ```
 
-The explicit attitude assumption in this example is retained in the result.
+The explicit attitude and instantaneous-contact assumptions in this example
+are retained in the result.
 `python -m orbexa.cli.complete_mission --help` exposes the configurable boundary.
 Its default mode performs actual bounded chaser attitude replay and requires
 `--input-component-bound` for conservative approach propellant accounting.
-`--assume-attitude-matched` explicitly selects the idealized direct-capture
-example above. Both modes preserve the assumption in their output.
+`--assume-attitude-matched` selects the attitude idealization; finite contact
+remains the default unless instantaneous contact is also explicitly selected.
+The separate `orbexa-run-nonlinear` entry point uses the current nonlinear
+approach and continuation path. All modes preserve their assumptions in output.
 
 `assembly_history` contains ordered SI state records with phase, time, COM
 position/velocity, quaternion, body rate, component fuel, current mass, COM

@@ -288,7 +288,8 @@ class ChaserAttitudeTracker:
         return state[:4].copy(), state[4:7].copy(), state[7:10].copy(), float(state[10])
 
     def track(self, approach, *, translation_fuel_debit_kg: Mapping[str, float],
-              initial_states: Optional[Mapping[str, ChaserAttitudeInitialState]] = None) -> ChaserAttitudeResult:
+              initial_states: Optional[Mapping[str, ChaserAttitudeInitialState]] = None,
+              observation_callback=None) -> ChaserAttitudeResult:
         """Track mounting frames over the complete saved approach timeline.
 
         The supplied translational allowance is debited once from available
@@ -385,18 +386,40 @@ class ChaserAttitudeTracker:
             histories[key] = {name: [] for name in ("quaternion_body_to_eci", "angular_velocity_body_rad_s",
                 "desired_quaternion_body_to_eci", "desired_angular_velocity_body_rad_s", "orientation_error_rad",
                 "spin_error_rad_s", "fuel_remaining_kg", "requested_torque_body_nm", "applied_torque_body_nm",
-                "nozzle_commands_n", "net_force_body_n", "fuel_flow_kg_s", "saturated")}
+                "nozzle_commands_n", "net_force_body_n", "fuel_flow_kg_s", "saturated",
+                "observed_quaternion_body_to_eci", "observed_angular_velocity_body_rad_s",
+                "observed_target_quaternion_body_to_eci", "observed_target_angular_velocity_body_rad_s")}
             append_state(key, 0)
         message, committed = "approach_attitude_tracking_completed", 1
         for index, hold in enumerate(np.diff(times)):
             allocations = {}
+            observation = dict(time_s=float(times[index]), target_rotation_body_to_eci=rotations[index].copy(),
+                target_angular_velocity_body_rad_s=target_rates[index].copy(),
+                target_angular_acceleration_body_rad_s2=target_acceleration[index].copy(),
+                chasers={key: dict(quaternion_body_to_eci=states[key][0].copy(),
+                                  angular_velocity_body_rad_s=states[key][1].copy()) for key in ids})
+            if observation_callback is not None:
+                observation = observation_callback(float(times[index]), observation)
+            if not np.isclose(observation['time_s'], times[index], atol=1e-9, rtol=0) or set(observation['chasers']) != set(ids):
+                raise ValueError('Attitude observations must name the exact fleet and current physical clock')
+            observed_target = np.asarray(observation['target_rotation_body_to_eci'], dtype=float)
+            if (observed_target.shape != (3,3) or np.any(~np.isfinite(observed_target)) or
+                not np.allclose(observed_target.T@observed_target, np.eye(3), atol=1e-8, rtol=0) or
+                not np.isclose(np.linalg.det(observed_target), 1., atol=1e-8, rtol=0)):
+                raise ValueError('Observed target rotation must be proper orthogonal')
+            observed_rate = finite_vector(observation['target_angular_velocity_body_rad_s'], 'Observed target angular rate', 3)
+            observed_acceleration = finite_vector(observation['target_angular_acceleration_body_rad_s2'], 'Observed target angular acceleration', 3)
             for key in ids:
-                quaternion, omega = states[key]
+                measured = observation['chasers'][key]
+                quaternion = finite_vector(measured['quaternion_body_to_eci'], 'Observed bus quaternion', 4)
+                if np.linalg.norm(quaternion) == 0:
+                    raise ValueError('Observed bus quaternion cannot be zero')
+                omega = finite_vector(measured['angular_velocity_body_rad_s'], 'Observed bus angular velocity', 3)
                 actual = _rotation(quaternion)
-                desired = rotations[index] @ mounts[key]
+                desired = observed_target @ mounts[key]
                 transport = actual.T @ desired
-                desired_rate = mounts[key].T @ target_rates[index]
-                desired_acceleration = mounts[key].T @ target_acceleration[index]
+                desired_rate = mounts[key].T @ observed_rate
+                desired_acceleration = mounts[key].T @ observed_acceleration
                 difference = desired.T @ actual - actual.T @ desired
                 attitude_error = .5 * np.array([difference[2, 1], difference[0, 2], difference[1, 0]])
                 transported_rate = transport @ desired_rate
@@ -418,6 +441,11 @@ class ChaserAttitudeTracker:
                 break
             for key in ids:
                 allocation, history = allocations[key], histories[key]
+                measured = observation['chasers'][key]
+                history['observed_quaternion_body_to_eci'].append(np.asarray(measured['quaternion_body_to_eci']).tolist())
+                history['observed_angular_velocity_body_rad_s'].append(np.asarray(measured['angular_velocity_body_rad_s']).tolist())
+                history['observed_target_quaternion_body_to_eci'].append(Rotation.from_matrix(observed_target).as_quat().tolist())
+                history['observed_target_angular_velocity_body_rad_s'].append(observed_rate.tolist())
                 q, omega, delta_impulse, delta_work = self.advance_held_torque(
                     *states[key], inertias[key], allocation["torque_body_nm"], hold,
                     max_step_s=self.options.max_integration_step_s)
@@ -468,8 +496,9 @@ class ChaserAttitudeTracker:
         assumptions = (
             "decoupled rotational replay; saved translational trajectory is not recomputed with attitude or fuel dynamics",
             "constant initial wet-bus inertia; total mass debit is bounded by the configured small-depletion fraction",
-            "exact bus attitude/rate feedback, synchronized target preview, continuous throttling and ideal paired nozzles",
-            "no plume interaction, external disturbance torque, slosh, flexible structure, sensor or thruster errors",
+            ("injected target and bus attitude/rate observations; actual replay states and physical final gates remain distinct" if observation_callback else
+             "exact bus attitude/rate feedback, synchronized target preview, continuous throttling and ideal paired nozzles"),
+            "no plume interaction, external disturbance torque, slosh, flexible structure or thruster errors; sensor errors require the explicit observation callback",
             "known spherical bus envelope is orientation independent; gripper is stowed during approach and its deployment sweep is not resolved",
             "translation propellant is a caller-supplied conservative debit; no translational actuator/fuel reconstruction is claimed",
             "SLERP pose and separately interpolated target rates form a numerical tracking reference, not certified physical target truth",
@@ -483,6 +512,7 @@ class ChaserAttitudeTracker:
                      damping_ratio=float(self.options.damping_ratio),
                      default_initial_misalignment_rotvec_rad=self.options.initial_misalignment_rotvec_rad.tolist(),
                      explicit_initial_states=initial_states is not None,
+                      observation_scope='injected target/bus observations used by held feedback' if observation_callback else 'exact bus feedback and recorded target reference',
                      inertia_model="constant initial wet-bus inertia with enforced maximum total mass debit",
                      max_final_orientation_error_rad=float(self.options.max_final_orientation_error_rad),
                      max_final_spin_error_rad_s=float(self.options.max_final_spin_error_rad_s),

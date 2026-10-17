@@ -1,6 +1,6 @@
 """Coupled nominal and dynamic-tube multiple shooting for GEKKO/IPOPT.
 
-The independent variable is true anomaly. Controls and bandwidths are held
+The independent variable is the declared anomaly or reference-clock coordinate. Controls and bandwidths are held
 over each interval; nominal motion uses RK4 and positive tube comparison
 systems use exponential updates. No complementarity abs/max operators are
 used. The caller supplies interval-valid coefficient and disturbance bounds.
@@ -15,7 +15,7 @@ from gekko import GEKKO
 
 from orbexa.solvers.base import SolverResult
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
-from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION
+from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION, SENSED_TUBE_MODEL_VERSION
 from orbexa.control.terminal_region import TerminalRegion
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 from orbexa.utils.solver_options import gekko_memory_exponent, composite_geometry_mode
@@ -206,6 +206,17 @@ class GekkoDynamicTube:
         da = self._array("delta_A", (count-1, 3, 6), True)
         dd = self._array("delta_d", (count-1, 3), True)
         eta = self._array("eta", (3,), True)
+        observation = (self._array('measurement_error_abs', (6,), True)
+                       if 'measurement_error_abs' in spec else None)
+        self.observation_error = observation
+        endpoint_error=(self._array('nominal_endpoint_error_abs',(6,),True)
+                        if 'nominal_endpoint_error_abs' in spec else np.zeros(6))
+        self.nominal_endpoint_error_abs=endpoint_error
+        peak_padding=(self._array('stage_peak_padding_abs',(6,),True)
+                      if 'stage_peak_padding_abs' in spec else np.zeros(6))
+        self.stage_peak_padding_abs=peak_padding
+        self.tube_model_version = (SENSED_TUBE_MODEL_VERSION
+            if observation is not None and np.any(observation) else TUBE_MODEL_VERSION)
         a_abs = self._array("A_abs", (count-1, 3, 6), True)
         a_variation = self._array("A_variation", (count-1, 3, 6), True)
         hold_width = float(spec["hold_width"])
@@ -270,7 +281,8 @@ class GekkoDynamicTube:
             try:
                 phi_guess[k+1], omega_guess[k+1], phi_peak_guess[k], omega_peak_guess[k], _ = held_tube_stage_seed(
                     phi_guess[k], omega_guess[k], alpha_guess, lam, a_abs[k], da[k],
-                    a_variation[k], w_guess, h, hold_width)
+                    a_variation[k], w_guess, h, hold_width,
+                    measurement_error_abs=observation,nominal_endpoint_error_abs=endpoint_error)
             except ValueError as error:
                 # A failed fixed point at this *initial* bandwidth is not a
                 # proof that another admissible bandwidth is infeasible. Keep
@@ -307,6 +319,9 @@ class GekkoDynamicTube:
             "base_forcing", "hold_forcing", "velocity_peak", "error_peak",
             "velocity_derivative_bound", "error_derivative_bound", "sliding_derivative_bound")}
         self.phi_peaks, self.omega_peaks = [], []
+        self.nominal_reset_forcings=[]
+        if observation is not None and np.any(observation):
+            self.stage_terms['measurement_forcing'] = []
         for k in range(count-1):
             self.constraint_context = f'nominal_dynamics[{k}]'
             x, u, alpha = self.states[k], self.inputs[k], self.alpha[k]
@@ -328,18 +343,26 @@ class GekkoDynamicTube:
                                  + float(dd[k,i]+eta[i])) for i in range(3)]
             self.nominal_enclosures.append(enclosure)
             phi_peak, omega_peak = [], []
+            reset_phi,reset_omega=[],[]
             self.constraint_context = f'tube_peaks_and_position_decay[{k}]'
             for i in range(3):
-                peak = m.Var(value=float(phi_peak_guess[k,i]), lb=0)
-                self._ge(peak, self.phi[k][i])
-                self._ge(peak, self.phi[k+1][i])
+                peak = m.Var(value=float(phi_peak_guess[k,i]+peak_padding[i]), lb=0)
+                self._ge(peak, self.phi[k][i]+float(peak_padding[i]) if peak_padding[i]>0 else self.phi[k][i])
+                self._ge(peak, self.phi[k+1][i]+float(peak_padding[i]) if peak_padding[i]>0 else self.phi[k+1][i])
                 phi_peak.append(peak)
                 omega_decay = float(np.exp(-h*lam[i]))
-                self._eq(self.omega[k+1][i], omega_decay*self.omega[k][i]
-                         + (1-omega_decay)*peak/float(lam[i]))
-                radius = m.Var(value=float(omega_peak_guess[k,i]), lb=0)
-                self._ge(radius, self.omega[k][i])
-                self._ge(radius, self.omega[k+1][i])
+                reset_position=(float(endpoint_error[i])*float(lam[i])/
+                    float(-np.expm1(-hold_width*lam[i])) if endpoint_error[i]>0 else 0.)
+                reset_omega.append(reset_position)
+                if reset_position>0:
+                    self._eq(self.omega[k+1][i], omega_decay*self.omega[k][i]
+                             + (1-omega_decay)*(peak+reset_position)/float(lam[i]))
+                else:
+                    self._eq(self.omega[k+1][i], omega_decay*self.omega[k][i]
+                             + (1-omega_decay)*peak/float(lam[i]))
+                radius = m.Var(value=float(omega_peak_guess[k,i]+peak_padding[i+3]), lb=0)
+                self._ge(radius, self.omega[k][i]+float(peak_padding[i+3]) if peak_padding[i+3]>0 else self.omega[k][i])
+                self._ge(radius, self.omega[k+1][i]+float(peak_padding[i+3]) if peak_padding[i+3]>0 else self.omega[k+1][i])
                 omega_peak.append(radius)
                 if np.isfinite(rate) and not fixed_bandwidth:
                     previous = float(alpha0[i]) if k == 0 else self.alpha[k-1][i]
@@ -351,7 +374,8 @@ class GekkoDynamicTube:
             # and the complete actuator reserve. The bounded-term residual
             # remains valid at Phi=0 without a reciprocal or smallness test.
             terms = sample_hold_expressions(a_abs[k], da[k], a_variation[k], w0,
-                phi_peak, omega_peak, alpha, lam, hold_width, intermediate=m.Intermediate)
+                phi_peak, omega_peak, alpha, lam, hold_width, intermediate=m.Intermediate,
+                measurement_error_abs=observation)
             w, reserve = terms['disturbance_bound'], terms['input_reserve']
             self.disturbance_bounds.append(w)
             self.phi_peaks.append(phi_peak)
@@ -361,7 +385,14 @@ class GekkoDynamicTube:
             for i in range(3):
                 self.constraint_context = f'sliding_decay_and_input_reserve[{k}]'
                 decay = m.exp(-h*alpha[i])
-                self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*w[i]/alpha[i])
+                transfer=float(endpoint_error[i+3])+float(lam[i])*float(endpoint_error[i])
+                reset_sliding=(m.Intermediate(alpha[i]*transfer/(1-m.exp(-hold_width*alpha[i])))
+                               if transfer>0 else 0.)
+                reset_phi.append(reset_sliding)
+                if transfer>0:
+                    self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*(w[i]+reset_sliding)/alpha[i])
+                else:
+                    self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*w[i]/alpha[i])
                 margin = reserve[i]
                 if p.input_bounds and i < len(p.input_bounds):
                     lower = self._bound(p.input_bounds[i], "lower")
@@ -371,6 +402,7 @@ class GekkoDynamicTube:
                     if np.isfinite(upper):
                         self._ge(upper, u[i]+margin)
             self.reserve.append(reserve)
+            self.nominal_reset_forcings.append(dict(phi=reset_phi,omega=reset_omega))
         self.lambda_gain = lam
         self._constraints()
         for k in range(count):
@@ -626,7 +658,16 @@ class GekkoDynamicTube:
                             float(np.max(tube["alpha"]-upper_alpha)))
             finite = all(np.all(np.isfinite(value)) for value in [states,controls]+list(tube.values()))
             finite = finite and all(np.isfinite(value) for value,_ in residuals)
-            tube["tube_model_version"] = TUBE_MODEL_VERSION
+            tube["tube_model_version"] = self.tube_model_version
+            if self.observation_error is not None:
+                tube['measurement_error_abs'] = self.observation_error.copy()
+            if np.any(self.stage_peak_padding_abs):
+                tube['stage_peak_padding_abs']=self.stage_peak_padding_abs.copy()
+            if np.any(self.nominal_endpoint_error_abs):
+                tube['nominal_endpoint_error_abs']=self.nominal_endpoint_error_abs.copy()
+                tube['nominal_reset_forcing_phi']=np.array([[float(v) if isinstance(v,Real) else float(v.value[0])
+                    for v in row['phi']] for row in self.nominal_reset_forcings])
+                tube['nominal_reset_forcing_omega']=np.array([row['omega'] for row in self.nominal_reset_forcings])
             tolerance = float(self.config.get("residual_tolerance",1e-8))
             success = finite and violation <= tolerance and self.model.options.APPSTATUS == 1
             return SolverResult(success=success,state_trajectory=states,control_trajectory=controls,

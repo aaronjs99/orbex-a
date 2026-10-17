@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "orbexa"
-version = "2.2.0"
+version = "2.3.0"
 description = "Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC"
 authors = [
   { name = "Aaron John Sabu", email = "aaronjs@g.ucla.edu" },
@@ -48,6 +48,7 @@ orbexa-generate-demo = "orbexa.cli.generate_demo:main"
 orbexa-complete-mission = "orbexa.cli.complete_mission:main"
 orbexa-run-mission = "orbexa.cli.run_mission:main"
 orbexa-serve-studio = "orbexa.cli.serve_studio:main"
+orbexa-run-nonlinear = "orbexa.cli.run_nonlinear:main"
 
 
 [project.urls]

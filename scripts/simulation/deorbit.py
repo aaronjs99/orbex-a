@@ -1,7 +1,8 @@
 """Apoapsis finite-burn deorbit, terminating at a declared entry interface.
 
-This propagates a two-body ECI orbit and the same fueled rigid assembly used
-for detumbling. Entry-interface crossing is a handoff to an atmospheric model;
+This propagates central-gravity ECI motion, the assembly's configured extra
+environment, and the same fueled rigid body used for detumbling.
+Entry-interface crossing is a handoff to an atmospheric entry model;
 breakup, demise, thermal protection and ground impact are outside this model.
 """
 from __future__ import annotations
@@ -180,8 +181,9 @@ class DeorbitSimulator:
         values = np.r_[initial.position_eci_m, initial.velocity_eci_m_s, initial.quaternion_body_to_eci,
                        initial.angular_velocity_body_rad_s]
 
-        def rhs(_, state):
-            return assembly.derivative(state, mass, inertia, np.zeros(3), np.zeros(3))[0]
+        def rhs(elapsed, state):
+            return assembly.derivative(state, mass, inertia, np.zeros(3), np.zeros(3),
+                time_s=initial.time_s+elapsed, fuel_kg=initial.fuel_kg)[0]
 
         def entry(_, state):
             return np.linalg.norm(state[:3]) - assembly.earth_radius_m - self.options.entry_interface_altitude_m
@@ -201,17 +203,25 @@ class DeorbitSimulator:
         before = orbital_elements(initial.position_eci_m, initial.velocity_eci_m_s, assembly.mu_m3_s2)
         after = orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)
         drift = dict(relative_energy_drift=abs(after["specific_energy_j_kg"] / before["specific_energy_j_kg"] - 1),
-                     relative_angular_momentum_drift=abs(after["specific_angular_momentum_m2_s"] / before["specific_angular_momentum_m2_s"] - 1))
+                     relative_angular_momentum_drift=abs(after["specific_angular_momentum_m2_s"] / before["specific_angular_momentum_m2_s"] - 1),
+                     scope=('Physical osculating-element change includes the injected environment; not an isolated numerical conservation error'
+                            if assembly.environment is not None else 'Two-body coast conservation diagnostic'))
         crossed = bool(stop_at_entry and len(solution.t_events[0]) > 0)
         return state, crossed, drift
 
     def run(self, assembly: AttachedAssembly, initial: AssemblyState, propulsion: ThrusterSystem) -> DeorbitResult:
         options, state = self.options, initial
         history, controls, coasts = [self._record(assembly, initial, "deorbit_planning")], [], []
+        assembly_model = assembly.to_dict()
         audit = dict(entry_interface_altitude_m=options.entry_interface_altitude_m,
                      target_perigee_altitude_m=options.target_perigee_altitude_m,
-                     terminal_scope="descending entry-interface handoff; no atmosphere, heating, breakup, demise or impact",
-                     dynamics="two-body Cartesian ECI plus controlled rigid-body attitude; no J2 or atmospheric drag",
+                     terminal_scope="descending entry-interface handoff; no below-interface entry, heating, breakup, demise or impact propagation",
+                     dynamics=("central-gravity Cartesian ECI and controlled rigid-body attitude; "
+                         + ("configured central gravity-gradient torque; " if assembly.gravity_gradient else "gravity-gradient torque disabled; ")
+                         + ("supplied per-component extra acceleration and intrinsic torque" if assembly.environment is not None else "no extra environment callback")),
+                     gravity_gradient=assembly_model['gravity_gradient'],
+                     environment=assembly_model['environment'],
+                     environment_contract=assembly_model['environment_contract'],
                      initial_orbit=history[0]["orbit"])
         thrust_delta_v, saturated_steps, max_balance = 0., 0, 0.
         force_residual, torque_residual, burn_time = 0., 0., 0.
@@ -319,6 +329,9 @@ class DeorbitSimulator:
             force = axis * (burn_force if fire else 0.)
             allocation = propulsion.allocate(assembly, state, force, torque, duration)
             if not allocation.success:
+                audit.setdefault('refused_allocations', []).append(dict(time_s=state.time_s,
+                    duration_s=duration, requested_force_body_n=force.tolist(),
+                    requested_torque_body_nm=torque.tolist(), allocation=allocation.to_dict(), applied=False))
                 return finish(False, f"deorbit_{allocation.message}")
 
             def propagate(dt):
@@ -372,6 +385,11 @@ class DeorbitSimulator:
                 allocation=allocation.to_dict(), integration=angular_audit))
             state = next_state
             history.append(self._record(assembly, state, "finite_burn" if fire else "thrust_alignment"))
+            if assembly.attachment_limits:
+                endpoint = assembly.attachment_load_audit(state, propulsion, allocation.commands_n)
+                angular_audit['attachment_load_endpoint'] = endpoint
+                if not endpoint['passed']:
+                    return finish(False, 'deorbit_attachment_capacity_exceeded')
             if entry_reached:
                 audit["burn_cutoff_reason"] = "entry_interface_event_during_powered_phase"
                 audit["burn_cutoff_orbit"] = history[-1]["orbit"]

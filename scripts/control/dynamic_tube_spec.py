@@ -47,12 +47,30 @@ class DynamicTubeSpec:
     terminal_start_index: int | None = None
     terminal_region: TerminalRegion | None = None
     terminal_planning_fraction: float | None = None
+    measurement_error_abs: np.ndarray | None = None
+    nominal_endpoint_error_abs: np.ndarray | None = None
+    stage_peak_padding_abs: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         delta_a = np.asarray(self.delta_A, dtype=float)
         if delta_a.ndim != 3 or delta_a.shape[1:] != (3, 6) or len(delta_a) < 1:
             raise ValueError("dynamic_tube.delta_A must have shape (intervals, 3, 6) with at least one interval")
         intervals = len(delta_a)
+        if self.measurement_error_abs is not None:
+            observed = np.asarray(self.measurement_error_abs, dtype=float)
+            if observed.shape != (6,) or not np.all(np.isfinite(observed)) or np.any(observed < 0):
+                raise ValueError('dynamic_tube.measurement_error_abs must be a finite nonnegative six-vector')
+            self.measurement_error_abs = observed.copy()
+        if self.nominal_endpoint_error_abs is not None:
+            endpoint = np.asarray(self.nominal_endpoint_error_abs,dtype=float)
+            if endpoint.shape != (6,) or not np.all(np.isfinite(endpoint)) or np.any(endpoint < 0):
+                raise ValueError('dynamic_tube.nominal_endpoint_error_abs must be a finite nonnegative six-vector')
+            self.nominal_endpoint_error_abs = endpoint.copy()
+        if self.stage_peak_padding_abs is not None:
+            padding=np.asarray(self.stage_peak_padding_abs,dtype=float)
+            if padding.shape!=(6,) or not np.all(np.isfinite(padding)) or np.any(padding<0):
+                raise ValueError('dynamic_tube.stage_peak_padding_abs must be a finite nonnegative six-vector')
+            self.stage_peak_padding_abs=padding.copy()
         shapes = {
             "phi_initial": (3,), "omega_initial": (3,), "lambda_gain": (3,),
             "alpha_initial": (3,), "eta": (3,), "delta_A": (intervals, 3, 6),
@@ -109,7 +127,13 @@ class DynamicTubeSpec:
     def to_extra_params(self) -> Dict[str, Any]:
         """Return the current backend's dynamic-tube mapping without reformulation."""
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in ("terminal_start_index", "terminal_region", "terminal_planning_fraction")}
+                  if item.name not in ("terminal_start_index", "terminal_region", "terminal_planning_fraction", "measurement_error_abs", "nominal_endpoint_error_abs", "stage_peak_padding_abs")}
+        if self.measurement_error_abs is not None:
+            result['measurement_error_abs'] = self.measurement_error_abs.copy()
+        if self.nominal_endpoint_error_abs is not None:
+            result['nominal_endpoint_error_abs'] = self.nominal_endpoint_error_abs.copy()
+        if self.stage_peak_padding_abs is not None:
+            result['stage_peak_padding_abs']=self.stage_peak_padding_abs.copy()
         if self.terminal_start_index is not None:
             result["terminal_start_index"] = self.terminal_start_index
         if self.terminal_region is not None:

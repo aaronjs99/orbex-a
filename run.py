@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run ORBEX-A from a source checkout, including after moving the folder."""
+"""Run one declared sensed nonlinear mission from a movable source checkout."""
 
 from pathlib import Path
 from importlib.util import module_from_spec, spec_from_file_location
@@ -16,8 +16,13 @@ package = module_from_spec(package_spec)
 sys.modules["orbexa"] = package
 package_spec.loader.exec_module(package)
 
-from orbexa.cli.generate_demo import main
+from orbexa.cli.run_nonlinear import main
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(default_root=ROOT))
+    defaults=[]
+    for option,path in (('--config',ROOT/'config/envisat.yaml'),
+                        ('--spacecraft',ROOT/'config/spacecraft/envisat.json'),
+                        ('--study',ROOT/'config/nonlinear-study.json')):
+        defaults.extend((option,str(path)))
+    raise SystemExit(main([*defaults,*sys.argv[1:]]))

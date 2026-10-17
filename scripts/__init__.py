@@ -30,7 +30,7 @@ Example:
     >>> solver = get_solver("gekko")
 """
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 __author__ = "Aaron John Sabu"
 __email__ = "aaronjs@ucla.edu"
 

@@ -1,0 +1,79 @@
+{
+  "schema": "orbexa.nonlinear-study.v1",
+  "study_id": "nonlinear-envisat-2026-10-16-v2",
+  "options": {
+    "release_distance_m": 300.0,
+    "release_pitch_m": 1.8,
+    "nominal_spin_deg_s": 2.4,
+    "initial_position_radius_m": 0.005,
+    "initial_velocity_radius_m_s": 0.005,
+    "lambda_per_rad": 300.0,
+    "initial_bandwidth_per_rad": 1000.0,
+    "bandwidth_bounds_per_rad": [
+      160.0,
+      1200.0
+    ],
+    "bandwidth_rate_per_rad2": 6000.0,
+    "precontact_position_tolerance_m": 0.04,
+    "precontact_velocity_tolerance_m_per_rad": 9.0,
+    "observation_position_floor_m": 0.0015,
+    "observation_velocity_floor_m_per_rad": 0.5,
+    "nominal_position_transfer_budget_m": 1e-9,
+    "nominal_velocity_transfer_budget_m_per_rad": 1e-8,
+    "sliding_peak_padding_m_per_rad": 1e-6,
+    "position_peak_padding_m": 1e-7,
+    "actuator_gain_error": 0.001,
+    "actuator_axis_error_rad": 0.001,
+    "actuator_bias_m_per_rad2": 0.2,
+    "maximum_updates": 1200,
+    "planning_workers": 8,
+    "fallback_fuel_reserve_kg": 10.0,
+    "sensor": {
+      "range_noise_m": 0.0005,
+      "range_noise_relative": 2e-05,
+      "bearing_component_noise": 3e-05,
+      "range_bias_m": 0.0005,
+      "target_rotation_operator_error": 0.001,
+      "target_rate_error_rad_s": 0.0001,
+      "max_latency_s": 0.05,
+      "dropout_probability": 0.0,
+      "acquisition_period_s": 0.0,
+      "minimum_range_m": 0.01,
+      "maximum_range_m": 1000.0,
+      "gnss_position_error_m": 1.0,
+      "gnss_velocity_error_m_s": 0.005,
+      "dropout_bursts_s": [],
+      "seed": 0,
+      "declaration": "Illustrative processed COM range/bearing and target-pose study products; no device qualification",
+      "scope": "Processed synthetic products; no raw image/point-cloud or feature-association claim"
+    },
+    "scope": "Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification"
+  },
+  "cases": [
+    {
+      "case_id": "lower",
+      "initial_eccentricity": 0.00055,
+      "target_sigma_m2_kg": 0.014,
+      "chaser_sigma_m2_kg": 0.03,
+      "target_spin_deg_s": 2.2,
+      "seed": 910247
+    },
+    {
+      "case_id": "central",
+      "initial_eccentricity": 0.001,
+      "target_sigma_m2_kg": 0.023,
+      "chaser_sigma_m2_kg": 0.058,
+      "target_spin_deg_s": 2.4,
+      "seed": 1503341
+    },
+    {
+      "case_id": "upper",
+      "initial_eccentricity": 0.00145,
+      "target_sigma_m2_kg": 0.035,
+      "chaser_sigma_m2_kg": 0.082,
+      "target_spin_deg_s": 2.6,
+      "seed": 672091
+    }
+  ],
+  "description": "Prospective independent cases for all four adaptive/frozen belief by dynamic/fixed bandwidth arms. Same source, prior, options, hardware, costs, release and bounded sensor seed within each case. Version2 replaces the explicitly aborted version1 pipelines after a terminal fixture exposed missing pre-command attachment load admission; physical options, all cases and seeds are unchanged. Retain every failure, resource cap and deadline miss; no superiority threshold or winning-case filter."
+}

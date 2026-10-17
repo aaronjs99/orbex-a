@@ -10,6 +10,134 @@ import numpy as np
 from orbexa.utils.io_utils import convert_numpy_to_list
 
 
+def _rotation(quaternion):
+    from scipy.spatial.transform import Rotation
+    value = np.asarray(quaternion, dtype=float)
+    if value.shape != (4,) or not np.all(np.isfinite(value)) or abs(np.linalg.norm(value)-1) > 1e-8:
+        raise ValueError('Recorded physical poses require unit xyzw body-to-ECI quaternions')
+    return Rotation.from_quat(value).as_matrix()
+
+
+def _contact_projection(attachment, approach, approach_digest, assembly, first_state):
+    """Retain actual SI poses; validate the two literal coordinate handoffs."""
+    contact = attachment.get('audit', {}).get('finite_contact')
+    if contact is None:
+        return None
+    if contact.get('audit', {}).get('model') != 'finite_coupled_rigid_body_compliant_adhesive.v1':
+        raise ValueError('Unsupported recorded finite-contact model')
+    history = contact.get('history', [])
+    if not history or not contact.get('success') or not attachment.get('success'):
+        raise ValueError('An assembled replay requires its successful actual finite-contact history')
+    times = np.asarray([row['time_s'] for row in history], dtype=float)
+    if not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0):
+        raise ValueError('Finite-contact physical samples must have increasing finite times')
+    ids = tuple(approach['actual_trajectories'])
+    elements = {row['name']: row for row in assembly['elements']}
+    if set(elements) != {'target', *ids}:
+        raise ValueError('Finite-contact/assembled histories must name the exact source fleet')
+    count = len(times)
+    def states(name):
+        values = [row['target'] if name == 'target' else row['chasers'][name] for row in history]
+        result = {}
+        for field, width in (('position_eci_m', 3), ('velocity_eci_m_s', 3),
+                             ('quaternion_body_to_eci', 4), ('angular_velocity_body_rad_s', 3)):
+            value = np.asarray([row[field] for row in values], dtype=float)
+            if value.shape != (count, width) or not np.all(np.isfinite(value)):
+                raise ValueError('Finite contact lacks aligned finite SI body poses: '+name)
+            result[field] = value.tolist()
+        for row in values:
+            _rotation(row['quaternion_body_to_eci'])
+        if any(abs(float(row['time_s'])-time) > 1e-9 for row, time in zip(values, times)):
+            raise ValueError('Finite-contact body poses disagree with their physical sample clock')
+        fuel = np.asarray([row['fuel_kg'] for row in values], dtype=float)
+        if not np.all(np.isfinite(fuel)) or np.any(fuel < 0):
+            raise ValueError('Finite-contact fuel samples must be finite and nonnegative')
+        result['fuel_kg'] = fuel.tolist()
+        return result
+    for row in history:
+        if set(row['chasers']) != set(ids) or set(row['pads']) != set(ids):
+            raise ValueError('Every finite-contact sample must contain the exact source fleet and pad tips')
+    target, bodies = states('target'), {key: states(key) for key in ids}
+    kinematics = approach.get('metadata', {}).get('target_kinematics', {})
+    saved_q, source_q = np.asarray(kinematics.get('anomaly', [])), approach['anom_history'][-1]
+    rotations = np.asarray(kinematics.get('rotations', []), dtype=float)
+    if (saved_q.ndim != 1 or not len(saved_q) or saved_q[-1] != source_q or rotations.shape != (len(saved_q), 3, 3)):
+        raise ValueError('Finite-contact display frame requires the source approach recorded target rotation')
+    relative_rotation = rotations[-1]
+    if (not np.all(np.isfinite(relative_rotation)) or
+            not np.allclose(relative_rotation.T@relative_rotation, np.eye(3), atol=1e-8, rtol=0) or
+            abs(np.linalg.det(relative_rotation)-1) > 1e-8):
+        raise ValueError('Source target-to-reference rotation must be proper')
+    inertial_states = kinematics.get('target_inertial_states', kinematics.get('cartesian_state'))
+    inertial_quaternions = kinematics.get('inertial_quaternions', kinematics.get('body_to_eci_quaternion'))
+    if approach.get('metadata', {}).get('model_version') == 'nonlinear-reference-relative-v1' and (inertial_states is None or inertial_quaternions is None):
+        raise ValueError('Nonlinear finite contact requires the actual retained inertial target boundary')
+    if inertial_states is not None:
+        inertial_states = np.asarray(inertial_states, dtype=float)
+        if (inertial_states.shape != (len(saved_q), 6) or not np.all(np.isfinite(inertial_states)) or
+                np.linalg.norm(inertial_states[-1, :3]-target['position_eci_m'][0]) > 5e-7 or
+                np.linalg.norm(inertial_states[-1, 3:]-target['velocity_eci_m_s'][0]) > 1e-8):
+            raise ValueError('Finite-contact target SI state differs from the saved actual source ephemeris')
+    if inertial_quaternions is not None:
+        if np.linalg.norm(_rotation(inertial_quaternions[-1])-_rotation(target['quaternion_body_to_eci'][0]), ord=2) > 1e-8:
+            raise ValueError('Finite-contact target attitude differs from the actual source boundary')
+    display_rotation = relative_rotation@_rotation(target['quaternion_body_to_eci'][0]).T
+    source_times = approach.get('metadata', {}).get('elapsed_time_seconds', [])
+    if not source_times or abs(float(source_times[-1])-times[0]) > 1e-8:
+        raise ValueError('Finite contact must start at its actual source approach physical epoch')
+    endpoint = {}
+    for key in ids:
+        point = np.asarray(approach['actual_trajectories'][key][-1][:3], dtype=float)
+        physical = display_rotation@(np.asarray(bodies[key]['position_eci_m'][0])-target['position_eci_m'][0])
+        if point.shape != (3,) or np.linalg.norm(point-physical) > 5e-7:
+            raise ValueError('Finite-contact initial body positions differ from their actual source approach')
+        endpoint[key] = point.tolist()
+    if abs(times[-1]-float(first_state['time_s'])) > 1e-8:
+        raise ValueError('Finite-contact final epoch must equal the first recorded rigid assembly epoch')
+    assembly_rotation = _rotation(first_state['quaternion_body_to_eci'])
+    center = np.asarray(first_state['center_of_mass_body_m'], dtype=float)
+    origin = np.asarray(first_state['position_eci_m'], dtype=float)
+    for name, body in dict(target=target, **bodies).items():
+        element = elements[name]
+        position = origin+assembly_rotation@(np.asarray(element['position_body_m'])-center)
+        rotation = assembly_rotation@np.asarray(element['rotation_element_to_assembly'])
+        if (np.linalg.norm(position-body['position_eci_m'][-1]) > 5e-7 or
+                np.linalg.norm(rotation-_rotation(body['quaternion_body_to_eci'][-1]), ord=2) > 1e-8):
+            raise ValueError('Rigid coordinate handoff changes an actual finite-contact body pose: '+name)
+    pads = {}
+    for key in ids:
+        values = [row['pads'][key] for row in history]
+        entry = {}
+        for field, width in (('tip_position_eci_m', 3), ('extension_body_m', 3),
+                             ('force_eci_n', 3), ('moment_eci_nm', 3)):
+            value = np.asarray([row[field] for row in values], dtype=float)
+            if value.shape != (count, width) or not np.all(np.isfinite(value)):
+                raise ValueError('Finite contact requires aligned actual pad-tip/wrench records')
+            entry[field] = value.tolist()
+        for field in ('gap_m', 'activation'):
+            value = np.asarray([row[field] for row in values], dtype=float)
+            if value.shape != (count,) or not np.all(np.isfinite(value)):
+                raise ValueError('Finite contact requires finite gap/activation histories')
+            entry[field] = value.tolist()
+        if np.any(np.asarray(entry['activation']) < 0) or np.any(np.asarray(entry['activation']) > 1):
+            raise ValueError('Recorded finite-contact activation is outside its declared unit interval')
+        initial_body, final_body = bodies[key], bodies[key]
+        entry['mount_body_m'] = (_rotation(initial_body['quaternion_body_to_eci'][0]).T@
+            (np.asarray(entry['tip_position_eci_m'][0])-initial_body['position_eci_m'][0])-entry['extension_body_m'][0]).tolist()
+        entry['latched_tip_body_m'] = (_rotation(final_body['quaternion_body_to_eci'][-1]).T@
+            (np.asarray(entry['tip_position_eci_m'][-1])-final_body['position_eci_m'][-1])).tolist()
+        pads[key] = entry
+    history_digest = hashlib.sha256(json.dumps(history, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+    return dict(schema='orbexa.finite-contact.studio.v1', time_s=times.tolist(), target=target, chasers=bodies, pads=pads,
+        display_rotation_eci_to_capture=display_rotation.tolist(),
+        approach_canonical_sha256=approach_digest, source_history_sha256=history_digest,
+        approach_binding=dict(final_anomaly=source_q, physical_time_s=float(source_times[-1]),
+            positions_reference_m=endpoint, target_rotation_reference=relative_rotation.tolist()),
+        frame='Recorded ECI SI poses; display uses capture-fixed reference axes and the current target center as origin',
+        interpolation='None; every displayed body and tip pose is a retained physical sample',
+        latch_time_s=float(times[-1]), success=True)
+
+
 class LifecycleDataset:
     """Physical assembly histories with explicit fixture/mission provenance."""
 
@@ -24,6 +152,8 @@ class LifecycleDataset:
         from orbexa.simulation.mission_result import ADTMPCMissionResult
         source_approach = ADTMPCMissionResult.from_dict(r['approach']).to_dict()
         approach_digest = hashlib.sha256(json.dumps(source_approach, sort_keys=True,
+            separators=(',', ':'), allow_nan=False).encode('utf-8')).hexdigest()
+        lifecycle_digest = hashlib.sha256(json.dumps(r, sort_keys=True,
             separators=(',', ':'), allow_nan=False).encode('utf-8')).hexdigest()
         history = r.get('assembly_history', [])
         if not history:
@@ -45,6 +175,9 @@ class LifecycleDataset:
                 not np.allclose(np.linalg.norm(rotations, axis=1), 1., atol=1e-8, rtol=0)):
             raise ValueError('Lifecycle histories require aligned finite physical samples and increasing time')
         assembly = r['attachment']['assembly']
+        finite_contact = _contact_projection(r['attachment'], source_approach, approach_digest, assembly, history[0])
+        if finite_contact is not None:
+            finite_contact['lifecycle_canonical_sha256'] = lifecycle_digest
         mu, earth_radius = float(assembly['mu_m3_s2']), float(assembly['earth_radius_m'])
         radius = np.linalg.norm(positions, axis=1)
         if (not np.isfinite(mu) or mu <= 0 or not np.isfinite(earth_radius) or earth_radius <= 0
@@ -94,8 +227,10 @@ class LifecycleDataset:
             components=assembly['elements'], target=r.get('approach', {}).get('target', {}),
             body_radius_m=default_radius, body_radii_m=body_radii,
             surface_contacts=surface_contacts, attachment_success=bool(attachment.get('success')),
+            finite_contact=finite_contact,
             terminal_handoff=r.get('terminal_handoff'),
             approach_canonical_sha256=approach_digest,
+            lifecycle_canonical_sha256=lifecycle_digest,
             stages=dict(attachment=bool(attachment.get('success')),
                 detumbling=None if r.get('detumbling') is None else bool(r['detumbling'].get('success')),
                 deorbit=None if r.get('deorbit') is None else bool(r['deorbit'].get('success'))),

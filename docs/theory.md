@@ -1,5 +1,13 @@
 # ORBEX-A mathematical foundations
 
+The current nonlinear, sensed fleet formulation is derived in
+[Nonlinear fleet mission](nonlinear-mission.md), with separate
+[sensed tube](sensed-tube.md), [navigation](nonlinear-navigation.md),
+[operational refuge](fleet-fallback.md) and [finite contact](finite-contact.md)
+contracts. The Carter–Humi equations below remain the nominal surrogate and the
+identified analytical reproduction model; their analytical-model guarantees do
+not independently certify the nonlinear plant.
+
 This document states the model, derives the implemented feedback and tube,
 and separates mathematical inclusion from numerical evidence. Read it together
 with the [equation audit](theory-audit.md), [deployment formulation](deployment.md)

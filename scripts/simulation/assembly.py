@@ -141,6 +141,8 @@ class AttachedAssembly:
     earth_radius_m: float = 6378137.0
     gravity_gradient: bool = False
     max_integration_step_s: float = 1.0
+    attachment_limits: Sequence[dict] = ()
+    environment: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         elements = tuple(self.elements)
@@ -149,6 +151,20 @@ class AttachedAssembly:
         object.__setattr__(self, "elements", elements)
         for name in ("mu_m3_s2", "earth_radius_m", "max_integration_step_s"):
             object.__setattr__(self, name, positive(getattr(self, name), name))
+        limits = tuple(dict(value) for value in self.attachment_limits)
+        if len({value['name'] for value in limits}) != len(limits) or any(value['name'] not in {e.name for e in elements} for value in limits):
+            raise ValueError('Attachment load limits must name unique assembly elements')
+        for value in limits:
+            normal = finite_vector(value['normal_body'], 'Attachment load normal', 3)
+            if not np.isclose(np.linalg.norm(normal), 1., atol=1e-9, rtol=0):
+                raise ValueError('Attachment load normal must be unit length')
+            value['normal_body'] = normal.tolist()
+            value['surface_anchor_body_m'] = finite_vector(value['surface_anchor_body_m'], 'Attachment load point', 3).tolist()
+            for name in ('tensile_limit_n', 'compression_limit_n', 'shear_limit_n', 'moment_limit_nm'):
+                value[name] = positive(value[name], name)
+        object.__setattr__(self, 'attachment_limits', limits)
+        if self.environment is not None and not callable(self.environment):
+            raise TypeError('Assembly environment must be an explicit callable')
 
     @property
     def initial_mass_kg(self):
@@ -211,17 +227,60 @@ class AttachedAssembly:
         radial_body = rotation.T @ (position / radius)
         return 3 * self.mu_m3_s2 / radius**3 * np.cross(radial_body, inertia @ radial_body)
 
-    def derivative(self, values, mass, inertia, force_body, torque_body):
+    def environment_wrench(self, values, fuel_kg, time_s):
+        """Extra acceleration beyond central gravity and torque beyond GG.
+
+        The callback receives the same flat name-to-ContactBodyState mapping
+        as finite contact, preserving the physical ECI basis across the latch.
+        Returned intrinsic torques use each individual component body frame.
+        """
+        if self.environment is None:
+            return np.zeros(3), np.zeros(3), {}
+        from orbexa.simulation.contact import ContactBodyState
+        fuel = np.asarray(fuel_kg, dtype=float)
+        _, center, _ = self.mass_properties(fuel)
+        rotation = Rotation.from_quat(values[6:10]).as_matrix()
+        omega = values[10:13]
+        states = {}
+        for index, element in enumerate(self.elements):
+            offset = element.position_body_m-center
+            local = element.rotation_element_to_assembly
+            states[element.name] = ContactBodyState(time_s, values[:3]+rotation@offset,
+                values[3:6]+rotation@np.cross(omega, offset), Rotation.from_matrix(rotation@local).as_quat(),
+                local.T@omega, fuel[index])
+        additional = self.environment(time_s, states)
+        if set(additional) != set(states):
+            raise ValueError('Assembly environment must declare every component extra wrench')
+        force, torque = np.zeros(3), np.zeros(3)
+        normalized = {}
+        for index, element in enumerate(self.elements):
+            extra = additional[element.name]
+            acceleration = finite_vector(extra['acceleration_eci_m_s2'], 'Extra environment acceleration', 3)
+            moment = finite_vector(extra.get('torque_body_nm', np.zeros(3)), 'Extra environment torque', 3)
+            local_force = (element.dry_mass_kg+fuel[index])*(rotation.T@acceleration)
+            force += local_force
+            torque += np.cross(element.position_body_m-center, local_force)+element.rotation_element_to_assembly@moment
+            normalized[element.name] = dict(acceleration_eci_m_s2=acceleration, torque_body_nm=moment)
+        return force, torque, normalized
+
+    def derivative(self, values, mass, inertia, force_body, torque_body, *, time_s=None, fuel_kg=None):
         position, velocity, q, omega = values[:3], values[3:6], values[6:10], values[10:13]
         radius = np.linalg.norm(position)
         if radius <= 0:
             raise ValueError("Inertial orbital position must be nonzero")
         rotation = Rotation.from_quat(q).as_matrix()
         torque = np.asarray(torque_body, dtype=float).copy()
+        force = np.asarray(force_body, dtype=float).copy()
+        if self.environment is not None:
+            if time_s is None or fuel_kg is None:
+                raise ValueError('Assembly environment propagation requires physical time and fuel')
+            extra_force, extra_torque, _ = self.environment_wrench(values, fuel_kg, time_s)
+            force += extra_force
+            torque += extra_torque
         if self.gravity_gradient:
             torque += self._gravity_gradient_torque_body(position, rotation, inertia)
         qdot = .5 * np.r_[q[3] * omega + np.cross(q[:3], omega), -np.dot(q[:3], omega)]
-        result = np.r_[velocity, -self.mu_m3_s2 * position / radius**3 + rotation @ force_body / mass,
+        result = np.r_[velocity, -self.mu_m3_s2 * position / radius**3 + rotation @ force / mass,
                        qdot, np.linalg.solve(inertia, torque - np.cross(omega, inertia @ omega))]
         return result, rotation @ torque
 
@@ -262,14 +321,15 @@ class AttachedAssembly:
             flux += rotation @ ((new_inertia - old_inertia) @ values[10:13])
             fuel = new_fuel
 
-        for _ in range(count):
+        for step in range(count):
             depletion(np.maximum(0, fuel - .5 * dt * flow))
             mass, center, inertia = self.mass_properties(fuel)
             held_torque = torque - np.cross(center - control_center, force)
-            k1, t1 = self.derivative(values, mass, inertia, force, held_torque)
-            k2, t2 = self.derivative(values + .5 * dt * k1, mass, inertia, force, held_torque)
-            k3, t3 = self.derivative(values + .5 * dt * k2, mass, inertia, force, held_torque)
-            k4, t4 = self.derivative(values + dt * k3, mass, inertia, force, held_torque)
+            clock = state.time_s+step*dt
+            k1, t1 = self.derivative(values, mass, inertia, force, held_torque, time_s=clock, fuel_kg=fuel)
+            k2, t2 = self.derivative(values + .5 * dt * k1, mass, inertia, force, held_torque, time_s=clock+.5*dt, fuel_kg=fuel)
+            k3, t3 = self.derivative(values + .5 * dt * k2, mass, inertia, force, held_torque, time_s=clock+.5*dt, fuel_kg=fuel)
+            k4, t4 = self.derivative(values + dt * k3, mass, inertia, force, held_torque, time_s=clock+dt, fuel_kg=fuel)
             values += dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
             values[6:10] /= np.linalg.norm(values[6:10])
             impulse += dt / 6 * (t1 + 2 * t2 + 2 * t3 + t4)
@@ -286,4 +346,111 @@ class AttachedAssembly:
         return dict(elements=[element.to_dict() for element in self.elements], mu_m3_s2=self.mu_m3_s2,
                     earth_radius_m=self.earth_radius_m, gravity_gradient=self.gravity_gradient,
                     max_integration_step_s=self.max_integration_step_s,
+                    attachment_limits=[dict(value) for value in self.attachment_limits],
+                    environment='injected per-component extra ECI acceleration and intrinsic body torque' if self.environment else 'central gravity and configured gravity gradient only',
+                    environment_contract=self.environment.as_dict() if callable(getattr(self.environment, 'as_dict', None)) else None,
                     mass_model="component-proportional fuel distribution; symmetric depletion splitting")
+
+    def attachment_load_audit(self, state, propulsion, commands_n):
+        """Reconstruct joint wrenches from actual allocated nozzle commands.
+
+        This uses each component's Newton-Euler balance at the supplied state.
+        No bond strength is inferred from the target's collision geometry.
+        """
+        if not self.attachment_limits:
+            return dict(passed=True, maximum_capacity_ratio=0., members={})
+        commands = np.asarray(commands_n, dtype=float)
+        if commands.shape != (len(propulsion.thrusters),) or np.any(~np.isfinite(commands)):
+            raise ValueError('Attachment loads require actual allocated thruster commands')
+        mass, center, inertia = self.mass_properties(state.fuel_kg)
+        force, torque = np.zeros((len(self.elements), 3)), np.zeros((len(self.elements), 3))
+        for command, thruster in zip(commands, propulsion.thrusters):
+            local_force = command*thruster.direction_body
+            force[thruster.owner_index] += local_force
+            torque[thruster.owner_index] += np.cross(thruster.position_body_m-
+                self.elements[thruster.owner_index].position_body_m, local_force)
+        allocated = propulsion.matrix(self, state.fuel_kg)@commands
+        if self.environment is not None:
+            values = np.r_[state.position_eci_m, state.velocity_eci_m_s, state.quaternion_body_to_eci,
+                           state.angular_velocity_body_rad_s]
+            extra_force, extra_torque, per_component = self.environment_wrench(values, state.fuel_kg, state.time_s)
+            allocated += np.r_[extra_force, extra_torque]
+            rotation = Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()
+            for index, element in enumerate(self.elements):
+                value = per_component[element.name]
+                force[index] += (element.dry_mass_kg+state.fuel_kg[index])*(rotation.T@value['acceleration_eci_m_s2'])
+                torque[index] += element.rotation_element_to_assembly@value['torque_body_nm']
+        w = state.angular_velocity_body_rad_s
+        alpha = np.linalg.solve(inertia, allocated[3:]+self.gravity_gradient_torque_body(state)-np.cross(w, inertia@w))
+        rotation = Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()
+        gravity_com = -self.mu_m3_s2*state.position_eci_m/np.linalg.norm(state.position_eci_m)**3
+        result = {}
+        by_name = {element.name: index for index, element in enumerate(self.elements)}
+        for limit in self.attachment_limits:
+            index = by_name[limit['name']]
+            element = self.elements[index]
+            wet_mass = element.dry_mass_kg+state.fuel_kg[index]
+            local_inertia = wet_mass*element.inertia_per_kg_m2
+            offset = element.position_body_m-center
+            position = state.position_eci_m+rotation@offset
+            gravity_element = -self.mu_m3_s2*position/np.linalg.norm(position)**3
+            acceleration = allocated[:3]/mass+np.cross(alpha, offset)+np.cross(w, np.cross(w, offset))
+            acceleration += rotation.T@(gravity_com-gravity_element)
+            reaction = wet_mass*acceleration-force[index]
+            local_gg = self._gravity_gradient_torque_body(position, rotation, local_inertia) if self.gravity_gradient else np.zeros(3)
+            moment_com = local_inertia@alpha+np.cross(w, local_inertia@w)-torque[index]-local_gg
+            arm = np.asarray(limit['surface_anchor_body_m'])-element.position_body_m
+            moment = moment_com-np.cross(arm, reaction)
+            normal = np.asarray(limit['normal_body'])
+            fn = float(reaction@normal)
+            shear = float(np.linalg.norm(reaction-fn*normal))
+            ratios = dict(tensile=max(0., -fn)/limit['tensile_limit_n'],
+                          compression=max(0., fn)/limit['compression_limit_n'],
+                          shear=shear/limit['shear_limit_n'], moment=float(np.linalg.norm(moment))/limit['moment_limit_nm'])
+            result[element.name] = dict(force_body_n=reaction.tolist(), moment_at_pad_body_nm=moment.tolist(),
+                                       capacity_ratios=ratios, maximum_capacity_ratio=max(ratios.values()))
+        maximum = max([0.]+[value['maximum_capacity_ratio'] for value in result.values()])
+        return dict(passed=maximum <= 1., maximum_capacity_ratio=maximum, members=result,
+                    scope='Newton-Euler attachment loads at recorded controlled states; representative declared bond capacities')
+
+    def attachment_history_audit(self, propulsion, controls, history):
+        """Check actual component loads at every recorded control endpoint."""
+        if not self.attachment_limits:
+            return dict(passed=True, maximum_capacity_ratio=0., checked_states=0,
+                        scope='No physical bond capacities declared by the explicit idealized reproduction model')
+        by_time = {float(record['time_s']): record for record in history}
+        maximum, checked, first = 0., 0, None
+        checked_times = set()
+        member_maxima = {value['name']: 0. for value in self.attachment_limits}
+        for control in controls:
+            for time_s in (control['time_s'], control['time_s']+control['duration_s']):
+                key = min(by_time, key=lambda value: abs(value-time_s))
+                if abs(key-time_s) > 1e-6:
+                    raise ValueError('Attachment load audit is missing a control boundary state')
+                record = by_time[key]
+                state = AssemblyState(record['time_s'], record['position_eci_m'], record['velocity_eci_m_s'],
+                    record['quaternion_body_to_eci'], record['angular_velocity_body_rad_s'], record['fuel_kg'])
+                audit = self.attachment_load_audit(state, propulsion, control['allocation']['commands_n'])
+                maximum = max(maximum, audit['maximum_capacity_ratio'])
+                checked += 1
+                checked_times.add(key)
+                for name, value in audit['members'].items():
+                    member_maxima[name] = max(member_maxima[name], value['maximum_capacity_ratio'])
+                if not audit['passed'] and first is None:
+                    first = dict(time_s=time_s, **audit)
+        for record in history:
+            time_s = float(record['time_s'])
+            if time_s in checked_times and not record.get('phase', '').startswith('coast'):
+                continue
+            state = AssemblyState(time_s, record['position_eci_m'], record['velocity_eci_m_s'],
+                record['quaternion_body_to_eci'], record['angular_velocity_body_rad_s'], record['fuel_kg'])
+            audit = self.attachment_load_audit(state, propulsion, np.zeros(len(propulsion.thrusters)))
+            maximum = max(maximum, audit['maximum_capacity_ratio'])
+            checked += 1
+            for name, value in audit['members'].items():
+                member_maxima[name] = max(member_maxima[name], value['maximum_capacity_ratio'])
+            if not audit['passed'] and (first is None or time_s < first['time_s']):
+                first = dict(time_s=time_s, **audit)
+        return dict(passed=first is None, maximum_capacity_ratio=maximum, member_maximum_capacity_ratios=member_maxima,
+                    checked_states=checked, first_violation=first,
+                    scope='Every actual control start/end and recorded zero-thrust coast state; no continuous load enclosure between recorded states')

@@ -1,248 +1,235 @@
 # ORBEX-A architecture
 
-The maintained package implements physical-coordinate, nonlinear adaptive dynamic
-tube MPC. Responsibilities have explicit interfaces so a change to target motion,
-estimation, mission policy or rendering has a clear place to live. The public
-Python namespace is `orbexa`; its source directory is the user's `scripts/`.
+The maintained sensed nonlinear pipeline separates physical truth, bounded
+observations, nominal GEKKO planning, held-command admission and recorded evidence.
+The public Python package is `orbexa`; its checkout source is `scripts/`.
+Analytical translation reproduction remains available under its own model and
+clock identities. Sharing an interface or renderer does not equate these models.
 
-## Directory ownership
+## Entry points and composition
 
-| Location | Responsibility |
-|---|---|
-| `scripts/contracts.py` | Backend-independent MPC problem/result records and model identities |
-| `scripts/layout.py` | Checkout discovery and default scenario/output locations |
-| `scripts/core/config_types.py` | Numeric and policy contracts for scenario sections |
-| `scripts/core/config_loader.py` | YAML decoding; configuration composition is in `config.py` |
-| `scripts/core/dynamics.py` | Physical LVLH translation and orbital coefficients |
-| `scripts/core/orbital_parameters.py` | Immutable plant parameters; separate from the controller belief |
-| `scripts/core/target_geometry.py` | Prescribed target motion, docking geometry and collision inputs |
-| `scripts/core/attitude.py` | Standalone quaternion rigid-body propagation and Euler/body-rate conversion |
-| `scripts/core/rigid_body_target.py` | Physical-time torque-free or gravity-gradient target propagation, proper rotations and orbital clock |
-| `scripts/core/inertial_dynamics.py` | Independent Cartesian SI gravity/J2/vector-drag propagation and nonplanar LVLH transforms; explicit model-discrepancy comparison |
-| `scripts/core/target_spacecraft.py`, `chaser_spacecraft.py` | Supporting spacecraft APIs; `spacecraft.py` is the base/lazy facade |
-| `scripts/control/` | MPC formulation, constraints, references, dynamic tubes and uncertainty enclosures |
-| `scripts/control/reachability.py` | Validated continuous held-flow and swept finite-body geometry certificates |
-| `scripts/control/orbital_hold.py` | Authenticated orbital hold reconstruction and separate variation-of-constants endpoint refinement; original swept witnesses remain authoritative |
-| `scripts/control/terminal_tracking.py`, `physical_terminal.py`, `continuation.py` | Exact terminal conditions, derived eccentric rigid-target bounds and stored admissible backups |
-| `scripts/control/rigid_body_terminal.py`, `componentwise_terminal.py` | Full-inertia componentwise port jets and explicitly typed midpoint terminal feedback |
-| `scripts/solvers/` | GEKKO, SciPy and optional CasADi implementations |
-| `scripts/estimation/belief.py` | Retained parameter intervals and an admissible nominal point |
-| `scripts/estimation/interval_membership.py` | Outward-rounded interval RK4 membership contraction |
-| `scripts/estimation/prediction.py`, `smid.py` | Numerical prediction/observability and point-update policy |
-| `scripts/solvers/gekko_estimation.py` | Symbolic local window fitting; candidate extrema are not certified enclosures |
-| `scripts/estimation/mission_adaptation.py` | Dense measurement window and membership-before-point scheduling |
-| `scripts/planning/` | Docking assignment, allocation and explicit supporting observation/deflection optimizers |
-| `scripts/simulation/` | Scenario, fleet, phase policy, planning, execution, recording and result I/O |
-| `scripts/simulation/physical_approach.py`, `certified_execution.py` | Compact finite-body target approach with explicit sensing/model admission bounds |
-| `scripts/simulation/arrival_policy.py`, `mission_transition.py` | Persistent exact arrival deadline, whole-tube suffix/entry region and explicit policy-only restart seam |
-| `scripts/simulation/complete_mission.py` | Stage orchestration, rigorous-clock translation propellant allowance and actual chaser-attitude handoff |
-| `scripts/simulation/terminal_handoff.py` | Reproved source-bound terminal continuation, actual endpoint and separate attitude/accounting trajectory |
-| `scripts/simulation/capture.py`, `assembly.py`, `propulsion.py` | Finite-reach inelastic latch, mass/inertia/fuel state and bounded external nozzle wrench allocation |
-| `scripts/simulation/burn_axis.py`, `deorbit.py` | Coupled-wrench body-axis planning, bounded retrograde pointing and finite-burn orbital events |
-| `scripts/simulation/finite_burn.py` | Numerical Cartesian burn previews, owner-specific fuel reserves and throttle selection; actual lifecycle gates remain independent |
-| `scripts/simulation/chaser_attitude.py`, `detumbling.py`, `deorbit.py` | Controlled free-bus attitude, assembly detumbling and finite-burn entry-interface delivery |
-| `scripts/visualization/` | Recorded-data plots, interactive views, animation, catalogs and workflow |
-| `scripts/visualization/studio/` | Portable local 3D replay, synchronized charts, physical lifecycle, theory and browser video export |
-| `scripts/sessions.py` | Portable session names, atomic references and protected generated-output cleanup |
-| `config/default.yaml` | Default numerical scenario and mission/adaptation/solver policy |
-| `paper/IEEE Aerospace Conference 2025/assets/` | User-relocated paper figures and source assets |
+`NonlinearMissionRunner` composes one explicit `IndependentTruthCase` with
+`NonlinearStudyOptions`, a vehicle design and structured `SimulationConfig`.
+`orbexa-run-nonlinear` creates a `StudyArmRequest` for `run_study_arm`, which
+freezes the selected source/configuration/case and runs the requested
+adaptive/frozen and dynamic/fixed arm in a new output directory. The update cap
+does not turn an unfinished approach into a completed mission.
 
-Paper figures retain their original content. They are publication source assets;
-fresh mission galleries are generated from identified raw mission records.
-
-## Mission composition
-
-`ADTMPCMissionRunner` is an entrypoint around `MissionScenario`. A scenario owns
-the plant truth, target, fleet initializer, phase/reference policy, safety policy,
-point estimator and controller factory. Defaults are constructed explicitly;
-the controller itself is created only when execution begins.
+`LiveSimulationService` uses this same nonlinear runner, planner, executor and
+completion composition. Its worker boundary owns job control, frozen inputs and
+committed projections; the browser consumes those projections. Historical
+analytical resume is a separate, explicitly selected route. Neither entry point
+implements a second controller or physical plant.
 
 ```mermaid
-flowchart LR
-    C[Structured scenario] --> S[MissionScenario]
-    S --> P[CoupledMissionPlanner]
-    S --> E[DenseFeedbackExecutor]
-    S --> A[MissionAdaptation]
-    P --> B[Nonlinear GEKKO/IPOPT]
-    B --> T[Nominal path and dynamic tube]
-    T --> E
-    E --> A
-    A --> I[Interval membership contractor]
-    I --> F[Point estimate inside retained box]
-    F --> P
-    E --> R[MissionRecorder]
-    A --> R
-    R --> D[Plain saved result]
-    D --> V[Recorded-data renderers]
+flowchart TD
+    CLI[StudyArmRequest and frozen study arm] --> R[NonlinearMissionRunner]
+    LIVE[LiveSimulationService worker] --> R
+    R --> TR[Separate target and relative physical truth]
+    TR --> SS[SensorSuite truth-side sampler]
+    SS --> NAV[BoundedNavigationFilter]
+    NAV --> PRE[Observed NonlinearTargetPreview]
+    NAV --> AD[NonlinearMissionAdaptation and membership]
+    AD --> PL[NonlinearMissionPlanner]
+    PRE --> PL
+    PL --> GK[Nominal GEKKO/IPOPT problem]
+    GK --> PROP[Performance proposal]
+    NAV --> SAFE[NonlinearSafetyPlanner and finite backup]
+    SAFE --> ADM[FleetAdmissionRuntime]
+    PROP --> ADM
+    FLOW[NonlinearFlowEncloser and AttitudeFlowEncloser] --> PL
+    FLOW --> ADM
+    ADM --> EX[NonlinearDenseExecutor]
+    EX --> TR
+    EX --> NAV
+    EX --> ARC[Staged and applied hold archive]
+    EX --> REC[NonlinearMissionRecorder]
+    REC --> RAW[Saved approach result]
+    RAW --> COMP[Authenticated completion boundary]
+    ARC --> COMP
+    COMP --> LIFE[Finite contact and physical lifecycle]
+    RAW --> PROJ[StudioDataset]
+    LIFE --> LPROJ[LifecycleDataset]
+    PROJ --> STUDIO[One MissionStudio replay]
+    LPROJ --> STUDIO
 ```
 
-For each outer update, the runtime:
+The arrows show responsibility and data flow. In particular, truth reaches the
+controller through sensor packets and navigation; recorded truth and offline
+containment diagnostics are separate outputs.
 
-1. Selects the phase and forms moving goal/geometry previews.
-2. Plans all chasers, preserving sequential warm starts, then checks simultaneous
-   nominal-path separation with both chasers' tubes.
-3. Advances the persistent nominal center, actual state, tube and bandwidth on
-   one shared dense clock. Ancillary commands are held over each RK4 substep.
-4. Checks measured containment, target exclusion, spacing and input reserves.
-   When supplied, the continuous guard proves the complete held fleet motion
-   before committing it, then carries the enclosure into the next hold.
-5. Contracts the parameter box using the recorded dense states and held inputs.
-6. Updates the nominal point without replacing that authoritative box.
-7. Records whole-tube terminal bounds and requires consecutive admissible endpoints.
+## Maintained module ownership
 
-All chasers commit a dense transition together. Failed planning preserves the
-last committed state and attempted solve diagnostics. Invalid point estimates
-preserve the retained intervals and previous admissible point, mark the mission
-inconsistent and retain the rejection reason.
+Paths in this table are relative to `scripts/`.
 
-`DynamicTubeSpec` validates shapes and numeric values before converting to the
-existing `MPCProblem.extra_params['dynamic_tube']` mapping. This boundary does
-not change the nonlinear backend equations. The ordinary MPC backend registry
-remains separate; coupled ADTMPC rejects substitution by an ordinary solver.
+| Module | Main interfaces and responsibility |
+|---|---|
+| `core/config_types.py`, `core/config_loader.py`, `core/config.py` | Structured scenario validation, YAML loading and configuration composition |
+| `contracts.py`, `layout.py`, `sessions.py` | Solver problem/result records, relocated-checkout paths and explicit generated-session ownership |
+| `core/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
+| `core/nonlinear_relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
+| `core/nonlinear_target.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
+| `core/inertial_dynamics.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
+| `core/spacecraft_geometry.py`, `simulation/spacecraft_design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
+| `control/nonlinear_flow.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
+| `control/attitude_flow.py`, `simulation/nonlinear_target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
+| `estimation/navigation.py` | `SensorSuite`, `SensorPacket`, `BoundedNavigationFilter`, `NavigationEstimate`: truth-side sampling versus prior/prediction/observation intersections, delayed packets and finite-history velocity bounds |
+| `estimation/nonlinear_membership.py`, `estimation/nonlinear_adaptation.py`, `estimation/belief.py` | Nonlinear transition/observation membership, retained parameter sets and admissible nominal updates; unresolved parameter boxes are retained |
+| `simulation/nonlinear_profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
+| `simulation/nonlinear_planning.py`, `simulation/coupled_planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
+| `control/dynamic_tube_spec.py`, `control/sample_hold.py`, `solvers/gekko_dynamic_tube.py` | `DynamicTubeSpec`, sensed held-feedback bounds and `GekkoDynamicTube` nonlinear GEKKO/IPOPT formulation |
+| `control/reachability.py`, `control/orbital_hold.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
+| `control/refuge.py`, `control/fleet_fallback.py` | `RefugeController`, `FleetFallbackPlan`, `FleetAdmissionRuntime`: finite feedback authority, fleet/component geometry, successor admission and fuel accounting |
+| `simulation/nonlinear_refuge.py`, `simulation/nonlinear_safety.py` | Physical drift/occupied-pose adapters, exact polynomial retreat bounds, bounded blackout propagation, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
+| `simulation/nonlinear_execution.py`, `simulation/coupled_state.py` | `NonlinearDenseExecutor`: one held fleet decision, sensed feedback, separate plant motion, tube inclusion, actuator support, actual commits and failure records; controller state contains estimates |
+| `simulation/nonlinear_mission.py`, `simulation/nonlinear_recording.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
+| `simulation/nonlinear_archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
+| `simulation/nonlinear_study.py`, `cli/run_nonlinear.py` | Prospective study-arm selection, source/configuration snapshots and separately reported execution/completion outcomes |
+| `simulation/nonlinear_completion.py` | Arrival verification, actual `CaptureTruth` reconstruction, complete-journal translation accounting, past-navigation attitude observations and physical environment handoff |
+| `simulation/chaser_attitude.py`, `simulation/contact.py`, `simulation/capture.py` | Controlled chaser-attitude replay, `FiniteContactSimulator`, reach/contact gates and accepted inelastic assembly construction |
+| `simulation/assembly.py`, `simulation/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
+| `simulation/burn_axis.py`, `simulation/finite_burn.py`, `simulation/detumbling.py`, `simulation/deorbit.py`, `simulation/lifecycle.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
+| `simulation/live_service.py` | Isolated service worker using the shared execution/completion pipeline; acknowledged progress and committed projections |
+| `visualization/studio_data.py`, `visualization/lifecycle_renderer.py`, `visualization/mission_studio.py`, `visualization/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
 
-## Public APIs
+## Clock, model and estimation boundaries
 
-```python
-from pathlib import Path
-from orbexa.core.config import SimulationConfig
-from orbexa.simulation import ADTMPCMissionRunner, MissionScenario, MissionResultStore
+`ReferenceClockFrame` prescribes the reference rotation and positive anomaly
+rate. Relative position is `C_ref(q).T @ (r_chaser - r_target)` and relative
+velocity is its derivative with respect to `q`. This frame is not asserted to
+be the actual nonlinear target's physical LVLH frame. Cartesian ephemeris,
+physical seconds and attitude are propagated with the declared clock bridge.
 
-config = SimulationConfig.load("config/default.yaml")
-scenario = MissionScenario(config=config)
-result = ADTMPCMissionRunner(scenario=scenario).run(mission="single", steps=450)
-MissionResultStore.save(result, Path("data/my-mission"))
-```
+The numerical and Arb nonlinear RHS share equations and immutable physical
+declarations. Certificates bind the model, clock, target ephemeris, input,
+regional domain and source. The independent inertial service checks those
+equations; it is not a replacement source of controller measurements. See
+[dynamics fidelity](dynamics-fidelity.md) and [navigation](nonlinear-navigation.md).
 
-The existing runner `run`, `save_result`, `load_result` and previous model/result
-imports remain available. `CoupledTubeMission(runner)` adapts the runner's scenario;
-the execution engine does not call runner implementation helpers.
+`SensorSuite` produces truth-side packets. Navigation consumes declared priors,
+validated held-flow predictions and delivered bounded packets. Own-chaser GNSS
+plus relative geometry can constrain target ephemeris; a cooperative target
+GNSS feed is not assumed. The observed target preview uses current estimated
+pose/rate and prospective prediction, without future truth access. Sensor and
+actuator magnitudes are explicit study parameters, not device qualifications.
 
-To extend behavior, inject a dependency into `MissionScenario`:
+The nonlinear membership contractor uses the actual nonlinear transition and
+observation boxes. It removes only certified inconsistent parameter boxes and
+retains unresolved ones. The analytical RK4 contractor does not establish
+membership for this physical model. A failed NLP is a retained solver attempt,
+not an infeasibility or unreachability label.
 
-- `truth`: `OrbitalPlantTruth`, including structural orbit parameters used consistently
-  by the nominal dynamics and uncertainty bounds.
-- `target`: the `TargetGeometry` protocol. Its collision data must be supported
-  by the selected nonlinear formulation. An interface alone does not implement a
-  new shape, displaced target or contact model.
-- `fleet`, `reference`, `safety`: focused services for initialization, phase policy
-  and measured/planned constraint checks.
-- `point_estimator`: the recorded-window `PointEstimator` protocol. Its returned
-  set is ignored; returned points require exact keys, finite values and membership
-  in the retained box.
-- `controller_factory`: creates the coupled controller with explicit backend and
-  solver options. The coupled mission requires the nonlinear GEKKO formulation.
+## Planning, admission and physical commits
 
-The YAML `mission`, `adaptation` and `solver` sections expose the existing policy
-defaults. Orbit, MPC, target and tube sections reject malformed dimensions,
-invalid bounds, incompatible weights and unsupported modes before optimization.
-Configuration dataclasses are mutable; construct/load a valid configuration
-when replacing a section rather than bypassing its numeric contract.
+The optimizer is a nominal Carter–Humi surrogate with prospectively charged
+regional nonlinear residuals, measurement/actuator supports, sample-and-hold
+terms and numerical endpoint-transfer allowances. `NonlinearPlanningContext`
+binds one observation/model/clock/target forecast snapshot to that solve.
+`GekkoDynamicTube` remains the nonconvex GEKKO/IPOPT backend; SciPy and optional
+CasADi supporting solvers do not silently replace this formulation.
 
-`PhysicalApproachScenario` composes compact deployment, literal COM standoff,
-finite spherical buses and a physical target. Its uncertainty prior and
-`ContinuousAdmissionOptions` are explicit caller inputs. The guard keeps the
-original declared model prior; it does not treat a numerical contractor result
-as a continuous-ODE uncertainty theorem.
+Before performance motion, the executor checks the source bindings, declared
+regional domain, current sensing support, reserves and tube peaks.
+`FleetAdmissionRuntime` independently checks the whole fleet's held physical
+flows, component/peer separation, successor entry, context and finite fuel.
+`NonlinearSafetyPlanner` may retain an authenticated remaining backup, prepare
+a fresh finite one, or prepare a prospective successor from the complete proposed
+physical-flow endpoint boxes. Preparation is not installation. A refusal preserves the
+installed feedback decision; it does not silently substitute zero thrust.
 
-`MissionCheckpoint` restores an unfinished committed prefix without changing
-actual states, persistent nominal centers/tubes, beliefs, assignments or exact
-guard clock. Numerical restart is an explicit source segment, with cold plans
-and a reset dense adaptation window; it is separate from the certified control
-continuation service. See [checkpoint compatibility](mission-checkpoint.md).
+Performance and fallback use the same dense executor and physical plant.
+Admitted physical-tube witnesses can carry relational inclusion across
+performance holds; initialization and fallback resets use the authoritative
+navigation enclosure. Bounded proof-service blackout uses the already admitted
+finite fallback and its observation propagator. Its authority, geometry, clock,
+sensor and fuel conditions remain finite and explicit.
 
-`CompleteMissionRunner` accepts an injected approach runner or an already saved
-physical result. It requires successful whole-tube approach completion, debits
-a conservative translation propellant allowance using Arb orbital-clock bounds,
-replays actual bounded chaser attitude control, then passes those physical
-attitudes and remaining tanks to `MissionLifecycle`. Capture, detumbling,
-deorbit and propulsion policies remain separately injectable. `CompleteMissionStore`
-reserves a new output directory and records completed stages as they become
-available; later failure does not replace their evidence with a successful state.
+`ADMITTED_BEFORE_MOTION` binds the decision and full witnesses before numerical
+plant motion. `APPLIED_HOLD_COMPLETE` records the actual endpoint, input and
+navigation update; downstream failure records `ASSUMPTION_VIOLATION` and the
+actual committed clock/state. A failed planning attempt and the fallback motion
+that follows it remain distinct evidence. Lightweight recorder indexes require
+the corresponding durable full archive; the complete-hold iterator supplies
+the accountant without retaining every witness in memory. See the detailed
+[nonlinear mission contract](nonlinear-mission.md) and
+[solver formulation](nonlinear-solver.md).
 
-## Recorded-data rendering
+## Physical continuation
 
-```python
-from pathlib import Path
-from orbexa.simulation.mission_result import MissionResultStore
-from orbexa.visualization import ADTMPCMissionRenderer
+`complete_nonlinear_mission` requires a successful sensed approach and verified
+arrival record, matching model/clock/vehicle, retained actual boundary and the
+complete admitted hold journal. Translation fuel is charged before the next
+stage. `PastNavigationAttitudeObserver` supplies recorded past observations to
+the separate controlled chaser-attitude replay; physical truth remains separate.
+That replay and its attitude/fuel gates precede finite contact.
 
-raw = Path("data/my-mission/mission_data.json")
-result = MissionResultStore.load(raw)
-ADTMPCMissionRenderer(Path("results/my-mission"), fps=8).render(result, data_file=raw)
-```
+`FiniteContactSimulator` models declared compliant contact and observed local
+feedback. An accepted contact/capture result supplies the attached assembly
+and its actual pose, rate and remaining tanks to detumbling.
+`ThrusterSystem` applies hardware/fuel limits and fixed-state Newton–Euler
+pad-load admission before controlled motion. Detumbling and deorbit retain
+applied endpoints, audit their loads immediately, and preserve the full sampled
+load-history lifecycle gate. These are numerical point/history checks, not a
+continuous load enclosure or hardware bond qualification.
 
-Result loading and rendering do not construct a mission runner, read scenario
-YAML or import solver backends. Package exports are lazy. `visualization.demo`
-remains a small compatibility facade over the dedicated workflow.
+`MissionLifecycle` owns attachment, detumbling and deorbit results and retains
+completed stages on later refusal. Burn-axis/throttle predictions are candidates;
+the actual propagated pointing, fuel, rate, load and orbital-event gates decide
+the result. A descending entry-interface handoff and achieving a lower target
+perigee are separate recorded outcomes. Below-interface heating, breakup,
+demise and impact are outside this pipeline.
 
-`MissionSamples` owns aligned recorded samples and frame selection. Geometry,
-plots, interactive views, GIF and MP4 share those samples and target poses.
-Unequal tracks stop at their common available samples with an explicit note;
-they are not frozen or padded. Phase transitions and final samples are retained.
-Tube boxes use each chaser's matched nominal center and component bounds.
+A separately reconstructed post-contact replay has its own source/boundary and
+stage evidence. Its success cannot fill a missing approach prefix or upgrade an
+older analytical record into a sensed nonlinear full mission. See
+[finite contact](finite-contact.md) and [mission lifecycle](mission-lifecycle.md).
 
-`MissionStudio` exports an explicitly selected catalog and source hashes.
-`StudioDataset` and `LifecycleDataset` project plain saved data; browser code
-does not run controllers. The static renderer and equation fonts are vendored
-with licenses. Browser video capture stays local. Lifecycle and approach clocks
-remain distinct and their labels identify the selected physical samples.
+## Analytical reproduction and supporting APIs
 
-Each artifact declares its required histories. Missing optional data skips that
-view with a manifest reason while preserving other supported plots and replay.
-Current model/controller markers are checked before session output changes;
-contradictory identities reject, and missing markers can only be migrated from
-qualified canonical raw records. Partial rendering retains other qualified families.
+`ADTMPCMissionRunner` with `MissionScenario` retains the analytical translation
+reproduction and existing runner/result APIs. `CoupledMissionPlanner`,
+`DenseFeedbackExecutor`, `MissionAdaptation` and `MissionRecorder` remain that
+composition's services. `PhysicalApproachScenario` and `CompleteMissionRunner`
+also retain their explicitly configured analytical-translation/physical-target
+and completion interfaces; their names alone do not select the sensed model.
 
-The animation scene is shared by GIF and MP4. MP4 uses system FFmpeg or the
-optional `video` extra's local executable, within a scoped Matplotlib setting.
-Encoding failures are recorded and leave no empty file. The GIF remains available.
+| Module family | Retained scope |
+|---|---|
+| `simulation/adtmpc_mission.py`, `simulation/mission_scenario.py`, `simulation/coupled_execution.py`, `simulation/mission_recording.py` | Analytical runner/scenario, dense executor and recorder composition; existing Python/CLI APIs remain available |
+| `core/dynamics.py`, `core/orbital_parameters.py` | Analytical quadratic-drag relative coefficients and `OrbitalPlantTruth`; separate from nonlinear Cartesian/J2/vector-drag truth |
+| `core/target_geometry.py`, `core/rigid_body_target.py`, `core/attitude.py` | Prescribed or explicitly selected rigid target geometry/attitude, quaternion propagation and physical-time attitude conventions |
+| `estimation/interval_membership.py`, `estimation/prediction.py`, `estimation/smid.py`, `estimation/mission_adaptation.py` | Analytical-model interval contraction, numerical fitting and nominal-point policy |
+| `control/terminal_tracking.py`, `control/physical_terminal.py`, `control/rigid_body_terminal.py`, `control/componentwise_terminal.py`, `control/continuation.py` | Model-specific terminal/continuation derivations and stored admissible backups |
+| `simulation/arrival_policy.py`, `simulation/mission_transition.py`, `simulation/terminal_handoff.py`, `simulation/complete_mission.py` | Existing deadline/restart/terminal and physical-completion composition under its own contracts |
+| `planning/`, `core/target_spacecraft.py`, `core/chaser_spacecraft.py` | Supporting assignment/observation/deflection optimizers and standalone spacecraft APIs; time/frame conventions remain explicit |
 
-## Supporting physical APIs
+`DynamicTubeSpec` and solver problem/result interfaces are shared where their
+model-version contracts permit. A checkpoint or migrated rendering record keeps
+its originating model, clock and source segment; it is not a nonlinear physics
+conversion. Analytical checkpoint restoration is documented separately in
+[checkpoint compatibility](mission-checkpoint.md).
 
-The standalone `Target` API propagates a scalar-last quaternion and body angular
-velocity in seconds. Its public three-angle `curr_state` and six-value
-`attitude_state` support existing consumers. Configured target Euler derivatives
-per anomaly are converted at the initial orbital anomaly rate to body rates in
-rad/s. `angularVelocity` explicitly supplies body rates in rad/s; `dt` is seconds.
+## One Studio and evidence ownership
 
-The shared orientation convention is body-to-inertial
-`Rx(roll) @ Ry(pitch) @ Rz(yaw)`. Standalone deflection optimization uses the
-corresponding Euler/body-rate mapping and one bounded nonsingular Euler chart.
-Quaternion propagation remains valid across Euler chart boundaries. Observation,
-curve-fitting and deflection functions accept explicit inputs and own/clean their
-local models, including failure paths. They do not supply hidden global parameters.
+`StudioDataset` and `LifecycleDataset` project plain saved approach/lifecycle
+records. `MissionStudio` exports their shared local browser assets and verifies
+raw-result/lifecycle linkage. Static replay, plots and browser video use recorded
+samples; the browser does not run a solver or plant. Live operation feeds the
+same projection contract from acknowledged worker commits. Approach and
+lifecycle clocks remain explicitly labeled, and absent histories are not
+invented to complete a scene.
 
-These supporting APIs remain separate from the configured approach.
-`RigidBodyCylinderTarget` explicitly selects physical torque-free or
-gravity-gradient attitude; `MissionLifecycle` explicitly selects modeled
-attachment and controlled assembly motion. The latch is an inelastic rigid
-event, not an unresolved contact-dynamics solution.
+Saved results, full proof archives, source/configuration snapshots, case/arm
+declarations and lifecycle records have different responsibilities. A controller
+proposal is not physical truth; a numerical sample is not a validated flow;
+a replay is not new execution evidence. Old records keep their original
+identities and qualification scope. Current study runs, full-mission completion
+and published galleries must be assessed from their own closed evidence.
 
-Standalone Chaser CWH planning, propagation and plots use `dt` in seconds with
-anomaly scaling disabled. Its default preserves the historical numerical
-`config.anom_step` value as seconds; supply `dt` to select a physical sample period.
-For N Target torque intervals, N rows specify held interval inputs; N+1 rows
-specify ending-node inputs, with row zero skipped. This aligns direct replay of
-deflection's node force samples after conversion to body-frame torque.
-
-## Installation and evidence
-
-Setuptools maps `orbexa` to `scripts/` for editable installs; normal wheels
-contain `orbexa/`. `run.py` bootstraps the same logical package from a checkout.
-Default paths follow the checkout after relocation. Reinstall an editable package
-after moving the checkout. A standalone wheel needs an explicit scenario path;
-source paper assets and generated files are not wheel contents.
-
-Repository policy keeps examples and qualification artifacts outside the checkout.
-Evidence includes actual nonlinear single/fleet/fast-target missions, independent
-dense numerical reconstruction, original-method and point-update equivalence,
-solver failure behavior, optional-data rendering, body-rate/invariant examples,
-and editable/wheel import examples. No repository test infrastructure is retained.
-
-The ordinary YAML profile retains its analytical quadratic-drag translation and
-prescribed Euler target. The physical profile and post-capture stages have
-explicitly different dynamics and assumptions. Validated-flow, terminal and
-continuation claims depend on the bounds and admission interfaces described in
-[the mathematical formulation](theory.md); successful animation is not a proof
-of those conditions. No software path claims flight-qualified release, sensing,
-contact hardware, atmospheric demise or universal nonlinear solver feasibility.
+Setuptools maps the checkout's `scripts/` to `orbexa`; wheels contain `orbexa/`.
+Generated sessions and qualification outputs stay outside the maintained
+checkout. Source paper figures remain publication assets. Repository policy
+retains no test/validation infrastructure. Mathematical claims remain
+conditional on the finite declared domains and admission contracts in
+[the formulation](theory.md); this architecture makes no flight, device,
+universal environmental-coverage or real-time execution claim.

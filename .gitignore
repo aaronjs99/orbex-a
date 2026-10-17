@@ -79,6 +79,7 @@ logs/
 *.log
 
 # Generated plots and media files
+docs/figures/
 plots/*.html
 plots/*.png
 plots/*.mp4
@@ -103,6 +104,7 @@ results/
 !config/envisat-admission.json
 !config/envisat-arrival.json
 !config/envisat-deployment.json
+!config/nonlinear-study.json
 !config/spacecraft/*.json
 !scripts/visualization/studio/vendor/manifest.json
 

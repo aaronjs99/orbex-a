@@ -109,8 +109,28 @@ def advance_tube(phi, omega, alpha, lambda_gain, disturbance, step, *, phi_peak=
     return phi_next, omega_next
 
 
+def nominal_reset_forcing(alpha,lambda_gain,endpoint_error_abs,hold_width):
+    """Prediction allowance for certified nominal-center endpoint transfers.
+
+    A constant comparison forcing integrates to the declared positive jump
+    over one dense hold. This is a numerical-center reset budget, separate
+    from the physical acceleration forcing and the ancillary input reserve.
+    """
+    alpha=_vector(alpha,'alpha',nonnegative=True)
+    gain=_vector(lambda_gain,'lambda_gain',nonnegative=True)
+    error=np.asarray(endpoint_error_abs,dtype=float)
+    if error.shape!=(6,) or not np.all(np.isfinite(error)) or np.any(error<0):
+        raise ValueError('Nominal endpoint transfer needs a nonnegative finite six-vector')
+    width=float(hold_width)
+    if not np.isfinite(width) or width<=0:raise ValueError('Positive endpoint-reset hold width required')
+    wa=np.divide(-np.expm1(-alpha*width),alpha,out=np.full(3,width),where=alpha!=0)
+    wl=np.divide(-np.expm1(-gain*width),gain,out=np.full(3,width),where=gain!=0)
+    return (error[3:]+gain*error[:3])/wa,error[:3]/wl
+
+
 def held_tube_stage_seed(phi, omega, alpha, lambda_gain, A_abs, delta_A,
-                         A_variation, base_forcing, step, hold_width):
+                         A_variation, base_forcing, step, hold_width, *,
+                         measurement_error_abs=None,nominal_endpoint_error_abs=None):
     """Find a consistent numeric stage seed for the coupled held-input bound.
 
     For fixed gains the nonnegative forcing is affine in the two stage peaks.
@@ -121,19 +141,30 @@ def held_tube_stage_seed(phi, omega, alpha, lambda_gain, A_abs, delta_A,
     phi = _vector(phi, "phi", nonnegative=True)
     omega = _vector(omega, "omega", nonnegative=True)
     peak_phi, peak_omega = phi.copy(), omega.copy()
+    reset_phi,reset_omega=np.zeros(3),np.zeros(3)
+    if nominal_endpoint_error_abs is not None and np.any(nominal_endpoint_error_abs):
+        reset_phi,reset_omega=nominal_reset_forcing(alpha,lambda_gain,nominal_endpoint_error_abs,hold_width)
+    def advance(terms):
+        if not np.any(reset_phi) and not np.any(reset_omega):
+            return advance_tube(phi,omega,alpha,lambda_gain,terms['disturbance_bound'],step,phi_peak=peak_phi)
+        next_phi,next_omega=advance_tube(phi,omega,alpha,lambda_gain,
+            terms['disturbance_bound']+reset_phi,step,phi_peak=peak_phi)
+        gain=np.asarray(lambda_gain,dtype=float)
+        weight=np.divide(-np.expm1(-gain*float(step)),gain,out=np.full(3,float(step)),where=gain!=0)
+        return next_phi,np.nextafter(next_omega+weight*reset_omega,np.inf)
     for _ in range(200):
         terms = sample_hold_bounds(A_abs, delta_A, A_variation, base_forcing,
-            peak_phi, peak_omega, alpha, lambda_gain, hold_width)
-        next_phi, next_omega = advance_tube(phi, omega, alpha, lambda_gain,
-            terms['disturbance_bound'], step, phi_peak=peak_phi)
+            peak_phi, peak_omega, alpha, lambda_gain, hold_width,
+            measurement_error_abs=measurement_error_abs)
+        next_phi, next_omega = advance(terms)
         new_phi, new_omega = np.maximum(phi, next_phi), np.maximum(omega, next_omega)
         change = max(np.max(np.abs(new_phi - peak_phi)), np.max(np.abs(new_omega - peak_omega)))
         peak_phi, peak_omega = new_phi, new_omega
         if change <= 1e-13 * (1 + max(np.max(peak_phi), np.max(peak_omega))):
             terms = sample_hold_bounds(A_abs, delta_A, A_variation, base_forcing,
-                peak_phi, peak_omega, alpha, lambda_gain, hold_width)
-            next_phi, next_omega = advance_tube(phi, omega, alpha, lambda_gain,
-                terms['disturbance_bound'], step, phi_peak=peak_phi)
+                peak_phi, peak_omega, alpha, lambda_gain, hold_width,
+                measurement_error_abs=measurement_error_abs)
+            next_phi, next_omega = advance(terms)
             return next_phi, next_omega, peak_phi, peak_omega, terms
     raise ValueError("Held-input tube stage seed has no converged finite fixed point at the supplied gains")
 

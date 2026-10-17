@@ -6,7 +6,7 @@ Nozzle directions and locations stay fixed to the captured structure.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Integral
 import numpy as np
 from scipy.optimize import lsq_linear
@@ -59,15 +59,18 @@ class WrenchAllocation:
     residual_force_n: float
     residual_torque_nm: float
     saturated: bool
+    attachment_preflight: dict = field(default_factory=dict)
 
     def to_dict(self):
-        return {name: value.tolist() if isinstance(value, np.ndarray) else value for name, value in vars(self).items()}
+        return {name: value.tolist() if isinstance(value, np.ndarray) else value for name, value in vars(self).items()
+                if name != 'attachment_preflight' or value}
 
 
 @dataclass(frozen=True)
 class ThrusterSystem:
     thrusters: tuple[Thruster, ...]
     torque_weight_per_m: float = 20.0
+    attachment_capacity_fraction: float = .98
 
     def __post_init__(self):
         thrusters = tuple(self.thrusters)
@@ -75,11 +78,15 @@ class ThrusterSystem:
             raise ValueError("Propulsion needs uniquely named thrusters")
         object.__setattr__(self, "thrusters", thrusters)
         object.__setattr__(self, "torque_weight_per_m", positive(self.torque_weight_per_m, "Torque allocation weight"))
+        fraction = positive(self.attachment_capacity_fraction, 'Attachment capacity fraction')
+        if fraction >= 1:
+            raise ValueError('Attachment capacity fraction must be strictly below one')
+        object.__setattr__(self, 'attachment_capacity_fraction', fraction)
 
     @classmethod
     def for_assembly(cls, assembly: AttachedAssembly, *, translation_force_n: float = 10.0,
                      attitude_force_n: float = .2, moment_arm_m: float = .1,
-                     specific_impulse_s: float = 300.0):
+                     specific_impulse_s: float = 300.0, attachment_capacity_fraction: float = .98):
         """Representative multi-nozzle bus on every fueled chaser.
 
         The three translation channels and three opposed torque couples are
@@ -105,7 +112,7 @@ class ThrusterSystem:
                         sign * direction, attitude_force_n, specific_impulse_s))
         if not thrusters:
             raise ValueError("No fueled chasers are available for installed thrusters")
-        return cls(tuple(thrusters))
+        return cls(tuple(thrusters), attachment_capacity_fraction=attachment_capacity_fraction)
 
     def matrix(self, assembly, fuel_kg):
         center = assembly.mass_properties(fuel_kg)[1]
@@ -123,6 +130,81 @@ class ThrusterSystem:
                     torque_rank=int(np.linalg.matrix_rank(usable[3:])) if usable.size else 0,
                     active_actuators=int(np.sum(active)),
                     component_force_limits_n=[thruster.max_force_n for thruster in self.thrusters])
+
+    def _attachment_preflight(self, assembly, state, commands):
+        """Dilate a bounded candidate before motion using actual joint loads.
+
+        At a fixed state, the Newton-Euler force/couple vectors are affine in
+        commands, including the environmental and inertial bias at zero input.
+        Normal intervals and shear/moment balls are convex. A feasible zero and
+        candidate therefore define a one-dimensional convex feasible interval.
+        The final actual load calculation remains authoritative; this numerical
+        point check does not enclose loads during the subsequent held step.
+        """
+        zero = np.zeros_like(commands)
+        baseline = assembly.attachment_load_audit(state, self, zero)
+        candidate = assembly.attachment_load_audit(state, self, commands)
+        fraction = self.attachment_capacity_fraction
+        record = dict(method='affine-joint-wrench-common-command-dilation-v1',
+            time_s=state.time_s, capacity_fraction=fraction,
+            capacities_unchanged=True, candidate_commands_n=commands.tolist(),
+            zero_command_loads=baseline, candidate_loads=candidate,
+            scope='Pre-motion numerical loads at the current state; actual endpoint/history audits remain required')
+
+        def finite(loads):
+            return (np.isfinite(loads['maximum_capacity_ratio'])
+                and all(np.all(np.isfinite(member['force_body_n']))
+                    and np.all(np.isfinite(member['moment_at_pad_body_nm']))
+                    and all(np.isfinite(value) for value in member['capacity_ratios'].values())
+                    for member in loads['members'].values()))
+
+        if not finite(baseline) or not finite(candidate):
+            record.update(passed=False, command_scale=0., final_loads=baseline,
+                          reason='attachment_load_nonfinite')
+            return zero, False, record['reason'], record
+        if baseline['maximum_capacity_ratio'] > fraction:
+            reason = ('attachment_load_zero_command_infeasible' if baseline['maximum_capacity_ratio'] > 1.
+                      else 'attachment_load_zero_command_reserve_exceeded')
+            record.update(passed=False, command_scale=0., final_loads=baseline, reason=reason)
+            return zero, False, reason, record
+        scale, iterations = 1., 0
+        if candidate['maximum_capacity_ratio'] > fraction:
+            limits = {value['name']: value for value in assembly.attachment_limits}
+
+            def ratio(value):
+                maximum = 0.
+                for name, first in baseline['members'].items():
+                    last, limit = candidate['members'][name], limits[name]
+                    force = np.asarray(first['force_body_n']) + value*(np.asarray(last['force_body_n'])-first['force_body_n'])
+                    moment = np.asarray(first['moment_at_pad_body_nm']) + value*(np.asarray(last['moment_at_pad_body_nm'])-first['moment_at_pad_body_nm'])
+                    normal = np.asarray(limit['normal_body'])
+                    fn = float(force@normal)
+                    maximum = max(maximum, max(0.,-fn)/limit['tensile_limit_n'],
+                        max(0.,fn)/limit['compression_limit_n'],
+                        float(np.linalg.norm(force-fn*normal))/limit['shear_limit_n'],
+                        float(np.linalg.norm(moment))/limit['moment_limit_nm'])
+                return maximum
+
+            lower, upper = 0., 1.
+            for iterations in range(1, 41):
+                midpoint = (lower+upper)/2
+                if ratio(midpoint) <= fraction:
+                    lower = midpoint
+                else:
+                    upper = midpoint
+            # Stay inside the numerical bisection boundary before independent
+            # full recomputation. The 2% utilization reserve is separate from
+            # this floating-point inward move and never raises a capacity.
+            scale = lower*(1.-1e-10)
+            commands = commands*scale
+            final = assembly.attachment_load_audit(state, self, commands)
+        else:
+            final = candidate
+        passed = finite(final) and final['maximum_capacity_ratio'] <= fraction
+        reason = ('attachment_load_command_dilated' if scale < 1. else 'attachment_load_candidate_admitted') if passed else 'attachment_load_final_recheck_failed'
+        record.update(passed=passed, command_scale=scale, bisection_iterations=iterations,
+                      final_loads=final, reason=reason)
+        return commands if passed else zero, passed, reason, record
 
     def allocate(self, assembly, state, force_body_n, torque_body_nm, duration_s):
         force = finite_vector(force_body_n, "Requested force", 3)
@@ -152,15 +234,29 @@ class ThrusterSystem:
                              for index, rate in enumerate(flow) if rate > 0])
         commands *= scale
         flow *= scale
+        preflight = {}
+        load_scale = 1.
+        if success and assembly.attachment_limits:
+            commands, success, load_message, preflight = self._attachment_preflight(assembly, state, commands)
+            load_scale = preflight['command_scale']
+            preflight['fuel_command_scale'] = scale
+            if not success or load_scale < 1.:
+                message = load_message
+            # Every reported wrench, residual and tank flow uses the final
+            # commands, including a refused zero command before any propagation.
+            flow = np.zeros(len(assembly.elements))
+            for command, thruster in zip(commands, self.thrusters):
+                flow[thruster.owner_index] += abs(command)/(thruster.specific_impulse_s*STANDARD_GRAVITY)
         actual = matrix @ commands
         limits = np.array([thruster.max_force_n for thruster in self.thrusters])
-        saturated = bool(scale < 1 - 1e-12 or np.any(np.abs(commands) >= limits * (1 - 1e-9)))
+        saturated = bool(scale < 1 - 1e-12 or load_scale < 1 - 1e-12 or np.any(np.abs(commands) >= limits * (1 - 1e-9)))
         return WrenchAllocation(success, message, commands, actual[:3], actual[3:], flow,
                                 float(np.linalg.norm(actual[:3] - force)),
-                                float(np.linalg.norm(actual[3:] - torque)), saturated)
+                                float(np.linalg.norm(actual[3:] - torque)), saturated, preflight)
 
     def to_dict(self):
         return dict(thrusters=[thruster.to_dict() for thruster in self.thrusters],
                     torque_weight_per_m=self.torque_weight_per_m,
+                    attachment_capacity_fraction=self.attachment_capacity_fraction,
                     assumptions=["signed channels are opposed nozzle pairs", "continuous throttling",
                                  "unobstructed exhaust; no plume-structure interaction", "no power or thermal model"])

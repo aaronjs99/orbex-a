@@ -5,12 +5,13 @@ import { renderTheoryFigure } from './theory-figures.js';
 import { missionTimeline, sampleAtTime, phaseTitle, releaseContextVisible } from './mission-timeline.js';
 import { TubeDetail } from './tube-detail.js';
 import { simulationControls } from './live-client.js';
+import { LifecycleScene } from './lifecycle-scene.js';
 
 const $ = id => document.getElementById(id);
 const state = { index: 0, selected: 0, playing: false, tab: 'mission', generation: 0 };
 const fmtDistance = value => value === null || !Number.isFinite(value) ? 'Not recorded' : value < 0.01 ? `${(value * 1000).toFixed(2)} mm` : `${value.toFixed(3)} m`;
 const fmtRatio = value => value === null || !Number.isFinite(value) ? 'Not recorded' : value.toFixed(3);
-let catalog, dataset, currentEntry, scene, timeline, lifecycleData;
+let catalog, dataset, currentEntry, scene, timeline, lifecycleData, lifecycleScene;
 let exportAbort;
 let lifecycleReady = false, waitingForLifecycle = false;
 let liveJobId = null, followLive = false, liveSnapshot, renderedLiveSignature;
@@ -22,6 +23,8 @@ const hasRelease = () => { const value = dataset?.deployment?.carrier_center_lvl
 function outcomeLabel() {
   if (dataset?.synthetic) return dataset.outcome.label;
   const physical = currentEntry?.physical_outcome;
+  const terminalLive = liveJobId && liveSnapshot?.job_id === liveJobId && ['completed','stopped','failed'].includes(liveSnapshot.status);
+  if (terminalLive && (liveSnapshot.success !== true || physical?.success !== true)) return 'Mission unfinished';
   if (!physical) return dataset?.outcome.message === 'max_mpc_updates_reached_before_terminal_tube_dwell' ? 'Approach unfinished' : dataset?.outcome.label ?? '';
   return physical.success ? `${physical.attached_chaser_count} attached · mission complete` : 'Mission unfinished';
 }
@@ -51,6 +54,7 @@ window.addEventListener('message', event => {
 });
 
 function syncLifecycle() {
+  if (lifecycleScene) return;
   const sample = currentSample(), active = state.tab === 'mission' && sample?.kind === 'lifecycle';
   const frame = $('lifecycle-frame');
   if (!frame.getAttribute('src')) return;
@@ -137,6 +141,7 @@ function play() {
 function paint() {
   if (!dataset || !timeline) return;
   const sample = currentSample(), i = approachIndex();
+  const physical = sample.kind !== 'approach' && Boolean(lifecycleScene);
   const track = dataset.tracks[state.selected];
   const completedRecord = currentEntry.physical_outcome?.success ?? (dataset.outcome.complete && dataset.outcome.success);
   const activeLive = liveJobId && liveSnapshot?.job_id === liveJobId && ['starting','running','pausing','paused','completing'].includes(liveSnapshot.status);
@@ -152,6 +157,41 @@ function paint() {
   $('metric-phase').textContent = phaseTitle(dataset.phases[i], hasRelease());
   $('node-label').textContent = `${i + 1} / ${dataset.q.length}`;
   $('elapsed-label').textContent = dataset.elapsed_s ? `${dataset.elapsed_s[i].toFixed(1)} s` : 'Not recorded';
+  const labels = ['Goal distance', 'Tube radius', 'Position occupancy', 'Sliding occupancy', 'Input reserve ratio'];
+  const ids = ['metric-goal', 'metric-tube', 'metric-occupancy', 'metric-sliding', 'metric-reserve'];
+  lifecycleScene?.setVisible(physical);
+  const options = { paths: $('paths').checked, tubes: $('tubes').checked, grid: $('grid').checked, envelope: $('envelope').checked };
+  if (physical) {
+    const pose = lifecycleScene.update(sample, state.selected, options);
+    const body = lifecycleData;
+    let values;
+    if (sample.kind === 'contact') {
+      labels.splice(0, labels.length, 'Pad gap', 'Tip extension', 'Bond activation', 'Pad force', 'Pad moment');
+      const pad = pose.pads[track.id];
+      values = [fmtDistance(pad.gap), fmtDistance(pad.extension), pad.activation.toFixed(3), `${pad.force.toFixed(3)} N`, `${pad.moment.toFixed(3)} N m`];
+    } else {
+      labels.splice(0, labels.length, 'Angular speed', 'Assembly propellant', 'Altitude', 'Osculating perigee', 'Applied force');
+      values = [`${body.angular_speed_rad_s[sample.index].toExponential(3)} rad/s`, `${body.fuel_kg[sample.index].toFixed(3)} kg`,
+        `${(body.altitude_m[sample.index] / 1000).toFixed(2)} km`, `${(body.perigee_altitude_m[sample.index] / 1000).toFixed(2)} km`,
+        `${Math.hypot(...body.applied_force_body_n[sample.index]).toFixed(3)} N`];
+    }
+    ids.forEach((id, number) => { $(id).textContent = values[number]; });
+    $('metric-phase').textContent = phaseTitle(sample.phase);
+    $('node-label').textContent = `${sample.kind === 'contact' ? 'Contact' : 'Assembly'} ${sample.index + 1} / ${sample.kind === 'contact' ? body.finite_contact.time_s.length : body.time_s.length}`;
+    $('elapsed-label').textContent = `${sample.time.toFixed(3)} s`;
+  } else scene?.update(i, state.selected, options);
+  ids.forEach((id, number) => { $(id).previousElementSibling.textContent = labels[number]; });
+  const frameNote = document.querySelector('.frame-note');
+  if (frameNote) { frameNote.style.whiteSpace = 'pre-line'; frameNote.textContent = physical ? 'Capture frame · target-relative meters\nFixed axes from the recorded capture epoch' :
+    (dataset.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : 'Physical LVLH · meters') + '\nX −transverse · Y radial · Z orbit normal'; }
+  document.querySelectorAll('.viewport-key > span').forEach((item, number) => {
+    item.hidden = physical && number === 1;
+    item.lastChild.textContent = physical ? number === 2 ? 'Pad tip' : 'Actual body poses' : ['Actual', 'Nominal', 'COM goal'][number];
+  });
+  for (const id of ['tubes', 'grid']) $(id).disabled = physical;
+  $('tubes').title = physical ? 'Free-flight tube samples end at the approach handoff' : '';
+  $('grid').title = physical ? 'Capture-fixed axes are identified in the frame label' : '';
+  $('camera').querySelector('option[value="overview"]').textContent = physical ? 'Capture overview' : 'Full route';
   $('anomaly').textContent = timeLabel(sample.time);
   $('clock-label').textContent = timeline.physical ? 'Mission time' : 'Presentation time';
   $('deployment-note').hidden = !hasRelease() || sample.kind !== 'approach' || !releaseContextVisible(dataset, i);
@@ -159,7 +199,6 @@ function paint() {
   $('first').disabled = $('previous').disabled = state.index === 0;
   $('last').disabled = $('next').disabled = state.index === timeline.samples.length - 1;
   $('mission-phases').querySelectorAll('button').forEach(button => button.setAttribute('aria-current', String(Number(button.dataset.index) <= state.index && Number(button.dataset.end) > state.index)));
-  scene?.update(i, state.selected, { paths: $('paths').checked, tubes: $('tubes').checked, grid: $('grid').checked, envelope: $('envelope').checked });
   charts.forEach(chart => chart.update(i, state.selected));
   tubeDetail.update(track, i, $('tubes').checked && sample.kind === 'approach');
   showMissionPanel();
@@ -167,11 +206,14 @@ function paint() {
 }
 
 function showMissionPanel() {
-  const inMission = state.tab === 'mission', attached = currentSample()?.kind === 'lifecycle';
+  const inMission = state.tab === 'mission', sample = currentSample();
+  const empty = !sample, attached = Boolean(sample) && sample.kind !== 'approach', shared = Boolean(lifecycleScene);
   const enteringApproach = $('replay').hidden && inMission && !attached;
-  $('replay').hidden = !inMission || attached;
-  $('lifecycle').hidden = !inMission || !attached;
-  $('mission-transport').hidden = $('mission-view-control').hidden = !inMission;
+  $('replay').hidden = !inMission || attached && !shared;
+  $('lifecycle').hidden = !inMission || !attached || shared;
+  $('replay').classList.toggle('empty', empty);
+  $('mission-empty').hidden = !empty || !scene;
+  $('mission-transport').hidden = $('mission-view-control').hidden = !inMission || empty;
   $('lifecycle-frame').hidden = !lifecycleReady;
   $('lifecycle-unavailable').hidden = lifecycleReady || !attached;
   if (attached && !lifecycleReady) $('lifecycle-unavailable').textContent = 'Loading the recorded attached-flight view…';
@@ -226,6 +268,10 @@ async function loadScenario(key) {
     if (attachedData && attachedData.schema !== 'orbexa.lifecycle.studio.v1') throw new Error('Unsupported saved attached-flight record');
     const mission = missionTimeline(data, attachedData);
     dataset = data;
+    const frameNote=document.querySelector('.frame-note');
+    if(frameNote)frameNote.textContent=(data.state_frame==='reference-orbit-frame-v1'?
+      'Reference orbit frame · meters':'Physical LVLH · meters')+'\nX −transverse · Y radial · Z orbit normal';
+    if(frameNote)frameNote.style.whiteSpace='pre-line';
     timeline = mission;
     lifecycleData = attachedData;
     currentEntry = entry;
@@ -243,7 +289,7 @@ async function loadScenario(key) {
     $('scrub').max = String(timeline.end);
     $('play').disabled = timeline.samples.length < 2;
     $('scrub').disabled = $('chaser').disabled = false;
-    $('export-scene').disabled = !scene || data.q.length<2 || !SceneVideoExporter.supported();
+    $('export-scene').disabled = !scene || (attachedData?.finite_contact ? mission.samples.length : data.q.length)<2 || !SceneVideoExporter.supported();
     $('timeline-start').textContent = timeLabel(timeline.start);
     $('timeline-end').textContent = timeLabel(timeline.end);
     paintPhases();
@@ -259,7 +305,7 @@ async function loadScenario(key) {
       link.append(image);return link;
     }));
     $('lifecycle-frame').dataset.source = entry.lifecycle_href ? `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&data=${encodeURIComponent(entry.lifecycle_href)}&controlled=1&session=${generation}` : '';
-    if (entry.lifecycle_href) $('lifecycle-frame').src = $('lifecycle-frame').dataset.source;
+    if (entry.lifecycle_href && !attachedData?.finite_contact) $('lifecycle-frame').src = $('lifecycle-frame').dataset.source;
     else $('lifecycle-frame').removeAttribute('src');
     $('mission-video').pause();
     if (entry.video_href) $('mission-video').src = entry.video_href;
@@ -277,9 +323,12 @@ async function loadScenario(key) {
     }));
     const notes = [...data.notes, 'One mission clock selects saved samples; no intermediate physical states are invented. Paths include later samples. Stars are decorative.', 'Hull dots mark surface points; orange markers mark COM goals.', 'Tubes belong to each recorded nominal center. Occupancy 1 is the boundary; reserve covers the preceding interval.'];
     if (hasRelease()) notes.push('The shared dispenser marks the declared release location. Its shape and placement behind the payload are illustrative; ascent, carrier motion and ejection are outside this replay.');
-    if (attachedData && attachedData.time_s[0] > data.elapsed_s.at(-1)) notes.push('The interval between the final approach sample and the first attachment sample is retained on the mission clock. The browser holds the last recorded sample until the next recorded state.');
+    if (attachedData?.finite_contact) notes.push('Finite contact shows actual saved SI target, bus and pad-tip poses. Capture-fixed display axes remain unchanged through rigid attachment; physical states are not interpolated.');
+    else if (attachedData && attachedData.time_s[0] > data.elapsed_s.at(-1)) notes.push('The interval between the final approach sample and the first attachment sample is retained on the mission clock. The browser holds the last recorded sample until the next recorded state.');
     $('dataset-notes').replaceChildren(...notes.map(text => { const li = document.createElement('li'); li.textContent = text; return li; }));
     scene?.load(data);
+    if (scene && attachedData?.finite_contact) { lifecycleScene = new LifecycleScene(scene, attachedData, data); lifecycleReady = true; }
+    $('export-scene').textContent = lifecycleScene ? 'Export mission video' : 'Export approach video';
     $('camera').value = 'mission';
     scene?.setCamera('mission');
     charts.forEach(chart => chart.load(data));
@@ -299,6 +348,7 @@ async function loadScenario(key) {
 }
 
 function clearMission() {
+  lifecycleScene?.dispose(); lifecycleScene = null;
   dataset = currentEntry = timeline = lifecycleData = null;
   lifecycleReady = false;
   stop();
@@ -360,9 +410,9 @@ function applyLiveSnapshot(snapshot) {
   $('outcome').classList.toggle('failed', ['failed','stopped'].includes(snapshot.status));
   if (data.schema !== 'orbexa.mission.studio.data.v1' || !data.q?.length || !data.tracks?.length ||
       attached && attached.schema !== 'orbexa.lifecycle.studio.v1') throw new Error('Unsupported local simulator projection');
-  const signature = JSON.stringify([snapshot.job_id, data.q.length, data.q.at(-1), data.outcome, attached?.time_s.length, attached?.time_s.at(-1)]);
+  const signature = JSON.stringify([snapshot.job_id, data.q.length, data.q.at(-1), data.outcome, attached?.time_s.length, attached?.time_s.at(-1), attached?.finite_contact?.source_history_sha256]);
   if (signature === renderedLiveSignature) {
-    if (['failed','stopped'].includes(snapshot.status)) $('outcome').textContent = 'Approach unfinished';
+    if (['completed','failed','stopped'].includes(snapshot.status)) $('outcome').textContent = outcomeLabel();
     const outcomeRow = $('provenance').children[2];
     if (outcomeRow?.lastElementChild) outcomeRow.lastElementChild.textContent = snapshot.message || data.outcome.message || 'Not recorded';
     return;
@@ -378,8 +428,11 @@ function applyLiveSnapshot(snapshot) {
   liveJobId = snapshot.job_id;
   renderedLiveSignature = signature;
   dataset = data;
+  const frameNote=document.querySelector('.frame-note');
+  if(frameNote){frameNote.style.whiteSpace='pre-line';frameNote.textContent=(data.state_frame==='reference-orbit-frame-v1'?
+    'Reference orbit frame · meters':'Physical LVLH · meters')+'\nX −transverse · Y radial · Z orbit normal';}
   timeline = mission;
-  const changedLifecycle = Boolean(attached) && (!lifecycleData || lifecycleData.time_s.length !== attached.time_s.length || lifecycleData.time_s.at(-1) !== attached.time_s.at(-1));
+  const changedLifecycle = Boolean(attached) && (!lifecycleData || lifecycleData.time_s.length !== attached.time_s.length || lifecycleData.time_s.at(-1) !== attached.time_s.at(-1) || lifecycleData.finite_contact?.source_history_sha256 !== attached.finite_contact?.source_history_sha256);
   lifecycleData = attached;
   currentEntry = { key: 'envisat-live', title: 'Envisat', physical_outcome: attached ? { ...attached.outcome,
     success: snapshot.success === true && attached.outcome?.success === true, attached_chaser_count: Object.keys(attached.surface_contacts || {}).length } : null };
@@ -398,7 +451,7 @@ function applyLiveSnapshot(snapshot) {
   $('timeline-start').textContent = timeLabel(timeline.start); $('timeline-end').textContent = timeLabel(timeline.end);
   $('play').disabled = timeline.samples.length < 2;
   $('scrub').disabled = $('chaser').disabled = false;
-  $('export-scene').disabled = !scene || data.q.length < 2 || !SceneVideoExporter.supported();
+  $('export-scene').disabled = !scene || (attached?.finite_contact ? mission.samples.length : data.q.length) < 2 || !SceneVideoExporter.supported();
   $('scope-text').textContent = data.scope || snapshot.scope || '';
   $('mission-model').textContent = '';
   $('provenance').replaceChildren(...[['Model', data.model], ['Controller', data.controller], ['Outcome', snapshot.message || data.outcome.message], ['Source', 'Local authoritative simulator']].map(([label, value]) => {
@@ -406,15 +459,19 @@ function applyLiveSnapshot(snapshot) {
     title.textContent = label; description.textContent = value || 'Not recorded'; row.append(title, description); return row;
   }));
   paintPhases();
+  lifecycleScene?.dispose(); lifecycleScene = null;
   scene?.load(data);
   if (camera) {
     scene.camera.position.copy(camera.position); scene.controls.target.copy(camera.target); scene.mode = camera.mode; scene.frameKey = camera.key;
   } else { $('camera').value = 'mission'; scene?.setCamera('mission'); }
+  if (scene && attached?.finite_contact) { lifecycleScene = new LifecycleScene(scene, attached, data); lifecycleReady = true; }
+  $('export-scene').textContent = lifecycleScene ? 'Export mission video' : 'Export approach video';
   charts.forEach(chart => chart.load(data));
   if (changedLifecycle) {
     if (!newJob) ++state.generation;
-    lifecycleReady = false;
-    $('lifecycle-frame').src = `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&source=parent&controlled=1&session=${state.generation}`;
+    lifecycleReady = Boolean(lifecycleScene);
+    if (lifecycleScene) $('lifecycle-frame').removeAttribute('src');
+    else $('lifecycle-frame').src = `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&source=parent&controlled=1&session=${state.generation}`;
   }
   paint();
   if (continueJourney) play();
@@ -448,7 +505,7 @@ $('theory-select').addEventListener('change', showTheory);
 $('export-scene').disabled = !scene || !SceneVideoExporter.supported();
 $('cancel-export').addEventListener('click', () => exportAbort?.abort());
 $('export-scene').addEventListener('click', async () => {
-  if (!dataset || dataset.q.length<2 || !scene || state.exporting) return;
+  if (!dataset || (lifecycleScene ? timeline.samples.length : dataset.q.length)<2 || !scene || state.exporting) return;
   stop();
   state.exporting = true;
   exportAbort = new AbortController();
@@ -458,7 +515,8 @@ $('export-scene').addEventListener('click', async () => {
   for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).disabled = true;
   $('mission-phases').querySelectorAll('button').forEach(button => { button.disabled = true; });
   try {
-    const output = await new SceneVideoExporter().record(scene, dataset, currentEntry.title, {
+    const exportData = lifecycleScene ? { elapsed_s: timeline.samples.map(sample => sample.time), phases: timeline.samples.map(sample => sample.phase) } : dataset;
+    const output = await new SceneVideoExporter().record(scene, exportData, currentEntry.title, {
       signal: exportAbort.signal,
       onFrame: index => { state.index = index; paint(); },
       onProgress: progress => { $('export-status').textContent = `Exporting recorded scene · ${progress}%`; },
@@ -501,7 +559,7 @@ function tick(now) {
       if ($('loop').checked) { state.index = 0; paint(); play(); }
     }
   }
-  if (state.tab === 'mission' && currentSample()?.kind === 'approach') scene?.render();
+  if (state.tab === 'mission' && (currentSample()?.kind === 'approach' || lifecycleScene)) scene?.render();
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);

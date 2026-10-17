@@ -7,7 +7,7 @@ starting capture with full tanks. Stage failures retain the preceding record.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import partial
 from pathlib import Path
@@ -17,6 +17,7 @@ import numpy as np
 
 from orbexa.simulation.assembly import STANDARD_GRAVITY, positive
 from orbexa.simulation.capture import CaptureModel, CaptureOptions, ChaserPhysicalProperties, TargetPhysicalProperties
+from orbexa.simulation.contact import FiniteContactOptions
 from orbexa.simulation.chaser_attitude import ChaserAttitudeResult, ChaserAttitudeTracker
 from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleResult, MissionLifecycleStore
 from orbexa.simulation.mission_result import ADTMPCMissionResult, MissionResultStore
@@ -107,10 +108,13 @@ class CompleteMissionOptions:
     translation_force_n: float = 10.
     specific_impulse_s: float = 300.
     target_mass_kg: float = 1000.
+    finite_contact: FiniteContactOptions = field(default_factory=FiniteContactOptions)
 
     def __post_init__(self):
         for name in ("input_component_bound", "translation_force_n", "specific_impulse_s", "target_mass_kg"):
             object.__setattr__(self, name, positive(getattr(self, name), name))
+        if not isinstance(self.finite_contact, FiniteContactOptions):
+            raise TypeError('finite_contact must be explicit FiniteContactOptions')
 
 
 @dataclass(frozen=True)
@@ -145,10 +149,11 @@ class CompleteMissionResult:
     assumptions: tuple[str, ...] = field(default_factory=lambda: (
         "Approach translation, free-bus attitude replay and post-latch assembly dynamics use their separately declared models.",
         "Free-bus translation and torque couples are decoupled; exhaust is unobstructed and the gripper is stowed until capture.",
-        "Target properties and kinematics are known; physical release, uncertain navigation, contact elasticity and atmospheric demise are not qualified.",
+        "Finite compliant capture uses declared pad properties and explicit contact feedback; mechanism material strength and atmospheric demise are not qualified.",
     ))
     geometry_binding: Optional[dict] = None
     terminal_handoff: Optional[PhysicalTerminalHandoff] = None
+    completion_audit: Optional[dict] = None
 
     def to_dict(self):
         failed_stage = None if self.lifecycle is None else self.lifecycle.failure.get("stage")
@@ -161,6 +166,7 @@ class CompleteMissionResult:
                                 deorbit=False if failed_stage == "deorbit" else None if self.lifecycle is None or self.lifecycle.deorbit is None else self.lifecycle.deorbit.success),
                     translation_budget=None if self.translation_budget is None else self.translation_budget.to_dict(),
                     geometry_binding=self.geometry_binding,
+                    completion_audit=self.completion_audit,
                     terminal_handoff=None if self.terminal_handoff is None else self.terminal_handoff.as_dict(),
                     assumptions=list(self.assumptions),
                     records=dict(approach="approach/mission_data.json",
@@ -275,7 +281,9 @@ class CompleteMissionRunner:
         return self.complete(self.approach_runner.run(mission=mission, steps=steps))
 
     def complete(self, approach: ADTMPCMissionResult, *,
-                 terminal_handoff: Optional[PhysicalTerminalHandoff] = None) -> CompleteMissionResult:
+                 terminal_handoff: Optional[PhysicalTerminalHandoff] = None,
+                 capture_truth=None, contact_feedback=None, contact_environment=None,
+                 attitude_observations=None) -> CompleteMissionResult:
         self._record("approach", approach)
         if not approach.success or not approach.metadata.get("mission_complete", False):
             return CompleteMissionResult(False, f"approach_incomplete: {approach.message}", approach)
@@ -294,7 +302,8 @@ class CompleteMissionRunner:
                                                   self.attitude_tracker.default_chaser, terminal_handoff=verified_handoff)
             budget = self.translation_budget(approach, terminal_handoff=verified_handoff)
             self._record("translation_budget", budget)
-            attitude = self.attitude_tracker.track(execution, translation_fuel_debit_kg=budget.translation_fuel_debit_kg)
+            attitude = self.attitude_tracker.track(execution, translation_fuel_debit_kg=budget.translation_fuel_debit_kg,
+                                                  observation_callback=attitude_observations)
             self._record("chaser_attitude", attitude)
             if not attitude.success:
                 return CompleteMissionResult(False, f"chaser_attitude_rejected: {attitude.message}", approach, budget, attitude,
@@ -308,9 +317,14 @@ class CompleteMissionRunner:
             lifecycle = MissionLifecycle(capture=CaptureModel(
                 target=TargetPhysicalProperties(self.options.target_mass_kg, inertia),
                 chasers=attitude.capture_chasers, default_chaser=self.attitude_tracker.default_chaser,
-                options=self.capture_options), detumbling=self.detumbling, deorbit=self.deorbit,
+                options=self.capture_options, contact_options=replace(self.options.finite_contact,
+                    translation_force_n=self.options.translation_force_n,
+                    specific_impulse_s=self.options.specific_impulse_s,
+                    attitude_nozzle_force_n=self.attitude_tracker.actuators.nozzle_force_limit_n,
+                    attitude_moment_arm_m=self.attitude_tracker.actuators.moment_arm_m)), detumbling=self.detumbling, deorbit=self.deorbit,
                 propulsion_factory=self.propulsion_factory).run(approach, chaser_attitudes=attitude.final_attitudes,
-                                                               terminal_handoff=verified_handoff)
+                    terminal_handoff=verified_handoff, capture_truth=capture_truth, contact_feedback=contact_feedback,
+                    contact_environment=contact_environment)
             self._record("lifecycle", lifecycle)
             return CompleteMissionResult(lifecycle.success, lifecycle.message, approach, budget, attitude, lifecycle,
                                          geometry_binding=geometry, terminal_handoff=verified_handoff)

@@ -1,53 +1,31 @@
 # Scenario inputs
 
-`envisat.yaml` supplies the prospective eight-chaser composite study.
-`spacecraft/envisat.json` declares the occupied components;
-`envisat-deployment.json` declares one compact payload cluster 300 m away in
-LVLH coordinates, a parallel transfer, and component-aware close-approach routes.
-The carrier centre does not rotate with the tumbling target. The finite release
-grid has an explicitly declared small spin about its own centre; rocket ascent
-and mechanical ejection are outside this post-release initial condition.
-The separate `envisat-prior.json` does not read plant truth to center the belief.
-`envisat-admission.json` identifies assumed sensing/model/evaluation envelopes.
-`envisat-arrival.json` supplies the fixed-deadline planning region and reference
-evaluation errors for the unchanged default study on anomaly [0, 1.214]. The
-CLI loads this named sibling automatically. Its scope and derivation are in
-[arrival policy](../docs/arrival-policy.md#default-envisat-declaration).
-The Envisat YAML explicitly selects conservative component support corridors;
-the generic solver default remains free component normals.
-The physical profile derives a conservative target rotation-rate bound from
-rigid-body energy and the orbital clock. These inputs are not measured flight
-sensor accuracy or a current target-state estimate.
+The current sensed nonlinear mission uses three explicit inputs:
 
-The installed concept has eight 130 kg wet chasers (30 kg dry and 100 kg fuel),
-0.55 m body radius, 0.85 m COM standoff, 0.8 m gripper offset, 0.1 m closure
-reach, 100 N translation channels and a declared 300 s specific impulse.
-Target mass remains the published study value 7827.867 kg. Stages refuse
-inadequate limits; target mass is not reduced to obtain success. See
-[Envisat sources and assumptions](../docs/envisat.md).
+- `envisat.yaml`: orbital constants, MPC cost/constraints, native GEKKO/IPOPT and execution grid.
+- `spacecraft/envisat.json`: eleven occupied components, eight attachment patches, vehicle mass and propulsion.
+- `nonlinear-study.json`: the complete prospective profile and independently selected truth/noise cases, crossed with adaptive/frozen belief and dynamic/fixed bandwidth.
 
-`default.yaml` supplies the paper-scale analytical orbital translation, controller
-and prescribed-target demo profile. `orbexa-run-mission` composes the physical
-gravity-gradient target, compact finite-bus deployment and post-capture stages
-around that configuration with `--target-model cylinder-baseline`.
+`NonlinearStudyOptions.controller_config` explicitly resolves the current tube,
+sensing and terminal settings over the base YAML. Its full resolved mapping is
+saved before motion. The profile uses one 300 m payload cluster, 1.8 m spacing,
+a fixed reference clock and a common 1000/rad initial/fixed bandwidth. The
+terminal COM position bound is 40 mm; the separate physical relative-speed gate
+is 10 mm/s. A 100 mm mechanism closes the remaining contact gap.
 
-`physical-prior.json` is an explicitly fixed controller prior and initial point.
-The physical runner does not read plant truth to center or enlarge this prior.
-Changing the plant may make it inconsistent, which must remain a failure.
+The initial target spin prior is nonzero and independent of the selected truth.
+Physical sigma bounds, processed sensor errors/latency/dropout, actuator gain/tilt/
+bias and every case's noise seed are declarations. They are not measured Envisat
+telemetry or hardware accuracy. See [the nonlinear contract](../docs/nonlinear-mission.md).
 
-`physical-admission.json` declares representative **assumed** sensing and model
-envelopes: position error ±1 µm, anomaly-velocity error ±1e-4 m/rad, additive
-anomaly acceleration ±1e-5 m/rad², target rotation operator error at most 1e-8,
-and full target-relative angular-rate norm at most 16 per radian of anomaly.
-These are inputs to conditional continuous-flow admission, not measured sensor
-performance or an independently validated quaternion integration error.
-The additive allowance also does not qualify the independent nonlinear vector-drag
-plant: the [orbital fidelity study](../docs/dynamics-fidelity.md) measured a larger
-model discrepancy. This profile is evidence for the analytical relative model;
-switching plants requires valid model and identification enclosures for that plant.
+Each chaser is 130 kg wet (30 kg dry, 100 kg fuel), with a 0.55 m body radius,
+0.85 m COM standoff, 0.8 m tip offset, 100 N translation authority and 300 s
+specific impulse. The target mass remains 7827.867 kg. Route construction,
+finite-body separation, force/fuel, arm reach, contact load and disposal gates
+may refuse a run. A resource cap is not completion.
 
-Vehicle mass, fuel, body volume, standoff, gripper reach and nozzle limits are
-explicit physical-stage options. The cylinder baseline profile is a
-1000 kg target and eight 8 kg dry/4 kg fuel buses, each enclosed in a 0.15 m ball,
-with 0.165 m COM standoff and 0.16 m inward gripper offset. See
-[the physical lifecycle](../docs/mission-lifecycle.md) for the full model scope.
+The remaining prior/admission/arrival/deployment JSON files support separately
+identified analytical reproductions. Fresh nonlinear runs do not borrow their
+micrometre sensing assumptions or relabel their saved certificates. `default.yaml`
+retains the paper-scale analytical scenario; the current checkout launcher uses
+`envisat.yaml` with `nonlinear-study.json`.

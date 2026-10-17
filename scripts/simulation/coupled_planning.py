@@ -61,7 +61,8 @@ class CoupledMissionPlanner:
         self.controller = controller
 
     def tube_spec(self, belief: ParameterBelief, params: Dict[str, float], anomaly: float,
-                  count: int, phi: np.ndarray, omega: np.ndarray, bandwidth: np.ndarray) -> DynamicTubeSpec:
+                  count: int, phi: np.ndarray, omega: np.ndarray, bandwidth: np.ndarray, *,
+                  chaser_id: str | None = None, center: np.ndarray | None = None) -> DynamicTubeSpec:
         tube = self.config.tube
         semi_major_axis, mu = params['semi_major_axis'], params['mu']
         delta_a, delta_d, a_abs, a_variation, d_abs = [], [], [], [], []
@@ -88,6 +89,26 @@ class CoupledMissionPlanner:
             terminal_position_tolerance=self.config.mpc.docking_position_tolerance,
             terminal_velocity_tolerance=self.config.mpc.docking_velocity_tolerance, enforce_terminal=False)
 
+    def problem_bounds(self, chaser, state, spec):
+        """Allow an explicit plant adapter to restrict its regional model domain."""
+        return self.config.mpc.bounds()
+
+    def geometry_reserve(self, anomaly: float, count: int) -> float:
+        """Additional length reserve for a separately bounded target preview."""
+        return 0.
+
+    def tube_profile_assumptions(self, spec):
+        return TUBE_ASSUMPTIONS
+
+    def configure_terminal(self, spec, phase, state, goal, key):
+        """Default local activation; explicit deadline adapters override this."""
+        spec.enforce_terminal = bool(phase.operation == 'docking' and
+            np.linalg.norm(state.centers[key][:3] - goal[:3]) <
+            self.config.mission.terminal_activation_distance)
+
+    def planning_peer_ids(self, chasers, state):
+        return [chaser.chaser_id for chaser in chasers]
+
     def plan(self, state: CoupledMissionState, belief: ParameterBelief, phase: MissionPhase,
              chasers: Sequence[ChaserConfig], previous_plans: Dict[str, ChaserPlan], *, arrival_step=None) -> PlanningStep:
         scenario, cfg = self.scenario, self.config
@@ -109,11 +130,13 @@ class CoupledMissionPlanner:
         params = belief.dynamics_params(scenario.truth)
         matrices = orbital_ellp_drag(anom_step=cfg.anom_step, **params)[0]
         outcome = PlanningStep(matrices=matrices, parameters=params)
-        ids = [c.chaser_id for c in chasers]
+        ids = self.planning_peer_ids(chasers,state)
         lam = np.asarray(cfg.tube.sliding_gains)
         for chaser in chasers:
             key = chaser.chaser_id
-            spec = self.tube_spec(belief, params, q, count, state.phi[key], state.omega[key], state.bandwidth[key])
+            spec = self.tube_spec(belief, params, q, count, state.phi[key], state.omega[key], state.bandwidth[key],
+                                  chaser_id=key, center=state.centers[key])
+            problem_bounds = self.problem_bounds(chaser, state, spec)
             goal = scenario.reference.phase_reference_state(phase, chaser, state.centers[key], q)
             references, feedforward = scenario.reference.phase_reference_preview(
                 phase, chaser, goal, q, count, matrices, params['time_periapsis'])
@@ -125,7 +148,8 @@ class CoupledMissionPlanner:
                 target['orientations'] = [scenario.target.orientation_at(q + k * cfg.anom_step).tolist() for k in range(count)]
             target.update(robust_side_corridor=phase.operation == 'docking' and target.get('shape') == 'cylinder',
                 docking_normal_body=chaser.docking_normal_body,
-                safety_reserve=cfg.mission.target_barrier_clearance + scenario.safety.chaser_body_radius)
+                safety_reserve=cfg.mission.target_barrier_clearance + scenario.safety.chaser_body_radius
+                    + self.geometry_reserve(q, count))
             if target.get('shape') == 'composite':
                 target.update(attachment_patch_id=chaser.attachment_patch_id,
                     attachment_component_id=chaser.attachment_component_id,
@@ -134,8 +158,7 @@ class CoupledMissionPlanner:
                 target['rendezvous_radius'] += scenario.safety.chaser_body_radius
             # Arm an explicit terminal set only near the final approach.
             # Completion always checks that set, including the current tube.
-            spec.enforce_terminal = bool(phase.operation == 'docking' and
-                np.linalg.norm(state.centers[key][:3] - goal[:3]) < cfg.mission.terminal_activation_distance)
+            self.configure_terminal(spec, phase, state, goal, key)
             if arrival_step is not None:
                 # The absolute deadline does not recede when a new horizon is
                 # solved. A stricter planning subset leaves the outer gate intact.
@@ -178,7 +201,7 @@ class CoupledMissionPlanner:
             try:
                 result = self.controller.solve_step(
                     initial_state=state.centers[key], final_state=goal, control_input_0=feedforward[:, 0],
-                    start_anom=q, anom_step=cfg.anom_step, num_steps=count, dynamics=matrices, bounds=cfg.mpc.bounds(),
+                    start_anom=q, anom_step=cfg.anom_step, num_steps=count, dynamics=matrices, bounds=problem_bounds,
                     time_periapsis=params['time_periapsis'], eccentricity=params['eccentricity'],
                     use_anomaly_scaling=False, **kwargs)
             except (ValueError, FloatingPointError, OverflowError) as error:
@@ -197,17 +220,18 @@ class CoupledMissionPlanner:
             profile = TubeProfile(phi=np.asarray(tube['phi']), omega=np.asarray(tube['omega']),
                 time_grid=q + cfg.anom_step * np.arange(count), lambda_gain=lam,
                 alpha=np.asarray(tube['alpha']), input_reserve=np.asarray(tube['input_reserve']),
-                assumptions=TUBE_ASSUMPTIONS, tube_model_version=TUBE_MODEL_VERSION,
+                assumptions=self.tube_profile_assumptions(spec), tube_model_version=tube.get('tube_model_version', TUBE_MODEL_VERSION),
                 hold_width=spec.hold_width,
                 forcing={name: np.asarray(tube[name]) for name in (
                     'base_forcing', 'hold_forcing', 'disturbance_bound', 'nominal_enclosure',
                     'phi_peak', 'omega_peak', 'velocity_peak', 'error_peak',
                     'velocity_derivative_bound', 'error_derivative_bound', 'sliding_derivative_bound',
-                    'A_variation')})
+                    'A_variation','nominal_reset_forcing_phi','nominal_reset_forcing_omega') if name in tube} | ({'measurement_forcing': np.asarray(tube['measurement_forcing'])}
+                        if 'measurement_forcing' in tube else {}))
             arrival_context = None
             if arrival_step is not None:
                 arrival_context = dict(reference_states=references, reference_inputs=feedforward,
-                    target_params=target, pairwise_constraints=pairwise, bounds=cfg.mpc.bounds(),
+                    target_params=target, pairwise_constraints=pairwise, bounds=problem_bounds,
                     state_cost_matrix=kwargs['state_cost_matrix'], input_cost_matrix=cfg.mpc.R,
                     terminal_cost_matrix=kwargs.get('terminal_cost_matrix'),
                     solver_options=cfg.solver.options(), start_anomaly=q, anomaly_step=cfg.anom_step)

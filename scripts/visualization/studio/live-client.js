@@ -1,7 +1,8 @@
 /** Local authoritative simulator connection. All displayed states come from the service. */
 export class LocalMissionClient {
-  constructor({ onState, onConnection, base = 'http://127.0.0.1:8882' }) {
-    this.base = base;
+  constructor({ onState, onConnection, base }) {
+    this.bases = base ? [base] : ['http://127.0.0.1:8882', 'http://127.0.0.1:8894'];
+    this.base = this.bases[0];
     this.onState = onState;
     this.onConnection = onConnection;
     this.revision = -1;
@@ -24,6 +25,7 @@ export class LocalMissionClient {
   receive(state) {
     const statuses = ['idle', 'starting', 'running', 'pausing', 'paused', 'completing', 'completed', 'stopped', 'failed', 'cancelled'];
     if (!Number.isInteger(state?.revision) || state.revision < 0 || !statuses.includes(state.status)) throw new Error('Unsupported local simulator state.');
+    if (state.execution_model !== 'sensed_nonlinear') throw new Error('This viewer requires the current sensed nonlinear simulator.');
     if (this.sessionId && state.session_id !== this.sessionId) throw new Error('Local simulator restarted; reconnecting');
     if (state.revision <= this.revision) return;
     this.revision = state.revision;
@@ -31,8 +33,9 @@ export class LocalMissionClient {
   }
 
   async command(name, body = {}) {
-    if (!this.connected) throw new Error('Live connection unavailable');
-    const state = await this.request('/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 15000);
+    if (!this.connected || !this.sessionId) throw new Error('Live connection unavailable');
+    const envelope = { protocol_version: 2, session_id: this.sessionId, payload: body };
+    const state = await this.request('/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(envelope) }, 15000);
     this.receive(state);
     return state;
   }
@@ -41,12 +44,25 @@ export class LocalMissionClient {
     while (!this.closed) {
       try {
         if (!this.connected) {
-          const health = await this.request('/health', {}, 4000);
-          if (health.service !== 'orbexa-live-v1' || health.status !== 'ready') throw new Error('Local simulator unavailable');
+          let health;
+          for (const base of this.bases) {
+            this.base = base;
+            try {
+              const candidate = await this.request('/health', {}, 4000);
+              if (candidate.service === 'orbexa-live-v2' && candidate.protocol_version === 2 &&
+                  candidate.execution_model === 'sensed_nonlinear' && candidate.status === 'ready' &&
+                  typeof candidate.session_id === 'string' && candidate.session_id.length) {
+                health = candidate; break;
+              }
+            } catch { /* Try only the explicitly configured loopback services. */ }
+          }
+          if (!health) throw new Error('Start the current sensed nonlinear ORBEX-A simulator.');
           this.sessionId = health.session_id || null;
           this.revision = -1;
+          this.receive(await this.request('/state?after=0&timeout=0'));
           this.connected = true;
           this.onConnection(true);
+          continue;
         }
         this.receive(await this.request(`/state?after=${Math.max(0, this.revision)}&timeout=${this.revision < 0 ? 0 : 20}`));
       } catch (error) {
@@ -79,6 +95,7 @@ export function simulationControls({ onState, onReset, onFollow, onError }) {
     get('live-reset').disabled = !connected || busy;
   };
   const client = new LocalMissionClient({
+    base: document.body.dataset.liveApiBase || undefined,
     onConnection(value, error) { connected = value; connectionFailed = !value; get('live-connection').title = error || ''; paint(); },
     onState(value) {
       state = value;

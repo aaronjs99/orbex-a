@@ -95,7 +95,11 @@ class MissionScenario:
                 raise ValueError('Arrival policy requires a continuous execution guard and its exact inherited clock')
         self.arrival_policy = arrival_policy
         self.target = target if target is not None else TumblingCylinderTarget.from_config(self.config)
-        if callable(getattr(self.target,'anomaly_clock',None)):
+        if getattr(self.target, 'reference_frame_id', None) == 'reference-orbit-frame-v1':
+            clock = getattr(self.target, 'reference_clock', None)
+            if clock is None or clock.as_dict().get('frame') != self.target.reference_frame_id:
+                raise ValueError('A nonlinear target preview requires its immutable scheduled reference clock')
+        elif callable(getattr(self.target,'anomaly_clock',None)):
             for name in ('eccentricity','alpha','mu','semi_major_axis'):
                 if not hasattr(self.target,name) or float(getattr(self.target,name))!=float(getattr(self.truth,name)):
                     raise ValueError(f'Physical target clock {name} must match the translational plant truth')

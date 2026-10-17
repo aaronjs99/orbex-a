@@ -87,7 +87,12 @@ The backend first uses its supplied warm start, then a cold retry on failure.
 If a numerical solution fails independent residual acceptance, a bounded stricter
 refinement may use the candidate with tighter convergence settings and scaling
 disabled. Physical constraints, tolerance, uncertainty and actuator limits remain
-unchanged. All temporary local models are cleaned after success or failure.
+unchanged. Ordinary direct backend calls clean their temporary local models
+after success or failure. The instrumented nonlinear study and live-service
+controller deliberately retain actual native attempt directories under the
+run's `native/` archive, including failures and cold retries, with the attempt
+journal and frozen source/input identities. This changes cleanup policy, not
+the equations or acceptance gates.
 
 An optimization failure is an **unknown numerical outcome**, not a proof that
 the requested motion is impossible. The ordinary mission preserves the last

@@ -35,6 +35,8 @@ class MissionPlots:
         self.result, self.output_dir = result, Path(output_dir)
         self.samples = samples if samples is not None else MissionSamples(result)
         self.q = self.samples.recorded_q
+        self.clock_label = ("commanded reference coordinate q (rad)"
+            if result.metadata.get("state_frame") == "reference-orbit-frame-v1" else "true anomaly (rad)")
         self.geometry = geometry if geometry is not None else MissionGeometry(self.samples)
         self.skipped_artifacts, self.artifacts = {}, []
 
@@ -109,11 +111,13 @@ class MissionPlots:
         self.geometry.plot_sphere(ax)
         self.geometry.plot_target(ax, final)
         self.geometry.plot_docking_points(ax, final)
-        ax.set(xlabel="x", ylabel="y", zlabel="z")
+        ax.set(xlabel="x (m)", ylabel="y (m)", zlabel="z (m)")
         ax.legend(fontsize=8)
-        if self.geometry.cylinder_mesh(final) is None:
+        if self.samples.target.get("shape") == "composite_spacecraft":
+            ax.set_title("Recorded fleet trajectories and spacecraft geometry")
+        elif self.geometry.cylinder_mesh(final) is None:
             ax.set_title("Recorded trajectories; saved target geometry or pose unavailable")
-        self._save(fig, "actual_nominal_trajectories.png", "Actual/nominal trajectories with rotating cylinder target, rendezvous sphere, docking points, and phase switch markers.")
+        self._save(fig, "actual_nominal_trajectories.png", "Recorded trajectories, saved target geometry, attachment points and phase markers.")
 
     def tube_values(self):
         values = {}
@@ -148,7 +152,7 @@ class MissionPlots:
             ax.axhline(0, color="black", linestyle="--", linewidth=0.9, alpha=0.75)
         if phase_markers:
             self._phase_lines(ax)
-        ax.set(xlabel="true anomaly", ylabel=ylabel)
+        ax.set(xlabel=self.clock_label, ylabel=ylabel)
         ax.grid(True, alpha=0.25)
         ax.legend(fontsize=8)
         self._save(fig, filename)
@@ -177,7 +181,7 @@ class MissionPlots:
             ax.plot(self.q[:len(values)], values[:, 1] - values[:, 0], label=key)
             ax.set_ylabel(f"{key} width")
             ax.grid(True, alpha=0.25)
-        axes[-1].set_xlabel("true anomaly")
+        axes[-1].set_xlabel(self.clock_label)
         self._save(fig, "smid_fss_widths.png")
 
     def _parameter_estimates(self):
@@ -197,7 +201,7 @@ class MissionPlots:
             ax.axhline(true, color="black", linestyle="--", linewidth=1.0, label="truth")
             ax.set_ylabel(key)
             ax.grid(True, alpha=0.25)
-        axes[-1].set_xlabel("true anomaly")
+        axes[-1].set_xlabel(self.clock_label)
         axes[0].legend(fontsize=8)
         self._save(fig, "parameter_estimates_vs_truth.png")
 
@@ -208,7 +212,7 @@ class MissionPlots:
         fig, ax = artifact_subplots(figsize=(9, 4.8))
         for index, label in enumerate(labels):
             ax.plot(self.q, values[:, index], label=label)
-        ax.set(xlabel="true anomaly", ylabel=ylabel)
+        ax.set(xlabel=self.clock_label, ylabel=ylabel)
         if "prescribed" in str(self.result.metadata.get("target_attitude_model", "")).lower():
             ax.set_title("Prescribed Euler-angle target motion in true anomaly")
         ax.grid(True, alpha=0.25)

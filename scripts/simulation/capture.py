@@ -1,4 +1,4 @@
-"""Qualified, inelastic rigid attachment at an actual finite-reach latch.
+"""Qualified approach admission followed by finite compliant physical capture.
 
 Approach translation alone does not validate chaser attitude or finite bus
 geometry. Both missing pieces require explicit caller assumptions. The
@@ -7,7 +7,7 @@ center of mass; using it with a COM trajectory would be invalid.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Any, Mapping, Optional, TYPE_CHECKING
 import numpy as np
@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation
 from orbexa.core.attitude import finite_vector
 from orbexa.core.mounting import mounting_frame
 from orbexa.simulation.assembly import AttachedAssembly, AssemblyState, MassElement, finite_scalar, physical_inertia, positive
+from orbexa.simulation.contact import ContactBodyState, ContactMember, FiniteContactOptions, FiniteContactSimulator
 from orbexa.utils.anomaly import orbital_radius_terms
 
 if TYPE_CHECKING:
@@ -71,6 +72,7 @@ class CaptureOptions:
     earth_radius_m: float = 6378137.0
     gravity_gradient: Optional[bool] = None
     max_integration_step_s: float = 1.0
+    idealized_instantaneous: bool = False
 
     def __post_init__(self):
         for name in ("arm_reach_m", "max_relative_speed_m_s", "max_orientation_error_rad",
@@ -78,6 +80,8 @@ class CaptureOptions:
             object.__setattr__(self, name, positive(getattr(self, name), name))
         object.__setattr__(self, "minimum_bus_clearance_m", positive(
             self.minimum_bus_clearance_m, "Minimum bus clearance", allow_zero=True))
+        if not isinstance(self.idealized_instantaneous, bool):
+            raise ValueError('idealized_instantaneous must be an explicit boolean')
 
 
 @dataclass(frozen=True)
@@ -141,11 +145,15 @@ class CaptureModel:
     def __init__(self, *, target: Optional[TargetPhysicalProperties] = None,
                  chasers: Optional[Mapping[str, ChaserPhysicalProperties]] = None,
                  default_chaser: Optional[ChaserPhysicalProperties] = None,
-                 options: Optional[CaptureOptions] = None):
+                 options: Optional[CaptureOptions] = None,
+                 contact_options: Optional[FiniteContactOptions] = None,
+                 contact_environment=None):
         self.target = target or TargetPhysicalProperties()
         self.chasers = dict(chasers or {})
         self.default_chaser = default_chaser or ChaserPhysicalProperties()
         self.options = options or CaptureOptions()
+        self.contact_options = contact_options or FiniteContactOptions()
+        self.contact_environment = contact_environment
 
     def recorded_truth(self, approach) -> CaptureTruth:
         metadata, target = approach.metadata, approach.target
@@ -187,17 +195,23 @@ class CaptureModel:
 
     def capture(self, approach, *, truth: Optional[CaptureTruth] = None,
                 chaser_attitudes: Optional[Mapping[str, tuple[Any, Any]]] = None,
-                terminal_handoff: Optional[PhysicalTerminalHandoff] = None) -> CaptureResult:
+                terminal_handoff: Optional[PhysicalTerminalHandoff] = None,
+                contact_feedback=None, contact_environment=None) -> CaptureResult:
         """Latch the complete recorded fleet; incomplete gates return a result.
 
         Explicit chaser attitudes are (body-to-ECI quaternion, inertial body
         angular velocity in chaser components). Otherwise the caller must
         opt into perfect bus attitude/rate matching as an idealization.
         """
-        assumptions = ["perfectly inelastic rigid latch; unresolved contact impulse and latch strength",
-                       "known target mass/inertia/attitude; no estimation uncertainty",
-                       "rigid spherical chaser mass properties; no arm mass, flexure or fuel slosh",
-                       "chaser-carried articulating tip closes the qualified remaining gap at an instantaneous kinematic contact event; the target needs no docking fixture"]
+        assumptions = ["declared target mass/inertia and recorded physical initial states",
+                       "rigid spherical chaser mass properties; no arm mass, flexure or fuel slosh"]
+        if self.options.idealized_instantaneous:
+            assumptions.extend(["REPRODUCIBILITY ONLY: perfectly inelastic instantaneous latch; unresolved contact impulse and latch strength",
+                "REPRODUCIBILITY ONLY: a carried tip instantaneously closes the remaining gap; no finite deployment dynamics"])
+        else:
+            assumptions.extend(["finite coupled target and fleet dynamics with representative compliant adhesive pads",
+                "finite-bandwidth massless carried positioners with explicit reaction work; target needs no docking fixture",
+                "adhesive properties and hull compatibility are declared study assumptions, not hardware qualification"])
         gates, audit = {}, {}
 
         def refused(message):
@@ -272,7 +286,7 @@ class CaptureModel:
                                      self.target.inertia_kg_m2 / self.target.mass_kg, np.zeros(3))]
             relative_velocities, intrinsic_momenta = [np.zeros(3)], [target_rotation @ self.target.inertia_kg_m2 @ truth.angular_velocity_body_rad_s]
             intrinsic_energies = [float(truth.angular_velocity_body_rad_s @ self.target.inertia_kg_m2 @ truth.angular_velocity_body_rad_s / 2)]
-            bus_envelopes, surface_contacts = {}, {}
+            bus_envelopes, surface_contacts, contact_members = {}, {}, []
             current_gain = finite_vector(meta["lambda_gain"] if terminal_handoff is None else
                                         terminal_handoff.lambda_gain, "Recorded tube gain", 3)
             for key in ids:
@@ -412,6 +426,17 @@ class CaptureModel:
                 gates[key] = gate
                 if not gate["passed"]:
                     return refused(f"{key}: capture_envelope_or_pose_gate_failed")
+                velocity_relative = (lvlh_rotation @ (truth.anomaly_rate_rad_s * (state[3:] + np.cross([0, 0, 1.], state[:3])))
+                                     + np.cross(spin_eci, target_rotation @ com_offset))
+                if not self.options.idealized_instantaneous:
+                    tangent_u, tangent_v = (np.asarray(patch.tangent_u_body), np.asarray(patch.tangent_v_body)) if patch is not None else (mount[:, 1], mount[:, 2])
+                    # mounting_frame's columns are (normal, tangent, binormal),
+                    # so the tangents followed by normal remain right handed.
+                    contact_members.append(ContactMember(key, properties, ContactBodyState(
+                        truth.time_s, truth.position_eci_m+target_rotation@actual_com_body,
+                        truth.velocity_eci_m_s+velocity_relative, Rotation.from_matrix(chaser_rotation).as_quat(),
+                        chaser_rotation.T@spin_eci, properties.fuel_kg), surface, normal, tangent_u, tangent_v,
+                        self.options.arm_reach_m, None if patch is None else patch.id))
                 tip_before = actual_body + tip_offset
                 correction = surface - tip_before
                 surface_contacts[key] = dict(
@@ -452,6 +477,23 @@ class CaptureModel:
                 return refused("finite_chaser_body_envelopes_overlap_at_capture")
             gravity_gradient = (bool(approach.target.get("gravity_gradient", False)) if self.options.gravity_gradient is None
                                 else self.options.gravity_gradient)
+            if not self.options.idealized_instantaneous:
+                environment = self.contact_environment if contact_environment is None else contact_environment
+                contact = FiniteContactSimulator(replace(self.contact_options,
+                    minimum_bus_clearance_m=max(self.options.minimum_bus_clearance_m,
+                                               self.contact_options.minimum_bus_clearance_m))).run(
+                    target_properties=self.target, target_state=ContactBodyState(truth.time_s,
+                        truth.position_eci_m, truth.velocity_eci_m_s, truth.quaternion_body_to_eci,
+                        truth.angular_velocity_body_rad_s), members=contact_members,
+                    geometry=composite if composite is not None else dict(radius=radius, half_length=half_length),
+                    mu_m3_s2=truth.mu_m3_s2, gravity_gradient=gravity_gradient, feedback=contact_feedback,
+                    environment=environment)
+                audit['finite_contact'] = contact.to_dict()
+                audit['surface_contacts'] = dict(contact.surface_contacts)
+                audit['attached_chaser_count'] = len(ids) if contact.success else 0
+                if not contact.success:
+                    return refused(contact.message)
+                return self._finite_handoff(contact, contact_members, truth, gravity_gradient, gates, audit, assumptions, environment)
             assembly = AttachedAssembly(tuple(elements), truth.mu_m3_s2, self.options.earth_radius_m, gravity_gradient,
                                         self.options.max_integration_step_s)
             fuel = assembly.initial_fuel_kg
@@ -485,3 +527,78 @@ class CaptureModel:
             return CaptureResult(True, "rigid_latch_completed", gates, audit, tuple(assumptions), assembly, state)
         except (KeyError, TypeError, ValueError, IndexError) as error:
             return refused(f"capture_boundary_rejected: {error}")
+
+    def _finite_handoff(self, contact, members, truth, gravity_gradient, gates, audit, assumptions, environment=None):
+        """Convert coordinates without changing any integrated component pose."""
+        target = contact.final_target
+        rotation = Rotation.from_quat(target.quaternion_body_to_eci).as_matrix()
+        elements = [MassElement('target', self.target.mass_kg, 0.,
+                               self.target.inertia_kg_m2/self.target.mass_kg, np.zeros(3))]
+        states = [target]
+        limits = []
+        for member in members:
+            state, prop = contact.final_chasers[member.id], member.properties
+            local_rotation = rotation.T@Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()
+            elements.append(MassElement(member.id, prop.dry_mass_kg, state.fuel_kg,
+                local_rotation@prop.inertia_per_kg_m2@local_rotation.T,
+                rotation.T@(state.position_eci_m-target.position_eci_m), local_rotation))
+            states.append(state)
+            limits.append(dict(name=member.id, normal_body=member.normal_body.tolist(),
+                surface_anchor_body_m=contact.surface_contacts[member.id]['surface_point_body_m'],
+                tensile_limit_n=self.contact_options.tensile_limit_n,
+                shear_limit_n=self.contact_options.shear_limit_n,
+                moment_limit_nm=self.contact_options.moment_limit_nm,
+                compression_limit_n=self.contact_options.positioner_force_limit_n))
+        assembly = AttachedAssembly(tuple(elements), truth.mu_m3_s2, self.options.earth_radius_m,
+            gravity_gradient, self.options.max_integration_step_s, attachment_limits=tuple(limits), environment=environment)
+        fuel = assembly.initial_fuel_kg
+        total, center, inertia = assembly.mass_properties(fuel)
+        masses = np.array([element.initial_mass_kg for element in elements])
+        velocities = np.array([state.velocity_eci_m_s for state in states])
+        com_velocity = masses@velocities/total
+        offsets = np.array([rotation@(element.position_body_m-center) for element in elements])
+        spins = np.array([Rotation.from_quat(state.quaternion_body_to_eci).as_matrix()@state.angular_velocity_body_rad_s
+                          for state in states])
+        inertias = np.array([rotation@(element.initial_mass_kg*element.inertia_per_kg_m2)@rotation.T for element in elements])
+        angular = sum(inertias[k]@spins[k]+np.cross(offsets[k], masses[k]*(velocities[k]-com_velocity)) for k in range(len(elements)))
+        spin = np.linalg.solve(inertia, rotation.T@angular)
+        world_spin = rotation@spin
+        projected_velocities = com_velocity+np.cross(world_spin, offsets)
+        delta_velocity = projected_velocities-velocities
+        delta_spin = world_spin-spins
+        before = .5*float(np.sum(masses*np.sum((velocities-com_velocity)**2, axis=1))+
+            sum(spins[k]@inertias[k]@spins[k] for k in range(len(elements))))
+        after = float(spin@inertia@spin/2)
+        loss = before-after
+        ledger = {element.name: dict(velocity_change_eci_m_s=delta_velocity[k].tolist(),
+            angular_velocity_change_eci_rad_s=delta_spin[k].tolist(),
+            impulse_eci_kg_m_s=(masses[k]*delta_velocity[k]).tolist(),
+            intrinsic_angular_impulse_eci_kg_m2_s=(inertias[k]@delta_spin[k]).tolist())
+            for k, element in enumerate(elements)}
+        audit.update(lock_projection=ledger, dissipated_kinetic_energy_j=loss,
+            pre_latch_com_frame_kinetic_energy_j=before, post_latch_rotational_energy_j=after,
+            stored_pad_energy_dissipated_at_lock_j=contact.audit['final_contact_potential_j'],
+            linear_momentum_residual_kg_m_s=float(np.linalg.norm(np.sum(masses[:, None]*delta_velocity, axis=0))),
+            angular_momentum_residual_kg_m2_s=float(np.linalg.norm(rotation@inertia@spin-angular)),
+            capture_time_s=target.time_s, capture_admission_anomaly=truth.anomaly, capture_anomaly=None,
+            target_to_assembly_com_shift_body_m=center.tolist(),
+            target_position_eci_m=target.position_eci_m.tolist(), target_velocity_eci_m_s=target.velocity_eci_m_s.tolist(),
+            target_interface='Finite compliant carried adhesive pads on declared bare-hull structural patches; no docking fixture')
+        if (loss < -1e-9 or loss > self.contact_options.max_lock_energy_j or
+            np.max(np.linalg.norm(delta_velocity, axis=1)) > self.contact_options.settling_speed_m_s or
+            np.max(np.linalg.norm(delta_spin, axis=1)) > self.contact_options.settling_spin_rad_s):
+            return CaptureResult(False, 'finite_contact_residual_lock_twist_exceeded', gates, audit, tuple(assumptions))
+        state = AssemblyState(target.time_s, target.position_eci_m+rotation@center, com_velocity,
+                              target.quaternion_body_to_eci, spin, fuel)
+        reconstructed = assembly.component_states(state)
+        pose_error, angle_error = 0., 0.
+        for element, physical in zip(elements, states):
+            actual = reconstructed[element.name]
+            pose_error = max(pose_error, float(np.linalg.norm(np.array(actual['position_eci_m'])-physical.position_eci_m)))
+            angle_error = max(angle_error, float((Rotation.from_quat(actual['quaternion_body_to_eci']).inv()*
+                Rotation.from_quat(physical.quaternion_body_to_eci)).magnitude()))
+        audit['handoff_max_component_position_change_m'] = pose_error
+        audit['handoff_max_component_orientation_change_rad'] = angle_error
+        if pose_error > 1e-8 or angle_error > 1e-9:
+            return CaptureResult(False, 'finite_contact_handoff_changed_component_pose', gates, audit, tuple(assumptions))
+        return CaptureResult(True, 'finite_contact_settled_latch_completed', gates, audit, tuple(assumptions), assembly, state)

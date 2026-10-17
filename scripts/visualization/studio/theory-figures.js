@@ -15,6 +15,54 @@ export function renderTheoryFigure(container,title) {
 }
 
 function drawTheoryFigure(container,title) {
+  if(/sensed.*tube|tube.*sensing/i.test(title)){
+    const width=Math.max(280,container.clientWidth||820),small=width<620;
+    const plotWidth=small?width-68:Math.min(350,width*.48),left=48,top=15,plotHeight=190;
+    const x=v=>left+(v+1.2)/2.4*plotWidth,y=v=>top+(1.65-v)/3.3*plotHeight;
+    const vertices=[[-1,.5],[-1,1.5],[1,-.5],[1,-1.5]];
+    let body=`<path d="M${x(-1.2)} ${y(0)}H${x(1.2)} M${x(0)} ${y(-1.65)}V${y(1.65)}" class="surface"/>`;
+    body+=`<polygon points="${vertices.map(v=>`${x(v[0])},${y(v[1])}`).join(' ')}" class="band"/>`;
+    body+=`<path d="M${x(-1)} ${y(1)}L${x(1)} ${y(-1)}" class="data"/>`;
+    body+=`<rect x="${x(-.1)}" y="${y(.2)}" width="${x(.5)-x(-.1)}" height="${y(-.6)-y(.2)}" fill="none" class="threshold"/>`;
+    body+=`<circle cx="${x(.3)}" cy="${y(-.3)}" r="4" class="point"/>`;
+    body+=label(left,top+plotHeight+24,'Position error / Ω')+
+      `<text x="17" y="${top+plotHeight/2}" text-anchor="middle" transform="rotate(-90 17 ${top+plotHeight/2})">Velocity error / ΛΩ</text>`;
+    const tx=small?left:plotWidth+left+35,ty=small?255:60;
+    body+=label(tx,ty,'Relational tube · |eᵥ + Λeₚ| ≤ Φ')+
+      label(tx,ty+24,'Dashed: navigation rectangle')+label(tx,ty+48,'Corners may lie outside the tube')+
+      label(tx,ty+72,'The physical state belongs to both');
+    const height=small?350:250;
+    container.innerHTML=shell('Illustrative normalized position–velocity tube and navigation sets',body,width,height)
+      .replace('<svg ','<svg style="max-height:none" ');return;
+  }
+  const pipeline=/nonlinear|navigation|sensing|coordinates/i.test(title);
+  const backup=/fallback|refuge|continuation/i.test(title);
+  const contact=/contact|attachment|disposal/i.test(title);
+  const comparison=/study|comparison|experiment/i.test(title);
+  if(pipeline||backup||contact||comparison){
+    const steps=comparison?['Independent declared cases','Same priors, vehicle and costs','Adaptive / frozen × dynamic / fixed','Every outcome and deadline','Paired metrics + source hashes']:
+      contact?['Exterior COM tube','Finite tip extension','Compliant contact','Settled finite bonds','Detumble + orbital burn']:
+      backup?['Stored fleet refuge ready','ADTMPC candidate','Nonlinear sweep + successor + fuel','Admit candidate or execute refuge','Archive actual applied hold']:
+      ['Nonlinear spacecraft plant','Delayed bounded sensor packets','Navigation sets + parameter membership','Nominal + tube + bandwidth NLP','Independent whole-fleet admission'];
+    const width=Math.max(280,container.clientWidth||820),small=width<620;
+    const cols=small?1:width<900?2:3,boxWidth=(width-16*(cols+1))/cols,boxHeight=38;
+    const rows=Math.ceil(steps.length/cols),height=24+rows*62;
+    let body='';
+    steps.forEach((text,i)=>{
+      const row=Math.floor(i/cols),col=row%2?cols-1-i%cols:i%cols,x=16+col*(boxWidth+16),y=10+row*62;
+      body+=`<rect x="${x}" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="6" class="band"/>`;
+      const words=text.split(' '),mid=Math.ceil(words.length/2);
+      if(text.length>30){
+        body+=label(x+12,y+15,words.slice(0,mid).join(' '))+label(x+12,y+30,words.slice(mid).join(' '));
+      }else body+=label(x+12,y+24,text);
+      if(i<steps.length-1){
+        const nextRow=Math.floor((i+1)/cols);
+        if(nextRow!==row)body+=label(x+boxWidth/2-5,y+54,'↓');
+        else body+=label(row%2?x-14:x+boxWidth+3,y+24,row%2?'←':'→');
+      }
+    });
+    container.innerHTML=shell('Schematic · '+title,body,width,height);return;
+  }
   const solver=/solver/i.test(title);
   const held=/continuous|terminal tracking|hold|handoff/i.test(title);
   const geometry=/envisat|spacecraft|deployment|target/i.test(title);

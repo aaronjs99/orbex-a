@@ -79,7 +79,8 @@ export class MetricChart {
       return path;
     });
     this.cursor = node('path', { stroke: '#e3eef6', 'stroke-width': 1, d: '' });
-    this.svg.append(this.cursor, node('text', { x: (W + L - R) / 2, y: H - 1, 'text-anchor': 'middle' }, 'True anomaly (rad)'));
+    const clockLabel = data.state_frame === 'reference-orbit-frame-v1' ? 'Reference q (rad)' : 'True anomaly (rad)';
+    this.svg.append(this.cursor, node('text', { x: (W + L - R) / 2, y: H - 1, 'text-anchor': 'middle' }, clockLabel));
     this.svg.addEventListener('pointerdown', event => {
       const box = this.svg.getBoundingClientRect();
       const x = (event.clientX - box.left) / box.width * W;

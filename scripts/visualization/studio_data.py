@@ -98,7 +98,8 @@ class StudioDataset:
         successful = bool(getattr(result, "success", False))
         synthetic = 'SYNTHETIC' in str(metadata.get('qualification_provenance', '')).upper()
         message = getattr(result, "message", "")
-        update_limit = not complete and message == "max_mpc_updates_reached_before_terminal_tube_dwell"
+        update_limit = not complete and message in ("max_mpc_updates_reached_before_terminal_tube_dwell",
+            "nonlinear_approach_not_complete_within_declared_update_budget")
         checkpoint = not complete and message == (
             "bounded_continuation_checkpoint; max_mpc_updates_reached_before_terminal_tube_dwell")
         return {
@@ -113,14 +114,17 @@ class StudioDataset:
                 {"shape": "cylinder", "radius": samples.cylinder()[0], "half_length": samples.cylinder()[1],
                  "semantics": "Recorded target dimensions inflated by the saved geometric tolerance"},
             "outcome": {"success": successful, "complete": complete,
-                        "label": "Synthetic physics fixture" if synthetic else "Recorded criteria passed" if complete and successful else
+                        "label": "Synthetic physics fixture" if synthetic else "Approach criteria passed" if complete and successful else
                                  "Recorded checkpoint" if checkpoint else
                                  "Approach unfinished" if update_limit else
                                  "Recorded failure" if not successful else "Recorded mission incomplete",
                         "message": message},
             "model": metadata.get("model_version", "unspecified"),
+            "state_frame":metadata.get('state_frame',metadata.get('model_version','unspecified')),
             "dynamics_scope": ("Analytical Carter–Humi relative translation; its declared uncertainty bounds do not automatically cover full nonlinear gravity, vector drag or J2. See Orbital model fidelity."
                                if metadata.get("model_version") == "physical-lvlh-v1" else
+                               "Cartesian central gravity, inclined J2 and co-rotating vector drag; bounded delayed sensing; CH nominal surrogate; independent nonlinear fleet admission."
+                               if metadata.get('model_version')=='nonlinear-reference-relative-v1' else
                                "Recorded model and assumptions apply to this saved case."),
             "controller": metadata.get("controller", "unspecified"),
             "synthetic": synthetic,
