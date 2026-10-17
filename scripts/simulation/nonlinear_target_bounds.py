@@ -173,6 +173,7 @@ def observed_point_goal_bounds(estimate,preview,clock,chasers,*,precision_bits=1
             goals[chaser.chaser_id]=dict(position_error_norm_upper=position,
                 velocity_error_norm_upper=speed,numerical_position_defect=pe,numerical_velocity_defect=ve)
     return dict(exact_q=str(q),rotation_operator_error_upper=gamma,rate_error_norm_upper=rate_error,
+        numerical_preview_rotation=nominal,numerical_preview_body_rate=omega,
         clock_rate_lower=nu_lower,goals=goals,clock_fingerprint=clock.fingerprint,
         method='observed-proper-rotation-point-goal-bound-v1')
 

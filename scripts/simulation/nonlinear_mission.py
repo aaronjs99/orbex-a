@@ -13,9 +13,13 @@ import time
 import numpy as np
 
 from orbexa.control.attitude_flow import AttitudeFlowEncloser
+from orbexa.control.dynamic_tube_spec import ProspectiveContactConstraint
+from orbexa.control.contact_admission import (ContactReferenceKinematics, ContactReachPolicy,
+    contact_goal_speed_bound)
 from orbexa.control.fleet_fallback import PerformanceAttempt
 from orbexa.control.nonlinear_flow import NonlinearFlowEncloser
 from orbexa.control.reachability import IntervalBox,ReachabilityConfig
+from orbexa.control.refuge import fingerprint as source_fingerprint
 from orbexa.core.nonlinear_target import NonlinearTargetPreview,NonlinearTargetTruth
 from orbexa.core.reference_frame import exact,fingerprint
 from orbexa.estimation.navigation import BoundedNavigationFilter,SensorSuite
@@ -239,9 +243,59 @@ class NonlinearMissionRunner:
             residual_target=self.encloser.enclose_target(estimate.target_ephemeris_box,(q,q),(width,width),model,self.clock,
                 estimate.physical_time_box)
             if not residual_target.proven:raise ValueError('Adaptive physical forecast unresolved: '+residual_target.reason)
+        def navigation_identity(value):
+            return source_fingerprint({**vars(value),
+                'relative_state_box_by_agent':dict(value.relative_state_box_by_agent)})
+        contact_by_agent=None; contact_forecast=None; navigation_id=navigation_identity(estimate)
+        if phase.operation=='docking':
+            if estimate.status!='VALID':
+                raise ValueError('Prospective contact forecast requires the current valid navigation event')
+            global_target_id=future.fingerprint;attitude_id=attitude.fingerprint
+            source=dict(kind='current-navigation-future-contact-forecast-v1',exact_start_q=str(q),
+                exact_step_q=str(exact(cfg.anom_step)),navigation_q=str(q),navigation_fingerprint=navigation_id,
+                clock_fingerprint=self.clock.fingerprint,global_model_fingerprint=self.model.fingerprint,
+                global_target_flow_fingerprint=global_target_id,attitude_flow_fingerprint=attitude_id,
+                moving_goal_forecast_id=forecast_witness['identity'],residual_model_fingerprint=model.fingerprint,
+                residual_target_flow_fingerprint=residual_target.fingerprint,frame='reference-orbit-frame-v1')
+            contact_by_agent={}
+            for chaser in self.chasers:
+                key=chaser.chaser_id;nodes=[]
+                for index,point_record in enumerate(bounds['records']):
+                    node_q=exact(point_record['exact_q'])
+                    if node_q!=q+index*exact(cfg.anom_step):
+                        raise ValueError('Future contact node differs from the declared exact prediction grid')
+                    goal=tuple(map(exact,self.preview.docking_state(chaser.docking_point_body,float(node_q))))
+                    goal_id=fingerprint(dict(kind='future-contact-goal-v1',agent_id=key,exact_q=str(node_q),
+                        moving_goal_forecast_id=forecast_witness['identity'],point_record_id=fingerprint(point_record),
+                        observed_goal=tuple(map(str,goal))))
+                    reference=ContactReferenceKinematics(point_record['numerical_preview_rotation'],
+                        point_record['numerical_preview_body_rate'],point_record['rotation_operator_error_upper'],
+                        goal_id,self.clock.fingerprint,node_q)
+                    point=point_record['point_state'];error=point_record['goals'][key]
+                    speed=contact_goal_speed_bound(goal,error['position_norm_upper'],error['velocity_norm_upper'],
+                        self.clock.interval_bounds((node_q,node_q))['rate_s_inv'],
+                        IntervalBox(point['exact_lower'][4:],point['exact_upper'][4:]),reference_kinematics=reference)
+                    nodes.append(dict(index=index,exact_q=str(node_q),goal_bound_id=goal_id,
+                        goal_speed_bound=speed.as_dict()))
+                # These are the unchanged capture/vehicle declarations also
+                # used by the independent same-event and lifecycle gates.
+                reach_policy=ContactReachPolicy(chaser.docking_standoff,self.design.arm_reach_m,.01)
+                contact_by_agent[key]=ProspectiveContactConstraint.from_dict(dict(
+                    schema='orbexa.prospective-contact-terminal.v1',source=dict(source,agent_id=key),nodes=nodes,
+                    limits=dict(max_spin_error_rad_s=.001,gripper_offset_m=self.design.chaser.gripper_offset_m,
+                        max_relative_speed_m_s=.01),reach_policy=reach_policy.as_dict()))
+            if (future.fingerprint!=global_target_id or attitude.fingerprint!=attitude_id or
+                    navigation_identity(estimate)!=navigation_id):
+                raise ValueError('Prospective contact forecast sources changed during construction')
+            contact_forecast=dict(kind='prospective_contact_forecast',exact_q=str(q),
+                navigation_fingerprint=navigation_id,moving_goal_forecast_id=forecast_witness['identity'],
+                constraints={key:value.as_dict() for key,value in contact_by_agent.items()})
+            contact_forecast['identity']=fingerprint(contact_forecast)
+            if forecast_sink is not None:forecast_sink(contact_forecast)
         context=NonlinearPlanningContext(q,model,self.clock,residual_target,observation,np.full(3,300.),
             reach*rotation,self.bandwidth_mode=='fixed',outward_upper(bounds['position_error_norm_upper']),
-            outward_upper(bounds['velocity_error_norm_upper']))
+            outward_upper(bounds['velocity_error_norm_upper']),contact_terminal_by_agent=contact_by_agent,
+            navigation_fingerprint=navigation_id if contact_by_agent is not None else None)
         record=dict(exact_q=str(q),plant_fingerprint=model.fingerprint,global_plant_fingerprint=self.model.fingerprint,
             target_flow_fingerprint=residual_target.fingerprint,attitude_flow_fingerprint=attitude.fingerprint,
             observation_error_abs=observation.tolist(),actuator_error_abs=[300.]*3,
@@ -252,15 +306,23 @@ class NonlinearMissionRunner:
             moving_goal_forecast_archived=forecast_sink is not None,
             **({} if forecast_sink is not None else dict(moving_goal_forecast_witness=forecast_witness)),
             angular_acceleration_check=acceleration)
+        if contact_forecast is not None:
+            record.update(prospective_contact_forecast_id=contact_forecast['identity'],
+                prospective_contact_forecast_archived=forecast_sink is not None,
+                contact_terminal_ids={key:value.identity for key,value in contact_by_agent.items()},
+                **({} if forecast_sink is not None else dict(prospective_contact_forecast_witness=contact_forecast)))
         return context,record
 
     def _terminal(self,estimate,phase):
-        bounds={};valid=phase.operation=='docking' and estimate.status=='VALID'
+        bounds={};observed_goals={}
+        valid=(phase.operation=='docking' and estimate.status=='VALID'
+               and self.planner.absolute_deadline_q is not None)
         exact_q=exact(estimate.exact_event_q);q=float(exact_q)
         goal_bounds=observed_point_goal_bounds(estimate,self.preview,self.clock,self.chasers)
         physical_rate_upper=self.clock.interval_bounds((estimate.exact_event_q,estimate.exact_event_q))['rate_s_inv'].upper[0]
         for chaser in self.chasers:
             key=chaser.chaser_id;goal=self.preview.docking_state(chaser.docking_point_body,q)
+            observed_goals[key]=list(map(float,goal))
             p=exact_norm_upper(abs(exact(c)-exact(g))+exact(o) for c,g,o in
                 zip(self.state.centers[key][:3],goal[:3],self.state.omega[key]))
             v=exact_norm_upper(abs(exact(c)-exact(g))+exact(f)+exact(l)*exact(o) for c,g,f,l,o in
@@ -275,6 +337,22 @@ class NonlinearMissionRunner:
             # Keep the physical contact admission stricter than 10 mm/s.
             valid &= physical_rate_upper*(saved_p+saved_v)<=exact('.01')
         deadline=self.planner.absolute_deadline_q
+        contact_record=None
+        from orbexa.control.refuge import exact_record
+        goal_record=exact_record(goal_bounds)
+        eligible=phase.operation=='docking' and deadline is not None
+        if eligible:
+            from orbexa.simulation.nonlinear_completion import terminal_contact_speed_record
+            contact_record=terminal_contact_speed_record(navigation=self.recorder.navigation[-1],
+                observed_goal_states=observed_goals,goal_bounds=goal_record,
+                centers=self.state.centers,phi=self.state.phi,omega=self.state.omega,
+                lambda_gain=self.config.tube.sliding_gains,
+                docking_points={c.chaser_id:c.docking_point_body for c in self.chasers},
+                docking_standoffs={c.chaser_id:c.docking_standoff for c in self.chasers},clock=self.clock,
+                expected_model_fingerprint=self.model.fingerprint,vehicle_design=self.design.as_dict(),
+                approach_bounds={key:dict(position_m=float(p),velocity_m_per_rad=float(v))
+                    for key,(p,v) in bounds.items()})
+            valid &= contact_record['admissible']
         if valid and self.first_terminal_entry_q is None:
             self.first_terminal_entry_q=exact_q
             self.arrival_events.append(dict(status='WHOLE_SET_ENTRY',exact_q=str(exact_q),
@@ -287,9 +365,10 @@ class NonlinearMissionRunner:
                 exact_deadline=str(deadline),whole_set_admissible=bool(valid)))
         valid &= not self.arrival_deadline_missed
         self.recorder.record_terminal(bounds,admissible=valid,phase=phase)
-        from orbexa.control.refuge import exact_record
-        self.recorder.terminal_records[-1].update(moving_goal_bound=exact_record(goal_bounds),
-            exact_q=str(exact_q),arrival_deadline=None if deadline is None else str(deadline))
+        self.recorder.terminal_records[-1].update(moving_goal_bound=goal_record,
+            exact_q=str(exact_q),arrival_deadline=None if deadline is None else str(deadline),
+            observed_goal_states=observed_goals if eligible else None,
+            contact_speed_admission=contact_record)
         return bool(timely_entry and not self.arrival_deadline_missed
                     and self.recorder.dwell>=self.config.mpc.terminal_dwell_updates)
 

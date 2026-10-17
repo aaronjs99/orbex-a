@@ -135,17 +135,101 @@ A nonzero uncertainty tube cannot generally guarantee that every state touches
 one sharp surface boundary. The COM instead tracks an exterior reference. The
 whole terminal tube, including moving-goal pose/rate error, must fit the declared
 position and velocity tolerances for consecutive endpoints. A fixed arrival
-deadline, once anchored, cannot silently recede or switch off after a retreat.
+deadline must be anchored before an endpoint can start entry or dwell. Once
+anchored, it cannot silently recede or switch off after a retreat.
 Whole-set entry must occur by that exact deadline. Every checked endpoint at
 or after the deadline must remain admissible until the five-endpoint dwell
 finishes; a late first entry or a lost dwell fails the mission. The saved
 exact-clock history is checked again before contact can start.
-The physical speed gate uses
+The inertial error screen $\nu_u(P+V)\le0.01$ is retained, and a shared
+rotating-tip speed certificate also connects planning to capture. This extra
+check closes a handoff gap: the capture gate adds separate nominal and tube norms,
+the hull's rotational motion and a gripper spin-error reserve. A norm of
+componentwise sums does not generally dominate those separate norms.
+
+Let $\hat g=(\hat g_p,\hat g_v)$ be the same-event numerical goal,
+$N_p=\|\bar p-\hat g_p\|$, $N_v=\|\bar v-\hat g_v\|$,
+$T_p=\|\Omega\|$ and $T_v=\|\Phi+|\Lambda|\Omega\|$.
+The positive clock bound is $\nu_u$ and the target body-rate box gives
+$W\ge\|\omega_t\|$. Here $\omega_t$ is expressed in the reference axes;
+proper physical rotations preserve the body-rate norm.
+For declared gripper length $\ell$ and admitted chaser spin mismatch
+$\delta\omega_{max}$, define
 
 $$
-\|\Delta v_I\|\le\nu_{upper}
- (\|e_v\|_{upper}+\|e_p\|_{upper})\le0.01\;\mathrm{m/s}.
+S_0=\nu_u(N_v+T_v)+(\nu_u+W)(N_p+T_p)
+    +\delta\omega_{max}\ell,
+\qquad
+Q_{split}=\nu_u E_v+(\nu_u+W)E_p,
 $$
+
+where $E_p,E_v$ bound the observed goal error. Then
+$S_0+Q_{split}$ is sufficient for the unchanged capture speed gate. It
+explicitly retains all four nominal/tube norms.
+
+Rigid-goal kinematics supplies a second bound on the same goal residual.
+Let $\hat R$ map body axes into reference axes and let $\hat\omega_b$ be the
+numerical preview body rate. Let
+$\|R-\hat R\|_2\le\gamma$, and let
+$\Delta\omega_b\ge\|\omega_b-\hat\omega_b\|$ follow from the declared
+body-rate box. With the original point-clock interval, compute
+
+$$
+\epsilon_\omega=\gamma\|\hat\omega_b\|+\Delta\omega_b,
+\qquad
+D=\sup_\nu\left\|
+\nu(\hat g_v+Z\hat g_p)
+ -(\hat R\hat\omega_b)\times\hat g_p\right\|,
+\qquad
+Q_{kin}=\epsilon_\omega\|\hat g_p\|+D.
+$$
+
+The exact physical goal satisfies
+$\nu(g_v+Zg_p)-\omega_t\times g_p=0$.
+The residual $D$ keeps the actual rounding defects of the numerical preview;
+it does not assume that the rounded matrix is exactly orthogonal. Both
+$Q_{split}$ and $Q_{kin}$ bound the same rigid-relative goal velocity, so their
+minimum is valid when their clock, goal and source bindings agree. Admission
+requires
+
+$$
+S_0+\min(Q_{split},Q_{kin})\le0.01\;\mathrm{m/s}.
+$$
+
+The nominal endpoint constraint uses four nonnegative norm epigraphs at each
+required terminal node. Its constants come from that node's validated attitude
+forecast. Actual endpoint admission and saved-arrival verification use the
+same certificate with the accepted same-event navigation support. Forecast
+uncertainty is not replaced by an assumed future valid measurement. These
+speed conditions do not establish contact settling, bond strength or terminal
+invariance; the subsequent physical gates remain necessary.
+
+Reach uses the same separate position norms. Let $d$ be the assigned COM
+standoff, $L$ the positioner reach and $\theta_{max}$ the admitted mounting
+orientation error. With $P_{split}=N_p+T_p+E_p$, sufficient conditions are
+
+$$
+|d-\ell|+\ell\theta_{max}+P_{split}\le L,
+\qquad d-\ell-P_{split}\ge0.
+$$
+
+The first inequality bounds the nominal gripper gap, orientation displacement
+and entire position enclosure. The second keeps the entire initial tip outside
+the surface: a proper rotation cannot increase its inward normal projection
+beyond $\ell$. The existing norm epigraphs also enforce these conditions in
+the MPC, and the endpoint/verifier recompute the same source-bound reach
+certificate. With $d=0.85$ m, $\ell=0.8$ m, $L=0.1$ m and
+$\theta_{max}=0.01$ rad, the split position allowance is 0.042 m. The original
+40 mm whole-position gate still applies. Patch edges, other components, bus
+clearance and physical contact settling retain their separate required gates.
+
+![Contact speed budget across the forecast and sensing supports](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/contact-speed-budget.svg)
+
+The dotted line is the unchanged 10 mm/s capture limit. This saved-forecast
+algebraic screen illustrates the effect of preserving rigid-goal correlation;
+some forecast nodes still exceed the limit even with zero nominal tracking
+error. It is not a mission or optimizer result.
+[Figure data and provenance](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/contact-speed-budget-data.json).
 
 The 0.85 m COM standoff, 0.8 m tip offset and 0.1 m mechanism reach leave a
 finite closing gap. The actual nine-body [contact simulation](finite-contact.md)

@@ -9,9 +9,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from concurrent.futures import ThreadPoolExecutor
+from types import MappingProxyType
+from typing import Mapping
 import numpy as np
 
-from orbexa.control.dynamic_tube_spec import DynamicTubeSpec
+from orbexa.control.dynamic_tube_spec import DynamicTubeSpec, ProspectiveContactConstraint
 from orbexa.control.reachability import IntervalBox
 from orbexa.control.nonlinear_flow import bound_nominal_coefficients
 from orbexa.core.reference_frame import exact
@@ -39,6 +41,8 @@ class NonlinearPlanningContext:
     frozen_bandwidth: bool = False
     goal_position_error_m: float = 0.
     goal_velocity_error_m_per_rad: float = 0.
+    contact_terminal_by_agent: Mapping[str, ProspectiveContactConstraint] | None = None
+    navigation_fingerprint: str | None = None
 
     def __post_init__(self):
         object.__setattr__(self, 'exact_q', exact(self.exact_q))
@@ -58,6 +62,33 @@ class NonlinearPlanningContext:
         if any(not np.isfinite(value) or value<0 for value in
                 (self.goal_position_error_m,self.goal_velocity_error_m_per_rad)):
             raise ValueError('Moving-goal error bounds must be finite and nonnegative')
+        if self.contact_terminal_by_agent is not None:
+            if not isinstance(self.contact_terminal_by_agent, Mapping) or not self.contact_terminal_by_agent:
+                raise ValueError('Prospective contact constraints require an explicit nonempty agent mapping')
+            if not isinstance(self.navigation_fingerprint, str) or not self.navigation_fingerprint.strip():
+                raise ValueError('Prospective contact constraints require the current navigation fingerprint')
+            sealed = {}
+            for agent_id, value in self.contact_terminal_by_agent.items():
+                value = (ProspectiveContactConstraint.from_dict(value)
+                         if isinstance(value, Mapping) else value)
+                if not isinstance(value, ProspectiveContactConstraint):
+                    raise ValueError('Use typed source-bound prospective contact constraints')
+                if value.reach_policy() is None:
+                    raise ValueError('Nonlinear contact forecasts require the declared capture reach/gap policy')
+                record = value.as_dict(); source = record['source']
+                if (source['agent_id'] != agent_id or source['navigation_fingerprint'] != self.navigation_fingerprint or
+                        exact(source['exact_start_q']) != self.exact_q or
+                        source['clock_fingerprint'] != self.clock.fingerprint or
+                        source['residual_model_fingerprint'] != self.model.fingerprint or
+                        source['residual_target_flow_fingerprint'] != self.target_flow.fingerprint):
+                    raise ValueError('Prospective contact source differs from the active navigation/residual context')
+                for node, bound in zip(record['nodes'], value.node_bounds()):
+                    point_clock = self.clock.interval_bounds((exact(node['exact_q']), exact(node['exact_q'])))['rate_s_inv']
+                    if (bound.clock_rate_s_inv.lower != point_clock.lower or
+                            bound.clock_rate_s_inv.upper != point_clock.upper):
+                        raise ValueError('Prospective contact node clock differs from the exact declared clock')
+                sealed[agent_id] = value
+            object.__setattr__(self, 'contact_terminal_by_agent', MappingProxyType(sealed))
 
 
 class NonlinearMissionPlanner(CoupledMissionPlanner):
@@ -180,6 +211,12 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         velocity_tolerance=cfg.mpc.docking_velocity_tolerance-(ctx.goal_velocity_error_m_per_rad if self.operation=='docking' else 0.)
         if min(position_tolerance,velocity_tolerance)<=0:
             raise ValueError('Moving-goal observation/preview uncertainty exceeds the complete terminal budget')
+        contact = None
+        if self.operation == 'docking' and terminal_index is not None and ctx.contact_terminal_by_agent is not None:
+            if chaser_id not in ctx.contact_terminal_by_agent:
+                raise ValueError('Missing prospective contact forecast for the terminal agent')
+            contact = ctx.contact_terminal_by_agent[chaser_id]
+            contact.validate_grid(q0, h, count)
         return DynamicTubeSpec(phi_initial=phi,omega_initial=omega,lambda_gain=tube.sliding_gains,
             alpha_initial=bandwidth,alpha_bounds=bounds,
             alpha_rate_limit=0. if ctx.frozen_bandwidth else tube.bandwidth_rate_limit,
@@ -194,7 +231,8 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
             enforce_terminal=terminal_index is not None,terminal_start_index=terminal_index,
             measurement_error_abs=ctx.observation_error_abs,
             nominal_endpoint_error_abs=self.nominal_endpoint_error_abs,
-            stage_peak_padding_abs=self.stage_peak_padding_abs)
+            stage_peak_padding_abs=self.stage_peak_padding_abs,
+            contact_terminal=contact)
 
     def problem_bounds(self,chaser,state,spec):
         region = self.regions[chaser.chaser_id]

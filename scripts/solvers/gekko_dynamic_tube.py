@@ -17,6 +17,9 @@ from orbexa.solvers.base import SolverResult
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
 from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION, SENSED_TUBE_MODEL_VERSION
 from orbexa.control.terminal_region import TerminalRegion
+from orbexa.control.dynamic_tube_spec import ProspectiveContactConstraint
+from orbexa.control.contact_admission import _norm_upper, _outward
+from orbexa.core.reference_frame import exact, fingerprint
 from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
 from orbexa.utils.solver_options import gekko_memory_exponent, composite_geometry_mode
 
@@ -30,8 +33,21 @@ class GekkoDynamicTube:
         self.max_memory = gekko_memory_exponent(config.get("max_memory", 4))
         self.composite_geometry_mode = composite_geometry_mode(config.get("composite_geometry_mode", "free"))
         self.spec = problem.extra_params["dynamic_tube"]
+        self.contact_terminal = None
+        self.contact_terminal_record = None
+        if self.spec.get('contact_terminal') is not None:
+            value = self.spec['contact_terminal']
+            self.contact_terminal = (value if isinstance(value, ProspectiveContactConstraint)
+                                     else ProspectiveContactConstraint.from_dict(value))
+            record = self.contact_terminal.as_dict()
+            source = record['source']
+            if (float(exact(source['exact_start_q'])) != float(problem.extra_params.get('start_anom', 0.)) or
+                    exact(source['exact_step_q']) != exact(problem.anom_step)):
+                raise ValueError('Prospective contact evidence differs from the native problem clock grid')
+            self.contact_terminal.validate_grid(source['exact_start_q'], problem.anom_step, problem.num_steps)
+            self.contact_terminal_record = record
         self.explicit_terminal_policy = any(self.spec.get(key) is not None
-            for key in ("terminal_start_index", "terminal_region", "terminal_planning_fraction"))
+            for key in ("terminal_start_index", "terminal_region", "terminal_planning_fraction", "contact_terminal"))
         reserve = config.get("terminal_solve_reserve", 1e-6)
         if isinstance(reserve, bool) or not isinstance(reserve, Real):
             raise ValueError("terminal_solve_reserve must be a finite real in [0,1)")
@@ -111,6 +127,16 @@ class GekkoDynamicTube:
         # The tiny positive term makes the derivative finite at a zero tube.
         return self.model.sqrt(sum(value * value for value in values) + 1.0e-20)
 
+    def _contact_norm(self, values, seed, scale):
+        """Nonnegative squared-norm epigraph with physical-unit scaling."""
+        # A strictly positive initial iterate avoids the cone vertex's zero
+        # squared-gradient when the declared nominal error starts at zero.
+        # This changes no radius bound or feasible set.
+        radius = self.model.Var(value=max(scale*1.e-3, float(seed)), lb=0.)
+        self._ge((radius / scale)**2, sum((value / scale)**2 for value in values))
+        self.model.Minimize(1.e-8 * radius / scale)
+        return radius
+
     @staticmethod
     def _dot(matrix, vector):
         return [sum(float(a) * b for a, b in zip(row, vector) if a != 0) for row in matrix]
@@ -186,6 +212,8 @@ class GekkoDynamicTube:
         lam = self._array("lambda_gain", (3,), True)
         if np.any(lam <= 0):
             raise ValueError("Dynamic tube lambda gains must be positive")
+        if self.contact_terminal is not None:
+            self.contact_lambda_gain = tuple(map(exact, lam))
         phi0 = self._array("phi_initial", (3,), True)
         omega0 = self._array("omega_initial", (3,), True)
         alpha0 = self._array("alpha_initial", (3,), True)
@@ -404,7 +432,7 @@ class GekkoDynamicTube:
             self.reserve.append(reserve)
             self.nominal_reset_forcings.append(dict(phi=reset_phi,omega=reset_omega))
         self.lambda_gain = lam
-        self._constraints()
+        self._constraints(contact_seeds=(xguess, phi_guess, omega_guess))
         for k in range(count):
             if k < count-1:
                 errors = [self.states[k][i]-float(p.reference_states[i,k]) for i in range(6)]
@@ -437,7 +465,7 @@ class GekkoDynamicTube:
         m.options.RTOL = self.config.get("rtol", 1e-9)
         m.options.SCALING = self.config.get('scaling', 1)
 
-    def _constraints(self):
+    def _constraints(self, *, contact_seeds=None):
         p, m, spec = self.problem, self.model, self.spec
         lam = np.asarray(spec['lambda_gain'], dtype=float)
         target = p.extra_params.get("target_params") or {}
@@ -537,6 +565,10 @@ class GekkoDynamicTube:
                 robust = sum(abs(float(row[i]))*envelope[i] for i in range(len(row)))
                 self._ge(sum(float(row[i])*x[i] for i in range(len(row)))+offset,robust)
         if spec.get("enforce_terminal",False):
+            contact_bounds = self.contact_terminal.node_bounds() if self.contact_terminal is not None else None
+            reach_policy = self.contact_terminal.reach_policy() if self.contact_terminal is not None else None
+            if self.contact_terminal is not None:
+                xguess, phi_guess, omega_guess = contact_seeds
             for k in range(self.terminal_start_index, p.num_steps):
                 # Fixed data at node zero must satisfy the outer admission set;
                 # every future node reserves the explicit planning interior for
@@ -570,6 +602,45 @@ class GekkoDynamicTube:
                                     + region.lambda_gain[i] * region.reference_state_error_abs[i]))
                         self._ge(1., position / (float(region.omega[i])*native_fraction))
                         self._ge(1., sliding / (float(region.phi[i])*native_fraction))
+                if self.contact_terminal is not None:
+                    self.constraint_context = 'prospective_contact_split_speed[%s]' % k
+                    bound = contact_bounds[k]
+                    goal = np.array([float(value) for value in bound.observed_goal])
+                    ep = [self.states[k][i] - goal[i] for i in range(3)]
+                    ev = [self.states[k][i+3] - goal[i+3] for i in range(3)]
+                    pscale = float(spec['terminal_position_tolerance'])
+                    vscale = float(spec['terminal_velocity_tolerance'])
+                    rp = self._contact_norm(ep, np.linalg.norm(xguess[:3,k]-goal[:3]), pscale)
+                    rv = self._contact_norm(ev, np.linalg.norm(xguess[3:,k]-goal[3:]), vscale)
+                    ro = self._contact_norm(self.omega[k], np.linalg.norm(omega_guess[k]), pscale)
+                    rt = self._contact_norm(velocity,
+                        np.linalg.norm(phi_guess[k] + lam*omega_guess[k]), vscale)
+                    limits = self.contact_terminal_record['limits']
+                    tip = exact(limits['max_spin_error_rad_s']) * exact(limits['gripper_offset_m'])
+                    # The native goal is binary64. Charge its exact conversion
+                    # discrepancy prospectively; strict readback uses the
+                    # original rational forecast goal and unshrunk speed limit.
+                    round_p = _norm_upper(tuple(exact(value)-declared for value,declared in
+                                                zip(goal[:3], bound.observed_goal[:3])))
+                    round_v = _norm_upper(tuple(exact(value)-declared for value,declared in
+                                                zip(goal[3:], bound.observed_goal[3:])))
+                    constant = (bound.goal_speed_upper_m_s + tip + bound.clock_rate_upper*round_v
+                                + bound.angular_coefficient_upper*round_p)
+                    nu = _outward(bound.clock_rate_upper, upper=True)
+                    angular = _outward(bound.angular_coefficient_upper, upper=True)
+                    constant = _outward(constant, upper=True)
+                    speed = _outward(exact(limits['max_relative_speed_m_s']), upper=False)
+                    self._ge(native_fraction, (nu*(rv+rt) + angular*(rp+ro) + constant) / speed)
+                    if reach_policy is not None:
+                        self.constraint_context = 'prospective_contact_reach_and_gap[%s]' % k
+                        allowance = reach_policy.position_allowance_m(exact(limits['gripper_offset_m']))
+                        if allowance < 0:
+                            raise ValueError('Capture reach/gap policy admits no nonnegative position support')
+                        position = rp + ro + _outward(bound.goal_position_error_norm_upper+round_p, upper=True)
+                        if allowance == 0:
+                            self._ge(0., position)
+                        else:
+                            self._ge(native_fraction, position / _outward(allowance, upper=False))
 
     @staticmethod
     def _values(rows, *, prescribed_first=None):
@@ -621,6 +692,62 @@ class GekkoDynamicTube:
                     required_region=None if region is None else region.as_dict(),
                     scope='Numerical whole-tube suffix/entry screen; continuous flow and physical terminal certification are separate')
 
+    def _contact_terminal_readback(self, states, tube):
+        """Exact independent split-speed check, without native tolerance slack."""
+        if self.contact_terminal is None:
+            return None
+        value = self.spec.get('contact_terminal')
+        fresh = value if isinstance(value, ProspectiveContactConstraint) else ProspectiveContactConstraint.from_dict(value)
+        record = fresh.as_dict()
+        if fingerprint(record) != fingerprint(self.contact_terminal_record):
+            raise ValueError('Prospective contact source changed after native formulation')
+        lam = tuple(map(exact, np.asarray(self.spec['lambda_gain'], dtype=float)))
+        if lam != self.contact_lambda_gain:
+            raise ValueError('Prospective contact sliding gains changed after native formulation')
+        limits = record['limits']
+        tip = exact(limits['max_spin_error_rad_s']) * exact(limits['gripper_offset_m'])
+        maximum = exact(limits['max_relative_speed_m_s'])
+        reach_policy = fresh.reach_policy()
+        allowance = None if reach_policy is None else reach_policy.position_allowance_m(exact(limits['gripper_offset_m']))
+        nodes = []
+        for k, bound in enumerate(fresh.node_bounds()):
+            if k < self.terminal_start_index:
+                continue
+            center = tuple(map(exact, states[:,k]))
+            phi = tuple(map(exact, tube['phi'][k]))
+            omega = tuple(map(exact, tube['omega'][k]))
+            if any(value < 0 for value in phi + omega):
+                raise ValueError('Negative native tube radius cannot certify contact speed')
+            pnorm = _norm_upper(tuple(c-g for c,g in zip(center[:3],bound.observed_goal[:3])))
+            vnorm = _norm_upper(tuple(c-g for c,g in zip(center[3:],bound.observed_goal[3:])))
+            onorm = _norm_upper(omega)
+            tnorm = _norm_upper(tuple(p+abs(gain)*o for p,gain,o in zip(phi,lam,omega)))
+            speed = (bound.clock_rate_upper*(vnorm+tnorm) + bound.angular_coefficient_upper*(pnorm+onorm)
+                     + bound.goal_speed_upper_m_s + tip)
+            nodes.append(dict(index=k, exact_q=record['nodes'][k]['exact_q'],
+                goal_bound_id=record['nodes'][k]['goal_bound_id'], goal_speed_bound_id=bound.as_dict()['identity'],
+                nominal_center=tuple(map(str,center)), phi=tuple(map(str,phi)), omega=tuple(map(str,omega)),
+                nominal_position_norm_upper_m=str(pnorm), nominal_velocity_norm_upper_m_per_rad=str(vnorm),
+                tube_position_norm_upper_m=str(onorm), tube_velocity_norm_upper_m_per_rad=str(tnorm),
+                goal_speed_upper_m_s=str(bound.goal_speed_upper_m_s), tip_speed_upper_m_s=str(tip),
+                speed_upper_m_s=str(speed), limit_m_s=str(maximum), exact_margin_m_s=str(maximum-speed),
+                speed_admissible=speed <= maximum, admissible=speed <= maximum))
+            if reach_policy is not None:
+                position = pnorm + onorm + bound.goal_position_error_norm_upper
+                nodes[-1].update(position_split_bound_m=str(position),reach_position_allowance_m=str(allowance),
+                    exact_reach_margin_m=str(allowance-position),reach_admissible=position <= allowance)
+                nodes[-1]['admissible'] = nodes[-1]['admissible'] and nodes[-1]['reach_admissible']
+        return dict(method='prospective-contact-split-speed-readback-v1',
+            constraint_id=record['identity'], source=record['source'], limits=limits,
+            lambda_gain_per_rad=tuple(map(str,lam)),
+            start_index=int(self.terminal_start_index), checked_nodes=nodes,
+            admissible=bool(nodes) and all(node['admissible'] for node in nodes),
+            reach_policy=None if reach_policy is None else reach_policy.as_dict(),
+            numerical_residual_tolerance_applied=False,
+            native_norm_epigraphs_per_node=4,
+            scope='Pointwise sufficient speed and optional reach/gap screen under the current-navigation future forecast; '
+                  'same-event contact, continuous safety, hardware and backup admission remain independent')
+
     def _solve_once(self):
         started = time.time()
         try:
@@ -658,6 +785,7 @@ class GekkoDynamicTube:
                             float(np.max(tube["alpha"]-upper_alpha)))
             finite = all(np.all(np.isfinite(value)) for value in [states,controls]+list(tube.values()))
             finite = finite and all(np.isfinite(value) for value,_ in residuals)
+            contact_info = self._contact_terminal_readback(states, tube) if finite else None
             tube["tube_model_version"] = self.tube_model_version
             if self.observation_error is not None:
                 tube['measurement_error_abs'] = self.observation_error.copy()
@@ -669,7 +797,8 @@ class GekkoDynamicTube:
                     for v in row['phi']] for row in self.nominal_reset_forcings])
                 tube['nominal_reset_forcing_omega']=np.array([row['omega'] for row in self.nominal_reset_forcings])
             tolerance = float(self.config.get("residual_tolerance",1e-8))
-            success = finite and violation <= tolerance and self.model.options.APPSTATUS == 1
+            success = (finite and violation <= tolerance and self.model.options.APPSTATUS == 1 and
+                       (self.contact_terminal is None or (contact_info is not None and contact_info['admissible'])))
             return SolverResult(success=success,state_trajectory=states,control_trajectory=controls,
                                 cost=float(self.model.options.objfcnval),solve_time=time.time()-started,
                                 message="Coupled dynamic-tube optimization successful" if success else
@@ -693,6 +822,7 @@ class GekkoDynamicTube:
                                              "tube_seed_diagnostics":list(self.seed_diagnostics),
                                              "constraint_sampling":"nonlinear geometry and state constraints at prediction nodes",
                                               **({"terminal_suffix":terminal_info} if terminal_info is not None else {}),
+                                              **({'contact_terminal':contact_info} if contact_info is not None else {}),
                                              "dynamic_tube":tube})
         except Exception as error:
             return SolverResult(success=False,solve_time=time.time()-started,

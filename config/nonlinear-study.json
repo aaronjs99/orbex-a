@@ -1,6 +1,6 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-16-v2",
+  "study_id": "nonlinear-envisat-2026-10-16-v3",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
@@ -18,10 +18,10 @@
     "precontact_velocity_tolerance_m_per_rad": 9.0,
     "observation_position_floor_m": 0.0015,
     "observation_velocity_floor_m_per_rad": 0.5,
-    "nominal_position_transfer_budget_m": 1e-9,
-    "nominal_velocity_transfer_budget_m_per_rad": 1e-8,
-    "sliding_peak_padding_m_per_rad": 1e-6,
-    "position_peak_padding_m": 1e-7,
+    "nominal_position_transfer_budget_m": 1e-09,
+    "nominal_velocity_transfer_budget_m_per_rad": 1e-08,
+    "sliding_peak_padding_m_per_rad": 1e-06,
+    "position_peak_padding_m": 1e-07,
     "actuator_gain_error": 0.001,
     "actuator_axis_error_rad": 0.001,
     "actuator_bias_m_per_rad2": 0.2,
@@ -75,5 +75,5 @@
       "seed": 672091
     }
   ],
-  "description": "Prospective independent cases for all four adaptive/frozen belief by dynamic/fixed bandwidth arms. Same source, prior, options, hardware, costs, release and bounded sensor seed within each case. Version2 replaces the explicitly aborted version1 pipelines after a terminal fixture exposed missing pre-command attachment load admission; physical options, all cases and seeds are unchanged. Retain every failure, resource cap and deadline miss; no superiority threshold or winning-case filter."
+  "description": "Prospective independent cases for all four adaptive/frozen belief by dynamic/fixed bandwidth arms. Same priors, physical options, hardware, costs, release and bounded sensor seed within each case. Version3 aligns MPC terminal constraints and endpoint admission with the unchanged rotating-tip capture-speed, gripper-reach and fixed-deadline entry gates. Version1 and version2 operator-aborted prefixes are retained separately. No cases, seeds, vehicle limits, sensing bounds or bandwidths were outcome-tuned. Retain every failure, resource cap and deadline miss; no superiority threshold or winning-case filter."
 }
