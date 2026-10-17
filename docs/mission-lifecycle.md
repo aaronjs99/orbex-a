@@ -293,8 +293,9 @@ insufficient wrench rank fails explicitly. Reaction wheels are not treated as
 an external angular-momentum sink.
 
 Let `Q=(u,s)` denote the vector and scalar quaternion parts, `ω` the body rate,
-and `τ_g` the optional gravity-gradient torque. With `τ_env` denoting supplied
-extra environmental torque, the integrated rigid equations
+and `τ_g` the optional gravity-gradient torque. With `τ_env` denoting the
+aggregate extra environmental torque about the current assembly COM, including
+intrinsic component torques and the moments of their additional forces, the integrated rigid equations
 during each frozen-mass substep are:
 
 $$
@@ -331,8 +332,10 @@ $$
 \dot T=-K\|\omega\|^2+\omega^T\tau_{\mathrm{env}}.
 $$
 
-With zero extra intrinsic environmental torque this reduces to
-`T_dot = -K ||omega||²`. Pure rate damping leaves `τ_g` as a persistent forcing term; near zero spin,
+With zero aggregate extra environmental torque this reduces to
+`T_dot = -K ||omega||²`. Zero intrinsic component torques alone are insufficient:
+nonuniform environmental forces can still produce a moment about the assembly COM.
+Pure rate damping leaves `τ_g` as a persistent forcing term; near zero spin,
 the scale `||τ_g||/K` can exceed the rate gate. Increasing the duration alone
 does not remove this mechanism. Compensation assumes the declared orbit,
 attitude and current mass properties are known. Allocation limits and the
