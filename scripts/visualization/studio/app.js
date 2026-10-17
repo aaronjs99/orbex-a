@@ -1,6 +1,6 @@
 import { MissionScene } from './scene.js';
 import { MetricChart } from './charts.js';
-import { SceneVideoExporter, downloadVideo } from './recorder.js';
+import { SceneVideoExporter, downloadVideo, sha256Bytes } from './recorder.js';
 import { renderTheoryFigure } from './theory-figures.js';
 import { missionTimeline, sampleAtTime, phaseTitle, releaseContextVisible } from './mission-timeline.js';
 import { TubeDetail } from './tube-detail.js';
@@ -12,7 +12,7 @@ const state = { index: 0, selected: 0, playing: false, tab: 'mission', generatio
 const fmtDistance = value => value === null || !Number.isFinite(value) ? 'Not recorded' : value < 0.01 ? `${(value * 1000).toFixed(2)} mm` : `${value.toFixed(3)} m`;
 const fmtRatio = value => value === null || !Number.isFinite(value) ? 'Not recorded' : value.toFixed(3);
 let catalog, dataset, currentEntry, scene, timeline, lifecycleData, lifecycleScene;
-let exportAbort;
+let exportAbort, recordingDataUrl;
 let lifecycleReady = false, waitingForLifecycle = false;
 let liveJobId = null, followLive = false, liveSnapshot, renderedLiveSignature;
 const timeLabel = seconds => seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
@@ -348,6 +348,8 @@ async function loadScenario(key) {
 }
 
 function clearMission() {
+  if (recordingDataUrl) { URL.revokeObjectURL(recordingDataUrl); recordingDataUrl = null; }
+  $('export-status').textContent = '';
   lifecycleScene?.dispose(); lifecycleScene = null;
   dataset = currentEntry = timeline = lifecycleData = null;
   lifecycleReady = false;
@@ -515,14 +517,37 @@ $('export-scene').addEventListener('click', async () => {
   for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).disabled = true;
   $('mission-phases').querySelectorAll('button').forEach(button => { button.disabled = true; });
   try {
+    if (recordingDataUrl) { URL.revokeObjectURL(recordingDataUrl); recordingDataUrl = null; }
+    $('export-status').textContent = 'Preparing recording…';
+    const catalogResponse = await fetch('catalog.json', { cache: 'no-cache', signal: exportAbort.signal });
+    if (!catalogResponse.ok) throw new Error('Cannot bind the recording to its saved catalog.');
+    const catalogBytes = await catalogResponse.arrayBuffer();
+    if (JSON.stringify(JSON.parse(new TextDecoder().decode(catalogBytes))) !== JSON.stringify(catalog)) {
+      throw new Error('The mission catalog changed. Reload it before exporting.');
+    }
+    const sourceBinding = { entry_key: currentEntry.key, catalog_sha256: await sha256Bytes(catalogBytes),
+      asset_version: catalog.asset_version, approach_raw_sha256: currentEntry.raw_sha256 ?? null,
+      dataset_sha256: await sha256Bytes(JSON.stringify(dataset)), timeline_sha256: await sha256Bytes(JSON.stringify(timeline.samples)),
+      lifecycle_projection_sha256: lifecycleData ? await sha256Bytes(JSON.stringify(lifecycleData)) : null,
+      approach_canonical_sha256: lifecycleData?.approach_canonical_sha256 ?? null,
+      lifecycle_canonical_sha256: lifecycleData?.lifecycle_canonical_sha256 ?? null,
+      finite_contact_history_sha256: lifecycleData?.finite_contact?.source_history_sha256 ?? null };
     const exportData = lifecycleScene ? { elapsed_s: timeline.samples.map(sample => sample.time), phases: timeline.samples.map(sample => sample.phase) } : dataset;
     const output = await new SceneVideoExporter().record(scene, exportData, currentEntry.title, {
-      signal: exportAbort.signal,
-      onFrame: index => { state.index = index; paint(); },
+      signal: exportAbort.signal, sourceBinding,
+      onFrame: index => {
+        state.index = index; paint();
+        const sample = lifecycleScene ? timeline.samples[index] : { kind: 'approach', index, phase: dataset.phases[index] };
+        return { ...sample, selected_chaser: dataset.tracks[state.selected].id, camera_view: $('camera').value };
+      },
       onProgress: progress => { $('export-status').textContent = `Exporting recorded scene · ${progress}%`; },
     });
     downloadVideo(output.blob, `ORBEX-A-${currentEntry.key}-scene.${output.extension}`);
     $('export-status').textContent = 'Scene video created. Download requested.';
+    recordingDataUrl = URL.createObjectURL(new Blob([JSON.stringify(output.provenance, null, 2)+'\n'], { type: 'application/json' }));
+    const recordingData = document.createElement('a');
+    recordingData.href = recordingDataUrl; recordingData.download = `ORBEX-A-${currentEntry.key}-recording.json`;
+    recordingData.textContent = 'Recording data'; $('export-status').append(' ', recordingData);
   } catch (error) { $('export-status').textContent = error.message; }
   finally {
     state.exporting = false;

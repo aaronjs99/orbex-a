@@ -14,6 +14,41 @@ export function downloadVideo(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+export async function sha256Bytes(value) {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) :
+    value instanceof Blob ? await value.arrayBuffer() : value;
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** Contiguous saved phases receive equal screen time, including short contact. */
+export function recordingPhaseGroups(data) {
+  const times = data.elapsed_s || data.q;
+  if (!Array.isArray(times) || times.length < 2 || !Array.isArray(data.phases) || data.phases.length !== times.length ||
+      times.some((time, index) => !Number.isFinite(time) || index > 0 && time <= times[index - 1]) ||
+      data.phases.some(phase => typeof phase !== 'string' || !phase)) {
+    throw new Error('Video export requires aligned, increasing saved samples and phases.');
+  }
+  const groups = [];
+  data.phases.forEach((phase, index) => {
+    if (!index || phase !== data.phases[index - 1]) groups.push({ phase, start: index, end: index });
+    else groups.at(-1).end = index;
+  });
+  return groups;
+}
+
+export function phaseBalancedIndex(groups, fraction) {
+  if (!groups.length || !Number.isFinite(fraction) || fraction < 0 || fraction > 1) {
+    throw new Error('Invalid recorded-phase presentation coordinate.');
+  }
+  const position = fraction * groups.length, group = groups[Math.min(groups.length - 1, Math.floor(position))];
+  const local = fraction === 1 ? 1 : position - Math.floor(position);
+  // Keep both saved phase endpoints visible. Intermediate states are selected,
+  // never interpolated; repeated screen frames do not create physical samples.
+  const interior = Math.max(0, Math.min(1, (local - .1) / .8));
+  return group.start + Math.round(interior * (group.end - group.start));
+}
+
 /** Composite the existing selected-chaser inset; never rescale scene geometry. */
 export function drawTubeDetailInset(context, detail, { width = 480, top = 120, bottom = 16 } = {}) {
   const source = detail?.querySelector('canvas');
@@ -52,8 +87,10 @@ export function drawTubeDetailInset(context, detail, { width = 480, top = 120, b
 export class SceneVideoExporter {
   static supported() { return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function'; }
 
-  async record(scene, data, title, { duration = 20, onFrame, onProgress, signal } = {}) {
+  async record(scene, data, title, { duration = 20, onFrame, onProgress, signal, sourceBinding = null } = {}) {
     if (!SceneVideoExporter.supported()) throw new Error('This browser cannot export a canvas video. Saved MP4 files remain available in Videos.');
+    if (!Number.isFinite(duration) || duration <= 0) throw new Error('Video duration must be positive.');
+    const groups = recordingPhaseGroups(data), draws = [];
     const canvas = document.createElement('canvas');
     canvas.width = 1280;
     canvas.height = 720;
@@ -62,17 +99,16 @@ export class SceneVideoExporter {
     const chunks = [];
     let animation;
     let frameFailure = null;
-    const started = performance.now();
+    let started;
     const values = data.elapsed_s || data.q;
-    const start = values[0], end = values.at(-1);
-    let index = 0;
-    const draw = now => {
+    const draw = () => {
       try {
-      const fraction = Math.min(1, (now - started) / (duration * 1000));
-      const clock = start + fraction * (end - start);
-      while (index < values.length - 1 && values[index + 1] <= clock) index++;
-      if (fraction === 1) index = values.length - 1;
-      onFrame(index);
+      // A browser's first RAF timestamp can precede recorder startup. Measure
+      // actual callback execution with the same monotonic clock as startup.
+      const mediaElapsed = Math.max(0, performance.now() - started);
+      const fraction = Math.min(1, mediaElapsed / (duration * 1000));
+      const index = phaseBalancedIndex(groups, fraction);
+      const sample = onFrame(index);
       scene.render();
       context.fillStyle = '#010306';
       context.fillRect(0, 0, 1280, 720);
@@ -80,7 +116,7 @@ export class SceneVideoExporter {
       const scale = Math.min(1280 / source.width, 630 / source.height);
       const width = source.width * scale, height = source.height * scale;
       context.drawImage(source, (1280 - width) / 2, 52 + (630 - height) / 2, width, height);
-      drawTubeDetailInset(context, document.getElementById('tube-detail'), { top: 70, bottom: 42 });
+      const inset = drawTubeDetailInset(context, document.getElementById('tube-detail'), { top: 70, bottom: 42 });
       context.fillStyle = '#e5edf5';
       context.font = '600 21px Segoe UI, sans-serif';
       context.fillText('ORBEX-A  ·  ' + title, 26, 32);
@@ -90,9 +126,14 @@ export class SceneVideoExporter {
       const coordinate = data.q ? `q = ${data.q[index].toFixed(4)} rad` : 'Physical lifecycle';
       context.fillText(`${coordinate}${elapsed}  ·  node ${index + 1}/${values.length}  ·  ${data.phases[index]}`, 26, 696);
       context.textAlign = 'right';
-      context.fillText('Recorded states · representative visual model', 1254, 696);
+      context.fillText('Saved states · variable playback compression', 1254, 696);
       context.textAlign = 'left';
-      onProgress(Math.round(fraction * 100));
+      draws.push({ draw_index: draws.length, media_elapsed_ms: mediaElapsed, timeline_index: index,
+        kind: sample?.kind ?? null, index: sample?.index ?? index,
+        physical_time_s: data.elapsed_s ? values[index] : null, phase: data.phases[index],
+        tube_inset_visible: inset.visible, selected_chaser: sample?.selected_chaser ?? null,
+        camera_view: sample?.camera_view ?? null });
+      onProgress?.(Math.round(fraction * 100));
       if (fraction < 1 && !signal?.aborted) animation = requestAnimationFrame(draw);
       else if (recorder.state !== 'inactive') recorder.stop();
       } catch (error) {
@@ -113,11 +154,25 @@ export class SceneVideoExporter {
         recorder.addEventListener('error', () => reject(new Error('The browser video encoder failed.')));
       });
       recorder.start(250);
-      animation = requestAnimationFrame(draw);
+      started = performance.now();
+      draw();
       const blob = await blobPromise;
       if (frameFailure) throw frameFailure;
       if (signal?.aborted) throw new Error('Video export cancelled.');
-      return { blob, extension: blob.type.includes('mp4') ? 'mp4' : 'webm' };
+      if (!blob.size) throw new Error('The browser produced an empty video.');
+      if (groups.some(group => !draws.some(row => row.timeline_index === group.start) ||
+          !draws.some(row => row.timeline_index === group.end))) {
+        throw new Error('Video export missed a saved phase endpoint. Try exporting again.');
+      }
+      const videoSha256 = await sha256Bytes(blob);
+      if (signal?.aborted) throw new Error('Video export cancelled.');
+      return { blob, extension: blob.type.includes('mp4') ? 'mp4' : 'webm', provenance: {
+        schema: 'orbexa.recorded-scene-video.v1', completed: true, cancelled: false, errors: [], source_binding: sourceBinding,
+        video: { sha256: videoSha256, bytes: blob.size, mime_type: blob.type, width: 1280, height: 720 },
+        presentation: { policy: 'equal-contiguous-phase-budgets-endpoint-dwell-v1', requested_duration_s: duration,
+          requested_capture_fps: 30, phase_endpoint_fraction: .1, physical_clock: Boolean(data.elapsed_s), groups,
+          timing: 'Equal screen time per contiguous phase; saved states only, with repeated frames and variable physical-time compression.' },
+        draws, scope: 'Actual render callbacks and video Blob identity. Capture/encoding may repeat, drop or coalesce frames; no one-to-one encoded-frame correspondence is asserted.' } };
     } finally {
       cancelAnimationFrame(animation);
       signal?.removeEventListener('abort', abort);
