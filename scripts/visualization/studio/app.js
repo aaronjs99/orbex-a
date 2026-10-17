@@ -4,7 +4,7 @@ import { SceneVideoExporter, downloadVideo } from './recorder.js';
 import { renderTheoryFigure } from './theory-figures.js';
 import { missionTimeline, sampleAtTime, phaseTitle, releaseContextVisible } from './mission-timeline.js';
 import { TubeDetail } from './tube-detail.js';
-import { simulationControls } from './live-client.js';
+import { simulationControls, recordedControls } from './live-client.js';
 import { LifecycleScene } from './lifecycle-scene.js';
 
 const $ = id => document.getElementById(id);
@@ -582,9 +582,13 @@ try {
   $('error').textContent = error.message;
 }
 
-simulationControls({
+if (catalog?.live === true) simulationControls({
   onState: applyLiveSnapshot,
   onReset: resetLiveView,
   onFollow() { followLive = true; stop(); if (timeline) { state.index = timeline.samples.length - 1; paint(); } },
   onError(message) { $('error').hidden = false; $('error').textContent = message; },
 });
+else if (catalog) {
+  try { recordedControls({ liveUiHref: catalog.live_ui_href }); }
+  catch (error) { $('error').hidden = false; $('error').textContent = error.message; }
+}

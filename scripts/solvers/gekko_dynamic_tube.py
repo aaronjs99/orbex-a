@@ -287,14 +287,28 @@ class GekkoDynamicTube:
         xguess[:,0] = p.initial_state
         for k in range(count-1):
             xguess[:,k+1] = self._numeric_step(xguess[:,k],uguess[:,k],self.coefficients[k])
-        xguess = self._guess("state_initial_guess", (6,count), xguess)
+        supplied_state_guess = self._guess("state_initial_guess", (6,count), xguess)
+        state_seed_diagnostic = None
+        if self.composite_geometry_mode == "reference_corridor":
+            if not np.all(np.isfinite(xguess)):
+                raise ValueError("Current-state control-rollout seed must be finite; this does not establish dynamic infeasibility")
+            with np.errstate(over='raise', invalid='raise'):
+                displacement = np.abs(supplied_state_guess - xguess)
+            state_seed_diagnostic = dict(initialization='current_state_control_rollout',
+                policy='reference-corridor-current-state-rk4-control-rollout-v1',
+                supplied_state_hint=p.extra_params.get('state_initial_guess') is not None,
+                maximum_supplied_state_displacement=displacement.max(axis=1).tolist(),
+                state_displacement_units=['m']*3 + ['m/rad']*3,
+                scope='Nominal held-input RK4 initialization only; all physical feasibility and admission checks remain separate')
+        else:
+            xguess = supplied_state_guess
         xguess[:,0] = p.initial_state
         # Initialize all tube variables from the same comparison equations as
         # the NLP. Repeating the initial tube at every node creates a large,
         # avoidable infeasibility just when the hard terminal set is armed.
         transitions, phi_guess, omega_guess = [], np.zeros((count,3)), np.zeros((count,3))
         phi_peak_guess, omega_peak_guess = np.zeros((count-1,3)), np.zeros((count-1,3))
-        self.seed_diagnostics = []
+        self.seed_diagnostics = [] if state_seed_diagnostic is None else [state_seed_diagnostic]
         phi_guess[0], omega_guess[0] = phi0, omega0
         alpha_guess = np.clip(alpha0,lower_alpha,upper_alpha)
         for k in range(count-1):
@@ -493,6 +507,14 @@ class GekkoDynamicTube:
             geometry_class = (GekkoReferenceCorridorGeometry if self.composite_geometry_mode == "reference_corridor"
                               else GekkoCompositeGeometry)
             self.composite_geometry = geometry_class(target, rotations, center)
+            if self.composite_geometry_mode == "reference_corridor":
+                if contact_seeds is None:
+                    raise ValueError("Composite normal construction requires the native initial iterate")
+                geometry_seed = np.asarray(contact_seeds[0], dtype=float)
+                if (geometry_seed.shape != (6, p.num_steps) or not np.all(np.isfinite(geometry_seed))
+                        or not np.array_equal(geometry_seed[:, 0], np.asarray(self.prescribed_initial['state']))):
+                    raise ValueError("Composite normal construction requires a finite (6,T) initial iterate with its prescribed node zero; "
+                                     "this does not establish dynamic infeasibility")
         pairs = p.extra_params.get("pairwise_constraints") or target.get("pairwise_constraints") or []
         pair_data = []
         for pair in pairs:
@@ -518,7 +540,8 @@ class GekkoDynamicTube:
             radius_tube = self._norm(omega)
             pos = [x[i]-float(center[i]) for i in range(3)]
             if self.composite_geometry is not None:
-                self.composite_geometry.add_node(self, k, pos, omega, p.reference_states[:3,k])
+                self.composite_geometry.add_node(self, k, pos, omega,
+                    geometry_seed[:3,k] if self.composite_geometry_mode == "reference_corridor" else p.reference_states[:3,k])
                 self.constraint_context = f'geometry_and_state_bounds[{k}]'
             elif target.get("operation") == "rendezvous":
                 radius = float(target.get("rendezvous_radius",target.get("target_radius",0.)))

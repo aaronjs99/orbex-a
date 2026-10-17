@@ -57,10 +57,16 @@ Before motion, each process freezes its Python source, explicit inputs and
 resolved study declaration. It streams complete admission witnesses before each
 applied hold, then records completion or assumption violation. Outputs include
 `source-manifest.json`, `study-manifest.json`, `approach/`, `completion/`,
-`nonlinear-certificates.jsonl.gz` and `study-metrics.json`. Comparisons require
+`nonlinear-certificates.jsonl.zst` and `study-metrics.json`. Comparisons require
 matching source and input hashes, the complete declared case/arm grid, and all
 failed or capped outcomes. Planner-only and full attempted-update timings are
 separate; offline simulation does not establish a flight deadline.
+
+The lossless Zstd journal retains the complete ordered JSON witnesses. Each
+acknowledged event is flushed and fsynced before motion; closure adds a checksum
+and the manifest. Closed readers reject incomplete frames, checksum errors,
+trailing data and decoder windows above 128 MiB. Earlier gzip archives remain
+readable. An interrupted byte prefix is retained as an aborted run.
 
 ## Mission Studio
 

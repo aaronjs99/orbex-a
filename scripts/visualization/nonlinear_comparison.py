@@ -59,6 +59,59 @@ def _sum_values(values):
     return sum(numbers) if values and all(value is not None for value in numbers) else None
 
 
+def recorded_outcome_evidence(metrics):
+    """Describe recorded termination; never infer physical infeasibility.
+
+    Explicit exceptions and physical-gate records are independent evidence.
+    A reported simulated completion still needs the existing delivery verifier.
+    """
+    status = metrics.get('status', 'UNKNOWN')
+    error = metrics.get('error')
+    safety = metrics.get('safety') or {}
+    failed_gates = [key for key in ('active_target_margins_safe',
+                    'pairwise_spacing_safe', 'sampled_tube_containment')
+                    if safety.get(key) is False]
+    if (metrics.get('continuous_execution') or {}).get('all_intervals_certified') is False:
+        failed_gates.append('all_intervals_certified')
+    if error is not None:
+        termination = 'EXECUTION_ERROR'
+    elif status == 'METRICS_REFUSED' or metrics.get('metrics_error') is not None:
+        termination = 'METRICS_UNAVAILABLE'
+    elif failed_gates:
+        termination = 'RECORDED_GATE_FAILURE'
+    elif status == 'COMPLETED':
+        termination = 'COMPLETION_REPORTED'
+    elif status == 'INCOMPLETE':
+        termination = 'INCOMPLETE'
+    elif status in ('FAILED', 'SETUP_FAILED'):
+        termination = 'RECORDED_RUN_FAILURE'
+    else:
+        termination = 'UNKNOWN'
+    complete = (status == 'COMPLETED' and metrics.get('success') is True
+                and metrics.get('physical_mission_complete') is True
+                and error is None and metrics.get('metrics_error') is None
+                and not metrics.get('failures') and not failed_gates)
+    markers = {'COMPLETED': 'C', 'INCOMPLETE': 'I', 'FAILED': 'F',
+               'SETUP_FAILED': 'S', 'METRICS_REFUSED': 'M'}
+    marker = markers.get(status, '?')
+    if termination == 'EXECUTION_ERROR':
+        marker = 'E'
+    elif termination == 'METRICS_UNAVAILABLE':
+        marker = 'M'
+    elif failed_gates:
+        marker = 'F'
+    if status == 'COMPLETED' and not complete and marker == 'C':
+        marker = '?'
+    return dict(termination_class=termination,
+        physical_feasibility='SIMULATED_COMPLETION_REPORTED' if complete else 'UNKNOWN',
+        success_time_eligible=complete, display_marker=marker,
+        execution_error_type=error.get('type', 'UNKNOWN') if isinstance(error, dict)
+            else 'UNKNOWN' if error is not None else None,
+        recorded_gate_failures=failed_gates,
+        scope='Recorded evidence only; a failed/capped/error run is not a physical infeasibility certificate; '
+              'reported completion remains subject to existing full verification')
+
+
 class MatchedNonlinearComparison:
     """Strict complete-grid verifier with descriptive, failure-inclusive plots.
 
@@ -219,7 +272,8 @@ class MatchedNonlinearComparison:
             required_arms=[dict(adaptation=a, bandwidth=b) for a, b in ARMS], expected_outcomes=len(expected),
             retained_outcomes=len(records), errors=errors,
             outcomes=[dict(case=key[0], adaptation=key[1], bandwidth=key[2], status=row['metrics']['status'],
-                success=row['metrics'].get('success'), directory=str(row['directory']),
+                success=row['metrics'].get('success'), outcome_evidence=recorded_outcome_evidence(row['metrics']),
+                directory=str(row['directory']),
                 source_manifest_sha256=row['source_sha256'], study_manifest_sha256=row['study_sha256'],
                 metrics_sha256=row['metrics_sha256'], resolved_manifest_available=row['study'] is not None,
                 approach_binding_verified=row['approach_binding_verified'],
@@ -263,14 +317,25 @@ class MatchedNonlinearComparison:
         palette = {'COMPLETED': '#CBE8DE', 'INCOMPLETE': '#F8E7BA', 'FAILED': '#F1C8CC', 'SETUP_FAILED': '#E0D5E8', 'METRICS_REFUSED': '#D9DFE4'}
         for y, case in enumerate(self.case_ids):
             for x, arm in enumerate(ARMS):
-                status = self.records[(case, *arm)]['metrics']['status']
-                axis.add_patch(plt.Rectangle((x-.47, y-.43), .94, .86, color=palette.get(status, '#D9DFE4')))
-                axis.text(x, y, status.replace('_', '\n'), ha='center', va='center', fontsize=9)
+                metrics = self.records[(case, *arm)]['metrics']
+                status = metrics['status']
+                evidence = recorded_outcome_evidence(metrics)
+                execution_error = evidence['termination_class'] == 'EXECUTION_ERROR'
+                contradictory_completion = status == 'COMPLETED' and not evidence['success_time_eligible']
+                color = '#D9DFE4' if execution_error or contradictory_completion else palette.get(status, '#D9DFE4')
+                axis.add_patch(plt.Rectangle((x-.47, y-.43), .94, .86, facecolor=color,
+                    edgecolor='#687580' if execution_error else color, hatch='xx' if execution_error else None))
+                label = status.replace('_', '\n')
+                if execution_error:
+                    label += '\nexecution error\nfeasibility UNKNOWN'
+                elif contradictory_completion:
+                    label += '\nconflicting recorded evidence\nfeasibility UNKNOWN'
+                axis.text(x, y, label, ha='center', va='center', fontsize=8 if execution_error or contradictory_completion else 9)
         axis.set(xticks=range(4), xticklabels=[a+' / '+b for a, b in ARMS], yticks=range(len(self.case_ids)), yticklabels=self.case_ids,
                  xlim=(-.55, 3.55), ylim=(len(self.case_ids)-.5, -.5))
         axis.tick_params(length=0)
         figure.suptitle(str(self.report['study_id'])+' — every predeclared outcome', fontsize=14)
-        figure.text(.03, .015, 'Failure/cap status is retained. A completed approach alone does not imply a completed physical mission.', fontsize=8)
+        figure.text(.03, .015, 'Operational failure is retained; execution errors have UNKNOWN physical feasibility. A completed approach alone is not a completed mission.', fontsize=8)
         self._save(figure, 'nonlinear_comparison_outcomes.png', 'Complete declared case-by-arm outcome matrix, including failed and capped runs.')
 
     def _bars(self, axis, values, title):
@@ -287,8 +352,12 @@ class MatchedNonlinearComparison:
             abbreviations = {'COMPLETED': 'C', 'INCOMPLETE': 'I', 'FAILED': 'F', 'SETUP_FAILED': 'S', 'METRICS_REFUSED': 'M'}
             for position, value, row, bar in zip(positions, heights, rows, bars):
                 status = row['metrics']['status']
-                short = abbreviations.get(status, '?')
-                if status != 'COMPLETED':
+                evidence = recorded_outcome_evidence(row['metrics'])
+                execution_error = evidence['termination_class'] == 'EXECUTION_ERROR'
+                short = evidence['display_marker']
+                if execution_error:
+                    bar.set_hatch('xx')
+                elif not evidence['success_time_eligible']:
                     bar.set_hatch('//')
                 axis.annotate(('N/A '+short) if value is None else short, (position, 0 if value is None else value),
                     xytext=(0, 3), textcoords='offset points', ha='center', va='bottom', fontsize=7,
@@ -330,7 +399,7 @@ class MatchedNonlinearComparison:
         figure.legend(handles=[Patch(color=color, label=a+' / '+b) for (a, b), color in zip(ARMS, _COLORS)], loc='upper center', ncol=4, bbox_to_anchor=(.5, .955), fontsize=9)
         for axis, (title, function) in zip(axes.flat, fields):
             self._bars(axis, function, title)
-        figure.text(.02, .017, 'C completed / I capped-incomplete / F failed / S setup failed / M metrics refused / ? unknown. N/A is unavailable, never zero.', fontsize=8)
+        figure.text(.02, .017, 'C completed / I incomplete / F run failed / E execution error (feasibility UNKNOWN) / S setup / M metrics / ? unknown. N/A is unavailable.', fontsize=8)
         figure.text(.02, .004, 'Prefix exposures differ: these duration/effort bars are not success times or method improvements. No common-window effort is inferred.', fontsize=8)
         self._save(figure, 'nonlinear_comparison_metrics.png', 'All-arm recorded durations, fuel bounds, delivered effort, tubes, native attempts and explicitly full-update deadline misses.')
 
@@ -349,7 +418,7 @@ class MatchedNonlinearComparison:
         for axis, key, label in zip(axes, ('eccentricity', 'alpha', 'beta'),
                 ('Initial osculating eccentricity width', 'Reference-mapped target CdA/m width (m²/kg)', 'Reference-mapped chaser CdA/m width (m²/kg)')):
             self._bars(axis, lambda row, key=key: width(row, key), label)
-        figure.text(.02, .01, 'Reference density maps alpha/beta to sigma=CdA/m. Widths describe the recorded marginal intervals, including prefixes; not retained-set volumes.', fontsize=8)
+        figure.text(.02, .01, 'Reference density maps alpha/beta to sigma=CdA/m. Prefix marginal widths are not set volumes; E denotes execution error, feasibility UNKNOWN.', fontsize=8)
         self._save(figure, 'nonlinear_comparison_set_widths.png', 'All-arm final initial-eccentricity and reference-mapped physical drag marginal widths, including prefixes.')
 
     def _success_times(self):
@@ -359,7 +428,8 @@ class MatchedNonlinearComparison:
                       loc='upper center', ncol=4, bbox_to_anchor=(.5, .94), fontsize=9)
         def successful_time(row):
             metrics = row['metrics']
-            return metrics.get('physical_elapsed_s') if metrics.get('success') is True and metrics['status'] == 'COMPLETED' else None
+            evidence = recorded_outcome_evidence(metrics)
+            return metrics.get('physical_elapsed_s') if evidence['success_time_eligible'] else None
         self._bars(axis, successful_time, 'Full simulated mission success time (s); other outcomes remain N/A')
-        figure.text(.02, .01, 'Every declared arm remains visible. A failed/capped physical prefix duration is not a time-to-success; letters use the recorded outcome matrix.', fontsize=8)
+        figure.text(.02, .01, 'Every arm remains visible. Failed/capped/error prefix duration is not a success time; E means execution error, feasibility UNKNOWN.', fontsize=8)
         self._save(figure, 'nonlinear_comparison_time_to_success.png', 'Full-mission success times only; every failed, capped or unknown arm remains explicitly unavailable.')

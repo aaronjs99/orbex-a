@@ -437,7 +437,7 @@ class FiniteContactSimulator:
                 angle = Rotation.from_matrix(ri.T@expected).as_rotvec()
                 inertia = diag['inertias'][j]
                 torque_requested = inertia@(ri.T@target_alpha+o.attitude_frequency_rad_s**2*angle+
-                    2*o.attitude_frequency_rad_s*(ri.T@(wt-wi)))+np.cross(b[j, 10:13], inertia@b[j, 10:13])
+                    2*o.attitude_frequency_rad_s*(ri.T@(wt-wi)))+np.cross(state.angular_velocity_body_rad_s, inertia@state.angular_velocity_body_rad_s)
                 lever = ri@(mounts[k]+tips[k, :3])
                 torque_requested -= ri.T@(np.cross(lever, measured_forces[k])+measured_couples[k])
                 if gravity_gradient:

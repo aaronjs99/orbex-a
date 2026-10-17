@@ -109,6 +109,15 @@ independent whole-fleet admission service decide whether the candidate can run.
 Solver setup errors, numerical failures and rejected candidates remain in the
 record. An optimizer failure is not a proof of physical infeasibility.
 
+The declared component corridor chooses its support planes around a nominal
+RK4 rollout of the guessed held controls from the current state. It does not
+choose them around the moving goal: a goal-side plane can exclude the fixed
+initial state. A supplied warm state plan is validated but projected from the
+current state, since a previously optimized plan may have been rejected in
+favor of fallback. This corridor still restricts the free-normal feasible set;
+seed separation does not prove horizon feasibility or continuous safety. All
+component supports and independent whole-hold checks remain active.
+
 ## Sensing and adaptation
 
 Only the sensor generator receives truth. The navigator consumes priors,
@@ -261,6 +270,13 @@ Full admission witnesses are durably archived before numerical motion. Applied
 completion or assumption-violation events follow with exact clocks. Lightweight
 result indexes bind those immutable records. A failed sensor/model assumption
 cannot become a successful endpoint or a silently paused plant.
+
+The journal uses lossless long-window Zstd compression with an explicit
+128 MiB decoder-window cap. It preserves the complete ordered JSON payloads
+and semantic identities; compression supplies no new mathematical guarantee.
+Acknowledgement follows event flush and file fsync. A closed reader additionally
+requires one completed checksummed frame with no trailing bytes. Interrupted
+prefixes remain aborted evidence rather than complete proof archives.
 
 ### Accepted-hold induction
 

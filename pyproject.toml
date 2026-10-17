@@ -29,8 +29,8 @@ casadi = ["casadi"]
 visualization = ["mayavi"]
 video = ["imageio-ffmpeg"]
 studio = ["mistune>=3,<4"]
-certification = ["python-flint>=0.8,<0.10"]
-all = ["casadi", "mayavi", "imageio-ffmpeg", "mistune>=3,<4", "python-flint>=0.8,<0.10"]
+certification = ["python-flint>=0.8,<0.10", "zstandard==0.25.0"]
+all = ["casadi", "mayavi", "imageio-ffmpeg", "mistune>=3,<4", "python-flint>=0.8,<0.10", "zstandard==0.25.0"]
 
 [tool.setuptools]
 package-dir = {orbexa = "scripts"}

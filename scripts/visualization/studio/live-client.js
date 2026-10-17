@@ -76,6 +76,34 @@ export class LocalMissionClient {
   close() { this.closed = true; }
 }
 
+/** Saved replay controls never create a client, poll, or send simulator commands. */
+export function recordedControls({ liveUiHref } = {}) {
+  const get = id => document.getElementById(id);
+  const group = document.querySelector('#simulation-controls .simulation-knobs');
+  group.setAttribute('role', 'group');
+  group.setAttribute('aria-label', 'Next run settings');
+  group.title = 'Next run settings; these controls do not report saved mission values.';
+  ['release-distance', 'cluster-spacing', 'target-spin', 'live-run', 'live-pause', 'live-reset'].forEach(id => { get(id).disabled = true; });
+  get('live-connection').textContent = 'Recorded mission';
+  get('live-connection').dataset.connected = 'false';
+  const link = get('open-live-simulator');
+  let url;
+  try {
+    const href = liveUiHref === undefined ? link.getAttribute('href') : liveUiHref;
+    if (typeof href !== 'string' || !href.trim()) throw new Error('Invalid local UI address');
+    url = new URL(href, location.href);
+    if (!['http:', 'https:'].includes(url.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password) throw new Error('Invalid local UI address');
+  } catch {
+    link.hidden = true;
+    throw new Error('Live controls require a loopback HTTP(S) address.');
+  }
+  link.href = url.href;
+  link.textContent = 'Live controls';
+  link.title = 'Open the configured local simulator in a separate tab; your browser may ask before opening a local address.';
+  link.hidden = false;
+  return url.href;
+}
+
 export function simulationControls({ onState, onReset, onFollow, onError }) {
   const get = id => document.getElementById(id);
   const knobs = [['release-distance', 'release_distance_m', ' m'], ['cluster-spacing', 'cluster_spacing_m', ' m'], ['target-spin', 'target_spin_deg_s', '°/s']];

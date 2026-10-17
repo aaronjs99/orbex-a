@@ -43,15 +43,33 @@ numerical problem; it does not establish a complete Envisat mission or universal
 solver convergence.
 
 For composite spacecraft, `solver.composite_geometry_mode` defaults to `free`.
-The explicit `reference_corridor` option fixes one reference support witness per
+The explicit `reference_corridor` option fixes one initial-iterate support witness per
 component and node. It keeps every component, the original finite-body/tube and
 uncertainty supports, the normalized component-margin postcheck and the
 continuous-flow guard. It removes free normal/absolute-value decision variables
 and retains their restricted objective constants. It is a stricter feasible
 set, so a safe detour using another component face may be rejected. Invalid
-modes or nonseparating reference witnesses refuse; there is no automatic mode
+modes or nonseparating initial-iterate witnesses refuse; there is no automatic mode
 fallback. See the [support equations, trapping example and same-problem timing
 evidence](composite-approach.md#optional-reference-support-corridor).
+
+This corridor is constructed from a nominal RK4 rollout of the guessed held
+controls, starting at the prescribed current state. A supplied state hint is
+validated but does not replace that rollout in this mode. A previous optimized
+trajectory may not have been executed: the independent admission guard can
+select a stored fallback instead. The initialization diagnostic records the
+projection policy and the maximum displacement from the supplied state hint.
+Free-normal initialization is unchanged.
+
+Selecting planes around the moving goal previously imposed incompatible
+constant constraints on a current state on another side of the spacecraft.
+In one retained native attempt, ten of eleven node-zero component inequalities
+were negative; the worst was approximately −18.224 m. IPOPT could not alter the
+prescribed initial state to repair those inequalities. This diagnoses the
+selected numerical corridor, rather than physical unreachability. The corrected
+seed prevents that goal/current-state mismatch; its geometry check still does
+not establish feasibility of the complete horizon. All original support,
+dynamics, input, terminal and independent execution gates remain active.
 
 Solver diagnostics record the selected mode, including failed numerical
 attempts. Checkpoint restarts may explicitly change solver settings and record

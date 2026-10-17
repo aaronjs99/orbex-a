@@ -14,6 +14,41 @@ export function downloadVideo(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/** Composite the existing selected-chaser inset; never rescale scene geometry. */
+export function drawTubeDetailInset(context, detail, { width = 480, top = 120, bottom = 16 } = {}) {
+  const source = detail?.querySelector('canvas');
+  if (!context || detail?.hidden !== false || !source ||
+      ![source.width, source.height, context.canvas.width, context.canvas.height, width, top, bottom].every(Number.isFinite) ||
+      source.width <= 0 || source.height <= 0 || width <= 0 || top < 0 || bottom < 0) return { visible: false };
+  const padding = 12, header = 60, footer = 34;
+  const availableHeight = context.canvas.height - top - bottom;
+  const panelWidth = Math.min(width, context.canvas.width * .4,
+    (availableHeight - header - footer) * source.width / source.height + 2 * padding);
+  if (panelWidth <= 2 * padding || availableHeight <= header + footer) return { visible: false };
+  const imageWidth = panelWidth - 2 * padding, imageHeight = imageWidth * source.height / source.width;
+  const panelHeight = header + imageHeight + footer;
+  const x = context.canvas.width - panelWidth - 16, y = context.canvas.height - panelHeight - bottom;
+  if (x < 0 || y < top) return { visible: false };
+  const label = detail.ownerDocument.getElementById('chaser')?.selectedOptions?.[0]?.textContent || 'Selected chaser';
+  const title = detail.querySelector('.tube-detail-title')?.textContent || 'Recorded position tube';
+  context.save();
+  try {
+    context.fillStyle = '#07121ff2'; context.fillRect(x, y, panelWidth, panelHeight);
+    context.strokeStyle = '#687580'; context.lineWidth = 1; context.strokeRect(x, y, panelWidth, panelHeight);
+    context.fillStyle = '#e5edf5'; context.font = '22px Segoe UI, sans-serif';
+    context.textAlign = 'left'; context.textBaseline = 'alphabetic';
+    context.fillText(`${label} · magnified local view`, x + padding, y + 24, imageWidth);
+    context.font = '20px Segoe UI, sans-serif';
+    context.fillText(title, x + padding, y + 48, imageWidth);
+    context.drawImage(source, x + padding, y + header, imageWidth, imageHeight);
+    context.fillStyle = '#a6bfd4'; context.font = '19px Segoe UI, sans-serif';
+    context.fillText('● Actual  ○ Nominal · scene at physical scale', x + padding, y + panelHeight - 12, imageWidth);
+  } finally { context.restore(); }
+  return { visible: true, selected_chaser: label, title, x, y, width: panelWidth, height: panelHeight,
+    source_canvas: { width: source.width, height: source.height },
+    semantics: 'Existing recorded-sample error inset magnified independently; underlying scene retains physical scale' };
+}
+
 export class SceneVideoExporter {
   static supported() { return typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function'; }
 
@@ -45,6 +80,7 @@ export class SceneVideoExporter {
       const scale = Math.min(1280 / source.width, 630 / source.height);
       const width = source.width * scale, height = source.height * scale;
       context.drawImage(source, (1280 - width) / 2, 52 + (630 - height) / 2, width, height);
+      drawTubeDetailInset(context, document.getElementById('tube-detail'), { top: 70, bottom: 42 });
       context.fillStyle = '#e5edf5';
       context.font = '600 21px Segoe UI, sans-serif';
       context.fillText('ORBEX-A  ·  ' + title, 26, 32);

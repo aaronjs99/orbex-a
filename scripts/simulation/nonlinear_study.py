@@ -75,13 +75,26 @@ def _write(path, value):
     with temporary.open('w', encoding='utf-8') as stream:
         json.dump(value, stream, default=convert, allow_nan=False, separators=(',', ':'))
         stream.write('\n')
-    temporary.replace(path)
+    replace_deadline = time.monotonic()+2.0
+    while True:
+        try:
+            temporary.replace(path)
+            break
+        except OSError as error:
+            if getattr(error, 'winerror', None) not in (5, 32, 33):
+                raise
+            remaining = replace_deadline-time.monotonic()
+            if remaining <= 0.0:
+                raise
+            time.sleep(min(0.02, remaining))
+            if time.monotonic() >= replace_deadline:
+                raise
 
 
 def _runtime_environment():
     """Read installed dependency identities without importing scientific code."""
     packages={}
-    for name in ('numpy','scipy','gekko','python-flint','PyYAML'):
+    for name in ('numpy','scipy','gekko','python-flint','PyYAML','zstandard'):
         try:packages[name]=importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:packages[name]=None
     native=None
@@ -337,9 +350,10 @@ def _execute_arm(*, config, spacecraft, study, case, adaptation, bandwidth, outp
                 with self.lock:
                     with (directory/'progress.jsonl').open('a', encoding='utf-8') as stream:
                         stream.write(json.dumps(value, allow_nan=False)+'\n')
-        controller = _native_controller(directory, NativeEvents())
+        native_events = NativeEvents()
+        controller = _native_controller(directory, native_events)
         store = CompleteMissionStore(directory/'completion')
-        with NonlinearProofArchive(directory/'nonlinear-certificates.jsonl.gz') as archive:
+        with NonlinearProofArchive(directory/'nonlinear-certificates.jsonl.zst') as archive:
             def checkpoint(update, value, outcome):
                 archive.flush()
                 if archive.holds != len(value.recorder.hold_records):
@@ -349,14 +363,17 @@ def _execute_arm(*, config, spacecraft, study, case, adaptation, bandwidth, outp
                 phase=value.recorder.arrays.sample_phases[-1]
                 distance=max(float(np.linalg.norm(value.state.centers[chaser.chaser_id][:3]-
                     value.preview.docking_state(chaser.docking_point_body,value.state.anomaly)[:3])) for chaser in value.chasers)
-                _write(directory/'progress.json', dict(update=update, exact_q=str(value.truth_target.current_q),
+                progress = dict(update=update, exact_q=str(value.truth_target.current_q),
                     physical_time_s=value.truth_target.physical_time_at(value.truth_target.current_q),
                     phase=phase,maximum_nominal_goal_distance_m=distance,
                     performance_holds=sum(source=='PERFORMANCE' for source in outcome.control_sources),
                     fallback_holds=sum(source!='PERFORMANCE' for source in outcome.control_sources),
                     elapsed_wall_s=time.perf_counter()-started,
                     completed_holds=archive.holds, archive_entries=archive.entries,
-                    retained_full_journal_holds=len(value.executor.journal), retained_runtime_events=len(value.executor.runtime.events)))
+                    retained_full_journal_holds=len(value.executor.journal), retained_runtime_events=len(value.executor.runtime.events))
+                native_events.put({'kind':'checkpoint','schema':'orbexa.nonlinear-progress-checkpoint.v1',
+                                   'committed_progress':progress})
+                _write(directory/'progress.json', progress)
             runner = NonlinearMissionRunner(cfg, design, case=selected, options=options,
                 adaptation_mode=adaptation, bandwidth_mode=bandwidth, certificate_sink=archive.append,
                 checkpoint_sink=checkpoint, controller_factory=controller, initial_target_spin_prior=prior,

@@ -674,7 +674,7 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
         historical_only_inputs=('prior_path', 'admission_path', 'deployment_path'),
         scope='Shared declared nonlinear physics/sensor/safety profile; requested study knobs and nonzero observed spin prior; no flight qualification'))
     controller_factory = _native_controller(directory, messages)
-    with NonlinearProofArchive(directory / 'nonlinear-certificates.jsonl.gz') as archive:
+    with NonlinearProofArchive(directory / 'nonlinear-certificates.jsonl.zst') as archive:
         def progress(event):
             projection = event.get('projection')
             if projection is None and event.get('result') is not None:

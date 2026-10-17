@@ -49,8 +49,9 @@ composite swept-flow admission.
 
 The solver setting `composite_geometry_mode` defaults to `free`. Explicitly
 selecting `reference_corridor` prescribes a unit normal $\bar n$ for each
-component and node from the same reference-position witness used to initialize
-the free formulation. With these normals fixed, the node inequality becomes
+component and node from the native initial nominal iterate. This iterate is an
+RK4 rollout of the guessed held controls from the prescribed current state.
+With these normals fixed, the node inequality becomes
 
 $$
 \bar n^\mathsf{T}(p-c_0-Rc)\geq
@@ -69,7 +70,7 @@ This remains a nonlinear GEKKO/IPOPT problem. The original normalized numerical
 component-margin gate and independent whole-hold safety admission both remain.
 
 This option **restricts** the feasible set. For a unit box centered at the
-origin with 0.1 m bus radius and 0.2 m position-box half widths, a reference at
+origin with 0.1 m bus radius and 0.2 m position-box half widths, a seed at
 $(2,0,0)$ selects a positive-$x$ witness. The safe alternative $(0,2,0)$ has a
 positive-$y$ margin of 0.7 m but a fixed positive-$x$ margin of $-1.3$ m. The
 corridor therefore excludes that detour. Face changes can also create abrupt
@@ -77,15 +78,23 @@ halfspace changes under bounded dynamics. Neither recursive feasibility nor
 whole-route completion follows from selecting this option. There is no
 automatic fallback between modes.
 
-Construction refuses invalid modes, poses, references, or reference witnesses
+Construction refuses invalid modes, poses, seeds, or initial-iterate witnesses
 that do not separate the finite initial predicted tube from every component.
 Such a refusal is not a proof of physical infeasibility. Solver diagnostics
 record the mode, the restriction, the witness policy/count/fingerprint and the
 original component-margin check. Witness fingerprints bind the complete
-geometry, node poses, reference points, tube seeds and numerical support data.
+geometry, node poses, initial-iterate points, tube seeds and numerical support data.
 They identify numerical inputs; they are not interval arithmetic certificates.
 
-An outside replay of the exact retained Envisat second-chaser problem used
+The current-state rollout also avoids treating an unexecuted warm state plan as
+the next initial condition. A successful NLP can be rejected by the independent
+admission guard, which then executes a stored continuation. Validating the old
+state hint and projecting its control guess from the actual current nominal
+state prevents a discontinuous state initialization. This does not prove that
+the projected seed satisfies input, tube or terminal constraints; those remain
+part of the nonlinear program and its independent acceptance checks.
+
+A historical outside replay of the retained Envisat second-chaser problem used
 132 fixed witnesses for all 11 components at 12 nodes. It reduced explicit
 decisions from 1551 to 363 and solved in 2.36 s versus 44.87 s for the qualified
 free-normal representation on the same machine. Projecting the result back to

@@ -137,7 +137,7 @@ class GekkoCompositeGeometry:
 
 
 class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
-    """Prescribe one reference witness per component/node, keeping all supports.
+    """Prescribe one native initial-iterate witness per component/node, keeping all supports.
 
     Fixing these normals restricts the free-normal feasible set: a safe detour
     on another face may be excluded. Support coefficients and the six original
@@ -196,14 +196,14 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
         value = (float(normal @ offset) - float(half @ np.abs(local)) - float(np.abs(normal) @ omega)
                  - float(uncertainty) * math.sqrt(float(target_local @ target_local) + 1e-20) - float(reserve))
         if not math.isfinite(value) or value < 0:
-            raise ValueError("The reference witness does not separate its finite seed tube from the component; "
+            raise ValueError("The initial-iterate witness does not separate its finite seed tube from the component; "
                              "this does not establish dynamic infeasibility")
         return value
 
     def add_node(self, backend, node, position_minus_target_center, omega, reference_position):
         if isinstance(node, (bool, np.bool_)) or not isinstance(node, Integral) or not 0 <= node < len(self.rotations):
             raise ValueError("A reference-corridor node must name a prediction node")
-        reference = self._vector(reference_position, "Reference-corridor reference position")
+        reference = self._vector(reference_position, "Reference-corridor initial iterate position")
         seed_omega = self._vector([float(np.ravel(getattr(v.value, "value", v.value))[0]) for v in omega],
                                   "Reference tube seed", nonnegative=True)
         rotation = self.rotations[node]
@@ -250,20 +250,21 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
                         float(face_support + face_uncertainty + reserve)
                         + sum(abs(float(face[i])) * omega[i] for i in range(3)))
         self.normals.append((node, component, parameters))
-        self.witnesses.append(dict(node=int(node), component_id=component.id, reference_position_m=reference.tolist(),
+        self.witnesses.append(dict(node=int(node), component_id=component.id, initial_iterate_position_m=reference.tolist(),
             seed_tube_halfwidths_m=seed_omega.tolist(), normal_world=normal.tolist(),
             normal_squared_norm=float(normal @ normal), local_projection=local.tolist(),
             tube_support_coefficients=np.abs(normal).tolist(), box_support=box, uncertainty_support=uncertainty,
-            physical_and_pose_reserve=reserve, reference_seed_tube_margin_m=reference_margin))
+            physical_and_pose_reserve=reserve, initial_iterate_seed_tube_margin_m=reference_margin))
 
     def summary(self, margins):
         context = dict(geometry_fingerprint=self.geometry.fingerprint, target_center_m=self.center.tolist(),
                        target_rotations=self.rotations.tolist(), witnesses=self.witnesses)
         fingerprint = hashlib.sha256(json.dumps(context, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
         return dict(super().summary(margins), mode="reference_corridor", stricter_reference_corridor=True,
-                    witness_policy="reference-component-support-v1", witness_count=len(self.witnesses),
-                    witness_fingerprint=fingerprint, witness_source="per-node reference position and initial predicted tube",
+                    witness_policy="initial-iterate-component-support-v1", witness_count=len(self.witnesses),
+                    witness_fingerprint=fingerprint, witness_source="per-node current-state nominal RK4 control rollout (node zero prescribed) and initial predicted tube",
+                    initial_iterate_dynamic_feasibility_claim=False,
                     constant_geometry_objective=self.constant_geometry_objective,
-                    minimum_reference_seed_tube_margin_m=min(row["reference_seed_tube_margin_m"] for row in self.witnesses),
-                    restriction="Prescribed reference support normals; safe detours on other faces may be excluded",
+                    minimum_initial_iterate_seed_tube_margin_m=min(row["initial_iterate_seed_tube_margin_m"] for row in self.witnesses),
+                    restriction="Prescribed initial-iterate support normals; safe detours on other faces may be excluded",
                     continuous_proof_claim=False)
