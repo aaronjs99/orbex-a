@@ -1,16 +1,21 @@
 # Carrier deployment and compact free flight
 
-The Envisat profile starts eight separated buses in one payload-sized region
-300 m from the target. `CarrierTransferReference` moves their common centre in
-LVLH coordinates before the component-aware proximity routes begin. The
-distant centre is never multiplied by target rotation. Only the small local
-dispenser offsets rotate, so release does not acquire a spurious angular-rate
-times 300 m velocity.
+The current 300 m Envisat mission uses `NonlinearMissionRunner`: eight buses
+start in one separated payload-sized cluster, follow component-aware routes to
+assigned attachment patches, and require global nonlinear fleet admission and
+a finite fuel-backed backup before motion. See the [sensed mission](nonlinear-mission.md).
 
-Let $C$ denote the distant LVLH centre, $c$ the close-route body-frame centre,
-$\delta_i$ a fixed dispenser offset, $R(q)$ the target rotation, and $s(q)$ a
-quintic progress function over the declared transfer duration. The parallel
-reference is
+`CarrierTransferReference` blends their common centre in the commanded
+reference-orbit frame before the proximity routes begin. In this composition
+the historical `center_lvlh_m` field names reference-frame coordinates, not
+the perturbed target's physical LVLH. The distant centre is never multiplied
+by target rotation. Only the small local dispenser offsets rotate, so release
+does not acquire a spurious angular-rate times 300 m velocity.
+
+Let $C$ denote the distant reference-frame centre, $c$ the close-route
+body-frame centre, $\delta_i$ a fixed dispenser offset, $R(q)$ the observed
+target preview's body-to-reference rotation, and $s(q)$ a quintic progress
+function over the declared transfer duration. The parallel reference is
 
 $$p_i=(1-s)C+R(q)(sc+\delta_i).$$
 
@@ -22,15 +27,18 @@ control feasibility: all eleven components, actual controls and continuous
 swept admission remain binding for every executed hold. The displayed carrier
 is initial release context; launch and mechanical ejection are not simulated.
 
-The following compact-arc profile remains available for the cylinder studies.
+## Analytical cylinder reproduction API
 
-`CompactArcDeployment` adds an optional finite compact start to the maintained
-nonlinear ADTMPC mission. All chasers begin after separation and acquisition of
-the modeled exact state feedback. Their initial positions lie on a short arc
-near one common target-centered direction. They spread to a full ring, contract
-to a rotating staging shell, and approach their explicitly assigned side points.
-The ordinary `MissionScenario` and default YAML retain their previous start and
-rendezvous-to-docking policy.
+The following sections retain the compact-arc initializer and readiness math
+for analytical-translation cylinder studies. They are supporting Python APIs,
+not another Mission Studio mission mode or the current Envisat pipeline.
+
+`CompactArcDeployment` adds a finite compact start to that analytical ADTMPC
+reproduction. Chasers begin after separation and acquisition of modeled exact
+state feedback. Their initial positions lie on a short arc near one common
+target-centered direction. They spread to a full ring, contract to a rotating
+staging shell, and approach assigned cylinder side points. `MissionScenario`
+and `default.yaml` retain this separately selected reproduction policy.
 
 This initializer models a free-flight handoff, rather than carrier ejection,
 recoil, release ports or navigation acquisition. `PhysicalApproachScenario`
@@ -200,7 +208,7 @@ their two tubes, finite physical bodies, continuous-time separation and recursiv
 feasibility are not established by it. The actual planner and sampled executor
 retain their own checks. A one-chaser deployment has no pairwise spacing claim.
 
-## Phase ownership and docking readiness
+## Analytical cylinder phase ownership and docking readiness
 
 `MissionReferencePolicy.initial_phase()` selects the first phase;
 `select_phase(phase, state, chasers)` sees the current committed actual states,
@@ -223,7 +231,7 @@ and anomaly-velocity tolerances. For a nominal error `e` and component box `a`,
 its exact farthest Euclidean error is `norm(abs(e)+a)`. The velocity box is
 `Phi+Lambda Omega`.
 
-The current side support must satisfy
+The cylinder side support must satisfy
 `n @ z_position >= radius*(1+tolerance)+rho+target_barrier_clearance`, matching
 the solver's stronger Euclidean tube inflation and enclosing the nominal box.
 The gate also checks actual and nominal-tube target exclusion, actual fleet
@@ -232,12 +240,13 @@ nonfinite states or negative envelopes are rejected. `staging_margins` exposes
 each gate margin for outside diagnostics.
 
 A successful gate permits a docking solve. A later failed solve remains a
-recorded failure; this policy does not add a physical abort or staging backup.
+recorded failure; this analytical policy does not supply the sensed runner's
+finite fleet backup.
 Whole-tube terminal acceptance and consecutive endpoint dwell remain active.
 The shared terminal bound now uses the exact component-box norm described above
 for both position and velocity. Reaching a 5 mm point-center standoff is still
 a free-flight result, with the model and evidence limits in
-[the ADTMPC derivation](adtmpc-design.md).
+[the analytical ADTMPC derivation](adtmpc-design.md).
 
 Deployment configuration, resolved geometry, assignment strategy, timing and
 scope are supplied through `MissionScenario.scenario_metadata()` for result

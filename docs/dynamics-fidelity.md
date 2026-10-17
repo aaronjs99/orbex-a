@@ -1,8 +1,16 @@
-# Dynamics fidelity and the nonlinear replay boundary
+# Historical analytical dynamics fidelity and replay boundary
 
-**The current `1e-5 m/rad²` componentwise guard allowance does not qualify the matched full vector quadratic-drag plant at the evaluated saved states.** The largest evaluated component discrepancy is `0.033936410695 m/rad²`, approximately 3,394 times that allowance. Increasing a configured number from these finite samples would not establish a continuous bound. The current approach, contractor, tube and Arb evidence therefore retains its declared analytical Carter–Humi model scope.
+This page preserves the fidelity audit of a saved analytical Carter–Humi
+mission and its independent inertial replay. Its discrepancy numbers and
+conditional bounds apply to those declared records and models. The current
+[sensed nonlinear mission](nonlinear-mission.md) uses a separate augmented
+target/relative interval service, physical-time enclosure and regional residual
+bridge, described in [navigation and physical bounds](nonlinear-navigation.md).
+Neither that implementation nor a new viewer upgrades an older analytical record.
 
-The independent `orbexa.core.inertial_dynamics` service supplies nonlinear Cartesian propagation for studying that gap. It is maintained, reusable numerical propagation, with explicit central gravity, optional J2, atmosphere and drag declarations. It has not been substituted into the controller, parameter contractor, proof backend or completed mission records. Its numerical success does not itself certify a flow, collision avoidance, attachment or closed-loop success.
+**The saved analytical guard's `1e-5 m/rad²` componentwise allowance does not qualify the matched full vector quadratic-drag plant at the evaluated saved states.** The largest evaluated component discrepancy is `0.033936410695 m/rad²`, approximately 3,394 times that allowance. Increasing a configured number from these finite samples would not establish a continuous bound. That saved approach, contractor, tube and Arb evidence retains its declared analytical Carter–Humi model scope.
+
+The independent `orbexa.core.inertial_dynamics` service supplies reusable numerical Cartesian propagation for this force/frame comparison, with explicit central gravity, optional J2, atmosphere and drag declarations. Its numerical success does not itself certify a flow, collision avoidance, attachment or closed-loop success. The current nonlinear inclusion service is a separate implementation; neither service retroactively substitutes a new model into the saved analytical mission.
 
 ## Force model and frame
 
@@ -259,12 +267,31 @@ As an explicitly conditional illustration, choose radii `[6.5e6,1e7] m`, $|k|\le
 | $E_U$ | `0.003480013591` |
 | Sum, rounded upward for display | `0.133592771851` |
 
-**Those target/reference/clock hypotheses have not been proven or enforced by the maintained mission guard. This number is not a default allowance, and is not a certificate for the saved mission.** The outside `continuous-bound-qualification.json` retains the exact rational values. A separate 512-state numerical comparison cross-checked the compact full relative equation against the independent inertial force/frame transform, with maximum component disagreement `8.01e-9 m/rad²`; those samples check the algebra, rather than prove continuous domain containment.
+**The illustrative target/reference/clock hypotheses were not proven or enforced by the archived analytical mission guard. This number is not a default allowance, and is not a certificate for that saved mission.** The outside `continuous-bound-qualification.json` retains the exact rational values. A separate 512-state numerical comparison cross-checked the compact full relative equation against the independent inertial force/frame transform, with maximum component disagreement `8.01e-9 m/rad²`; those samples check the algebra, rather than prove continuous domain containment.
 
-## What remains before a nonlinear safety claim
+## Archived analytical guard and current nonlinear bridge
 
-The current Arb backend exposes the maintained analytical `enclose_orbital(HeldInputRequest, OrbitalModelBounds)` and constant `enclose_affine` inclusions. Its orbital request accepts a componentwise `acceleration_disturbance` box. A rigorously bounded additive discrepancy could use that interface **only after** all operating-region, model, input, target and clock hypotheses are bound to and checked throughout each proposed hold. Existing candidate relative boxes can help bound $p,p'$; they do not supply a validated full target orbit, its deviation from the analytical orbit, or its physical clock.
+The maintained analytical `enclose_orbital(HeldInputRequest, OrbitalModelBounds)`
+and constant `enclose_affine` services retain their declared model scope. The
+orbital request accepts an `acceleration_disturbance` box, but that relative
+interface alone does not enclose a perturbed target ephemeris or physical clock.
+Increasing its forcing allowance cannot supply those missing hypotheses for an
+old record. The conditional discrepancy mathematics above remains useful only
+on its explicitly checked target, input, state, model and clock domain.
 
-Central gravity and the matched vector-drag discrepancy are continuously boundable away from zero radius, as above. Arb arithmetic can also enclose their algebraic norm, square-root and inverse expressions over a positive-radius domain. The maintained backend does not yet provide the augmented nonlinear inertial/target vector field and validated physical-time propagation needed to do that automatically. Its present physical-time and target-kinematic bounds use the analytical orbit. A larger relative forcing box alone does not correct those clocks, target geometry, or the parameter contractor's model assumptions.
+The separate `NonlinearFlowEncloser.enclose_target` now encloses the declared
+central/J2/co-rotating exponential-drag target and physical time with strict Arb
+Picard inclusion. `enclose_relative` binds the six-state reference-frame motion
+to that target/clock certificate. `bound_residual` encloses nonlinear-minus-CH
+acceleration over a declared regional box. The sensed runner combines those
+services with bounded navigation, matching nonlinear membership and finite
+fleet continuation. The executed flow must still satisfy the regional,
+sensor, actuation, geometry and fuel hypotheses; see
+[the nonlinear contract](nonlinear-navigation.md) and
+[fleet fallback](fleet-fallback.md).
 
-A complete bridge therefore needs either a validated nonlinear target/clock enclosure plus checked regional remainders for every hold, or an augmented nonlinear validated flow implementation covering the target, chasers, declared atmosphere/J2, applied input, and uncertainty. Both require a corresponding consistent sensing/contractor interpretation and failure continuation. Until that work is admitted and exercised, the analytical mission evidence and the independent nonlinear numerical replay evidence must retain their distinct scopes.
+This implemented bridge does not requalify the saved analytical mission or
+establish a new full-mission outcome by itself. Numerical replays, admitted
+nonlinear holds and a completely checked mission retain separate evidence
+scopes. Every completed mission claim requires its own source-bound execution,
+arrival, contact and continuation records.

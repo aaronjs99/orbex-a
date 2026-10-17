@@ -104,7 +104,8 @@ The numerical and Arb nonlinear RHS share equations and immutable physical
 declarations. Certificates bind the model, clock, target ephemeris, input,
 regional domain and source. The independent inertial service checks those
 equations; it is not a replacement source of controller measurements. See
-[dynamics fidelity](dynamics-fidelity.md) and [navigation](nonlinear-navigation.md).
+[navigation](nonlinear-navigation.md) and the
+[historical analytical fidelity audit](dynamics-fidelity.md).
 
 `SensorSuite` produces truth-side packets. Navigation consumes declared priors,
 validated held-flow predictions and delivered bounded packets. Own-chaser GNSS
@@ -231,5 +232,5 @@ Generated sessions and qualification outputs stay outside the maintained
 checkout. Source paper figures remain publication assets. Repository policy
 retains no test/validation infrastructure. Mathematical claims remain
 conditional on the finite declared domains and admission contracts in
-[the formulation](theory.md); this architecture makes no flight, device,
+[the nonlinear formulation](nonlinear-mission.md); this architecture makes no flight, device,
 universal environmental-coverage or real-time execution claim.
