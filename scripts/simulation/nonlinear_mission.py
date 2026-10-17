@@ -450,6 +450,8 @@ class NonlinearMissionRunner:
             self.adaptation.consume_delivered(outcome.delivered_packets,accepted_packet_ids=accepted.packet_ids,
                 sensor_fingerprints=accepted.sensor_fingerprints)
             transitions.extend(item for _,item in outcome.membership_transitions)
+            # Only the latest fleet sample is consumed; full witnesses are archived.
+            del transitions[:-8]
             if update>0 and update%20==0:
                 # All agents contribute; no failed NLP is a negative truth label.
                 consistent=self.adaptation.contract(tuple(transitions[-8:]),update=update)
