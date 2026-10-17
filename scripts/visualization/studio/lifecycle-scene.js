@@ -84,9 +84,17 @@ export class LifecycleScene {
       this.group.add(carried); this.carriedArms[id] = carried;
     }
     const samples = lifecycleTimeline(data), points = Object.fromEntries(this.ids.map(id => [id, []]));
+    const targetBounds = new THREE.Box3().setFromObject(this.target);
+    this.overviewRadius = Math.hypot(...['x', 'y', 'z'].map(axis =>
+      Math.max(Math.abs(targetBounds.min[axis]), Math.abs(targetBounds.max[axis]))));
     for (const sample of samples) {
       const pose = lifecyclePose(data, sample.kind, sample.index);
-      for (const id of this.ids) points[id].push(new THREE.Vector3(...pose.bodies[id].position));
+      for (const id of this.ids) {
+        points[id].push(new THREE.Vector3(...pose.bodies[id].position));
+        this.overviewRadius = Math.max(this.overviewRadius,
+          Math.hypot(...pose.bodies[id].position) + (data.body_radii_m?.[id] ?? data.body_radius_m),
+          Math.hypot(...pose.pads[id].tip) + .014, Math.hypot(...pose.pads[id].mount));
+      }
     }
     for (const [number, id] of this.ids.entries()) {
       const path = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points[id]), new THREE.LineBasicMaterial({ color: approach?.tracks[number].color || '#5bd4bd', transparent: true, opacity: .3 }));
@@ -96,9 +104,16 @@ export class LifecycleScene {
   }
 
   setVisible(active) {
+    const entering = active && !this.active;
+    const leaving = !active && this.active;
     this.active = active; this.group.visible = active;
     if (this.host.model) this.host.model.visible = !active;
     this.host.vehicles = active ? this.buses : this.previousVehicles;
+    if (entering && ['mission', 'overview', 'top'].includes(this.host.mode)) this.setCamera(this.host.mode);
+    if (leaving) {
+      this.host.frameKey = null;
+      if (['overview', 'top'].includes(this.host.mode)) this.previousSetCamera?.call(this.host, this.host.mode);
+    }
   }
 
   update(sample, selected, options) {
@@ -132,12 +147,12 @@ export class LifecycleScene {
     this.host.mode = mode;
     const camera = this.host.camera, controls = this.host.controls;
     camera.up.set(0, mode === 'top' ? 1 : 0, mode === 'top' ? 0 : 1);
-    const bounds = new THREE.Box3().setFromObject(this.group);
     const close = ['follow', 'docking'].includes(mode);
-    const center = close ? (mode === 'docking' ? this.tips[this.ids[this.selected]].position : this.buses[this.selected].position).clone() : bounds.getCenter(new THREE.Vector3());
+    const center = close ? (mode === 'docking' ? this.tips[this.ids[this.selected]].position : this.buses[this.selected].position).clone() : new THREE.Vector3();
     const direction = mode === 'top' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(-2.1, -2.5, 1.8).normalize();
-    const extent = close ? Math.max(.8, 5 * this.data.body_radius_m) : Math.max(1, bounds.getSize(new THREE.Vector3()).length() / 2);
-    const distance = close ? extent * 2 : extent / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, camera.aspect)) * 1.2;
+    const extent = close ? Math.max(.8, 5 * this.data.body_radius_m) : Math.max(1, this.overviewRadius);
+    const halfAngle = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * Math.min(1, camera.aspect));
+    const distance = close ? extent * 2 : extent / Math.sin(halfAngle) * 1.2;
     controls.target.copy(center); camera.position.copy(center).addScaledVector(direction, distance);
     controls.maxDistance = Math.max(150, distance * 3); camera.far = Math.max(1000, distance * 5); camera.updateProjectionMatrix(); controls.update();
   }
