@@ -338,6 +338,10 @@ Dynamic tube optimization is established by
 [Lopez, Slotine and How (2019)](https://arxiv.org/abs/1907.06553).
 Adaptive tube feasibility requires additional estimator/terminal conditions;
 see [Köhler et al.](https://arxiv.org/abs/1911.02899).
+Moving-reference interception with adaptive terminal sets also has finite-time
+results for linear discrete-time bounded-disturbance systems:
+[Quartullo et al.](https://arxiv.org/html/2410.08807v1).
+Those assumptions do not establish nonlinear fleet contact or disposal.
 Tumbling Envisat tube MPC also predates this project:
 [Buckner and Lampariello (2018)](https://elib.dlr.de/125251/).
 Finite contact dynamics have a long modeling history, including

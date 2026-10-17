@@ -174,4 +174,8 @@ The NLP forcing, performance admission input boxes, fallback invariance/geometry
 
 For stationary inverse-radius drag, the convention `a_D=-sigma*rho*|v|v/2` gives `alpha=sigma_target*rho_ref*r_ref/2` and `beta=sigma_chaser*rho_ref*r_ref/2`. Under exponential co-rotating drag these are surrogate nominal coefficients; actual osculating eccentricity need not be constant under J2. Keep physical parameter membership distinct from nominal coefficient fitting.
 
-Mission wiring must still replace truth-fed feedback, derive sensing-dependent input reserves, supply bounded occupied pose, retain exact endpoint sets through handoffs, and establish failure continuation before a complete nonlinear mission claim. Generated probe/evidence files belong outside this repository. No repository test or validation infrastructure is introduced by these modules.
+`NonlinearMissionRunner` connects bounded navigation, sensed ancillary reserves, validated occupied pose, physical endpoint transfer and finite fleet continuation. Each actual run still needs its complete admission journal and successful arrival, contact and continuation gates before a full mission claim.
+
+Membership records retain candidate and composite observation IDs, available target/flow fingerprints and statuses, and a rejection/retention reason. They do not retain candidate endpoint boxes or complete candidate-specific interval flow witnesses. Independently checking a parameter rejection therefore requires source-bound replay of that candidate inclusion; verifying the global safety journal alone does not establish that separate result. Failed or budget-limited inclusions retain the candidate.
+
+Generated probe/evidence files belong outside this repository. No repository test or validation infrastructure is introduced by these modules.
