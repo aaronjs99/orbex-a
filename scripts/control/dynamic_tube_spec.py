@@ -167,12 +167,20 @@ class DynamicTubeSpec:
     nominal_endpoint_error_abs: np.ndarray | None = None
     stage_peak_padding_abs: np.ndarray | None = None
     contact_terminal: ProspectiveContactConstraint | None = None
+    # Optional constant actuator input-set support, distinct from acceleration forcing eta.
+    # Omission/zero retains legacy command-only tightening; units match the input box.
+    applied_actuator_input_error_abs: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         delta_a = np.asarray(self.delta_A, dtype=float)
         if delta_a.ndim != 3 or delta_a.shape[1:] != (3, 6) or len(delta_a) < 1:
             raise ValueError("dynamic_tube.delta_A must have shape (intervals, 3, 6) with at least one interval")
         intervals = len(delta_a)
+        if self.applied_actuator_input_error_abs is not None:
+            applied = np.asarray(self.applied_actuator_input_error_abs, dtype=float)
+            if applied.shape != (3,) or not np.all(np.isfinite(applied)) or np.any(applied < 0):
+                raise ValueError('dynamic_tube.applied_actuator_input_error_abs must be a finite nonnegative three-vector')
+            self.applied_actuator_input_error_abs = applied.copy()
         if self.measurement_error_abs is not None:
             observed = np.asarray(self.measurement_error_abs, dtype=float)
             if observed.shape != (6,) or not np.all(np.isfinite(observed)) or np.any(observed < 0):
@@ -251,7 +259,7 @@ class DynamicTubeSpec:
     def to_extra_params(self) -> Dict[str, Any]:
         """Return the current backend's dynamic-tube mapping without reformulation."""
         result = {item.name: getattr(self, item.name) for item in fields(self)
-                  if item.name not in ("terminal_start_index", "terminal_region", "terminal_planning_fraction", "measurement_error_abs", "nominal_endpoint_error_abs", "stage_peak_padding_abs", "contact_terminal")}
+                  if item.name not in ("terminal_start_index", "terminal_region", "terminal_planning_fraction", "measurement_error_abs", "nominal_endpoint_error_abs", "stage_peak_padding_abs", "contact_terminal", "applied_actuator_input_error_abs")}
         if self.measurement_error_abs is not None:
             result['measurement_error_abs'] = self.measurement_error_abs.copy()
         if self.nominal_endpoint_error_abs is not None:
@@ -266,6 +274,8 @@ class DynamicTubeSpec:
             result["terminal_planning_fraction"] = self.terminal_planning_fraction
         if self.contact_terminal is not None:
             result['contact_terminal'] = self.contact_terminal.as_dict()
+        if self.applied_actuator_input_error_abs is not None:
+            result['applied_actuator_input_error_abs'] = self.applied_actuator_input_error_abs.copy()
         return result
 
     @classmethod

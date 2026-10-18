@@ -234,6 +234,9 @@ class GekkoDynamicTube:
         da = self._array("delta_A", (count-1, 3, 6), True)
         dd = self._array("delta_d", (count-1, 3), True)
         eta = self._array("eta", (3,), True)
+        self.applied_actuator_input_error_abs = (
+            self._array('applied_actuator_input_error_abs', (3,), True)
+            if 'applied_actuator_input_error_abs' in spec else np.zeros(3))
         observation = (self._array('measurement_error_abs', (6,), True)
                        if 'measurement_error_abs' in spec else None)
         self.observation_error = observation
@@ -436,6 +439,9 @@ class GekkoDynamicTube:
                 else:
                     self._eq(self.phi[k+1][i], decay*self.phi[k][i] + (1-decay)*w[i]/alpha[i])
                 margin = reserve[i]
+                # R remains ancillary feedback. The applied actuator box must also fit U.
+                if self.applied_actuator_input_error_abs[i] > 0:
+                    margin = margin + float(self.applied_actuator_input_error_abs[i])
                 if p.input_bounds and i < len(p.input_bounds):
                     lower = self._bound(p.input_bounds[i], "lower")
                     upper = self._bound(p.input_bounds[i], "upper")
@@ -786,6 +792,9 @@ class GekkoDynamicTube:
                     "A_variation":np.asarray(self.spec['A_variation']).copy(),
                     "hold_width":float(self.spec['hold_width'])}
             tube.update({name:self._values(rows) for name,rows in self.stage_terms.items()})
+            if np.any(self.applied_actuator_input_error_abs):
+                tube['applied_actuator_input_error_abs'] = self.applied_actuator_input_error_abs.copy()
+                tube['applied_input_tightening'] = tube['input_reserve'] + self.applied_actuator_input_error_abs
             parameter_export_difference = {name: float(np.max(np.abs(
                 np.asarray([float(value.value[0]) for value in rows[0]]) - self.prescribed_initial[name])))
                 for name, rows in (('state', self.states), ('phi', self.phi), ('omega', self.omega))}
@@ -846,7 +855,16 @@ class GekkoDynamicTube:
                                              "constraint_sampling":"nonlinear geometry and state constraints at prediction nodes",
                                               **({"terminal_suffix":terminal_info} if terminal_info is not None else {}),
                                               **({'contact_terminal':contact_info} if contact_info is not None else {}),
-                                             "dynamic_tube":tube})
+                                              **({'applied_input_reserve_contract':dict(
+                                                  method='ancillary-plus-applied-actuator-support-v1',
+                                                  applied_actuator_input_error_abs=self.applied_actuator_input_error_abs.tolist(),
+                                                  ancillary_input_reserve=tube['input_reserve'].tolist(),
+                                                  total_applied_input_tightening=tube['applied_input_tightening'].tolist(),
+                                                  units='same as input bounds',
+                                                  feedback_ratio_semantics='Ancillary feedback / input_reserve; actuator support is additional',
+                                                  legacy_profile_input_tightening_semantics='Maximum ancillary feedback reserve only')}
+                                                 if np.any(self.applied_actuator_input_error_abs) else {}),
+                                              "dynamic_tube":tube})
         except Exception as error:
             return SolverResult(success=False,solve_time=time.time()-started,
                                 message="Coupled GEKKO dynamic-tube solve failed: %s" % error,

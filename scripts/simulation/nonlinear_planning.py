@@ -230,6 +230,7 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
             terminal_velocity_tolerance=velocity_tolerance,
             enforce_terminal=terminal_index is not None,terminal_start_index=terminal_index,
             measurement_error_abs=ctx.observation_error_abs,
+            applied_actuator_input_error_abs=ctx.acceleration_error_abs,
             nominal_endpoint_error_abs=self.nominal_endpoint_error_abs,
             stage_peak_padding_abs=self.stage_peak_padding_abs,
             contact_terminal=contact)

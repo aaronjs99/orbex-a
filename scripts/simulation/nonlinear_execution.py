@@ -563,9 +563,11 @@ class NonlinearDenseExecutor:
             ('A_abs','A_variation','delta_A','delta_d','lambda_gain','eta','measurement_error_abs')}
         budget=getattr(spec,'nominal_endpoint_error_abs',None)
         padding=getattr(spec,'stage_peak_padding_abs',None)
+        applied=getattr(spec,'applied_actuator_input_error_abs',None)
         fields.update(hold_width=str(exact(spec.hold_width)),
             nominal_endpoint_error_abs=None if budget is None else np.asarray(budget).tolist(),
-            stage_peak_padding_abs=None if padding is None else np.asarray(padding).tolist())
+            stage_peak_padding_abs=None if padding is None else np.asarray(padding).tolist(),
+            applied_actuator_input_error_abs=None if applied is None else np.asarray(applied).tolist())
         controller=dict(self.runtime.active_fallback.segment_at(self.observed_q).controllers)[key]
         if _target_identity is None:
             target_identity=context.target_flow.fingerprint
@@ -617,6 +619,12 @@ class NonlinearDenseExecutor:
             raw=residual.get('component_bounds',{})
             residual_box=IntervalBox(raw.get('exact_lower',()),raw.get('exact_upper',()))
             controller=dict(self.runtime.active_fallback.segment_at(q0).controllers)[key]
+            applied=getattr(spec,'applied_actuator_input_error_abs',None)
+            applied=np.asarray(np.zeros(3) if applied is None else applied,dtype=float)
+            if (applied.shape!=(3,) or np.any(~np.isfinite(applied)) or np.any(applied<0)
+                    or any(exact(value)<exact(bound) for value,bound in
+                        zip(applied,controller.certificate.spec.actuator_error_abs))):
+                raise ValueError('Prospective applied-input tightening does not cover the installed actuator support')
             eta_required=tuple(max(exact(declared),exact(global_))+max(abs(lo_),abs(hi_))+exact(self.config.tube.numerical_reserve)
                 for declared,global_,lo_,hi_ in zip(planner.context.acceleration_error_abs,
                     controller.certificate.spec.actuator_error_abs,self.runtime.acceleration_disturbance.lower,

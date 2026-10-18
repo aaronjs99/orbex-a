@@ -46,6 +46,13 @@ class ScipySolver(SolverBase):
 
     def setup(self, problem: MPCProblem) -> None:
         """Set up SciPy optimization."""
+        dynamic = problem.extra_params.get('dynamic_tube')
+        if dynamic is not None and dynamic.get('applied_actuator_input_error_abs') is not None:
+            applied = np.asarray(dynamic['applied_actuator_input_error_abs'], dtype=float)
+            if applied.shape != (3,) or not np.all(np.isfinite(applied)) or np.any(applied < 0):
+                raise ValueError('Invalid dynamic-tube applied actuator input support')
+            if np.any(applied):
+                raise ValueError('SciPy does not implement dynamic-tube applied-input tightening; use the authoritative GEKKO backend')
         self._problem = problem
 
         A = problem.dynamics_matrix
