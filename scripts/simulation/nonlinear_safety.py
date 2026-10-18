@@ -16,6 +16,7 @@ from orbexa.core.reference_frame import exact
 from orbexa.simulation.nonlinear_refuge import (C2RefugeReference,NonlinearZeroDriftBounds,
     StudyPropulsionBounds,CompositeOccupiedBoundsProvider,AnyProperTargetPose,
     AttitudePoseBoundsProvider,construct_refuge_plan,construct_patch_refuge_candidates,ZERO_NOMINAL_ID)
+from orbexa.simulation.fleet_braking import coordinated_braking_references
 from orbexa.control.refuge import exact_record,fingerprint
 
 
@@ -403,6 +404,7 @@ class NonlinearSafetyPlanner:
         # clock. Decimal approximations can otherwise create microscopic
         # extra holds at an almost coincident proof boundary.
         retreat_width=(642 if near else 1600)*dense
+        coordinated_width=relative_width=None
         if not near:
             # Stop the current momentum on a monotone velocity-easing route.
             # The complete nonlinear/reference/force/fuel/geometry proof below
@@ -411,11 +413,25 @@ class NonlinearSafetyPlanner:
             duration=exact(3*velocity/60000.)
             window=64*dense;ratio=duration/window
             retreat_width=max(retreat_width,((ratio.numerator+ratio.denominator-1)//ratio.denominator)*window)
+            velocities=np.asarray([value[3:] for value in points.values()])
+            common_velocity=np.mean(velocities,axis=0)
+            relative_velocity=max(np.linalg.norm(value-common_velocity) for value in velocities)
+            def rounded_width(value):
+                ratio=exact(value)/window
+                return ((ratio.numerator+ratio.denominator-1)//ratio.denominator)*window
+            # Separate the high shared approach speed from the much smaller
+            # formation-closing velocities. These allocation targets select
+            # proposals only; the unchanged full command/force proof decides.
+            coordinated_width=max(1600*dense,rounded_width(3*np.linalg.norm(common_velocity)/50000.))
+            relative_width=min(coordinated_width,max(window,rounded_width(3*relative_velocity/10000.)))
         hold_width=(96 if near else 320)*dense
-        end=q+retreat_width+hold_width
+        if coordinated_width is not None and q+coordinated_width+hold_width>self.clock.q_domain[1]:
+            coordinated_width=relative_width=None
+        forecast_width=max(retreat_width,coordinated_width or retreat_width)
+        end=q+forecast_width+hold_width
         if end>self.clock.q_domain[1]:
             raise ValueError('A complete retreat and holding suffix exceed the declared clock domain')
-        target_flow=self.target_forecast(estimate,retreat_width+hold_width)
+        target_flow=self.target_forecast(estimate,forecast_width+hold_width)
         attitude=pose_target=None
         if near:
             # A prospective endpoint has no newly observed pose. Continue the
@@ -504,15 +520,32 @@ class NonlinearSafetyPlanner:
             # A finite prospective search changes only the declared reference
             # and tracking domain. Each member must independently satisfy all
             # original nonlinear, sensing, input, geometry and fuel guards.
-            # The original, widest entry domain remains the first choice.
+            # Try coordinated braking with the widest existing entry domain
+            # first. Independent routes remain finite alternate proposals.
             plan=None
-            for label,omega,sliding,reference_acceleration in (
+            profiles=(
+                    ('coordinated-50k-10k','.15',30.,60000.),
                     ('original-60k','.15',30.,60000.),
                     ('medium-60k','.12',24.,60000.),
-                    ('medium-63k','.12',24.,63000.)):
+                    ('medium-63k','.12',24.,63000.))
+            for label,omega,sliding,reference_acceleration in profiles:
+                if label.startswith('coordinated') and coordinated_width is None:
+                    attempts.append(dict(profile=label,status='REFUSED',reason='Complete coordinated route exceeds the declared clock domain'))
+                    continue
                 candidate_width=retreat_width
                 candidate_references,candidate_contexts=references,contexts
-                if reference_acceleration!=60000.:
+                if label.startswith('coordinated'):
+                    candidate_width=coordinated_width
+                    center=np.mean([value[:3] for value in points.values()],axis=0)
+                    norm=np.linalg.norm(center)
+                    outward=center/norm if norm>1e-12 else np.asarray(next(iter(directions.values())))
+                    candidate_references=coordinated_braking_references(initial_states=points,start=q,
+                        common_duration=candidate_width,relative_duration=relative_width,
+                        holding_duration=hold_width,outward_displacement=tuple(2*outward),
+                        frame=estimate.frame_id,clock_id=self.clock.fingerprint)
+                    candidate_contexts={key:replace(contexts[key],reference_id=reference.reference_id)
+                        for key,reference in candidate_references.items()}
+                elif reference_acceleration!=60000.:
                     duration=exact(3*velocity/reference_acceleration)
                     ratio=duration/window
                     candidate_width=max(1600*dense,
@@ -532,6 +565,10 @@ class NonlinearSafetyPlanner:
                     reference_acceleration_target=reference_acceleration,
                     retreat_duration_q=str(candidate_width),holding_duration_q=str(hold_width),
                     reference_ids={key:value.reference_id for key,value in candidate_references.items()})
+                if label.startswith('coordinated'):
+                    profile.update(common_duration_q=str(candidate_width),relative_duration_q=str(relative_width),
+                        common_acceleration_target=50000.,relative_acceleration_target=10000.,
+                        reference_policy='shared-translation-with-faster-relative-braking')
                 candidate=None
                 try:
                     candidate_tracking=dict(tracking,omega=(exact(omega),)*3,phi=(sliding,)*3)
@@ -598,7 +635,7 @@ class NonlinearSafetyPlanner:
                 finite_candidate_search=attempts,refused_candidates=refused_candidates)
         record=dict(exact_start=str(q),near_target=near,plan=summary,
             retreat_duration_q=str(retreat_width),holding_duration_q=str(hold_width),
-            refuge_policy='finite-patch-candidates' if near else 'finite-fast-monotone-braking-quintics',
+            refuge_policy='finite-patch-candidates' if near else 'finite-fleet-braking-candidates',
             far_candidate_profile=far_profile,
             target_flow_fingerprint=target_flow.fingerprint,
             attitude_flow_fingerprint=None if attitude is None else attitude.fingerprint,

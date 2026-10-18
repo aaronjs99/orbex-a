@@ -257,6 +257,62 @@ See [sampled-data CBF analysis](https://arxiv.org/abs/2103.03677).
 ORBEX's independent interval flows and continuation admission address the
 physical model; this new local QP does not supersede them.
 
+### Brake relative motion before the shared approach motion
+
+The fleet can have a high common approach speed and much smaller differences
+between chaser velocities. Braking every complete velocity over the same long
+duration can still let those differences consume the inter-chaser clearance.
+Refining a time enclosure cannot repair a reference whose actual tube boxes
+overlap the required separation.
+
+Let $p_{i0}$ and $v_{i0}$ be initial position and velocity in the commanded
+reference frame, with derivatives taken in $q$. Define the common velocity
+$v_c=N^{-1}\sum_i v_{i0}$ and relative velocity $w_i=v_{i0}-v_c$.
+For a positive braking duration $T$, use
+
+$$
+b_T(\tau)=\frac{T}{4}\left[1-\left(1-\frac{\tau}{T}\right)^4\right],
+\quad 0\le\tau\le T,
+\qquad b_T(\tau)=T/4\quad(\tau>T).
+$$
+
+Its derivative is $(1-\tau/T)^3$, so velocity and acceleration reach zero
+continuously. Let $s_T$ be the quintic unit step
+$10(\tau/T)^3-15(\tau/T)^4+6(\tau/T)^5$ until $T$, then one.
+With a shared outward displacement $d$, the proposed route is
+
+$$
+p_i(\tau)=p_{i0}+v_c b_{T_c}(\tau)+w_i b_{T_r}(\tau)
+             +d\,s_{T_c}(\tau),\qquad 0<T_r\le T_c.
+$$
+
+The shared terms cancel in every simultaneous peer difference:
+
+$$
+p_i(\tau)-p_j(\tau)=p_{i0}-p_{j0}
+                    +(v_{i0}-v_{j0})b_{T_r}(\tau).
+$$
+
+After $T_r$, the reference formation is fixed in the commanded frame while
+shared braking continues. Exact rational piecewise polynomials join with
+continuous position, velocity and acceleration; a finite constant-reference
+holding interval follows. The implementation is
+`simulation/fleet_braking.py`. This is a reference proposal, and the complete
+nonlinear tracking, sensing, actuator, force, fuel, target-component and peer
+proofs still decide admission. The tube widths and safety distances remain
+unchanged. See [the finite-refuge formulation](fleet-fallback.md).
+
+![Common and relative braking on an archived-state replay](assets/formation-braking.png)
+
+The figure uses the archived fallback endpoint immediately after a recorded
+successor refusal. The refused performance projection itself was not retained.
+On this adjacent state, the independent candidates allow whole-box peer
+distances of 1.18–1.29 m against a strict 1.30 m requirement. The coordinated
+candidate proves all 28 pairs above 1.437 m with the original 0.15 m component
+position tubes, and passes the full finite nonlinear refuge constructor.
+This component replay does not establish a completed mission or real-time
+execution.
+
 ## 6. MPC, condensed QPs and nonconvex geometry
 
 For prediction length $N$, nominal states $z_k$, controls $\bar u_k$, moving

@@ -265,15 +265,50 @@ the runtime already owns the relational physical invariant. A separate
 not claim a new installation or a new full proof. Failure of this preflight
 requires fresh preparation or the existing explicit assumption-failure path.
 
-The far constructor searches three finite candidates in a fixed order: the
-original lambda=200, omega=0.15, phi=30 domain with a 60000 reference-duration
-target; omega=0.12, phi=24 with the same route; then that smaller domain with a
-63000 duration target. Beta=22000, Dv=120000, global actuator error 300, sensing
+The far constructor first proposes coordinated common/relative braking with
+lambda=200, omega=0.15 and phi=30. The reference generator
+`simulation/fleet_braking.py` separates each initial velocity into the fleet
+mean and its difference from that mean. Shared velocity is eased to zero over
+a common duration; velocity differences are eased to zero over a shorter
+duration. A shared 2 m outward displacement cancels in every peer difference.
+The reference is piecewise polynomial with exact C2 joins and a finite
+constant-reference hold. Allocation targets of 50000 for common braking and
+10000 for relative braking, in m per rad squared, choose durations rounded to
+the existing proof-window clock. They are proposals, never thrust ratings or
+force certificates. The target ephemeris covers the longest proposed route.
+An option exceeding the finite clock domain is refused.
+
+Three independent-braking alternatives follow: omega=0.15, phi=30 with a
+60000 reference-duration target; omega=0.12, phi=24 with the same route; then
+that smaller domain with a 63000 duration target. Beta=22000, Dv=120000,
+global actuator error 300, sensing
 floors 0.03 m/6.5 m per rad, input limits, installed hardware and all geometry
 checks remain unchanged. Actual sensing budgets also cover the supplied current
 initial-set widths. The duration target determines a candidate C2 polynomial;
 exact polynomial bounds and all nonlinear/input/force/fuel inequalities still
 decide admission. It is not a new physical thrust rating.
+
+The coordinated construction prevents shared approach speed from setting the
+time available for inter-chaser closing. For local clock offset tau, its
+braking primitive has derivative (1-tau/T)^3 until T and remains constant
+afterwards. Consequently, each peer reference difference depends only on the
+shorter relative duration. The exact same-time Bernstein peer bounds and the
+full independent Omega sum remain unchanged. No nominal-only clearance or
+correlation between different chasers' errors is assumed.
+
+An outside replay used the exact archived fallback endpoint immediately after
+the old central adaptive/dynamic run's first recorded non-priming successor
+refusal. All three independent alternatives again refused chaser_2/chaser_3
+separation. Their instantaneous whole-box distances were already below the
+1.30 m requirement, so time-window refinement alone cannot fix this case.
+The coordinated candidate, with unchanged 0.15 m position and 30 m per rad
+sliding bounds, passed entry and all 97 nonlinear feedback segments, 11252
+target-component/peer geometry records, installed force, actuator, sensing
+and fuel constraints. Its least squared peer margin was 0.3750 m squared
+and its largest complete fuel bound was 2.142 kg per chaser. This is an
+adjacent-state component qualification: the original refused performance
+projection was not archived, and neither full mission completion nor a
+real-time deadline follows from this replay.
 
 Each candidate requires its own complete fleet certificate and whole initial-set
 entry before selection. Compact records preserve every attempted profile,
