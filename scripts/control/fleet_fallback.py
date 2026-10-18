@@ -44,6 +44,10 @@ def _polynomial_shift(coefficients, offset):
 
 def _polynomial_range(coefficients, lower, upper):
     """Exact Bernstein convex hull, after retaining the common time variable."""
+    # Shared fleet motion can cancel every nonconstant coefficient exactly.
+    # Its interval is then a point; no basis shift or degree elevation remains.
+    if coefficients and not any(coefficients[1:]):
+        return coefficients[0], coefficients[0]
     degree=len(coefficients)-1
     shifted=coefficients if lower==0 else _polynomial_shift(coefficients,lower)
     power=tuple(value*(upper-lower)**j for j,value in enumerate(shifted))
