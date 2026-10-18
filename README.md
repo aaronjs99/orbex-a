@@ -24,6 +24,11 @@ the perturbed target LVLH. Carter–Humi dynamics remain the optimizer's nominal
 surrogate. Independently bounded nonlinear residuals and physical flows bridge
 that surrogate to the declared truth model.
 
+[Control foundations](docs/control-foundations.md) teaches the full chain from
+tracking and high-order barriers to ADTMPC, adaptation, coordination and contact.
+The [swarm consolidation record](docs/swarm-consolidation.md) explains the
+optional planning tools, source preservation and measured component costs.
+
 The COM uncertainty tube stays outside the hull. A finite carried mechanism
 closes the remaining gap after the whole terminal tube meets the position and
 physical-speed gates. Completion does not require forcing the true spacecraft

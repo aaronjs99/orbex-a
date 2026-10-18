@@ -61,6 +61,7 @@ class MPCController:
         solver_backend: str = "gekko",
         solver_config: Optional[Dict[str, Any]] = None,
         config_path: Optional[str] = None,
+        proposal_provider=None,
     ):
         """
         Initialize the MPC Controller.
@@ -79,6 +80,9 @@ class MPCController:
             self._solver = get_solver_from_config(config_path)
         else:
             self._solver = get_solver(solver_backend, solver_config)
+        if proposal_provider is not None:
+            from orbexa.solvers.proposal_seed import ProposalSeededSolver
+            self._solver = ProposalSeededSolver(self._solver, proposal_provider)
 
     def solve_step(
         self,
