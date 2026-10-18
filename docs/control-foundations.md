@@ -302,7 +302,7 @@ nonlinear tracking, sensing, actuator, force, fuel, target-component and peer
 proofs still decide admission. The tube widths and safety distances remain
 unchanged. See [the finite-refuge formulation](fleet-fallback.md).
 
-![Common and relative braking on an archived-state replay](assets/formation-braking.png)
+![Common and relative braking on an archived-state replay](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/control-foundations-530e370/formation-braking.png)
 
 The figure uses the archived fallback endpoint immediately after a recorded
 successor refusal. The refused performance projection itself was not retained.
