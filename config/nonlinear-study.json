@@ -1,6 +1,6 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-19-v4",
+  "study_id": "nonlinear-envisat-2026-10-19-v5",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
@@ -38,7 +38,10 @@
       "target_rate_error_rad_s": 0.0001,
       "max_latency_s": 0.05,
       "dropout_probability": 0.0,
-      "acquisition_period_s": 0.0,
+      "acquisition_period_s": 0.05,
+      "randomness_policy": "physical-slot-keyed-v1",
+      "acquisition_epoch_s": 0.0,
+      "noise_time_quantum_s": 1e-09,
       "minimum_range_m": 0.01,
       "maximum_range_m": 1000.0,
       "gnss_position_error_m": 1.0,
@@ -76,5 +79,5 @@
       "seed": 672091
     }
   ],
-  "description": "Development cases for adaptive/frozen belief by dynamic/fixed bandwidth arms. Version4 explicitly enables identical accepted initial GNSS orbit conditioning in both belief arms; adaptive/frozen then controls subsequent physical membership independently. Same initial priors, physical options, hardware, costs, release and bounded sensor seed within each case; equal RNG seed alone does not guarantee an identical physical-time noise realization. These cases have informed controller development, including the central-case fallback repair, and are not held-out validation. Preserve earlier source cohorts and every failed, capped or interrupted outcome. No superiority threshold or winning-case filter."
+  "description": "Development cases for adaptive/frozen belief by dynamic/fixed bandwidth arms. Version5 uses the same bounded common random field indexed by seed, physical-time slot, agent and sensor channel in each matched arm. Slots and the minimum acquisition interval are 50 ms, with nearest 1 ns time quantization and epoch zero. The existing caller-driven acquisition gate and actual packet timestamps remain in force: this is correlated piecewise-constant noise, not iid noise, exact scheduled sensing, identical packet sequences or identical sampling times. Version4 initial GNSS conditioning remains identical in adaptive/frozen arms; subsequent physical membership is independent. Prior v4 sequential-noise results form a separate cohort. These cases have informed controller development and are not held-out validation. Preserve every failed, capped or interrupted outcome. No superiority threshold or winning-case filter."
 }

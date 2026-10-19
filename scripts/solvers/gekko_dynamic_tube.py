@@ -9,11 +9,13 @@ used. The caller supplies interval-valid coefficient and disturbance bounds.
 import time
 from dataclasses import replace
 from numbers import Real
+from pathlib import Path
 import numpy as np
 from scipy.linalg import expm
 from gekko import GEKKO
 
 from orbexa.solvers.base import SolverResult
+from orbexa.solvers.native_iterations import NATIVE_IPOPT_LOG, native_ipopt_iteration_metadata
 from orbexa.control.dynamic_tube_model import held_tube_stage_seed, advance_tube
 from orbexa.control.sample_hold import sample_hold_expressions, TUBE_MODEL_VERSION, SENSED_TUBE_MODEL_VERSION
 from orbexa.control.terminal_region import TerminalRegion
@@ -475,7 +477,7 @@ class GekkoDynamicTube:
         # Projecting those slacks back after the solve can spoil the original
         # nonlinear terminal constraint despite a successful native status.
         # These are hard tube/geometry bounds, so keep them unrelaxed.
-        m.solver_options = ["bound_relax_factor 0"]
+        m.solver_options = ["bound_relax_factor 0", 'output_file '+NATIVE_IPOPT_LOG, 'file_print_level 5']
         m.options.MAX_ITER = self.config.get("max_iter", 3000)
         m.options.MAX_MEMORY = self.max_memory
         # Keep the optimizer's feasibility tolerance below the existing 1e-8
@@ -779,6 +781,15 @@ class GekkoDynamicTube:
 
     def _solve_once(self):
         started = time.time()
+        native_log = Path(self.model.path)/NATIVE_IPOPT_LOG
+        log_unavailable = 'Remote native IPOPT log is not retrieved' if self.config.get('remote', False) else None
+        if log_unavailable is None:
+            try:
+                # A reused local model must not lend an old count to a solve
+                # that fails before IPOPT opens its diagnostic output.
+                native_log.unlink(missing_ok=True)
+            except OSError as error:
+                log_unavailable = 'Cannot establish a fresh native log: '+str(error)
         try:
             self.model.solve(disp=self.config.get("disp",False))
             states = self._values(self.states, prescribed_first=self.prescribed_initial['state']).T
@@ -836,7 +847,8 @@ class GekkoDynamicTube:
                                 message="Coupled dynamic-tube optimization successful" if success else
                                 "Coupled dynamic-tube residual verification failed",
                                 solver_info={"status":self.model.options.APPSTATUS,
-                                             "iterations":self.model.options.ITERATIONS,
+                                             **native_ipopt_iteration_metadata(native_log, unavailable_reason=log_unavailable),
+                                             "gekko_reported_iterations":self.model.options.ITERATIONS,
                                              "max_constraint_violation":violation,
                                              "largest_constraint_residuals":residual_details,
                                              "bandwidth_mode":self.bandwidth_mode,
@@ -868,7 +880,9 @@ class GekkoDynamicTube:
         except Exception as error:
             return SolverResult(success=False,solve_time=time.time()-started,
                                 message="Coupled GEKKO dynamic-tube solve failed: %s" % error,
-                                solver_info={"composite_geometry_mode":self.composite_geometry_mode})
+                                solver_info={"composite_geometry_mode":self.composite_geometry_mode,
+                                    **native_ipopt_iteration_metadata(native_log, unavailable_reason=log_unavailable),
+                                    "gekko_reported_iterations":self.model.options.ITERATIONS})
 
     def solve(self):
         """Bounded initialization and numerical-accuracy retries after failure.
@@ -887,6 +901,8 @@ class GekkoDynamicTube:
         def record(result, initialization):
             attempts.append(dict(initialization=initialization,success=bool(result.success),
                                  solve_time=float(result.solve_time),message=result.message,
+                                  iterations=result.solver_info.get('iterations'),
+                                  iteration_count_provenance=result.solver_info.get('iteration_count_provenance'),
                                  max_constraint_violation=result.solver_info.get("max_constraint_violation"),
                                  largest_constraint_residuals=result.solver_info.get('largest_constraint_residuals', [])))
 
@@ -929,6 +945,8 @@ class GekkoDynamicTube:
         result.solve_time = time.time()-started
         result.solver_info["attempts"] = attempts
         result.solver_info["initialization_retry_count"] = len(attempts)-1
+        counts = [attempt.get('iterations') for attempt in attempts]
+        result.solver_info['total_native_iterations'] = sum(counts) if all(value is not None for value in counts) else None
         return result
 
     def cleanup(self):

@@ -31,6 +31,10 @@ optional planning tools, source preservation and measured component costs.
 The [research review](docs/research-review.md) compares primary literature through
 October 2026, diagnoses the closed nonlinear run, and separates implemented
 finite safeguards from the remaining completion, contact and online obligations.
+The current changes add fuel-aware finite retreat selection, a sharper valid
+force bound, delivered target evidence, guarded geometry reuse and native
+iteration provenance. A complete sensed nonlinear mission, useful drag learning
+and real-time execution remain unestablished.
 
 The COM uncertainty tube stays outside the hull. A finite carried mechanism
 closes the remaining gap after the whole terminal tube meets the position and
@@ -60,6 +64,10 @@ belief × dynamic/fixed bandwidth arms for each case to form a matched study.
 The maintained study shares accepted initial GNSS orbit conditioning across
 belief arms; only subsequent membership adaptation is frozen. The API default
 `initial_orbit_conditioning="legacy"` preserves earlier saved configurations.
+Study v5 also shares a bounded physical-time/channel random field with declared
+50 ms bins. Actual caller-driven acquisition times can differ; this is not an
+exact 20 Hz scheduler or iid noise. Earlier sequential-noise cohorts remain
+separate reproducible results.
 A new output directory is required. `--steps` limits execution without shortening
 the prospective reference domain. A cap or a refused stage returns a nonzero
 status and retains the actual prefix; it never means mission completion.

@@ -74,10 +74,13 @@ Paths in this table are relative to `scripts/`.
 | `control/nonlinear_flow.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
 | `control/attitude_flow.py`, `simulation/nonlinear_target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
 | `estimation/navigation.py` | `SensorSuite`, `SensorPacket`, `BoundedNavigationFilter`, `NavigationEstimate`: truth-side sampling versus prior/prediction/observation intersections, delayed packets and finite-history velocity bounds |
+| `estimation/sensor_noise.py` | `PhysicalSlotNoise`: versioned bounded common random field keyed to physical-time bins and sensor channels; acquisition scheduling remains owned by `SensorSuite` |
 | `estimation/nonlinear_membership.py`, `estimation/nonlinear_adaptation.py`, `estimation/belief.py` | Nonlinear transition/observation membership, retained parameter sets and admissible nominal updates; unresolved parameter boxes are retained |
 | `simulation/nonlinear_profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
 | `simulation/nonlinear_planning.py`, `simulation/coupled_planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
 | `control/dynamic_tube_spec.py`, `control/sample_hold.py`, `solvers/gekko_dynamic_tube.py` | `DynamicTubeSpec`, sensed held-feedback bounds and `GekkoDynamicTube` nonlinear GEKKO/IPOPT formulation |
+| `solvers/native_iterations.py` | Native IPOPT final-summary iteration counts with log hashes and exit provenance; unavailable work remains unknown |
+| `control/fuel_budget.py` | `FleetFuelBudget`: exact same-event, same-hardware remaining-fuel budget for finite successor selection; admission independently rechecks the debit and complete reserve |
 | `control/reachability.py`, `control/orbital_hold.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
 | `control/refuge.py`, `control/fleet_fallback.py` | `RefugeController`, `FleetFallbackPlan`, `FleetAdmissionRuntime`: finite feedback authority, fleet/component geometry, successor admission and fuel accounting |
 | `simulation/nonlinear_refuge.py`, `simulation/nonlinear_safety.py` | Physical drift/occupied-pose adapters, exact polynomial retreat bounds, bounded blackout propagation, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
@@ -166,6 +169,17 @@ flows, component/peer separation, successor entry, context and finite fuel.
 a fresh finite one, or prepare a prospective successor from the complete proposed
 physical-flow endpoint boxes. Preparation is not installation. A refusal preserves the
 installed feedback decision; it does not silently substitute zero thrust.
+
+Candidate selection checks the complete continuation against the current fuel
+ledger. For a proposed hold, its typed physical upper debit is subtracted once
+to form the prospective endpoint budget. An unaffordable stored suffix triggers
+the same finite candidate search as failed endpoint containment. Far and patch
+searches continue past unaffordable candidates; the final admission transaction
+still checks the held debit plus the whole successor reserve. Proof services
+cannot alter the installed plan, clock, ledger, pending decision, disturbance
+or navigation state while preparing a successor. Near-target forecasts use
+only the declared retreat candidates whose entire retreat and holding suffix
+fit the remaining clock domain.
 
 Performance and fallback use the same dense executor and physical plant.
 Admitted physical-tube witnesses can carry relational inclusion across

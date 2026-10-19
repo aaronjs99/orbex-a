@@ -918,6 +918,20 @@ class FleetAdmissionRuntime:
             self._pending = (fallback, self.active_fallback, None)
             return fallback
 
+    def performance_fuel_charge(self,key,box,q,h,controller):
+        """Same proved held debit for prospective search and final admission."""
+        b=controller.certificate.spec
+        if self.performance_resource_bound is None:
+            if not controller.certificate.input_box.contains(box):
+                raise ValueError("A wider performance command needs its own physical force/fuel proof")
+            return h*b.fuel_rate_upper_per_q
+        resource=self.performance_resource_bound(key,box,q,h)
+        if (not isinstance(resource,CommandResourceBound) or resource.start!=q or resource.hold_width!=h
+                or resource.applied_input!=box or resource.fuel_domain_id!=b.context.fuel_domain_id
+                or resource.force_margin_n<0 or resource.fuel_upper_kg<0):
+            raise ValueError("Performance command resource proof is stale or exceeds installed force authority")
+        return resource.fuel_upper_kg
+
     def _admit(self, proposal, observations, q, h, target_flow_id):
         if not isinstance(proposal, PerformanceProposal) or proposal.start != q or proposal.hold_width != h:
             raise ValueError("Performance proposal is stale or has a different hold schedule")
@@ -969,17 +983,7 @@ class FleetAdmissionRuntime:
                 raise ValueError("Flow has stale physical model, target ephemeris or clock identities")
             flows[key] = flow
             commands.append((key, executable))
-            if self.performance_resource_bound is None:
-                if not controller.certificate.input_box.contains(box):
-                    raise ValueError("A wider performance command needs its own physical force/fuel proof")
-                cost = h*b.fuel_rate_upper_per_q
-            else:
-                resource = self.performance_resource_bound(key, box, q, h)
-                if (not isinstance(resource, CommandResourceBound) or resource.start != q or resource.hold_width != h
-                        or resource.applied_input != box or resource.fuel_domain_id != b.context.fuel_domain_id
-                        or resource.force_margin_n < 0):
-                    raise ValueError("Performance command resource proof is stale or exceeds installed force authority")
-                cost = resource.fuel_upper_kg
+            cost=self.performance_fuel_charge(key,box,q,h,controller)
             charge.append((key, cost))
         geometry = current.geometry_oracle.flows(flows)
         if not geometry.admissible:

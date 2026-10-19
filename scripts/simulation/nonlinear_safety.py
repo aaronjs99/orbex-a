@@ -8,6 +8,7 @@ import numpy as np
 
 from orbexa.control.attitude_flow import AttitudeFlowEncloser
 from orbexa.control.fleet_fallback import FleetGeometryOracle,FleetAdmissionRuntime
+from orbexa.control.fuel_budget import FleetFuelBudget
 from orbexa.control.refuge import ControlContext,RefugeObservation
 from orbexa.control.reachability import (IntervalBox,HeldInputRequest,FlowCertificate,
     SweptCollisionGuard)
@@ -50,16 +51,18 @@ class ProspectiveFleetEndpoint:
     target_model_fingerprint: str
     clock_fingerprint: str
     frame_id: str='reference-orbit-frame-v1'
+    fuel_budget: FleetFuelBudget | None=None
     _flow_ids: tuple=field(init=False,repr=False)
     _target_id: str=field(init=False,repr=False)
     _identity: str=field(init=False,repr=False)
+    _fuel_budget_id: str | None=field(init=False,repr=False)
 
     @classmethod
     def from_flows(cls,*,flows,target_flow,observations,contexts,model,clock,
-                   acceleration_disturbance=None):
+                   acceleration_disturbance=None,fuel_budget=None):
         value=cls(flows,target_flow,observations,contexts,
             IntervalBox.point((0,0,0)) if acceleration_disturbance is None else acceleration_disturbance,
-            model.fingerprint,model.target_fingerprint,clock.fingerprint)
+            model.fingerprint,model.target_fingerprint,clock.fingerprint,fuel_budget=fuel_budget)
         clock.check_domain((value.start_q,value.end_q))
         return value
 
@@ -98,6 +101,12 @@ class ProspectiveFleetEndpoint:
             raise ValueError('Prospective target request differs from its proved initial/time boxes')
         target_id=target.fingerprint
         contexts,observations=dict(self.contexts),dict(self.observations)
+        if self.fuel_budget is not None:
+            if type(self.fuel_budget) is not FleetFuelBudget:
+                raise TypeError('Prospective resources need an exact FleetFuelBudget')
+            for context in contexts.values():
+                self.fuel_budget.check_context(ids,self.end_q,context.fuel_domain_id)
+        object.__setattr__(self,'_fuel_budget_id',None if self.fuel_budget is None else self.fuel_budget.fingerprint)
         for key,flow in self.flows:
             context,observation=contexts[key],observations[key]
             if not isinstance(context,ControlContext) or not isinstance(observation,RefugeObservation):
@@ -147,7 +156,8 @@ class ProspectiveFleetEndpoint:
 
     def verify_integrity(self):
         if (self.target_flow.fingerprint!=self._target_id
-                or tuple((key,flow.fingerprint) for key,flow in self.flows)!=self._flow_ids):
+                or tuple((key,flow.fingerprint) for key,flow in self.flows)!=self._flow_ids
+                or (None if self.fuel_budget is None else self.fuel_budget.fingerprint)!=self._fuel_budget_id):
             raise ValueError('Prospective flow/request context changed after its projection was prepared')
 
     def as_dict(self,*,include_flows=True,include_identity=True):
@@ -164,6 +174,8 @@ class ProspectiveFleetEndpoint:
             acceleration_disturbance=self.acceleration_disturbance.as_dict(),
             global_actuator_error_abs=('300',)*3,
             scope='Prospective proved endpoint sets; no future sensor packet or navigation observation is asserted')
+        if self.fuel_budget is not None:
+            result.update(fuel_budget=self.fuel_budget.as_dict(),fuel_budget_id=self._fuel_budget_id)
         if include_identity:result['identity']=self.fingerprint
         if include_flows:
             result.update(flows={key:flow.as_dict() for key,flow in self.flows},
@@ -224,8 +236,10 @@ class NonlinearSafetyPlanner:
         initial=_SafetyInitialSet(exact(estimate.exact_event_q),dict(estimate.relative_state_box_by_agent),
             estimate.target_ephemeris_box,estimate.physical_time_box,estimate.frame_id,
             'CURRENT_NAVIGATION_PRIOR',source_id)
+        budget=(None if remaining_fuel is None else
+            FleetFuelBudget(initial.exact_event_q,remaining_fuel,self.propulsion.fingerprint))
         plan,record,witness=self._build_plan(initial,sensing_prior=estimate,near_target=near_target,
-            make_witness=certificate_sink is not None)
+            make_witness=certificate_sink is not None,fuel_budget=budget)
         runtime=FleetAdmissionRuntime(plan,self.observations(estimate),flow_provider=flow_provider,
             remaining_fuel=remaining_fuel,performance_resource_bound=self.propulsion.callback(self.clock))
         self._publish_witness(record,witness,certificate_sink,'fallback_installation')
@@ -374,7 +388,7 @@ class NonlinearSafetyPlanner:
             projection.frame_id,'PROVED_FULL_PERFORMANCE_ENDPOINT',projection.fingerprint,
             projection.acceleration_disturbance)
         plan,record,witness=self._build_plan(initial,sensing_prior=sensing_prior,
-            make_witness=True,projection=projection)
+            make_witness=True,projection=projection,fuel_budget=projection.fuel_budget)
         # Recheck mutable producer payloads after the potentially long bound
         # construction, before acknowledging any candidate witness.
         projection.verify_integrity()
@@ -395,9 +409,13 @@ class NonlinearSafetyPlanner:
         certificate_sink(dict(identity=witness_id,**witness))
         record.update(archived_witness_id=witness_id,full_witness_archived=True)
 
-    def _build_plan(self,estimate,*,sensing_prior,near_target=None,make_witness=False,projection=None):
+    def _build_plan(self,estimate,*,sensing_prior,near_target=None,make_witness=False,projection=None,fuel_budget=None):
         q=exact(estimate.exact_event_q)
         points={key:np.asarray(point,dtype=float) for key,point in estimate.point_relative_by_agent.items()}
+        if fuel_budget is not None:
+            if type(fuel_budget) is not FleetFuelBudget:
+                raise TypeError('Finite continuation search needs an exact FleetFuelBudget')
+            fuel_budget.check_context(points,q,self.propulsion.fingerprint)
         near=bool(max(np.linalg.norm(v[:3]) for v in points.values())<30. if near_target is None else near_target)
         dense=exact(self.scenario.config.anom_step)/self.scenario.config.tube.feedback_substeps
         # All route and proof-window boundaries share the executed rational
@@ -443,7 +461,11 @@ class NonlinearSafetyPlanner:
                 raise ValueError('No complete finite retreat and holding candidate fits the declared clock domain')
             forecast_width=max(eligible)
         else:
-            forecast_width=retreat_width
+            near_retreat_durations=tuple(width for width in (480*dense,642*dense)
+                if q+width+hold_width<=self.clock.q_domain[1])
+            if not near_retreat_durations:
+                raise ValueError('No complete finite patch retreat and holding candidate fits the declared clock domain')
+            retreat_width=forecast_width=max(near_retreat_durations)
         end=q+forecast_width+hold_width
         if end>self.clock.q_domain[1]:
             raise ValueError('A complete retreat and holding suffix exceed the declared clock domain')
@@ -529,7 +551,8 @@ class NonlinearSafetyPlanner:
                     initial_enclosures=dict(estimate.relative_state_box_by_agent),outward_directions=directions,
                     tangent_u=tuple(u),tangent_v=tuple(v),start=q,contexts=contexts,drift_adapter=drift,
                     geometry_oracle=oracle,propulsion=self.propulsion,holding_duration=hold_width,
-                    retreat_durations=(480*dense,642*dense),
+                    fuel_budget=fuel_budget,
+                    retreat_durations=near_retreat_durations,
                     beta=(beta,)*3,acceleration_bound=(acceleration,)*3,**tracking)
                 attempts.append(dict(beta=beta,acceleration_bound=acceleration,attempts=exact_record(search.attempts)))
                 if search.admissible:
@@ -600,9 +623,14 @@ class NonlinearSafetyPlanner:
                         raise ValueError('; '.join(dict.fromkeys(candidate.certificate.reasons)))
                     if not candidate.contains(estimate.relative_state_box_by_agent,q):
                         raise ValueError('Complete initial state sets are outside this candidate fallback entry')
+                    if fuel_budget is not None:
+                        fuel_budget.require(candidate.remaining_fuel(q))
                 except ValueError as error:
                     attempts.append(dict(profile,status='REFUSED',exception_type=type(error).__name__,
                         reason=str(error),plan_id=None if candidate is None else candidate.certificate.fingerprint))
+                    if fuel_budget is not None and candidate is not None:
+                        attempts[-1].update(required_fuel=exact_record(candidate.remaining_fuel(q)),
+                            fuel_budget=fuel_budget.as_dict())
                     if make_witness:
                         refused_candidates.append(dict(attempt=attempts[-1],
                             references={key:dict(reference_id=value.reference_id,frame=value.frame,
@@ -615,6 +643,9 @@ class NonlinearSafetyPlanner:
                 references,contexts=candidate_references,candidate_contexts
                 retreat_width=candidate_width
                 attempts.append(dict(profile,status='CONDITIONAL_PROVEN',plan_id=plan.certificate.fingerprint))
+                if fuel_budget is not None:
+                    attempts[-1].update(required_fuel=exact_record(plan.remaining_fuel(q)),
+                        fuel_budget=fuel_budget.as_dict())
                 break
             if plan is None:
                 error=ValueError('All finite far-refuge candidates refused: '+str(attempts))
@@ -624,6 +655,8 @@ class NonlinearSafetyPlanner:
             raise ValueError('Constructed fleet refuge refused: '+ '; '.join(plan.certificate.reasons[:5]))
         if not plan.contains(estimate.relative_state_box_by_agent,q):
             raise ValueError('Complete initial state sets are outside the constructed fallback entry')
+        if fuel_budget is not None:
+            fuel_budget.require(plan.remaining_fuel(q))
         summary=dict(status='CONDITIONAL_PROVEN',identity=plan.certificate.fingerprint,
             start=str(plan.certificate.start),end=str(plan.certificate.end),
             required_fuel=exact_record(plan.certificate.required_fuel),
@@ -663,4 +696,7 @@ class NonlinearSafetyPlanner:
             observation_packet_ids=list(sensing_prior.packet_ids[-32:]),sensing_error_abs=sensing.tolist(),
             initial_set_source_kind=estimate.source_kind,initial_set_source_id=estimate.source_id,
             finite_candidate_search=attempts,archived_witness_id=None,full_witness_archived=False)
+        if fuel_budget is not None:
+            record['fuel_budget']=fuel_budget.as_dict()
+            if witness is not None:witness['fuel_budget']=fuel_budget.as_dict()
         return plan,record,witness

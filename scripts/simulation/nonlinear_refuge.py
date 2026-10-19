@@ -20,6 +20,8 @@ from orbexa.control.refuge import (ControlContext, ReferenceJet, ReferenceBounds
 from orbexa.control.fleet_fallback import (CommandResourceBound, FleetFallbackPlan,
     FleetFeedbackSegment, FleetGeometryOracle, OccupiedGeometryBounds,OccupiedProjection,
     PolynomialReferenceSource,PolynomialReferenceSpan)
+from orbexa.control.fuel_budget import FleetFuelBudget
+from orbexa.control.attitude_flow import _sqrt_upper
 from orbexa.control.nonlinear_flow import _Arithmetic, _region, _target_box, TargetEphemerisCertificate
 from orbexa.core.nonlinear_relative import relative_field, parameters
 
@@ -545,9 +547,12 @@ class StudyPropulsionBounds:
         lower,upper = rate.lower[0],rate.upper[0]
         if lower <= 0:
             raise ValueError("Resource proof requires a positive reference-clock rate")
-        # For arbitrary proper body-to-reference C, ||C*u||1 <= sqrt(3)||u||2
-        # <= 3 max_i |u_i|. Retains actual nu^2 acceleration conversion.
-        input_upper = 3*max(_absbox(input_box))
+        # For every proper rotation C and every member of the applied box,
+        # ||C*u||1 <= sqrt(3)||u||2 <= sqrt(3 sum_i max|u_i|^2).
+        # Keep the old valid bound when outward sqrt rounding is larger.
+        # This tightens an upper debit; it does not predict actual fuel use.
+        magnitudes = _absbox(input_box)
+        input_upper = min(3*max(magnitudes),_sqrt_upper(3*sum(value*value for value in magnitudes)))
         force_upper = self.mass_upper_kg*upper**2*input_upper+self.attitude_force_allocation_n
         fuel_per_q = (self.mass_upper_kg*upper*input_upper+self.attitude_force_allocation_n/lower)/(
             self.specific_impulse_lower_s*self.g0_m_s2)
@@ -559,7 +564,7 @@ class StudyPropulsionBounds:
         scaled=fuel_per_q*quantum
         fuel_per_q=Fraction((scaled.numerator+scaled.denominator-1)//scaled.denominator,quantum)
         return CommandResourceBound(q,h,input_box,h*fuel_per_q,self.installed_force_n-force_upper,
-            self.fingerprint,"analytic-nu-squared-body-L1-force-and-Isp-dyadic-upper80:"+clock.fingerprint)
+            self.fingerprint,"analytic-nu-squared-sharp-SO3-body-L1-force-and-Isp-dyadic-upper80:"+clock.fingerprint)
 
     def callback(self,clock):
         return lambda key,input_box,q,h: self.input_resource(key,input_box,q,h,clock)
@@ -606,7 +611,7 @@ def construct_refuge_plan(*, references, contexts, drift_adapter: NonlinearZeroD
                 input_limits,errors,actuator,rounding,(0,)*9,resources.fuel_upper_kg/(end-start),
                 propulsion.available_fuel_kg,resources.proof_reference,
                 (propulsion.declaration,"Mass upper bound and Isp lower bound remain valid throughout the finite route",
-                 "Unknown proper body rotation uses ||C*u||1 <= 3 max|u|, with explicit attitude allocation"))
+                 "Unknown proper body rotation uses the outward sqrt(3 sum max|u_i|^2) bound, capped by 3 max|u|, with explicit attitude allocation"))
             builder = RefugeBoundsBuilder(spec,reference,drift_adapter,drift_adapter.nominal_drift,
                                            nominal_model_id=ZERO_NOMINAL_ID)
             controllers[key] = RefugeController(builder)
@@ -651,7 +656,7 @@ def construct_patch_refuge_candidates(*, initial_states, initial_enclosures,
         holding_duration="0.003", outward_distance=2,
         tangent_offsets=(("0.5",0),(0,0),("-0.5",0),(0,"0.5"),(0,"-0.5"),
                          ("0.5","0.5"),("0.5","-0.5"),("-0.5","0.5"),("-0.5","-0.5")),
-        maximum_candidates=18, **tracking_options):
+        maximum_candidates=18, fuel_budget=None, **tracking_options):
     """Prepare a finite jointly proved patch-to-refuge route, or retain refusal.
 
     All agents receive the same fixed reference-frame tangent displacement.
@@ -669,6 +674,10 @@ def construct_patch_refuge_candidates(*, initial_states, initial_enclosures,
     if not isinstance(maximum_candidates,int) or isinstance(maximum_candidates,bool) or maximum_candidates < 1:
         raise ValueError("Declare a positive finite patch candidate budget")
     q,hold,distance = map(_exact,(start,holding_duration,outward_distance))
+    if fuel_budget is not None:
+        if type(fuel_budget) is not FleetFuelBudget:
+            raise TypeError('Patch continuation search needs an exact FleetFuelBudget')
+        fuel_budget.check_context(ids,q,propulsion.fingerprint)
     durations = tuple(_exact(value) for value in retreat_durations)
     offsets = tuple(_vec(value,2,"common tangent offset") for value in tangent_offsets)
     if not durations or not offsets or hold <= 0 or distance <= 0 or any(value <= 0 for value in durations):
@@ -707,6 +716,9 @@ def construct_patch_refuge_candidates(*, initial_states, initial_enclosures,
                 reasons = tuple(dict.fromkeys(plan.certificate.reasons))
                 if not reasons and not plan.contains(initial_enclosures,q):
                     reasons = ("Complete supplied initial state boxes do not enter every candidate feedback tube",)
+                if not reasons and fuel_budget is not None:
+                    try:fuel_budget.require(plan.remaining_fuel(q))
+                    except ValueError as error:reasons=(str(error),)
                 if reasons:
                     attempts.append(PatchRefugeCandidateAttempt(duration,hold,offset,"REFUSED",reasons))
                     continue

@@ -13,6 +13,11 @@ import math
 from numbers import Integral
 import numpy as np
 
+from orbexa.core.spacecraft_geometry import OBBComponent
+
+_OBB_NOMINAL_VERTICES = OBBComponent.nominal_vertices_body_m
+_OBB_VERTICES = OBBComponent._vertices
+
 
 class GekkoCompositeGeometry:
     """Attach exact OBB/tube support inequalities to a dynamic-tube backend.
@@ -42,6 +47,7 @@ class GekkoCompositeGeometry:
             if self.corridor_patch.component_id != component_id:
                 raise ValueError("The attachment corridor patch belongs to a different component")
         self.normals = []
+        self._component_reserves = {}
 
     @staticmethod
     def _nonnegative(value, name):
@@ -67,8 +73,39 @@ class GekkoCompositeGeometry:
     def _component_reserve(self, component):
         # The declared component matrix is used as an affine map. Include its
         # small permitted departure from orthogonality in the rotation reserve.
+        key = self._component_reserve_key(component)
+        if key is not None and key in self._component_reserves:
+            return self._component_reserves[key]
         extent = max(np.linalg.norm(point) for point in component.nominal_vertices_body_m) + component.uncertainty_m
-        return self.reserve + self.center_error + self.rotation_error * extent
+        result = self.reserve + self.center_error + self.rotation_error * extent
+        if key is not None and key == self._component_reserve_key(component):
+            if len(self._component_reserves) >= 64:
+                self._component_reserves.pop(next(iter(self._component_reserves)))
+            self._component_reserves[key] = result
+        return result
+
+    def _component_reserve_key(self, component):
+        """Reuse only the exact built-in calculation under its current inputs.
+
+        Whole geometry identities and every admission/source check remain live.
+        Custom vertex behavior takes the original calculation on every call.
+        """
+        if (type(component) is not OBBComponent or '_vertices' in component.__dict__
+                or OBBComponent.nominal_vertices_body_m is not _OBB_NOMINAL_VERTICES
+                or OBBComponent._vertices is not _OBB_VERTICES):
+            return None
+        rotation = component.rotation_component_to_body
+        if type(rotation) is not tuple or len(rotation) != 3:
+            return None
+        rows = (component.center_m, component.half_extents_m) + rotation
+        if any(type(row) is not tuple or len(row) != 3 for row in rows):
+            return None
+        values = tuple(value for row in rows for value in row) + (
+            component.uncertainty_m, self.reserve, self.center_error, self.rotation_error)
+        if any(type(value) is not float or not math.isfinite(value) for value in values):
+            return None
+        # hex retains signed zero as well as every finite binary64 declaration.
+        return tuple(value.hex() for value in values)
 
     def add_node(self, backend, node, position_minus_target_center, omega, reference_position):
         """Add each union exclusion; position is already target-center relative."""

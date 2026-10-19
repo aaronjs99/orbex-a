@@ -2,6 +2,138 @@
 
 Review date: 19 October 2026. Baseline: `c30e833`. This is a focused primary-source review, not an exhaustive novelty search. SciSpace was used for discovery; the links below identify the primary material inspected. Preprints are distinguished from published articles, and abstract-only access is stated explicitly.
 
+## Current implementation review: 19 October 2026
+
+The follow-up review used four independent lenses: mathematics, evaluation,
+systems computation and research value. Its baseline was `9fa853c`. The work
+below fixes specific implementation gaps while preserving the nonlinear
+GEKKO/IPOPT proposal and independent physical admission. It does not establish
+that the full sensed deployment-to-disposal mission completes.
+
+| Primary work inspected in full | Relevant result and required conditions | Implementation decision |
+|---|---|---|
+| [Sasfi, Zeilinger and Köhler, Automatica 2023](https://arxiv.org/html/2209.11713v2) | Nonlinear adaptive tube guarantees require a valid contraction metric, nested truth-containing parameter sets and admissible terminal ingredients. Parameter convergence is not automatic. | Restore the omitted target-observation channel; retain every unresolved physical hypothesis. Do not claim useful learning from initial orbit conditioning. |
+| [Buerger and Cannon, March 2026 preprint](https://arxiv.org/html/2603.05029v1) | Feasibility-preserving nonlinear tube optimization needs its parameter-affine model, valid linearization remainder and terminal construction. Reported iteration costs vary substantially. | Keep GEKKO as the reference. Improve proved continuation selection and measured proof cost before adding another proposal solver. |
+| [Frey, Nurkanović and Diehl, AS-RTI, 2024](https://arxiv.org/html/2403.07101v2) | Advanced preparation bounds local numerical error under regularity and initialization conditions. It does not certify a global physical deadline. | Profile the complete command cycle. Reuse only exact built-in geometry calculations under guarded declarations. |
+| [Quartullo et al., variable-horizon MPC, 2024 preprint](https://arxiv.org/html/2410.08807v1) | Finite-time interception uses a discrete linear system, known target trajectory, bounded disturbances and a finite terminal set. | Treat acceptable contact-set entry and progress as separate obligations. A finite safe retreat is not convergence to capture. |
+| [Botelho, Rosa and Lemos, EuroGNC 2026](https://eurognc.ceas.org/archive/EuroGNC2026/pdf/CEAS-GNC-2026-069.pdf) | Retained whole-manoeuvre feedback reduces replanning under its LTV/ROE and bounded-disturbance assumptions. | Reuse a stored suffix only when complete endpoint containment and current resources both fit. |
+| [Jonsson et al., September 2026 preprint](https://arxiv.org/html/2609.26593v1) | Multi-servicer guidance uses a near-circular relative model and an exact inner-loop stability argument. | A useful comparator; its stability result does not replace uncertain sampled actuation, nonconvex component geometry or compliant-contact admission. |
+
+### Resource-feasible continuation
+
+Let \(F_i(q)\) be chaser \(i\)'s remaining tank mass, \(c_i(q,h)\) a proved upper
+fuel debit for the proposed hold of anomaly width \(h\), and \(R_i(q+h)\) the
+complete candidate continuation's fuel reserve, including terminal holding.
+The prospective selection budget and unchanged final admission condition are
+
+\[
+ B_i(q+h)=F_i(q)-c_i(q,h),\qquad R_i(q+h)\le B_i(q+h),
+ \qquad c_i(q,h)+R_i(q+h)\le F_i(q).
+\]
+
+The first geometrically admissible candidate can be unaffordable even when a
+later one fits. Selection now continues in that case, including near-patch
+candidates and unaffordable stored suffixes. The runtime independently checks
+the complete reserve again before motion. Budget records bind the exact clock,
+fleet, hardware domain and available mass. Callback mutation is refused before
+the early stored-suffix return as well as after successor construction.
+
+For an applied acceleration box, define \(a_j=\max(|u_j^-|,|u_j^+|)\). For every
+proper body rotation \(C\), orthogonality and Cauchy–Schwarz give
+
+\[
+ \|Cu\|_1\le\sqrt3\|u\|_2
+ \le\sqrt{3\sum_j a_j^2}\le3\max_j a_j.
+\]
+
+The force/fuel service uses an outward rational square-root upper bound, capped
+by the old valid bound. Clock-rate conversion, attitude-force allocation,
+hardware authority and the upward dyadic fuel ceiling are unchanged. A smaller
+upper debit is not a measured reduction in actual fuel consumption.
+
+Outside-repository qualification reproduced four actually proved initial
+eight-agent retreat candidates. With the same deliberately restricted tanks,
+the baseline stops at its first unaffordable candidate; budget-aware selection
+installs a later affordable one. The candidate proof records are identical
+before the separate norm refinement. An all-unaffordable case still refuses.
+Exact budget/context boundaries, prospective resource identities, seven
+authoritative-state mutation cases and the near-patch search control flow pass.
+The near-target clock correction passes short-only, both and neither cases,
+including exact endpoints; that scheduling fixture is not a near-contact
+physical certificate.
+
+### Estimation, comparisons and computation
+
+Every completed membership transition now includes the current target
+ephemeris posterior from delivered chaser GNSS and bounded relative geometry.
+Its identity binds the event, clock, model, packet sources and target box. It
+does not access a future target truth state. Eight production-path transition
+checks pass; a deliberately high-drag contractor fixture excludes an
+inconsistent hypothesis and preserves truth and unresolved candidates.
+
+Useful mission-regime drag learning remains unestablished. At the initial
+central-case scale, the full relative drag-prior acceleration span is about
+\(9\times10^{-8}\,\mathrm{m/s^2}\). Over a roughly 0.030 s hold its leading-order
+position effect is about \(4\times10^{-11}\) m, against roughly millimetre fixed
+range/bias support. The actuator-bias support is larger than that drag span.
+These are local scale estimates, not rigorous separation bounds. Last-hold
+evidence retention and independent per-hold nuisance bounds discard useful
+temporal structure. Linked hypothesis-conditioned observations and shared
+nuisance parameters need a separate estimator derivation; reducing declared
+noise or changing the physical density to manufacture contraction is invalid.
+
+Study v5 declares `physical-slot-keyed-v1`: bounded synthetic innovations are
+keyed by seed, physical-time bin, agent and channel. Persistent bias has a
+separate key. The 50 ms bin/minimum acquisition interval, epoch zero and 1 ns
+quantization are explicit. Branches, missing sensors and agent ordering no
+longer advance other noise channels. This correlated common random field does
+not enforce identical packet IDs, sampling schedules, exactly 20 Hz sensing or
+iid noise. The existing caller gate and actual acquisition timestamps remain.
+Legacy sequential profiles retain their old serialization and packet identities.
+Independent component checks preserve 18 legacy packets and verify 1,008
+measurement supports. V4 results remain a separate cohort.
+
+Profiling found substantial nonlinear proof, sensing and geometry work beyond
+the native optimizer. A guarded per-instance cache reuses only the exact
+built-in component reserve calculation; custom vertex behavior and changed
+geometry/uncertainty/reserve inputs bypass or invalidate reuse. A matched
+two-update experiment preserved all 64 full hold dictionaries and the entire
+compressed archive byte-for-byte. Wall time was 38.81 versus 35.73 s in one
+pair under shared load. Both arms missed their two deadlines. The roughly
+40-fold local calculation speedup is not a full controller speedup.
+
+The coupled solver's iteration count now comes from its own fresh native
+IPOPT final summary, with log hash, exit and status provenance. GEKKO's returned
+zero remains separately named for diagnosis. Missing or incomplete native
+counts are `null`; retry totals require every attempt's count. Eight retained
+Windows logs report 36–45 iterations, not zero. Current success, native failure,
+pre-native failure and retry qualifications pass. Remote log retrieval and the
+generic non-tube GEKKO metadata path are outside this correction.
+
+The exact combined source is checked with a real nonlinear eight-agent prefix,
+durable hold/native archives and an outside-checkout wheel whose 206 Python
+modules import. The predeclared v5 adaptive/frozen × dynamic/fixed development
+factorial ran 21 updates per arm, reaching the actual update-20 contractor.
+Each capped prefix spans about 20.188 physical seconds and 672 completed fleet
+holds. All four retain all four drag hypotheses; the adaptive scalar reference
+mapping's tiny width reconciliation is not physical hypothesis elimination.
+Contraction runs after the last controlled interval of this cap, so these
+prefixes contain no subsequent control using the update-20 belief.
+Every arm misses all 21 measured update deadlines. No short prefix is a capture
+result or an adaptation superiority experiment. A tuned constant-bandwidth
+study and held-out full missions remain required.
+
+The saved records bind the common field declaration and equal initial accepted
+GNSS conditioning. They retain accepted packet identities and acceptance-event
+times, but not raw post-initial packet acquisition records. Actual acquired
+channel/slot overlap therefore cannot be independently audited from these
+artifacts; acceptance times must not be relabeled as acquisition times.
+
+The largest remaining obligations are independent real-time continuation,
+informative linked estimation, continuous hybrid/contact/load bounds and a
+source-bound complete mission. The literature supplies methods and assumptions;
+it does not supply those missing results for this implementation.
+
 ## 1. Decision and executive verdict
 
 **Proceed conditionally.** The worthwhile research objective is a reproducible eight-chaser mission under a declared nonlinear dynamics, sensing, actuation, contact and resource contract. A combination of adaptive tubes, MPC and multiple chasers is insufficient as a novelty claim. Mission progress and computation must be measured alongside safety.

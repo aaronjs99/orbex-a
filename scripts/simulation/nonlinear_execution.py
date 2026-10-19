@@ -188,26 +188,19 @@ class NonlinearDenseExecutor:
     def _performance_successor(self,q,h,applied,observations,controllers,record,witnesses):
         """Prepare entry from full prospective flows without advancing sensing.
 
-        The current stored suffix is preferred. A fresh builder is called only
-        after the exact complete performance endpoints fail that entry gate.
+        The current stored suffix is preferred when both entry and its complete
+        fuel reserve fit. A fresh builder can search for an affordable successor.
         Admission subsequently replays these same requests through the cache.
         """
         suffix=self.runtime.active_fallback.suffix(q+h)
         if self.successor_preparer is None:return suffix
         from orbexa.simulation.nonlinear_safety import ProspectiveFleetEndpoint
         from orbexa.control.refuge import fingerprint as source_fingerprint
-        try:
-            flows={key:self.flow_provider(key,HeldInputRequest(
-                controllers[key].observation_box(observations[key],q),applied[key],
-                (q,q),(h,h),self.runtime.acceleration_disturbance)) for key in observations}
-        except (RuntimeError,TimeoutError) as error:
-            raise ValueError('Prospective performance flow service unavailable: '+str(error)) from error
-        if any(not value.proven for value in flows.values()):
-            raise ValueError('Prospective performance flow is unresolved')
-        if suffix.contains({key:value.endpoint for key,value in flows.items()},q+h):return suffix
-        projection=ProspectiveFleetEndpoint.from_flows(flows=flows,target_flow=self.current_target_flow,
-            observations=observations,contexts={key:value.certificate.spec.context for key,value in controllers.items()},
-            acceleration_disturbance=self.runtime.acceleration_disturbance,model=self.model,clock=self.clock)
+
+        def navigation_id(value):
+            return source_fingerprint({name:(dict(item) if isinstance(item,MappingProxyType) else item)
+                for name,item in vars(value).items()})
+
         estimate=self.navigation.estimate()
         if (estimate.status!='VALID' or exact(estimate.exact_event_q)!=q
                 or set(estimate.relative_state_box_by_agent)!=set(observations)
@@ -218,13 +211,49 @@ class NonlinearDenseExecutor:
         authoritative_runtime=self.runtime
         runtime_guard=(old_plan.fingerprint,self.runtime.q,source_fingerprint(self.runtime.remaining_fuel),
             self.runtime._pending,self.runtime.acceleration_disturbance)
-        def navigation_id(value):
-            return source_fingerprint({name:(dict(item) if isinstance(item,MappingProxyType) else item)
-                for name,item in vars(value).items()})
-
         estimate_id=navigation_id(estimate)
+
+        def check_current_state():
+            if (self.runtime is not authoritative_runtime or self.runtime.active_fallback is not old_plan
+                    or old_plan.fingerprint!=runtime_guard[0]
+                    or self.runtime.q!=runtime_guard[1]
+                    or source_fingerprint(self.runtime.remaining_fuel)!=runtime_guard[2]
+                    or self.runtime._pending is not runtime_guard[3]
+                    or self.runtime.acceleration_disturbance!=runtime_guard[4]
+                    or navigation_id(self.navigation.estimate())!=estimate_id):
+                raise RuntimeError('Prospective proof service altered authoritative current execution state')
+
+        try:
+            flows={key:self.flow_provider(key,HeldInputRequest(
+                controllers[key].observation_box(observations[key],q),applied[key],
+                (q,q),(h,h),self.runtime.acceleration_disturbance)) for key in observations}
+        except (RuntimeError,TimeoutError) as error:
+            raise ValueError('Prospective performance flow service unavailable: '+str(error)) from error
+        finally:check_current_state()
+        if any(not value.proven for value in flows.values()):
+            raise ValueError('Prospective performance flow is unresolved')
+        from orbexa.control.fuel_budget import FleetFuelBudget
+        domains={value.certificate.spec.context.fuel_domain_id for value in controllers.values()}
+        if len(domains)!=1:
+            raise ValueError('Prospective fleet has inconsistent physical resource domains')
+        remaining=dict(self.runtime.remaining_fuel)
+        try:
+            charges={key:self.runtime.performance_fuel_charge(key,applied[key],q,h,controllers[key])
+                for key in observations}
+        finally:check_current_state()
+        budget=FleetFuelBudget(q+h,{key:remaining[key]-charges[key] for key in observations},next(iter(domains)))
+        stored_contains=suffix.contains({key:value.endpoint for key,value in flows.items()},q+h)
+        stored_affordable=not budget.shortfalls(suffix.remaining_fuel(q+h))
+        record.update(performance_hold_fuel_upper={key:str(value) for key,value in charges.items()},
+            prospective_fuel_budget=budget.as_dict(),stored_suffix_contains_endpoints=stored_contains,
+            stored_suffix_fuel_feasible=stored_affordable)
+        if stored_contains and stored_affordable:return suffix
+        projection=ProspectiveFleetEndpoint.from_flows(flows=flows,target_flow=self.current_target_flow,
+            observations=observations,contexts={key:value.certificate.spec.context for key,value in controllers.items()},
+            acceleration_disturbance=self.runtime.acceleration_disturbance,model=self.model,clock=self.clock,
+            fuel_budget=budget)
         record.update(status='PREPARING',projection_id=projection.fingerprint,exact_start=str(q),
-            exact_end=str(q+h),stored_suffix_id=suffix.fingerprint,stored_suffix_contains_endpoints=False,
+            exact_end=str(q+h),stored_suffix_id=suffix.fingerprint,stored_suffix_contains_endpoints=stored_contains,
             source_navigation_id=estimate_id,
             archive_storage='DURABLE_EXTERNAL_SINK' if self.certificate_sink is not None else 'STAGED_OUTCOME_MEMORY')
         acknowledged={}
@@ -266,7 +295,7 @@ class NonlinearDenseExecutor:
             record.update(copy.deepcopy(summary))
             record.update(status='PREPARED',successor_id=candidate_id,
                 projection_id=projection.fingerprint,projection_exact_start=str(q),projection_exact_end=str(q+h),
-                stored_suffix_id=suffix.fingerprint,stored_suffix_contains_endpoints=False,source_navigation_id=estimate_id,
+                stored_suffix_id=suffix.fingerprint,stored_suffix_contains_endpoints=stored_contains,source_navigation_id=estimate_id,
                 archive_storage='DURABLE_EXTERNAL_SINK' if self.certificate_sink is not None else 'STAGED_OUTCOME_MEMORY')
             return candidate
         except Exception as error:
@@ -276,14 +305,7 @@ class NonlinearDenseExecutor:
         finally:
             # A builder receives immutable data and never owns current runtime
             # installation, fuel, observation time or navigation state.
-            if (self.runtime is not authoritative_runtime or self.runtime.active_fallback is not old_plan
-                    or old_plan.fingerprint!=runtime_guard[0]
-                    or self.runtime.q!=runtime_guard[1]
-                    or source_fingerprint(self.runtime.remaining_fuel)!=runtime_guard[2]
-                    or self.runtime._pending is not runtime_guard[3]
-                    or self.runtime.acceleration_disturbance!=runtime_guard[4]
-                    or navigation_id(self.navigation.estimate())!=estimate_id):
-                raise RuntimeError('Successor builder altered authoritative current execution state')
+            check_current_state()
 
     def _navigation_actuation_supports(self,decision):
         if (self.actuation_prior.fingerprint!=self._validated_actuation_prior_id
@@ -506,6 +528,15 @@ class NonlinearDenseExecutor:
             self.navigation.predict(navigation_flows,tf)
             estimate=self._consume_ready()
             if estimate.status!='VALID':raise ValueError('Sensor/model assumption failed after committed physical hold: '+estimate.reason)
+            if (estimate.exact_event_q!=q+h or estimate.clock_fingerprint!=self.clock.fingerprint
+                    or estimate.model_fingerprint!=self.model.fingerprint):
+                raise ValueError('Membership navigation source differs from the executed hold endpoint')
+            membership_target=estimate.target_ephemeris_box
+            membership_target_record=membership_target.as_dict()
+            membership_navigation_id=fingerprint(dict(exact_event_q=str(estimate.exact_event_q),
+                physical_time_box=estimate.physical_time_box.as_dict(),target_ephemeris_box=membership_target_record,
+                clock_fingerprint=estimate.clock_fingerprint,model_fingerprint=estimate.model_fingerprint,
+                packet_ids=estimate.packet_ids,sensor_fingerprints=estimate.sensor_fingerprints))
             endpoint_observations=self.observations()
         self._execution_stage="RUNTIME_COMMIT"
         committed=self.runtime.commit(decision,endpoint_observations,q=q+h)
@@ -540,7 +571,9 @@ class NonlinearDenseExecutor:
                 outcome.membership_transitions.append((key,NonlinearTransitionObservation(initial_boxes[key],box,
                     navigation_supports[key].applied_input,(q,q),(h,h),tf.initial_state,tf.physical_time_initial,
                     self.runtime.acceleration_disturbance,observation_id=fingerprint(dict(observation=endpoint_observations[key].fingerprint,
-                        input_support=navigation_supports[key].fingerprint,actuation_prior=self.actuation_prior.fingerprint)))))
+                        input_support=navigation_supports[key].fingerprint,actuation_prior=self.actuation_prior.fingerprint,
+                        navigation=membership_navigation_id,target_endpoint_q=str(estimate.exact_event_q),
+                        target_observed=membership_target_record)),target_observed=membership_target)))
         if not outcome.success:
             raise ValueError('Committed numerical-truth inclusion assumption failed: '+'; '.join(outcome.messages))
         self._execution_stage="CONTROLLER_STATE_COMMIT"

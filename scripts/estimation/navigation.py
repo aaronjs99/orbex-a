@@ -17,6 +17,7 @@ import numpy as np
 from orbexa.core.reference_frame import exact, bounds, fingerprint
 from orbexa.control.reachability import IntervalBox, HeldInputRequest, FlowCertificate, SweptSegment
 from orbexa.control.nonlinear_flow import FRAME, MODEL
+from orbexa.estimation.sensor_noise import PhysicalSlotNoise
 
 
 def intersect(left, right):
@@ -208,6 +209,12 @@ class StudySensorProfile:
     dropout_bursts_s: tuple = ()
     seed: int = 0
     declaration: str = 'Illustrative processed COM range/bearing and target-pose study products; no device qualification'
+    # Sequential is the original replay policy. The keyed policy defines a
+    # piecewise-constant common random field, not an observation schedule or
+    # iid white noise; each packet still records its actual acquisition time.
+    randomness_policy: str = 'sequential-v1'
+    acquisition_epoch_s: float = 0.
+    noise_time_quantum_s: float = 1e-9
 
     def __post_init__(self):
         for name in ('range_noise_m', 'range_noise_relative', 'bearing_component_noise', 'range_bias_m',
@@ -220,12 +227,29 @@ class StudySensorProfile:
             object.__setattr__(self, name, value)
         if (self.minimum_range_m <= 0 or self.maximum_range_m <= self.minimum_range_m
                 or self.dropout_probability > 1 or self.range_noise_relative >= 1 or isinstance(self.seed, bool)
-                or not isinstance(self.seed, int) or not self.declaration.strip()):
+                or not isinstance(self.seed, int) or self.seed < 0 or not self.declaration.strip()):
             raise ValueError('Invalid bounded synthetic sensor profile')
+        if self.randomness_policy not in ('sequential-v1', 'physical-slot-keyed-v1'):
+            raise ValueError('Select a versioned sequential or physical-slot-keyed sensor randomness policy')
+        for name in ('acquisition_epoch_s', 'noise_time_quantum_s'):
+            value = float(getattr(self, name))
+            if not math.isfinite(value):
+                raise ValueError(name+' must be finite')
+            object.__setattr__(self, name, value)
+        if self.randomness_policy == 'physical-slot-keyed-v1':
+            PhysicalSlotNoise(self.seed, self.acquisition_period_s, self.acquisition_epoch_s,
+                              self.noise_time_quantum_s)
+        elif self.acquisition_epoch_s != 0. or self.noise_time_quantum_s != 1e-9:
+            raise ValueError('A noise epoch/quantum requires the physical-slot-keyed policy')
         object.__setattr__(self, 'dropout_bursts_s', tuple(bounds(pair) for pair in self.dropout_bursts_s))
 
     def as_dict(self):
         record = dict(self.__dict__, scope='Processed synthetic products; no raw image/point-cloud or feature-association claim')
+        if self.randomness_policy == 'sequential-v1':
+            # Old profiles, frozen packet identities and cohort fingerprints
+            # retain exactly their original serialization.
+            for name in ('randomness_policy', 'acquisition_epoch_s', 'noise_time_quantum_s'):
+                record.pop(name)
         record['dropout_bursts_s'] = tuple(tuple(map(str, pair)) for pair in self.dropout_bursts_s)
         return record
 
@@ -278,7 +302,18 @@ class SensorSuite:
     def __init__(self, profile=None):
         self.profile = profile or StudySensorProfile()
         self.rng = np.random.default_rng(self.profile.seed)
+        self.noise = (PhysicalSlotNoise(self.profile.seed, self.profile.acquisition_period_s,
+            self.profile.acquisition_epoch_s, self.profile.noise_time_quantum_s)
+            if self.profile.randomness_policy == 'physical-slot-keyed-v1' else None)
         self.sequence, self.biases, self.last_acquisition_s = 0, {}, None
+
+    def _uniform(self, slot, agent, channel, low=0., high=1., size=None):
+        if self.noise is None:
+            return self.rng.uniform(low, high, size)
+        return self.noise.uniform(slot, agent, channel, low, high, size)
+
+    def _random(self, slot, agent, channel):
+        return self.rng.random() if self.noise is None else self.noise.uniform(slot, agent, channel)
 
     def sample(self, *, q, physical_time_s, relative_states, target_rotation, target_angular_velocity,
                chaser_inertial_states=None):
@@ -296,10 +331,11 @@ class SensorSuite:
         if (rotation.shape != (3, 3) or omega.shape != (3,) or not np.all(np.isfinite(rotation))
                 or not np.all(np.isfinite(omega))):
             raise ValueError('Truth pose/rate must have finite declared shapes')
+        slot = None if self.noise is None else self.noise.slot_at(time)
         packets = []
         def emit(agent, kind, value, radius, orientation_error=0, frame=FRAME):
             self.sequence += 1
-            latency = float(self.rng.uniform(0, profile.max_latency_s))
+            latency = float(self._uniform(slot, agent, kind+'.latency', 0, profile.max_latency_s))
             packets.append(SensorPacket(self.sequence, str(agent), 'synthetic-'+kind, (q, q),
                 IntervalBox.point((time,)), IntervalBox.point((time+latency,)), kind, tuple(value),
                 IntervalBox.from_center_radius((0,)*len(value), radius), frame,
@@ -313,17 +349,18 @@ class SensorSuite:
                 if inertial.shape != (6,) or not np.all(np.isfinite(inertial)):
                     raise ValueError('Chaser GNSS truth has six finite inertial SI components')
                 gnss_error = np.array((profile.gnss_position_error_m,)*3+(profile.gnss_velocity_error_m_s,)*3)
-                measured_gnss=inertial+self.rng.uniform(-gnss_error, gnss_error)
+                measured_gnss=inertial+self._uniform(slot, agent, 'chaser_gnss.noise', -gnss_error, gnss_error)
                 emit(agent, 'chaser_gnss', measured_gnss,
                      _reported_additive_support(measured_gnss,gnss_error),frame='inertial-cartesian-si-v1')
             distance = float(np.linalg.norm(state[:3]))
             if (distance < profile.minimum_range_m or distance > profile.maximum_range_m
-                    or self.rng.random() < profile.dropout_probability):
+                    or self._random(slot, agent, 'range_bearing.dropout') < profile.dropout_probability):
                 continue
-            bias = self.biases.setdefault(str(agent), float(self.rng.uniform(-profile.range_bias_m, profile.range_bias_m)))
+            bias = self.biases.setdefault(str(agent), float(self._uniform(None, agent,
+                'range_bearing.bias', -profile.range_bias_m, profile.range_bias_m)))
             range_error = profile.range_noise_m+profile.range_noise_relative*distance
-            value = [distance+bias+self.rng.uniform(-range_error, range_error)]
-            value.extend(state[:3]/distance+self.rng.uniform(-profile.bearing_component_noise,
+            value = [distance+bias+self._uniform(slot, agent, 'range_bearing.range_noise', -range_error, range_error)]
+            value.extend(state[:3]/distance+self._uniform(slot, agent, 'range_bearing.bearing_noise', -profile.bearing_component_noise,
                                                            profile.bearing_component_noise, 3))
             # Do not normalize noisy bearings: the component support is exact.
             # Calibrate the support from the reported range, not the hidden
@@ -335,12 +372,12 @@ class SensorSuite:
             declared_error = floor+bias_bound+proportional*radius_upper+rounding
             emit(agent, 'range_bearing', value,
                 (declared_error,)+(profile.bearing_component_noise+1e-12,)*3)
-        if self.rng.random() >= profile.dropout_probability:
-            angle = self.rng.uniform(-profile.target_rotation_operator_error, profile.target_rotation_operator_error)
+        if self._random(slot, 'target', 'target_pose.dropout') >= profile.dropout_probability:
+            angle = self._uniform(slot, 'target', 'target_pose.angle', -profile.target_rotation_operator_error, profile.target_rotation_operator_error)
             c, s = math.cos(angle), math.sin(angle)
             perturbation = np.array(((c, -s, 0), (s, c, 0), (0, 0, 1)))
             measured_rotation = perturbation@rotation
-            measured_omega = omega+self.rng.uniform(-profile.target_rate_error_rad_s, profile.target_rate_error_rad_s, 3)
+            measured_omega = omega+self._uniform(slot, 'target', 'target_pose.rate_noise', -profile.target_rate_error_rad_s, profile.target_rate_error_rad_s, 3)
             rate_support=_reported_additive_support(measured_omega,(profile.target_rate_error_rad_s,)*3)
             # Float matrix evaluation needs its own small, explicit study allowance.
             error = profile.target_rotation_operator_error+1e-12
