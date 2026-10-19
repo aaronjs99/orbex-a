@@ -1,6 +1,6 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-16-v3",
+  "study_id": "nonlinear-envisat-2026-10-19-v4",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
@@ -27,6 +27,7 @@
     "actuator_bias_m_per_rad2": 0.2,
     "maximum_updates": 1200,
     "planning_workers": 8,
+    "initial_orbit_conditioning": "enabled",
     "fallback_fuel_reserve_kg": 10.0,
     "sensor": {
       "range_noise_m": 0.0005,
@@ -75,5 +76,5 @@
       "seed": 672091
     }
   ],
-  "description": "Prospective independent cases for all four adaptive/frozen belief by dynamic/fixed bandwidth arms. Same priors, physical options, hardware, costs, release and bounded sensor seed within each case. Version3 aligns MPC terminal constraints and endpoint admission with the unchanged rotating-tip capture-speed, gripper-reach and fixed-deadline entry gates. Version1 and version2 operator-aborted prefixes are retained separately. No cases, seeds, vehicle limits, sensing bounds or bandwidths were outcome-tuned. Retain every failure, resource cap and deadline miss; no superiority threshold or winning-case filter."
+  "description": "Development cases for adaptive/frozen belief by dynamic/fixed bandwidth arms. Version4 explicitly enables identical accepted initial GNSS orbit conditioning in both belief arms; adaptive/frozen then controls subsequent physical membership independently. Same initial priors, physical options, hardware, costs, release and bounded sensor seed within each case; equal RNG seed alone does not guarantee an identical physical-time noise realization. These cases have informed controller development, including the central-case fallback repair, and are not held-out validation. Preserve earlier source cohorts and every failed, capped or interrupted outcome. No superiority threshold or winning-case filter."
 }

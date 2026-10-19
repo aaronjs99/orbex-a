@@ -119,13 +119,18 @@ class NonlinearMissionRunner:
         actuator=AffineActuatorRealization(tuple(map(tuple,tilt@gain)),
             tuple(realization_rng.uniform(-self.options.actuator_bias_m_per_rad2,self.options.actuator_bias_m_per_rad2,3)))
         self.adaptation=NonlinearMissionAdaptation(self.model,self.scenario.initial_belief.copy(),self.clock,
-            initial_boxes,mode=adaptation_mode,encloser=self.encloser)
+            initial_boxes,mode=adaptation_mode,encloser=self.encloser,
+            initial_orbit_conditioning=self.options.initial_orbit_conditioning)
         self.planner=NonlinearMissionPlanner(self.scenario,self.scenario.create_controller(),encloser=self.encloser,
             planning_workers=self.options.planning_workers,nominal_endpoint_error_abs=np.r_[
                 np.full(3,self.options.nominal_position_transfer_budget_m),
                 np.full(3,self.options.nominal_velocity_transfer_budget_m_per_rad)],
             stage_peak_padding_abs=np.r_[np.full(3,self.options.sliding_peak_padding_m_per_rad),
                 np.full(3,self.options.position_peak_padding_m)])
+        self.recorder=NonlinearMissionRecorder(self.scenario,self.chasers,self.state,self.adaptation.belief,
+            truth_target=self.truth_target,truth_relatives=truth_relative,model_bounds=self.model,
+            truth_model=self.truth_model,clock=self.clock,study_options=self.options,case=case,
+            streamed_hold_index=streamed_hold_index)
         self.executor=NonlinearDenseExecutor(self.scenario,navigation=self.navigation,truth_target=self.truth_target,
             truth_relative_by_agent=truth_relative,clock=self.clock,model_bounds=self.model,point_truth=self.truth_model,
             sensor_suite=SensorSuite(self.options.sensor),actuator_realization=actuator,
@@ -133,14 +138,11 @@ class NonlinearMissionRunner:
                 tilt_rad=self.options.actuator_axis_error_rad,bias_abs=self.options.actuator_bias_m_per_rad2,
                 command_abs_limit=max(abs(float(bound[key])) for bound in self.config.mpc.input_bounds for key in ('lower','upper'))),
             encloser=self.encloser,certificate_sink=certificate_sink,maximum_blackout_q='.0005',
-            planning_model_validator=self._validate_contracted_model,retain_journal=retain_journal)
+            planning_model_validator=self._validate_contracted_model,retain_journal=retain_journal,
+            completed_hold_sink=self.recorder.record_completed_hold)
         self.safety=NonlinearSafetyPlanner(self.scenario,model=self.model,clock=self.clock,encloser=self.encloser,
             study_options=self.options,design=design,attitude_encloser=self.attitude_encloser)
         self.executor.successor_preparer=self.safety.prepare_successor
-        self.recorder=NonlinearMissionRecorder(self.scenario,self.chasers,self.state,self.adaptation.belief,
-            truth_target=self.truth_target,truth_relatives=truth_relative,model_bounds=self.model,
-            truth_model=self.truth_model,clock=self.clock,study_options=self.options,case=case,
-            streamed_hold_index=streamed_hold_index)
         self.recorder.record_navigation(self.navigation.estimate())
         self.arrival_events=[]
         self.first_terminal_entry_q=None

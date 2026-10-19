@@ -848,15 +848,36 @@ class FleetAdmissionRuntime:
         if set(observations) != set(plan.ids):
             raise ValueError("Observed fleet changed")
         segment = plan.segment_at(q, h)
-        commands, applied = [], []
+        commands, applied, charge, resources = [], [], [], []
         for key, controller in segment.controllers:
             value = controller.command(observations[key], q=q, hold_width=h, admitted_invariant=True)
             commands.append((key, tuple(_exact(x) for x in value.float_command())))
             applied.append((key, value.applied_input))
-        charge = tuple((key, h*c.certificate.spec.fuel_rate_upper_per_q) for key, c in segment.controllers)
+            b = controller.certificate.spec
+            uniform = cost = h*b.fuel_rate_upper_per_q
+            # The installed invariant already covers this complete command.
+            # A refused optional refinement cannot interrupt its execution.
+            if self.performance_resource_bound is not None:
+                try:
+                    resource = self.performance_resource_bound(key, value.applied_input, q, h)
+                    if (isinstance(resource, CommandResourceBound) and resource.start == q
+                            and resource.hold_width == h and resource.applied_input == value.applied_input
+                            and resource.fuel_domain_id == b.context.fuel_domain_id
+                            and resource.force_margin_n >= 0 and resource.fuel_upper_kg >= 0):
+                        cost = min(uniform, resource.fuel_upper_kg)
+                        if cost < uniform:
+                            resources.append(dict(agent_id=key, uniform_fuel_upper_kg=uniform,
+                                charged_fuel_kg=cost, command_resource_bound=exact_record(resource)))
+                except Exception:
+                    cost = uniform
+            charge.append((key, cost))
+        charge = tuple(charge)
         needed = plan.remaining_fuel(q+h)
         if any(dict(charge)[key]+needed[key] > self.remaining_fuel[key] for key in plan.ids):
             raise ValueError("Remaining finite fallback exceeds reserved fuel")
+        if resources:
+            attempt = PerformanceAttempt(attempt.status, attempt.message, attempt.solver_id,
+                dict(original_attempt=exact_record(attempt), fallback_resources=resources))
         geometry = next(p for s,p in zip(plan.segments,plan.certificate.geometry) if s is segment)
         return HeldFleetDecision(q, h,
             "FALLBACK_HOLD" if q >= plan.certificate.terminal_holding_start else "FALLBACK_TRACK",

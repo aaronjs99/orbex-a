@@ -291,7 +291,7 @@ class NonlinearDenseExecutor:
                  admission_runtime=None,encloser=None,nominal_encloser=None,
                  certificate_sink=None,maximum_blackout_q='0.02',sensor_id=None,
                  initial_packets=(),planning_model_validator=None,retain_journal=True,actuation_prior=None,
-                 successor_preparer=None):
+                 successor_preparer=None,completed_hold_sink=None):
         self.scenario,self.config,self.navigation = scenario,scenario.config,navigation
         self.truth_target,self.clock,self.model = truth_target,clock,model_bounds
         self.truth_relative_by_agent = {key:np.array(value,dtype=float).copy() for key,value in truth_relative_by_agent.items()}
@@ -325,6 +325,9 @@ class NonlinearDenseExecutor:
         self.nominal_encloser = nominal_encloser or ValidatedFlowEncloser(self.encloser.config)
         self._nominal_services = {}
         self.certificate_sink = certificate_sink
+        if completed_hold_sink is not None and not callable(completed_hold_sink):
+            raise TypeError('completed_hold_sink must be callable or None')
+        self.completed_hold_sink=completed_hold_sink
         if not isinstance(retain_journal,bool):raise TypeError('retain_journal must be boolean')
         self.retain_journal=retain_journal
         self.last_archive_event,self.last_assumption_violation=None,None
@@ -1079,9 +1082,14 @@ class NonlinearDenseExecutor:
         self._active_completion=record
         self._execution_stage='ARCHIVE_COMPLETION'
         self._publish_archive('APPLIED_HOLD_COMPLETE',record,outcome)
-        self._physical_tube_witnesses=next_witnesses
+        # Only an acknowledged completion belongs in the compact physical
+        # ledger. A later outer-update failure must not discard this hold.
+        self._active_completion=None
         outcome.journal.append(record)
         if self.retain_journal:self.journal.append(record)
+        self._execution_stage='COMPLETED_HOLD_RECORDING'
+        if self.completed_hold_sink is not None:self.completed_hold_sink(record)
+        self._physical_tube_witnesses=next_witnesses
         self._active_staged,self._active_completion=None,None
         self._execution_stage='HOLD_COMPLETE'
         return estimate

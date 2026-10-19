@@ -49,10 +49,14 @@ class NonlinearStudyOptions:
     planning_workers: int = 8
     fallback_fuel_reserve_kg: float = 10.
     sensor: StudySensorProfile = StudySensorProfile()
+    # Legacy keeps saved adaptive/frozen declarations unchanged. Enabled lets
+    # both arms share initial orbit conditioning before online membership.
+    initial_orbit_conditioning: str = 'legacy'
 
     def __post_init__(self):
         for key,value in vars(self).items():
-            if key in ('sensor','bandwidth_bounds_per_rad','maximum_updates','planning_workers'):
+            if key in ('sensor','bandwidth_bounds_per_rad','maximum_updates','planning_workers',
+                       'initial_orbit_conditioning'):
                 continue
             if isinstance(value,bool) or not np.isfinite(value) or value <= 0:
                 raise ValueError(key+' must be positive and finite')
@@ -61,6 +65,9 @@ class NonlinearStudyOptions:
             raise ValueError('Explicit sensor profile and update limit are required')
         if isinstance(self.planning_workers,bool) or not isinstance(self.planning_workers,int) or not 1<=self.planning_workers<=8:
             raise ValueError('Declare one to eight native GEKKO workers')
+        if (not isinstance(self.initial_orbit_conditioning,str) or
+                self.initial_orbit_conditioning not in ('legacy','enabled','disabled')):
+            raise ValueError('Initial orbit conditioning must be legacy, enabled or disabled')
         lo,hi = self.bandwidth_bounds_per_rad
         if not 0 < lo <= self.initial_bandwidth_per_rad <= hi:
             raise ValueError('Initial bandwidth must belong to its prospective range')

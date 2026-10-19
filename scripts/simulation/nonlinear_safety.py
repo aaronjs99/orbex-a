@@ -425,13 +425,33 @@ class NonlinearSafetyPlanner:
             coordinated_width=max(1600*dense,rounded_width(3*np.linalg.norm(common_velocity)/50000.))
             relative_width=min(coordinated_width,max(window,rounded_width(3*relative_velocity/10000.)))
         hold_width=(96 if near else 320)*dense
-        if coordinated_width is not None and q+coordinated_width+hold_width>self.clock.q_domain[1]:
-            coordinated_width=relative_width=None
-        forecast_width=max(retreat_width,coordinated_width or retreat_width)
+        profiles=(
+            ('coordinated-50k-10k','.15',30.,60000.,Fraction(1)),
+            ('coordinated-retimed-9of10','.15',30.,60000.,Fraction(9,10)),
+            ('coordinated-retimed-4of5','.15',30.,60000.,Fraction(4,5)),
+            ('coordinated-retimed-2of3','.15',30.,60000.,Fraction(2,3)),
+            ('original-60k','.15',30.,60000.,None),
+            ('medium-60k','.12',24.,60000.,None),
+            ('medium-63k','.12',24.,63000.,None))
+        candidate_widths={}
+        if not near:
+            for label,_,_,reference_acceleration,retiming in profiles:
+                candidate_widths[label]=(max(1600*dense,rounded_width(coordinated_width*retiming))
+                    if retiming is not None else max(1600*dense,rounded_width(3*velocity/reference_acceleration)))
+            eligible=[width for width in candidate_widths.values() if q+width+hold_width<=self.clock.q_domain[1]]
+            if not eligible:
+                raise ValueError('No complete finite retreat and holding candidate fits the declared clock domain')
+            forecast_width=max(eligible)
+        else:
+            forecast_width=retreat_width
         end=q+forecast_width+hold_width
         if end>self.clock.q_domain[1]:
             raise ValueError('A complete retreat and holding suffix exceed the declared clock domain')
         target_flow=self.target_forecast(estimate,forecast_width+hold_width)
+        # A longer ineligible independent route must not prevent construction
+        # of a shorter eligible coordinated route. Its placeholder is never
+        # selected; the per-candidate clock guard below precedes every proof.
+        base_retreat_width=min(retreat_width,forecast_width)
         attitude=pose_target=None
         if near:
             # A prospective endpoint has no newly observed pose. Continue the
@@ -466,9 +486,9 @@ class NonlinearSafetyPlanner:
             direction=direction/np.linalg.norm(direction)
             directions[key]=tuple(direction)
             refuge=point[:3]+2*direction
-            if not near:refuge=refuge+.25*float(retreat_width)*point[3:]
-            acceleration=(0.,)*3 if near else tuple(-3*value/float(retreat_width) for value in point[3:])
-            references[key]=C2RefugeReference.retreat(start=q,retreat_end=q+retreat_width,hold_end=end,
+            if not near:refuge=refuge+.25*float(base_retreat_width)*point[3:]
+            acceleration=(0.,)*3 if near else tuple(-3*value/float(base_retreat_width) for value in point[3:])
+            references[key]=C2RefugeReference.retreat(start=q,retreat_end=q+base_retreat_width,hold_end=end,
                 initial_state=tuple(point),refuge_position=tuple(refuge),
                 initial_acceleration=acceleration,
                 frame=estimate.frame_id,clock_id=self.clock.fingerprint)
@@ -520,36 +540,36 @@ class NonlinearSafetyPlanner:
             # A finite prospective search changes only the declared reference
             # and tracking domain. Each member must independently satisfy all
             # original nonlinear, sensing, input, geometry and fuel guards.
-            # Try coordinated braking with the widest existing entry domain
-            # first. Independent routes remain finite alternate proposals.
+            # A slow common stop can run into a target component even when
+            # the faster relative stop protects every peer. Search a finite
+            # set of shorter common durations before the independent routes.
+            # Retiming changes a proposal, never the installed force limit,
+            # uncertainty support, entry domain or geometry requirement.
             plan=None
-            profiles=(
-                    ('coordinated-50k-10k','.15',30.,60000.),
-                    ('original-60k','.15',30.,60000.),
-                    ('medium-60k','.12',24.,60000.),
-                    ('medium-63k','.12',24.,63000.))
-            for label,omega,sliding,reference_acceleration in profiles:
-                if label.startswith('coordinated') and coordinated_width is None:
-                    attempts.append(dict(profile=label,status='REFUSED',reason='Complete coordinated route exceeds the declared clock domain'))
+            tried_coordinated_widths=set()
+            for label,omega,sliding,reference_acceleration,retiming in profiles:
+                candidate_width=candidate_widths[label]
+                if q+candidate_width+hold_width>self.clock.q_domain[1]:
+                    attempts.append(dict(profile=label,status='REFUSED',retreat_duration_q=str(candidate_width),
+                        holding_duration_q=str(hold_width),reason='Complete candidate exceeds the declared clock domain'))
                     continue
-                candidate_width=retreat_width
+                candidate_relative_width=relative_width
                 candidate_references,candidate_contexts=references,contexts
                 if label.startswith('coordinated'):
-                    candidate_width=coordinated_width
+                    if candidate_width in tried_coordinated_widths:
+                        continue
+                    tried_coordinated_widths.add(candidate_width)
+                    candidate_relative_width=min(relative_width,candidate_width)
                     center=np.mean([value[:3] for value in points.values()],axis=0)
                     norm=np.linalg.norm(center)
                     outward=center/norm if norm>1e-12 else np.asarray(next(iter(directions.values())))
                     candidate_references=coordinated_braking_references(initial_states=points,start=q,
-                        common_duration=candidate_width,relative_duration=relative_width,
+                        common_duration=candidate_width,relative_duration=candidate_relative_width,
                         holding_duration=hold_width,outward_displacement=tuple(2*outward),
                         frame=estimate.frame_id,clock_id=self.clock.fingerprint)
                     candidate_contexts={key:replace(contexts[key],reference_id=reference.reference_id)
                         for key,reference in candidate_references.items()}
                 elif reference_acceleration!=60000.:
-                    duration=exact(3*velocity/reference_acceleration)
-                    ratio=duration/window
-                    candidate_width=max(1600*dense,
-                        ((ratio.numerator+ratio.denominator-1)//ratio.denominator)*window)
                     candidate_references={};candidate_contexts={}
                     for key,point in points.items():
                         refuge=point[:3]+.25*float(candidate_width)*point[3:]+2*np.asarray(directions[key])
@@ -566,8 +586,9 @@ class NonlinearSafetyPlanner:
                     retreat_duration_q=str(candidate_width),holding_duration_q=str(hold_width),
                     reference_ids={key:value.reference_id for key,value in candidate_references.items()})
                 if label.startswith('coordinated'):
-                    profile.update(common_duration_q=str(candidate_width),relative_duration_q=str(relative_width),
-                        common_acceleration_target=50000.,relative_acceleration_target=10000.,
+                    profile.update(common_duration_q=str(candidate_width),relative_duration_q=str(candidate_relative_width),
+                        common_duration_scale=str(retiming),
+                        common_acceleration_target=float(50000/retiming),relative_acceleration_target=10000.,
                         reference_policy='shared-translation-with-faster-relative-braking')
                 candidate=None
                 try:

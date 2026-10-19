@@ -32,6 +32,9 @@ class NonlinearMissionRecorder:
         self.all_certified=True
         self.dwell=0
         self._last_packet_count=0
+        self._complete_outer_holds=0
+        self._complete_outer_end=exact(self.arrays.q_history[0])
+        self._held_input_effort={key:exact(0) for key in self.arrays.ids}
 
     def record_navigation(self,estimate):
         self.navigation.append(dict(exact_q=str(estimate.exact_event_q),status=estimate.status,reason=estimate.reason,
@@ -53,9 +56,56 @@ class NonlinearMissionRecorder:
         self.arrays.record_planning(planning,state.anomaly)
         self.planning_contexts.append(copy.deepcopy(context_records))
 
+    def record_completed_hold(self,record):
+        """Account one archive-acknowledged hold before its outer update returns."""
+        start,end,width=map(exact,(record['exact_start'],record['exact_end'],record['exact_hold_width']))
+        previous=(self.hold_records[-1]['exact_end'] if self.hold_records else
+                  self.navigation[0]['exact_q'] if self.navigation else self.arrays.q_history[0])
+        decision=record['decision']
+        if (start!=exact(previous) or width<=0 or end!=start+width or width!=exact(decision['hold_width'])
+                or decision['geometry']['clock_id']!=self.clock.fingerprint):
+            raise ValueError('Completed hold does not extend the exact contiguous recorder clock')
+        applied=record['actual_input_at_start']
+        if set(applied)!=set(self._held_input_effort):
+            raise ValueError('Completed hold applied-input fleet differs from the recorder')
+        effort={}
+        for key,value in applied.items():
+            command=np.asarray(value,dtype=float)
+            if command.shape!=(3,) or not np.all(np.isfinite(command)):
+                raise ValueError('Completed hold applied input must have three finite components')
+            effort[key]=self._held_input_effort[key]+width*sum(exact(v)**2 for v in command)
+        certified=(record['runtime_commit']['status'] in ('COMMITTED','FINITE_SAFE_WINDOW_ENDED')
+            and record['navigation_status'] in ('VALID','BLACKOUT_CONDITIONAL')
+            and decision['source'] in ('PERFORMANCE','FALLBACK_TRACK','FALLBACK_HOLD')
+            and bool(decision.get('geometry')) and not decision['geometry']['reasons'])
+        if self.streamed_hold_index:
+            from orbexa.simulation.nonlinear_archive import hold_index
+            compact=hold_index(record)
+        else:
+            # Keep the existing compact/full archive projection unchanged.
+            compact={key:copy.deepcopy(value) for key,value in record.items()
+                     if key not in ('decision','runtime_commit')}
+            compact['decision']={key:copy.deepcopy(value) for key,value in decision.items() if key!='geometry'}
+            geometry=decision.get('geometry')
+            compact['geometry_id']=None if geometry is None else fingerprint(geometry)
+            compact['runtime_commit_status']=record['runtime_commit']['status']
+            compact['remaining_fuel']=copy.deepcopy(record['runtime_commit']['remaining_fuel'])
+        self.hold_records.append(compact)
+        self._held_input_effort=effort
+        self.all_certified &= certified
+
     def record_execution(self,state,outcome,planning,phase,*,truth_relatives,hold_records=()):
         if not outcome.committed:
             return
+        # Per-hold callbacks already own the ledger. This path records only
+        # complete-outer samples and must never append the same holds again.
+        if self._complete_outer_holds+len(hold_records)!=len(self.hold_records):
+            raise ValueError('Complete outer samples differ from the acknowledged hold ledger')
+        for record,saved in zip(hold_records,self.hold_records[self._complete_outer_holds:]):
+            identity=(saved['decision_identity'] if self.streamed_hold_index else saved['decision']['identity'])
+            if (record['decision']['identity']!=identity or record['exact_start']!=saved['exact_start']
+                    or record['exact_end']!=saved['exact_end']):
+                raise ValueError('Complete outer sample has changed acknowledged hold lineage')
         a=self.arrays
         a.contained &= bool(outcome.sampled_tube_contained)
         a.dense_min_containment=min(a.dense_min_containment,min(outcome.containment.values()))
@@ -97,28 +147,8 @@ class NonlinearMissionRecorder:
         a.elapsed.append(float(self.truth_target.physical_time_at(q)))
         a.attitudes.append(self.truth_target.orientation_at(q).tolist())
         a.radius_history.append(max(float(np.linalg.norm(v)) for v in state.omega.values()))
-        for record in hold_records:
-            decision=record['decision']
-            self.all_certified &= (record['runtime_commit']['status'] in ('COMMITTED','FINITE_SAFE_WINDOW_ENDED')
-                and record['navigation_status'] in ('VALID','BLACKOUT_CONDITIONAL')
-                and decision['source'] in ('PERFORMANCE','FALLBACK_TRACK','FALLBACK_HOLD')
-                and bool(decision.get('geometry')) and not decision['geometry']['reasons']
-                and exact(record['exact_end'])-exact(record['exact_start'])==exact(decision['hold_width']))
-            if self.streamed_hold_index:
-                from orbexa.simulation.nonlinear_archive import hold_index
-                self.hold_records.append(hold_index(record))
-                continue
-            # Complete witnesses go to the injected proof archive. The mission
-            # record retains their identities and executable/resource lineage.
-            compact={key:copy.deepcopy(value) for key,value in record.items()
-                     if key not in ('decision','runtime_commit')}
-            compact['decision']={key:copy.deepcopy(value) for key,value in decision.items() if key!='geometry'}
-            geometry=decision.get('geometry')
-            compact['geometry_id']=None if geometry is None else fingerprint(geometry)
-            commit=record['runtime_commit']
-            compact['runtime_commit_status']=commit['status']
-            compact['remaining_fuel']=copy.deepcopy(commit['remaining_fuel'])
-            self.hold_records.append(compact)
+        self._complete_outer_holds=len(self.hold_records)
+        self._complete_outer_end=exact(hold_records[-1]['exact_end'])
 
     def record_terminal(self,bounds,*,admissible,phase):
         for key,(p,v) in bounds.items():
@@ -151,6 +181,19 @@ class NonlinearMissionRecorder:
         pair_safe=safety.pairwise_spacing_safe(spacing) and a.dense_min_spacing>=safety.min_chaser_separation
         kinematics=self.truth_target.recorded_kinematics(a.q_history)
         belief=a.initial_belief if adaptation is None else adaptation.belief
+        held_start=exact(self.navigation[0]['exact_q'] if self.navigation else a.q_history[0])
+        held_end=exact(self.hold_records[-1]['exact_end']) if self.hold_records else held_start
+        sampled_end=self._complete_outer_end
+        physical_end=exact(self.truth_target.current_q)
+        accounting=dict(schema='orbexa.nonlinear-completed-prefix.v1',
+            acknowledged_completed_holds=len(self.hold_records),exact_start_q=str(held_start),exact_end_q=str(held_end),
+            physical_end_exact_q=str(physical_end),complete_outer_end_exact_q=str(sampled_end),
+            complete_outer_updates=len(a.q_history)-1,complete_outer_sampled_holds=self._complete_outer_holds,
+            acknowledged_holds_outside_complete_outer_updates=len(self.hold_records)-self._complete_outer_holds,
+            unconfirmed_physical_tail=physical_end>held_end,
+            unconfirmed_physical_tail_interval=None if physical_end<=held_end else (str(held_end),str(physical_end)),
+            applied_input_squared_integral_per_reference_anomaly={key:float(value) for key,value in self._held_input_effort.items()},
+            scope='Only acknowledged completed holds enter the ledger and effort; sampled diagnostics end at the separate complete-outer clock; unconfirmed physical motion is not counted')
         metadata=dict(model_version='nonlinear-reference-relative-v1',controller='coupled-dynamic-tube-gekko',
             state_frame='reference-orbit-frame-v1',reference_clock=self.clock.as_dict(),
             reference_clock_fingerprint=self.clock.fingerprint,
@@ -163,10 +206,11 @@ class NonlinearMissionRecorder:
             scenario=self.scenario.scenario_metadata(),target_kinematics=kinematics,
             navigation_history=self.navigation,planning_contexts=self.planning_contexts,
             fleet_hold_records=self.hold_records,fallback_installations=self.install_records,
+            partial_execution_accounting=accounting,
             continuous_execution_certificate=dict(method='nonlinear-sensed-fleet-admission-v1',
                 body_radius_m=safety.chaser_body_radius,start_anomaly=a.q_history[0],
-                exact_end_anomaly=(self.navigation[-1]['exact_q'] if self.navigation else str(a.q_history[-1])),
-                admitted_fleet_holds=len(self.hold_records),all_intervals_certified=self.all_certified,
+                exact_end_anomaly=str(held_end),
+                admitted_fleet_holds=len(self.hold_records),all_intervals_certified=bool(valid and self.all_certified),
                 input_lower=[b['lower'] for b in cfg.mpc.input_bounds],input_upper=[b['upper'] for b in cfg.mpc.input_bounds],
                 scope='Arb nonlinear physical flows and whole-component fleet sweeps for performance; '
                       'stored finite feedback invariant certificates for fallback; declared sensor and actuation supports'),

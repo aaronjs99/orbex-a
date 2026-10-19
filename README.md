@@ -28,6 +28,9 @@ that surrogate to the declared truth model.
 tracking and high-order barriers to ADTMPC, adaptation, coordination and contact.
 The [swarm consolidation record](docs/swarm-consolidation.md) explains the
 optional planning tools, source preservation and measured component costs.
+The [research review](docs/research-review.md) compares primary literature through
+October 2026, diagnoses the closed nonlinear run, and separates implemented
+finite safeguards from the remaining completion, contact and online obligations.
 
 The COM uncertainty tube stays outside the hull. A finite carried mechanism
 closes the remaining gap after the whole terminal tube meets the position and
@@ -54,6 +57,9 @@ orbexa-run-nonlinear --config config/envisat.yaml --spacecraft config/spacecraft
 
 Each invocation selects one declared case and arm. Run all four adaptive/frozen
 belief × dynamic/fixed bandwidth arms for each case to form a matched study.
+The maintained study shares accepted initial GNSS orbit conditioning across
+belief arms; only subsequent membership adaptation is frozen. The API default
+`initial_orbit_conditioning="legacy"` preserves earlier saved configurations.
 A new output directory is required. `--steps` limits execution without shortening
 the prospective reference domain. A cap or a refused stage returns a nonzero
 status and retains the actual prefix; it never means mission completion.

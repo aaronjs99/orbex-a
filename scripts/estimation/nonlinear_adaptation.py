@@ -35,11 +35,23 @@ def initial_eccentricity_box(inertial_box,mu,*,precision_bits=128):
 
 
 class NonlinearMissionAdaptation:
-    """Finite, conservative physical-parameter hypotheses shared by all agents."""
+    """Independent initial orbit conditioning and online physical membership.
+
+    ``legacy`` preserves the original mode-coupled initial inference. Explicit
+    ``enabled`` lets frozen/adaptive comparisons share the same initial orbit
+    observations while ``mode`` alone controls subsequent drag elimination.
+    """
     def __init__(self,prior_model,controller_belief,clock,initial_relative_boxes,*,mode='adaptive',
-                 encloser=None,target_partitions=2,chaser_partitions=2,max_candidates=16):
+                 encloser=None,target_partitions=2,chaser_partitions=2,max_candidates=16,
+                 initial_orbit_conditioning='legacy'):
         if mode not in ('adaptive','frozen'):
             raise ValueError('Select adaptive or frozen belief')
+        if (not isinstance(initial_orbit_conditioning,str) or
+                initial_orbit_conditioning not in ('legacy','enabled','disabled')):
+            raise ValueError('Initial orbit conditioning must be legacy, enabled or disabled')
+        self.initial_orbit_conditioning=initial_orbit_conditioning
+        self.initial_orbit_conditioning_enabled=(initial_orbit_conditioning=='enabled' or
+            initial_orbit_conditioning=='legacy' and mode=='adaptive')
         self.prior_model,self.belief,self.clock=prior_model,controller_belief,clock
         self.initial_relative_boxes=dict(initial_relative_boxes)
         self.mode,self.initial_target_box=mode,None
@@ -57,7 +69,7 @@ class NonlinearMissionAdaptation:
 
     def consume_delivered(self,packets,*,accepted_packet_ids,sensor_fingerprints):
         """Only navigation-accepted, delivered q=0 packets qualify the orbit."""
-        if self.mode=='frozen':
+        if not self.initial_orbit_conditioning_enabled:
             return
         accepted=frozenset(accepted_packet_ids);sensors=frozenset(sensor_fingerprints)
         for packet in packets:
@@ -119,6 +131,9 @@ class NonlinearMissionAdaptation:
 
     def metadata(self):
         return dict(mode=self.mode,initial_orbit_packets=sorted(self.initial_packet_ids),
+            initial_orbit_conditioning=self.initial_orbit_conditioning,
+            initial_orbit_conditioning_enabled=self.initial_orbit_conditioning_enabled,
+            online_physical_membership_enabled=self.mode=='adaptive',
             physical_prior=self.prior_model.as_dict(),active_physical_hull=self.active_model.as_dict(),
             retained_physical_candidates=[m.as_dict() for m in self.candidates],
             semantics='Initial osculating eccentricity from own GNSS plus bounded relative observations; '

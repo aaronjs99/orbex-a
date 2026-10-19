@@ -210,6 +210,8 @@ def _metrics(approach, completion, runner, directory, error=None):
             set_width={}, effort={}, fuel_bound=None, fallback_counts={}, deadline_misses=None, failures=[error])
         return result
     metadata = approach.metadata
+    accounting=metadata.get('partial_execution_accounting')
+    held_effort=None if accounting is None else accounting['applied_input_squared_integral_per_reference_anomaly']
     elapsed = metadata.get('elapsed_time_seconds', [])
     actual_time = None
     if runner is not None:
@@ -240,9 +242,13 @@ def _metrics(approach, completion, runner, directory, error=None):
             final_position_radius_m=None if not w.size else w[-1].tolist(), final_sliding_radius=None if not p.size else p[-1].tolist())
         bandwidth[key] = dict(minimum_per_rad=None if not a.size else np.min(a, axis=0).tolist(),
             maximum_per_rad=None if not a.size else np.max(a, axis=0).tolist(), history_per_rad=a.tolist())
-        effort[key] = dict(applied_input_squared_integral_per_reference_anomaly=float(sum(values.get('applied_control_effort', []))),
+        outer_effort=float(sum(values.get('applied_control_effort', [])))
+        effort[key] = dict(applied_input_squared_integral_per_reference_anomaly=(outer_effort if held_effort is None else held_effort[key]),
+            complete_outer_applied_input_squared_integral_per_reference_anomaly=outer_effort,
             applied_control_rms=values.get('applied_control_rms', []), ancillary_control_rms=values.get('ancillary_control_rms', []),
-            semantics='Actual delivered held inputs weighted by exact reference-anomaly hold widths; not physical force or measured fuel')
+            semantics=('Complete-outer history only; acknowledged-hold accounting unavailable' if accounting is None else
+                'Every acknowledged completed held input weighted by its exact reference-anomaly width; unconfirmed motion excluded')+'; not physical force or measured fuel',
+            rms_scope='Complete outer updates only')
     sources = {}
     for row in metadata.get('fleet_hold_records', []):
         source = row['command_source'] if row.get('schema') == HOLD_INDEX_SCHEMA else row['decision']['source']
@@ -276,6 +282,9 @@ def _metrics(approach, completion, runner, directory, error=None):
         safety={name: metadata.get(name) for name in ('active_target_margins_safe', 'pairwise_spacing_safe', 'sampled_tube_containment',
             'dense_min_containment_margin', 'dense_min_physical_clearance', 'dense_min_spacing')},
         continuous_execution=metadata.get('continuous_execution_certificate'), tubes=tubes, bandwidth=bandwidth,
+        partial_execution_accounting=accounting,
+        sampled_diagnostics_scope=dict(exact_end_q=None if accounting is None else accounting['complete_outer_end_exact_q'],
+            updates=len(approach.anom_history)-1,scope='Safety minima, tube/bandwidth histories and RMS arrays cover complete outer samples only'),
         set_width=widths, physical_adaptation=metadata.get('physical_adaptation'), effort=effort,
         fuel_bound=None if completion is None or completion.translation_budget is None else completion.translation_budget.to_dict(),
         fuel_bound_unavailable=None if not fuel_unavailable.is_file() else json.loads(fuel_unavailable.read_text(encoding='utf-8')),
