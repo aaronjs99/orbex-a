@@ -4,7 +4,7 @@ import { SceneVideoExporter, downloadVideo, sha256Bytes } from './recorder.js';
 import { renderTheoryFigure } from './theory-figures.js';
 import { missionTimeline, sampleAtTime, phaseTitle, releaseContextVisible } from './mission-timeline.js';
 import { TubeDetail } from './tube-detail.js';
-import { simulationControls, recordedControls } from './live-client.js';
+import { simulationControls } from './live-client.js';
 import { LifecycleScene } from './lifecycle-scene.js';
 
 const $ = id => document.getElementById(id);
@@ -140,6 +140,7 @@ function play() {
 
 function paint() {
   if (!dataset || !timeline) return;
+  $('frame-label').textContent = dataset.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : dataset.state_frame === 'physical-lvlh-v1' ? 'Physical LVLH · meters' : 'Recorded frame · meters';
   const sample = currentSample(), i = approachIndex();
   const physical = sample.kind !== 'approach' && Boolean(lifecycleScene);
   const track = dataset.tracks[state.selected];
@@ -615,6 +616,5 @@ if (catalog?.live === true) simulationControls({
   onError(message) { $('error').hidden = false; $('error').textContent = message; },
 });
 else if (catalog) {
-  try { recordedControls({ liveUiHref: catalog.live_ui_href }); }
-  catch (error) { $('error').hidden = false; $('error').textContent = error.message; }
+  $('simulation-controls').hidden = true;
 }

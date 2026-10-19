@@ -29,7 +29,7 @@
         <div id="viewport" class="viewport" aria-label="3D recorded mission viewport">
           <div class="viewport-toolbar"><label class="sr-only" for="camera">Camera view</label><select id="camera"><option value="mission">Mission camera</option><option value="overview">Full route</option><option value="docking">Docking close-up</option><option value="top">Orbit normal view</option><option value="follow">Follow selected chaser</option></select><label class="toggle"><input id="paths" type="checkbox" checked>Paths</label><label class="toggle"><input id="tubes" type="checkbox" checked>Tubes</label><label class="toggle"><input id="grid" type="checkbox">Grid</label><label class="toggle"><input id="envelope" type="checkbox">Envelope</label><button id="fullscreen" aria-label="Toggle fullscreen viewport" title="Full screen"><svg viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button></div>
           <div class="viewport-key"><span><i class="actual-key"></i>Actual</span><span><i class="nominal-key"></i>Nominal</span><span><i class="goal-key"></i>COM goal</span></div>
-          <div class="frame-note">Physical LVLH · meters<br>X −transverse · Y radial · Z orbit normal</div>
+          <div class="frame-note"><span id="frame-label">Recorded frame · meters</span><br>X −transverse · Y radial · Z orbit normal</div>
           <div id="deployment-note" class="deployment-note" hidden>Shared payload dispenser · illustrative context<br>Release starts in orbit; ascent and ejection are not modeled.</div>
           <div id="scene-error" class="scene-message" hidden></div>
           <div id="mission-empty" class="scene-message" hidden>Ready for deployment.</div>
