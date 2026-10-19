@@ -413,6 +413,17 @@ class AttachedAssembly:
         return dict(passed=maximum <= 1., maximum_capacity_ratio=maximum, members=result,
                     scope='Newton-Euler attachment loads at recorded controlled states; representative declared bond capacities')
 
+    def attachment_load_enclosure(self, state, propulsion, commands_n, duration_s, **initial_sets):
+        """Bound joint loads throughout an exact held interval before motion.
+
+        A default point start is a conditional local obligation. Supplying a
+        certified start set makes its scope explicit; this method does not
+        infer accumulated integration or navigation uncertainty from a point.
+        """
+        from orbexa.simulation.attachment_enclosure import AttachmentLoadEncloser
+        return AttachmentLoadEncloser().bound(assembly=self, state=state,
+            propulsion=propulsion, commands_n=commands_n, duration_s=duration_s, **initial_sets)
+
     def attachment_history_audit(self, propulsion, controls, history):
         """Check actual component loads at every recorded control endpoint."""
         if not self.attachment_limits:

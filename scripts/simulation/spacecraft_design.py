@@ -1,6 +1,8 @@
 """Injectable vehicle sizing for composite-target mission studies."""
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
+from collections.abc import Mapping
+import json
 from pathlib import Path
 import numpy as np
 
@@ -13,15 +15,16 @@ from orbexa.simulation.deorbit import DeorbitSimulator, ThrustPointingPolicy
 from orbexa.simulation.detumbling import DetumblingSimulator, RateDampingPolicy
 from orbexa.simulation.burn_axis import AxialBurnPlanner
 from orbexa.simulation.finite_burn import FiniteBurnThrottlePlanner
+from orbexa.simulation.assembly import positive
 
 
 @dataclass(frozen=True)
 class SpacecraftMissionDesign:
-    """Declared chaser concept; published target identity does not qualify it.
+    """Explicit composite geometry, target mass/inertia and chaser hardware.
 
-    Eight small12kg buses cannot dispose of an8t spacecraft with4kg of fuel
-    each. These larger chemical-propulsion buses provide a reviewable sizing
-    case. No unrecorded resizing occurs after a failed simulation.
+    Defaults retain the existing Envisat study concept. A mission-wrapper JSON
+    declares every vehicle field so another target never silently inherits it.
+    No resizing or strength is inferred from geometry or after a failed run.
     """
     geometry: SpacecraftGeometry
     chaser: ChaserPhysicalProperties = field(default_factory=lambda: ChaserPhysicalProperties(
@@ -44,13 +47,13 @@ class SpacecraftMissionDesign:
         for name in ('com_standoff_m','arm_reach_m','translation_force_n','attitude_nozzle_force_n',
                      'attitude_moment_arm_m','specific_impulse_s','detumbling_gain_nm_s',
                      'pointing_attitude_gain_nm','pointing_rate_gain_nm_s'):
-            value=getattr(self,name)
-            if isinstance(value,bool) or not np.isfinite(value) or value<=0:
-                raise ValueError(f'{name} must be finite and positive')
+            object.__setattr__(self,name,positive(getattr(self,name),name))
         if self.com_standoff_m<=self.chaser.body_radius_m:
             raise ValueError('Free-flight COM standoff must clear the finite bus')
         if self.attitude_moment_arm_m>self.chaser.body_radius_m:
             raise ValueError('Attitude nozzle positions must fit the bus envelope')
+        if not 0<=self.com_standoff_m-self.chaser.gripper_offset_m<=self.arm_reach_m:
+            raise ValueError('Nominal COM standoff must put the carried tip outside the patch and within its declared reach')
         properties=self.geometry.metadata.get('mass_properties',{})
         if not all(key in properties for key in ('nominal_mass_kg','inertia_kg_m2')):
             raise ValueError('Declare source-qualified target mass and inertia in geometry metadata')
@@ -58,7 +61,38 @@ class SpacecraftMissionDesign:
 
     @classmethod
     def from_json(cls,path:Path,**design_options):
-        return cls(geometry=SpacecraftGeometry.from_json(path),**design_options)
+        record=json.loads(Path(path).read_text(encoding='utf-8'))
+        if not isinstance(record,dict):
+            raise ValueError('Spacecraft JSON must declare an object')
+        if record.get('schema')=='orbexa.spacecraft-mission.v1':
+            if (set(record)-{'schema','geometry','vehicle_design','description'}
+                    or not isinstance(record.get('geometry'),dict) or not isinstance(record.get('vehicle_design'),dict)):
+                raise ValueError('Mission spacecraft JSON requires geometry and explicit vehicle_design')
+            names={item.name for item in fields(cls)}-{'geometry'}
+            declared=dict(record['vehicle_design'])
+            if set(declared)!=names:
+                raise ValueError('Mission vehicle_design must explicitly declare: '+', '.join(sorted(names)))
+            if set(declared)&set(design_options):
+                raise ValueError('Vehicle fields cannot be declared both in a mission JSON and keyword overrides')
+            if not isinstance(declared['chaser'],Mapping):
+                raise ValueError('Mission vehicle_design.chaser requires explicit mass, fuel and bus geometry')
+            chaser_names={item.name for item in fields(ChaserPhysicalProperties)}
+            if set(declared['chaser'])!=chaser_names:
+                raise ValueError('Mission vehicle_design.chaser must explicitly declare: '+', '.join(sorted(chaser_names)))
+            declared['chaser']=ChaserPhysicalProperties(**declared['chaser'])
+            return cls(geometry=SpacecraftGeometry.from_dict(record['geometry']),**declared)
+        return cls(geometry=SpacecraftGeometry.from_dict(record),**design_options)
+
+    def validate_fleet(self,config,*,fallback_fuel_reserve_kg=None):
+        """Validate declared sizing; geometric/dynamic proof may still refuse."""
+        count=config.num_chasers
+        if isinstance(count,bool) or not isinstance(count,(int,np.integer)) or count<1:
+            raise ValueError('Declare a positive integer fleet size')
+        if len(self.geometry.attachment_patches)<count:
+            raise ValueError(f'Target {self.geometry.geometry_id} declares {len(self.geometry.attachment_patches)} attachment patches for {count} chasers')
+        if fallback_fuel_reserve_kg is not None and positive(fallback_fuel_reserve_kg,'Fallback fuel reserve')>self.chaser.fuel_kg:
+            raise ValueError('The declared fallback reserve exceeds each installed chaser tank')
+        return int(count)
 
     @classmethod
     def from_dict(cls,geometry,record):
@@ -79,6 +113,7 @@ class SpacecraftMissionDesign:
         return float(self.geometry.metadata['mass_properties']['nominal_mass_kg'])
 
     def target(self,config,*,initial_body_spin_rad_s,anomaly_domain,gravity_gradient=True):
+        self.validate_fleet(config)
         return RigidBodySpacecraftTarget.from_config(config,geometry=self.geometry,mass_kg=self.target_mass_kg,
             inertia=np.asarray(self.geometry.metadata['mass_properties']['inertia_kg_m2']),
             initial_body_angular_velocity=initial_body_spin_rad_s,anomaly_domain=anomaly_domain,

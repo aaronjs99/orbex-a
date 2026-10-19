@@ -63,3 +63,8 @@ class NonlinearEnvironment:
             frame='unchanged physical ECI basis; original inclined J2 and atmosphere rotation axes',
             intrinsic_extra_torque='zero; configured central gravity-gradient torque remains separate',
             scope='Same numerical force law through delivery; radius-domain extension is not atmospheric demise or flight qualification')
+
+    def interval_model(self):
+        """Snapshot the maintained force declaration for continuous enclosures."""
+        from orbexa.simulation.nonlinear_environment_enclosure import NonlinearEnvironmentEnclosure
+        return NonlinearEnvironmentEnclosure.from_environment(self)

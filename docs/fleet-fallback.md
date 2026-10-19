@@ -331,8 +331,11 @@ so this evidence does not authorize changing the control sampling schedule.
 ## Physical resources and sensor blackout
 
 `StudyPropulsionBounds` defaults to the existing prospective 130 kg, 100 N,
-300 s Isp design and an injectable 10 kg fallback budget. An attitude force
-allocation is explicit. For arbitrary proper body rotation C,
+300 s Isp design and an injectable 10 kg fallback budget. The nonlinear mission
+reserves six times the exact declared nozzle force for attitude fuel/force:
+all six signed channels can fire concurrently. This is 18 N for the default
+3 N nozzles; the earlier four-channel reserve was insufficient. For arbitrary
+proper body rotation C,
 |C u|_1 <= sqrt(3)|u|_2 <= 3 max|u_i|. Actual nu_ref squared converts anomaly
 command to physical acceleration; fuel per q includes dt/dq=1/nu_ref.
 Force authority and finite fuel are bounded with outward clock-rate intervals.
@@ -356,6 +359,33 @@ assumption failure. Finite-window expiry is explicitly reported; it does not
 authorize an infinite safe physical pause. Extend a complete successor proof
 before expiry. The calling runner owns scheduling, physical propagation,
 drivers, source provenance, final capture, and the response to assumption failure.
+
+## Independent preparation and finite execution
+
+`simulation/online_worker.py` bounds one spawned preparation job and its
+serialized request/result. `simulation/online_execution.py` owns execution of
+the installed feedback; it does not wait for that job. Late, stale, malformed
+or failed products cannot acquire command authority. Proof source, physical
+context, uncertainty supports, future segments and complete fuel reservation
+must remain valid at activation. The default mission runner is still offline.
+
+Prepared replacement preserves the relation between position error $e$ and
+sliding error $s$. If $\delta p=\bar p_{old}-\bar p_{new}$ and
+$\delta v=\bar v_{old}-\bar v_{new}$ shift the nominal reference, then
+
+$$
+e_{new}=e_{old}+\delta p,\qquad
+s_{new}=s_{old}+(\Lambda_{new}-\Lambda_{old})e_{old}
+       +\delta v+\Lambda_{new}\delta p.
+$$
+
+Activation checks this correlated entry relation rather than reconstructing
+an unrelated velocity rectangle. Precomputation moves nonlinear proof work
+out of that activation path; activation independently recomputes entry,
+physical-support and full remaining-fuel checks. An unchanged admitted suffix
+retains its original expiry. It is not an extended refuge or an arrival proof.
+Clock-to-wall-time synchronization and bounded dispatch jitter remain adapter
+obligations; numerical concurrency alone does not establish flight timing.
 
 ## Evidence boundary
 

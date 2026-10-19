@@ -60,7 +60,15 @@ The separate saved-trajectory attitude replay accepts `observation_callback` on 
 
 ## Evidence limits
 
-All occupied target components, spherical bus envelopes, finite pad/positioner segments and peer buses remain active during contact. Internal numerical steps use geometry and travel-reserve guards; they are not an interval continuous-contact certificate.
+All occupied target components, spherical bus envelopes, finite pad/positioner
+segments and peer buses remain active during contact. `ContactStepEncloser`
+now gates each held step using outward Arb interval Picard inclusion for the
+declared coupled contact ODE. It retains unilateral contact branches,
+regularized friction, growing bonds, fuel and positioner states. Whole-step
+component, bus, arm and pad separation and physical load/travel limits must
+pass before numerical propagation. Exact rational clocks preserve adjacency,
+engagement and settling dwell. The carried endpoint set also covers the
+numerical endpoint; sampled guards remain additional diagnostics.
 
 After lock, the allocator checks joint loads **before** each controlled step.
 At fixed assembly state $z$, each joint wrench is affine in the signed nozzle
@@ -77,9 +85,22 @@ ray is not a proof that every other command distribution is infeasible.
 
 The unchanged physical capacities, including the 5 N m moment limit, remain
 the acceptance thresholds. The 0.98 fraction is a stricter command-selection
-reserve at the current state; it does not enclose loads throughout the held
-step. Actual applied endpoints, the complete controlled history and recorded
-zero-thrust coast states are also audited against the physical capacities.
-These are numerical load checks, not a continuous structural proof.
+reserve at the current state. The selected command additionally passes
+`AttachmentLoadEncloser`: whole-step fuel, COM/inertia, angular and pose
+bounds enclose joint loads throughout that hold. The typed nonlinear
+environment retains inclined J2, vector drag and co-rotation; unsupported
+callbacks or altered model declarations refuse. The pose envelope includes
+the complete held angular-rate bound, including an interior spin peak.
+Actual endpoints, controlled histories and recorded zero-thrust coast states
+remain numerical diagnostics.
+
+These are conditional local results for supplied initial sets and the declared
+rigid/contact model. The production contact boundary still starts from a
+numerical point interpretation; transfer of the whole free-flight terminal set
+into it remains unproved. Rigidization needs an uncertainty transfer and a
+finite impulse/load certificate for its residual lock. Attached-step load
+bounds do not supply accumulated postcapture integration-error propagation.
+They therefore do not establish one robust hybrid mission or physical
+structural qualification.
 
 The model does not resolve arm moving mass, flexible appendages, adhesive microstructure, thermal/material compatibility, plume interaction, manufactured mechanism qualification or atmospheric demise. Exact-state reproduction, sensor-biased numerical boundaries, full mission execution and hardware evidence remain distinct.

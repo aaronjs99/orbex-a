@@ -30,7 +30,7 @@ from orbexa.control.sensed_tube import (PhysicalTubeWitness,_upper,_exact_sensed
 from orbexa.simulation.nonlinear_execution_contracts import (BlackoutNavigationEstimate,
     NonlinearExecutionStep,NonlinearExecutionFailure)
 from orbexa.simulation.nonlinear_plant import NonlinearFleetPlant,sampled_clearance
-from orbexa.simulation.nonlinear_sensing import MissionSensorDelivery
+from orbexa.simulation.nonlinear_sensing import MissionSensorDelivery,SensorAcquisitionAudit
 from orbexa.simulation.nonlinear_nominal import NominalTubePropagator
 from orbexa.simulation.execution_journal import ExecutionJournal
 from orbexa.simulation.nonlinear_stage_bindings import PerformanceStageBindings
@@ -92,7 +92,10 @@ class NonlinearDenseExecutor:
         self.runtime,self.current_target_flow,self.flow_cache = None,None,{}
         self._physical_tube_witnesses={}
         self._checking_performance,self.performance_regions=False,{}
-        self.sensor_delivery=MissionSensorDelivery(initial_packets)
+        self.sensor_delivery=MissionSensorDelivery(initial_packets,acquisition_audit=SensorAcquisitionAudit(
+            self.sensors,clock_fingerprint=self.clock.fingerprint,model_fingerprint=self.model.fingerprint,
+            truth_model_fingerprint=self.point_truth.model.fingerprint,sink=self.archive.sink))
+        self.sensor_delivery.record_initial()
         self.blackout_holds=[]
         self.blackout_observer,self.blackout_time = None,None
         if self.sensors.last_acquisition_s is None:self._sample()
@@ -118,7 +121,9 @@ class NonlinearDenseExecutor:
     @property
     def certificate_sink(self):return self.archive.sink
     @certificate_sink.setter
-    def certificate_sink(self,value):self.archive.sink=value
+    def certificate_sink(self,value):
+        self.archive.sink=value
+        self.sensor_delivery.acquisition_audit.sink=value
 
     @property
     def last_archive_event(self):return self.archive.last_event
@@ -427,7 +432,11 @@ class NonlinearDenseExecutor:
             if any(not value.proven for value in flows.values()):raise ValueError('Blackout recovery relative inclusion unresolved')
             candidate.predict(flows,tf)
         ready=[packet for packet in self.pending_packets if packet.delivery_time_s.upper[0]<=candidate.time.lower[0]]
+        audit=self.sensor_delivery.acquisition_audit
+        audit.require_confirmed()
+        if ready:audit.delivered(ready,candidate)
         estimate=candidate.consume(ready)
+        if ready:audit.delivered(ready,candidate,estimate=estimate)
         if estimate.status!='VALID':raise ValueError('Recovered sensing contradicts blackout navigation')
         recovered=self.observations() # Keep blackout IDs until its correction is checked.
         recovered={key:RefugeObservation(candidate.q,midpoint(box),box,recovered[key].sensor_id,FRAME,self.clock.fingerprint)
@@ -572,8 +581,11 @@ class NonlinearDenseExecutor:
                     navigation_supports[key].applied_input,(q,q),(h,h),tf.initial_state,tf.physical_time_initial,
                     self.runtime.acceleration_disturbance,observation_id=fingerprint(dict(observation=endpoint_observations[key].fingerprint,
                         input_support=navigation_supports[key].fingerprint,actuation_prior=self.actuation_prior.fingerprint,
+                        agent_id=key,actuation_persistence='fixed-affine-per-agent-v1',
                         navigation=membership_navigation_id,target_endpoint_q=str(estimate.exact_event_q),
-                        target_observed=membership_target_record)),target_observed=membership_target)))
+                        target_observed=membership_target_record)),target_observed=membership_target,
+                    agent_id=key,commanded_input=navigation_supports[key].command,
+                    actuation_prior=self.actuation_prior,actuation_persistence='fixed-affine-per-agent-v1')))
         if not outcome.success:
             raise ValueError('Committed numerical-truth inclusion assumption failed: '+'; '.join(outcome.messages))
         self._execution_stage="CONTROLLER_STATE_COMMIT"

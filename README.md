@@ -1,9 +1,16 @@
 # ORBEX-A
 
-Adaptive dynamic tube MPC for eight chasers deployed in a common cluster 300 m
-from a tumbling spacecraft. The mission sequence is approach, finite attachment,
+Adaptive dynamic tube MPC for a configurable fleet deployed in a common cluster
+from a tumbling spacecraft. The default study releases eight chasers at 300 m.
+The mission sequence is approach, finite attachment,
 assembly detumbling and orbital lowering to a descending 120 km interface.
-The target study uses Envisat bus, solar-wing and appendage geometry.
+The default target uses Envisat bus, solar-wing and appendage geometry. Other
+solid-component targets, patch layouts and vehicle designs enter through
+[explicit mission configuration](docs/configuration.md).
+
+**Start with [mission readiness](docs/mission-readiness.md).** It lists the
+current results, unresolved problems and the modules responsible for each one.
+The complete sensed nonlinear mission and real-time operation remain unverified.
 
 The maintained runtime separates these responsibilities:
 
@@ -64,10 +71,13 @@ belief × dynamic/fixed bandwidth arms for each case to form a matched study.
 The maintained study shares accepted initial GNSS orbit conditioning across
 belief arms; only subsequent membership adaptation is frozen. The API default
 `initial_orbit_conditioning="legacy"` preserves earlier saved configurations.
-Study v5 also shares a bounded physical-time/channel random field with declared
+Study v6 also shares a bounded physical-time/channel random field with declared
 50 ms bins. Actual caller-driven acquisition times can differ; this is not an
 exact 20 Hz scheduler or iid noise. Earlier sequential-noise cohorts remain
 separate reproducible results.
+The linked estimator retains eight holds per agent and shared affine-actuator
+hypotheses. Full measured packets and delivery events are retained for audit.
+This changes how evidence is combined; it does not assume useful drag learning.
 A new output directory is required. `--steps` limits execution without shortening
 the prospective reference domain. A cap or a refused stage returns a nonzero
 status and retains the actual prefix; it never means mission completion.

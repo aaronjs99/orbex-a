@@ -43,7 +43,9 @@ class NonlinearMissionAdaptation:
     """
     def __init__(self,prior_model,controller_belief,clock,initial_relative_boxes,*,mode='adaptive',
                  encloser=None,target_partitions=2,chaser_partitions=2,max_candidates=16,
-                 initial_orbit_conditioning='legacy'):
+                 initial_orbit_conditioning='legacy',membership_policy='independent-holds-v1',
+                 membership_window_holds=8,membership_max_nuisance_cells=2,
+                 membership_max_flow_evaluations_per_candidate=256):
         if mode not in ('adaptive','frozen'):
             raise ValueError('Select adaptive or frozen belief')
         if (not isinstance(initial_orbit_conditioning,str) or
@@ -56,7 +58,21 @@ class NonlinearMissionAdaptation:
         self.initial_relative_boxes=dict(initial_relative_boxes)
         self.mode,self.initial_target_box=mode,None
         self.smid_records,self.membership_records,self.initial_packet_ids=[],[],set()
-        self.contractor=NonlinearMembershipContractor(encloser,max_boxes=max_candidates)
+        if membership_policy not in ('independent-holds-v1','linked-affine-window-v1'):
+            raise ValueError('Select an explicit nonlinear membership policy')
+        self.membership_policy=membership_policy
+        self.pending_transitions=[]
+        self.observation_window=None
+        if membership_policy=='linked-affine-window-v1':
+            from orbexa.estimation.linked_membership import (
+                LinkedObservationWindow,LinkedNonlinearMembershipContractor)
+            self.observation_window=LinkedObservationWindow(initial_relative_boxes,membership_window_holds)
+            self.contractor=LinkedNonlinearMembershipContractor(encloser,max_boxes=max_candidates,
+                max_nuisance_cells=membership_max_nuisance_cells,
+                max_flow_evaluations_per_candidate=membership_max_flow_evaluations_per_candidate,
+                max_agents=len(initial_relative_boxes))
+        else:
+            self.contractor=NonlinearMembershipContractor(encloser,max_boxes=max_candidates)
         def partitions(pair,count):
             if isinstance(count,bool) or not isinstance(count,int) or count<1:
                 raise ValueError('Physical candidate partitions must be positive integers')
@@ -98,10 +114,23 @@ class NonlinearMissionAdaptation:
                 retained_eccentricity=list(self.belief.feasible_sets['eccentricity']),
                 scope='Initial orbit descriptor only; not a constant eccentricity model under J2'))
 
-    def contract(self,transitions,*,update):
+    def retain_transitions(self,transitions):
+        """Retain bounded observation history separately from the update cadence."""
+        if self.mode=='frozen':
+            return
+        if self.observation_window is not None:
+            self.observation_window.append(transitions)
+        else:
+            self.pending_transitions.extend(transitions)
+            del self.pending_transitions[:-len(self.initial_relative_boxes)]
+
+    def contract(self,transitions=None,*,update):
         if self.mode=='frozen':
             self.membership_records.append(dict(update=update,status='FROZEN',candidate_count=len(self.candidates)))
             return True
+        if transitions is None:
+            transitions=(self.observation_window.transitions() if self.observation_window is not None
+                else tuple(self.pending_transitions))
         result=self.contractor.contract(self.candidates,transitions,clock=self.clock)
         self.membership_records.append(dict(update=update,status=result.status,
             candidate_count_before=len(self.candidates),candidate_count_after=len(result.retained_models),
@@ -130,7 +159,7 @@ class NonlinearMissionAdaptation:
         return True
 
     def metadata(self):
-        return dict(mode=self.mode,initial_orbit_packets=sorted(self.initial_packet_ids),
+        result=dict(mode=self.mode,initial_orbit_packets=sorted(self.initial_packet_ids),
             initial_orbit_conditioning=self.initial_orbit_conditioning,
             initial_orbit_conditioning_enabled=self.initial_orbit_conditioning_enabled,
             online_physical_membership_enabled=self.mode=='adaptive',
@@ -138,3 +167,12 @@ class NonlinearMissionAdaptation:
             retained_physical_candidates=[m.as_dict() for m in self.candidates],
             semantics='Initial osculating eccentricity from own GNSS plus bounded relative observations; '
                       'Cartesian sigma=CdA/m membership uses actual held-input transitions; unresolved retained')
+        if self.observation_window is not None:
+            result['linked_membership']=dict(method=self.membership_policy,
+                window_holds_per_agent=self.observation_window.holds_per_agent,
+                max_nuisance_cells_per_agent=self.contractor.max_nuisance_cells,
+                max_flow_evaluations_per_candidate=self.contractor.max_flow_evaluations_per_candidate,
+                retained_observation_counts={key:len(value) for key,value in self.observation_window.history.items()},
+                nuisance_persistence='Fixed affine matrix and bias per agent; independent binary64 evaluation remainder',
+                scope='Finite covering branches and conditional state links; unresolved branches retained; no parameter convergence guarantee')
+        return result

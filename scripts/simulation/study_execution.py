@@ -46,7 +46,6 @@ class StudyArmExecution:
         # Later stage-local imports make each stage's dependencies explicit and
         # resolve from this same, already loaded frozen package.
         from dataclasses import replace
-        import math
         import numpy as np
         from orbexa.control.reachability import IntervalBox
         from orbexa.core.config import SimulationConfig
@@ -75,13 +74,15 @@ class StudyArmExecution:
         self.design = SpacecraftMissionDesign.from_json(Path(self.spacecraft_path))
         if self.config.solver.remote:
             raise ValueError('Study execution requires local GEKKO/IPOPT')
-        self.config.num_chasers = 8
         self.config.__post_init__()
+        if self.config.target.shape!='composite_spacecraft':
+            raise ValueError('Nonlinear composite study requires target.shape=composite_spacecraft')
+        self.design.validate_fleet(self.config,fallback_fuel_reserve_kg=self.options.fallback_fuel_reserve_kg)
         self.config.target.docking_standoff = self.design.com_standoff_m
         self.config.target.inertia = np.asarray(self.design.geometry.metadata['mass_properties']['inertia_kg_m2'])
         prior_record = self.declaration.get('initial_target_spin_prior')
         if prior_record is None:
-            center, radius = (0., 0., math.radians(self.options.nominal_spin_deg_s)), (.002, .002, .008)
+            center, radius = self.options.nominal_spin_vector, (.002, .002, .008)
         else:
             if set(prior_record) != {'center_rad_s', 'radius_rad_s'}:
                 raise ValueError('Initial target spin prior needs center_rad_s and radius_rad_s')
@@ -121,6 +122,7 @@ class StudyArmExecution:
             selected_arm=dict(adaptation=self.adaptation, bandwidth=self.bandwidth),
             factorial_axes=dict(adaptation=('adaptive', 'frozen'), bandwidth=('dynamic', 'fixed')),
             resolved_options=self.runner.options.as_dict(), design=self.design.as_dict(),
+            fleet_count=self.config.num_chasers,
             initial_belief=self.runner.adaptation.belief.as_metadata(), initial_target_spin_prior=self.prior.as_dict(),
             model_bounds=self.runner.model.as_dict(), point_truth=self.runner.truth_model.as_dict(),
             reference_clock=self.runner.clock.as_dict(), source_manifest_sha256=hash_file(self.directory/'source-manifest.json'),

@@ -133,6 +133,22 @@ physical $\sigma_t,\sigma_c$ candidates. Only proved disjointness discards a
 candidate; unresolved hypotheses survive. Low drag observability may leave the
 drag box unchanged, and the experiment must report that result.
 
+The maintained linked estimator keeps a bounded history per agent. With a
+fixed affine actuator matrix $M_i$, bias $b_i$, declared command $u_k$ and
+bounded evaluation remainder $r_k$, it uses
+$u_k^{applied}=M_i u_k+b_i+r_k$. Every observation in a surviving branch must
+share the same $(M_i,b_i)$. Candidate-conditioned target, physical-time and
+relative-state endpoints intersect the next contiguous observation. Covering
+splits retain all unresolved or unevaluated nuisance cells; exclusion requires
+every covering branch to be proved inconsistent. Gaps reset state links,
+without inventing a new actuator. Bounded histories and proof budgets bound
+work; they do not guarantee informative data or a timely contraction.
+
+Raw measured packets and their actual acquisition events are archived before
+consumption. Delivery attempts/results are separate events. Their source hashes,
+physical-time slots, channel identities and eligibility can therefore be audited
+without mistaking a later acceptance timestamp for acquisition.
+
 ## Moving goal, moving obstacle, finite contact
 
 One observed target pose generates both a moving COM goal and the occupied
@@ -310,7 +326,9 @@ the declared plant, sensing, actuation and clock bounds. This closes the
 node-to-sweep and failure-continuation obligations for those accepted holds.
 It does not imply indefinite holding after the finite backup ends, feasibility
 of every future NLP, or a contact invariant. Finite contact has its separate
-numerical dynamics and load/settling gates.
+declared dynamics and whole-step local contact/load gates, with unresolved
+uncertainty transfers and rigid-lock impulse certification described in
+[finite contact](finite-contact.md).
 
 The matched experiment is adaptive/frozen belief crossed with dynamic/fixed
 bandwidth, on independently selected truth/noise cases. Each pair uses the same

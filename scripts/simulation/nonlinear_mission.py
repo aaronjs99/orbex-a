@@ -60,14 +60,20 @@ class NonlinearMissionRunner:
         self.clock=reference_clock(self.config,self.options)
         # A prospective domain declaration, never a reachability claim. All
         # executed enclosures must still stay inside the selected domain.
-        self.model=reference_environment(self.config,relative_position_limit_m=max(500.,
-            self.options.release_distance_m+25.+4*self.options.release_pitch_m))
+        release_center=((0.,0.,self.options.release_distance_m) if self.options.deployment is None else
+            self.options.deployment.carrier_center_lvlh_m)
+        release_pitch=(self.options.release_pitch_m if self.options.deployment is None else
+            self.config.mpc.min_chaser_separation+2*self.options.deployment.reference_tube_radius_m+
+            self.options.deployment.separation_buffer_m)
+        self.model=reference_environment(self.config,sigma_target=self.options.target_sigma_prior_m2_kg,
+            sigma_chaser=self.options.chaser_sigma_prior_m2_kg,relative_position_limit_m=max(500.,
+            float(np.linalg.norm(release_center))+25.+2*np.sqrt(self.config.num_chasers)*release_pitch))
         self.truth_model=replace(self.model,sigma_target=case.target_sigma_m2_kg,sigma_chaser=case.chaser_sigma_m2_kg)
         self.encloser=NonlinearFlowEncloser(reachability_config or ReachabilityConfig(max_step='0.00025'))
         self.attitude_encloser=AttitudeFlowEncloser(ReachabilityConfig(max_step='0.00002',max_substeps=4096,max_picard_iterations=32))
-        template=design.target(self.config,initial_body_spin_rad_s=(0,0,math.radians(self.options.nominal_spin_deg_s)),
+        template=design.target(self.config,initial_body_spin_rad_s=self.options.nominal_spin_vector,
             anomaly_domain=tuple(map(float,self.clock.q_domain)))
-        belief=controller_prior(self.config)
+        belief=controller_prior(self.config,self.options)
         e0,e1=belief.feasible_sets['eccentricity']
         first,last=initial_target_state(self.config,e0),initial_target_state(self.config,e1)
         target_prior=IntervalBox((min(first[i],last[i]) for i in range(6)),
@@ -91,15 +97,15 @@ class NonlinearMissionRunner:
         initial_radius=np.r_[np.full(3,self.options.initial_position_radius_m),
                              np.full(3,self.options.initial_velocity_radius_m_s/nu)]
         initial_boxes={c.chaser_id:IntervalBox.from_center_radius(c.initial_state,initial_radius) for c in self.chasers}
-        spin_prior=(IntervalBox.from_center_radius((0,0,math.radians(self.options.nominal_spin_deg_s)),(.002,.002,.008))
+        spin_prior=(IntervalBox.from_center_radius(self.options.nominal_spin_vector,(.002,.002,.008))
                     if initial_target_spin_prior is None else initial_target_spin_prior)
         if (not isinstance(spin_prior,IntervalBox) or spin_prior.dimension!=3 or
-                not spin_prior.contains(IntervalBox.point((0,0,math.radians(case.target_spin_deg_s)))) or
-                any(max(abs(lo),abs(hi))>.08 for lo,hi in zip(spin_prior.lower,spin_prior.upper))):
-            raise ValueError('Declared initial spin prior must cover the selected case inside the 0.08 rad/s rate domain')
+                not spin_prior.contains(IntervalBox.point(case.spin_vector)) or
+                any(max(abs(lo),abs(hi))>self.options.target_rate_bound_rad_s for lo,hi in zip(spin_prior.lower,spin_prior.upper))):
+            raise ValueError('Declared initial spin prior must cover the selected case inside the configured rate domain')
         self.navigation=BoundedNavigationFilter(initial_boxes,target_prior,self.clock,self.model,
-            initial_target_rotation=self.preview.rotation_matrix_at(0),initial_target_rotation_error=.02,
-            target_rate_bound_rad_s=.08,target_acceleration_bound_rad_s2=.005,
+            initial_target_rotation=self.preview.rotation_matrix_at(0),initial_target_rotation_error=self.options.initial_target_orientation_error,
+            target_rate_bound_rad_s=self.options.target_rate_bound_rad_s,target_acceleration_bound_rad_s2=self.options.target_acceleration_bound_rad_s2,
             initial_target_rate_box=spin_prior,
             sensor_fingerprints=(self.options.sensor.fingerprint,),encloser=self.encloser)
         for key in self.state.states:
@@ -108,7 +114,7 @@ class NonlinearMissionRunner:
         realization_rng=np.random.default_rng(case.seed+938921)
         truth_relative={key:value+realization_rng.uniform(-.25,.25,6)*initial_radius
                         for key,value in self.state.states.items()}
-        physical_template=replace(template,initial_body_angular_velocity=(0,0,math.radians(case.target_spin_deg_s)))
+        physical_template=replace(template,initial_body_angular_velocity=case.spin_vector)
         self.truth_target=NonlinearTargetTruth(physical_template,self.clock,self.truth_model,
             initial_target_state(self.config,case.initial_eccentricity))
         gain=np.diag(1+realization_rng.uniform(-self.options.actuator_gain_error,self.options.actuator_gain_error,3))
@@ -120,7 +126,11 @@ class NonlinearMissionRunner:
             tuple(realization_rng.uniform(-self.options.actuator_bias_m_per_rad2,self.options.actuator_bias_m_per_rad2,3)))
         self.adaptation=NonlinearMissionAdaptation(self.model,self.scenario.initial_belief.copy(),self.clock,
             initial_boxes,mode=adaptation_mode,encloser=self.encloser,
-            initial_orbit_conditioning=self.options.initial_orbit_conditioning)
+            initial_orbit_conditioning=self.options.initial_orbit_conditioning,
+            membership_policy=self.options.membership_policy,
+            membership_window_holds=self.options.membership_window_holds,
+            membership_max_nuisance_cells=self.options.membership_max_nuisance_cells,
+            membership_max_flow_evaluations_per_candidate=self.options.membership_max_flow_evaluations_per_candidate)
         self.planner=NonlinearMissionPlanner(self.scenario,self.scenario.create_controller(),encloser=self.encloser,
             planning_workers=self.options.planning_workers,nominal_endpoint_error_abs=np.r_[
                 np.full(3,self.options.nominal_position_transfer_budget_m),
@@ -379,7 +389,7 @@ class NonlinearMissionRunner:
         maximum=self.options.maximum_updates if steps is None else int(steps)
         if maximum<1:raise ValueError('A positive finite update budget is required')
         previous={};phase=self.scenario.reference.initial_phase();messages=[];completed=False;valid=True
-        wall_start=time.perf_counter();transitions=[]
+        wall_start=time.perf_counter()
         self.recorder.emit_progress('start')
         for update in range(maximum):
             started=time.perf_counter()
@@ -451,12 +461,10 @@ class NonlinearMissionRunner:
             accepted=self.navigation.estimate()
             self.adaptation.consume_delivered(outcome.delivered_packets,accepted_packet_ids=accepted.packet_ids,
                 sensor_fingerprints=accepted.sensor_fingerprints)
-            transitions.extend(item for _,item in outcome.membership_transitions)
-            # Only the latest fleet sample is consumed; full witnesses are archived.
-            del transitions[:-8]
+            self.adaptation.retain_transitions(tuple(item for _,item in outcome.membership_transitions))
             if update>0 and update%20==0:
                 # All agents contribute; no failed NLP is a negative truth label.
-                consistent=self.adaptation.contract(tuple(transitions[-8:]),update=update)
+                consistent=self.adaptation.contract(update=update)
                 valid &= consistent
             self.recorder.arrays.record_belief(self.adaptation.belief)
             estimate=self.navigation.estimate()

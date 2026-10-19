@@ -573,6 +573,34 @@ def _same_plant(left: ControlContext, right: ControlContext):
          "actuator_id", "geometry_id", "fuel_domain_id"))
 
 
+def _require_policy_supports(current, candidate, start, acceleration_disturbance):
+    """Context names alone cannot authenticate tighter physical assumptions.
+
+    A candidate may not silently increase hardware authority or shrink the
+    original sensor/actuator support. A separately authenticated calibration
+    interface would be needed to allow a justified reduction in these budgets.
+    Every future segment, not only its entry controller, is checked.
+    """
+    original = dict(current.segment_at(start).controllers)
+    disturbance = tuple(max(abs(lo), abs(hi)) for lo, hi in zip(
+        acceleration_disturbance.lower, acceleration_disturbance.upper))
+    for segment in candidate.segments:
+        for key, controller in segment.controllers:
+            a, b = original[key].certificate.spec, controller.certificate.spec
+            if not _same_plant(a.context, b.context):
+                raise ValueError('Successor changed actual model, sensing, actuator, geometry or fuel context')
+            if not a.input_limits.contains(b.input_limits):
+                raise ValueError('Successor increased the original physical hardware input authority')
+            if any(new < old for new, old in zip(b.actuator_error_abs, a.actuator_error_abs)):
+                raise ValueError('Successor reduced the original physical actuator-error support')
+            if any(new < old for new, old in zip(b.sensing_error_abs, a.sensing_error_abs)):
+                raise ValueError('Successor reduced the original physical sensing-error support')
+            if any(disturbance):
+                verifier = getattr(controller.builder.drift_bounds_provider, 'verify_certificate_source', None)
+                if not callable(verifier) or verifier(controller.certificate, disturbance) is not True:
+                    raise ValueError('Successor lacks a source-authenticated nonzero acceleration-disturbance bound')
+
+
 class FleetFallbackPlan:
     """Complete finite feedback route followed by a proved holding interval.
 
@@ -842,7 +870,7 @@ class FleetAdmissionRuntime:
         self._pending = None
         self.events = []
 
-    def _fallback(self, observations, q, h, attempt, reason):
+    def _fallback(self, observations, q, h, attempt, reason, *, refine_resources=True):
         plan = self.active_fallback
         plan.verify_integrity()
         if set(observations) != set(plan.ids):
@@ -857,7 +885,7 @@ class FleetAdmissionRuntime:
             uniform = cost = h*b.fuel_rate_upper_per_q
             # The installed invariant already covers this complete command.
             # A refused optional refinement cannot interrupt its execution.
-            if self.performance_resource_bound is not None:
+            if refine_resources and self.performance_resource_bound is not None:
                 try:
                     resource = self.performance_resource_bound(key, value.applied_input, q, h)
                     if (isinstance(resource, CommandResourceBound) and resource.start == q
@@ -887,8 +915,10 @@ class FleetAdmissionRuntime:
 
     def decide(self, observations, *, q, hold_width,
                proposal: PerformanceProposal | None = None, failed_attempt: PerformanceAttempt | None = None,
-               target_flow_fingerprint: str | None = None):
+               target_flow_fingerprint: str | None = None, refine_fallback_resources=True):
         q, h = _exact(q), _exact(hold_width)
+        if not isinstance(refine_fallback_resources, bool):
+            raise TypeError('Fallback resource refinement must be an explicit boolean')
         if self._pending is not None or q != self.q:
             raise ValueError("A decision is pending or the execution clock changed")
         attempt = (proposal.attempt if isinstance(proposal, PerformanceProposal) else failed_attempt
@@ -898,7 +928,8 @@ class FleetAdmissionRuntime:
         # Existing feedback precedes consideration of a performance proof. No
         # proposal error can replace this queued command by zero or a pause.
         fallback = self._fallback(observations, q, h, attempt,
-            "Stored finite feedback policy selected: " + attempt.status)
+            "Stored finite feedback policy selected: " + attempt.status,
+            refine_resources=refine_fallback_resources)
         if proposal is None:
             self._pending = (fallback, self.active_fallback, None)
             return fallback
@@ -914,7 +945,8 @@ class FleetAdmissionRuntime:
                      exception_type=type(error).__name__, q=q, hold_width=h,
                      admission_details=getattr(error, "admission_details", ())))
             fallback = self._fallback(observations, q, h, refused_attempt,
-                f"Performance admission refused ({type(error).__name__}: {error}); stored finite feedback selected")
+                f"Performance admission refused ({type(error).__name__}: {error}); stored finite feedback selected",
+                refine_resources=refine_fallback_resources)
             self._pending = (fallback, self.active_fallback, None)
             return fallback
 
@@ -946,6 +978,7 @@ class FleetAdmissionRuntime:
                 or successor.geometry_oracle.clearance < current.geometry_oracle.clearance
                 or successor.geometry_oracle.minimum_pair_center_distance < current.geometry_oracle.minimum_pair_center_distance):
             raise ValueError("Successor changed physical bodies/components or weakened the safety clearance")
+        _require_policy_supports(current, successor, q, self.acceleration_disturbance)
         segment, next_segment = current.segment_at(q, h), successor.segment_at(q+h)
         inputs = dict(proposal.applied_inputs)
         observed, contexts = dict(proposal.observation_ids), dict(proposal.context_ids)

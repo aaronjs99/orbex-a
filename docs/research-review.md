@@ -1,5 +1,10 @@
 # Research review and implementation decisions
 
+For the current short status, code map and new linked-estimation, asynchronous
+execution, contact/load and geometry work, start with
+[mission readiness](mission-readiness.md). The historical results below retain
+their original source and cohort; they are not results from the newer code.
+
 Review date: 19 October 2026. Baseline: `c30e833`. This is a focused primary-source review, not an exhaustive novelty search. SciSpace was used for discovery; the links below identify the primary material inspected. Preprints are distinguished from published articles, and abstract-only access is stated explicitly.
 
 ## Current implementation review: 19 October 2026

@@ -22,6 +22,7 @@ from orbexa.control.fleet_fallback import (CommandResourceBound, FleetFallbackPl
     PolynomialReferenceSource,PolynomialReferenceSpan)
 from orbexa.control.fuel_budget import FleetFuelBudget
 from orbexa.control.attitude_flow import _sqrt_upper
+from orbexa.control.rotation_support import all_rotation_component_bounds
 from orbexa.control.nonlinear_flow import _Arithmetic, _region, _target_box, TargetEphemerisCertificate
 from orbexa.core.nonlinear_relative import relative_field, parameters
 
@@ -234,6 +235,38 @@ class NonlinearZeroDriftBounds:
     def nominal_drift(q, measurement):
         return (Fraction(0),)*3
 
+    def verify_certificate_source(self, certificate, required_extra):
+        """Authenticate existing drift/support provenance without a new flow.
+
+        A mutable provider tag cannot enlarge a previously proved disturbance
+        budget. Recompute the original target/model/clock/region/scope/extra/
+        precision digest and require its exact retained proof reference.
+        """
+        from orbexa.control.refuge import RefugeCertificate
+        if type(self) is not NonlinearZeroDriftBounds or not isinstance(certificate, RefugeCertificate) or not certificate.admissible:
+            raise ValueError('A source-backed nonlinear refuge certificate is required')
+        required = _vec(required_extra, 3, 'required extra acceleration', nonnegative=True)
+        extra = _vec(self.extra_acceleration_abs, 3, 'declared extra acceleration', nonnegative=True)
+        if any(need > bound for need, bound in zip(required, extra)):
+            raise ValueError('Existing nonlinear source does not cover the required extra acceleration')
+        spec, ctx = certificate.spec, certificate.spec.context
+        if (ctx.model_id != 'nonlinear-reference-relative-v1' or ctx.nominal_model_id != ZERO_NOMINAL_ID
+                or ctx.parameter_set_id != self.model.fingerprint
+                or ctx.target_model_id != self.model.target_fingerprint
+                or ctx.clock_id != self.clock.fingerprint or ctx.frame != 'reference-orbit-frame-v1'):
+            raise ValueError('Existing nonlinear drift certificate changed model/frame/clock context')
+        target = self.target_provider(spec.start, spec.end)
+        if (not isinstance(target, TargetEphemerisCertificate) or not target.proven
+                or target.model_bounds.get('target_model_fingerprint') != self.model.target_fingerprint
+                or target.model_bounds.get('clock_fingerprint') != self.clock.fingerprint):
+            raise ValueError('Existing nonlinear drift source lacks a complete same-model target proof')
+        source = fingerprint(dict(target=self._identities.identity(target), model=self.model.fingerprint,
+            clock=self.clock.fingerprint, region=exact_record(certificate.state_box),
+            scope=(str(spec.start), str(spec.end)), extra=exact_record(extra), precision=self.precision_bits))
+        if certificate.drift_bounds.proof_reference != 'Arb-actual-nonlinear-drift:'+source:
+            raise ValueError('Existing nonlinear drift/source declaration changed after proof')
+        return True
+
     def __call__(self, spec, reference, state_box, sensing_box):
         import flint
         ctx,model,clock = spec.context,self.model,self.clock
@@ -329,6 +362,9 @@ class AnyProperTargetPose:
              "Actual target-centered reference coordinates place its COM at zero"))
 
 
+_ANY_PROPER_POSE_METHOD = AnyProperTargetPose.__call__
+
+
 class CompositeOccupiedBoundsProvider:
     """Transform every exact expanded component vertex by a proved pose box."""
     def __init__(self,geometry,pose_provider):
@@ -371,7 +407,9 @@ class CompositeOccupiedBoundsProvider:
                 or pose.geometry_id != geometry_id):
             raise ValueError("Complete same-geometry whole-window pose enclosure is required")
         rotation,center = self._box_payload(pose.rotation_entries),self._box_payload(pose.center)
-        key = None if rotation is None or center is None else (geometry_id,rotation,center)
+        proper = (type(self.pose_provider) is AnyProperTargetPose
+            and type(self.pose_provider).__call__ is _ANY_PROPER_POSE_METHOD)
+        key = None if rotation is None or center is None else (geometry_id,rotation,center,proper)
         if key is not None and self._numeric_payload is not None and self._numeric_payload[0] == key:
             component_payload,projection_payload = self._numeric_payload[1]
             components = tuple((name,self._payload_box(box)) for name,box in component_payload)
@@ -381,6 +419,12 @@ class CompositeOccupiedBoundsProvider:
         components,projections = [],[]
         midpoint = tuple((a+b)/2 for a,b in zip(pose.rotation_entries.lower,pose.rotation_entries.upper))
         for component in self.geometry.components:
+            if proper:
+                box,supports=all_rotation_component_bounds(component.vertices_body_m,pose.center)
+                components.append((component.id,box))
+                projections.extend(OccupiedProjection(component.id,direction,projected)
+                    for direction,projected in supports)
+                continue
             points = []
             for vertex in component.vertices_body_m:
                 lower,upper = [],[]

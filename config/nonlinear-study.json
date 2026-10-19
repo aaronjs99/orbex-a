@@ -1,6 +1,6 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-19-v5",
+  "study_id": "nonlinear-envisat-2026-10-19-v6",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
@@ -28,6 +28,23 @@
     "maximum_updates": 1200,
     "planning_workers": 8,
     "initial_orbit_conditioning": "enabled",
+    "membership_policy": "linked-affine-window-v1",
+    "membership_window_holds": 8,
+    "membership_max_nuisance_cells": 2,
+    "membership_max_flow_evaluations_per_candidate": 256,
+    "rendezvous_horizon_steps": 8,
+    "docking_horizon_steps": 6,
+    "terminal_activation_distance_m": 0.3,
+    "initial_target_orientation_error": 0.02,
+    "target_rate_bound_rad_s": 0.08,
+    "target_acceleration_bound_rad_s2": 0.005,
+    "controller_parameter_prior": {
+      "eccentricity": [0.0003, 0.0017],
+      "alpha": [8e-10, 4e-9],
+      "beta": [1.8e-9, 9e-9]
+    },
+    "target_sigma_prior_m2_kg": [0.008, 0.04],
+    "chaser_sigma_prior_m2_kg": [0.018, 0.09],
     "fallback_fuel_reserve_kg": 10.0,
     "sensor": {
       "range_noise_m": 0.0005,
@@ -79,5 +96,5 @@
       "seed": 672091
     }
   ],
-  "description": "Development cases for adaptive/frozen belief by dynamic/fixed bandwidth arms. Version5 uses the same bounded common random field indexed by seed, physical-time slot, agent and sensor channel in each matched arm. Slots and the minimum acquisition interval are 50 ms, with nearest 1 ns time quantization and epoch zero. The existing caller-driven acquisition gate and actual packet timestamps remain in force: this is correlated piecewise-constant noise, not iid noise, exact scheduled sensing, identical packet sequences or identical sampling times. Version4 initial GNSS conditioning remains identical in adaptive/frozen arms; subsequent physical membership is independent. Prior v4 sequential-noise results form a separate cohort. These cases have informed controller development and are not held-out validation. Preserve every failed, capped or interrupted outcome. No superiority threshold or winning-case filter."
+  "description": "Central, lower and upper development cases; preserve failed, capped and interrupted outcomes. V6 links eight observed holds per agent using persistent bounded affine-actuator hypotheses, two covering cells and a 256-flow budget per physical candidate. Initial GNSS conditioning and the declared physical-time/channel noise field are shared across matched arms. The 50 ms bins, epoch zero and nearest 1 ns quantization do not enforce identical acquisition schedules or iid noise. Raw measured packets and delivery events are archived. Physical sensing, actuation, geometry and fuel bounds are unchanged. Earlier study cohorts remain separate evidence. These cases are not held out; no adaptive superiority or real-time guarantee is assumed."
 }

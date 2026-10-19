@@ -18,6 +18,7 @@ from orbexa.simulation.nonlinear_refuge import (C2RefugeReference,NonlinearZeroD
     StudyPropulsionBounds,CompositeOccupiedBoundsProvider,AnyProperTargetPose,
     AttitudePoseBoundsProvider,construct_refuge_plan,construct_patch_refuge_candidates,ZERO_NOMINAL_ID)
 from orbexa.simulation.fleet_braking import coordinated_braking_references
+from orbexa.simulation.proof_provider import FixedProofProvider
 from orbexa.control.refuge import exact_record,fingerprint
 
 
@@ -37,7 +38,7 @@ def _named(value,name):
 class ProspectiveFleetEndpoint:
     """Full held-flow projection, never an acquired navigation observation.
 
-    This study interface deliberately requires all eight complete global-input
+    This study interface deliberately requires the complete declared global-input
     flows. Narrower command-dependent navigation flows cannot create a backup
     entry region. The owning runtime still admits the original flows and the
     resulting successor together before motion.
@@ -70,8 +71,8 @@ class ProspectiveFleetEndpoint:
         for name in ('flows','observations','contexts'):
             object.__setattr__(self,name,_named(getattr(self,name),name))
         ids=tuple(key for key,_ in self.contexts)
-        if len(ids)!=8 or any(set(dict(getattr(self,name)))!=set(ids) for name in ('flows','observations')):
-            raise ValueError('A prospective study successor requires the complete same eight-member fleet')
+        if not ids or any(set(dict(getattr(self,name)))!=set(ids) for name in ('flows','observations')):
+            raise ValueError('A prospective study successor requires the complete same declared fleet')
         if (not isinstance(self.acceleration_disturbance,IntervalBox)
                 or self.acceleration_disturbance.dimension!=3):
             raise ValueError('Prospective acceleration disturbance needs three exact components')
@@ -212,7 +213,9 @@ class NonlinearSafetyPlanner:
         self.propulsion=StudyPropulsionBounds(mass_upper_kg=design.chaser.mass_kg,
             installed_force_n=design.translation_force_n,specific_impulse_lower_s=design.specific_impulse_s,
             available_fuel_kg=study_options.fallback_fuel_reserve_kg,
-            attitude_force_allocation_n=12.)
+            # Three torque couples can fire both signed-location channels on
+            # every axis simultaneously; the allocator has no aggregate clamp.
+            attitude_force_allocation_n=6*exact(design.attitude_nozzle_force_n))
         self.sensor_id=study_options.sensor.fingerprint
         self.actuator_id='bounded-q-gain-axis-bias-v1'
         self.installations=[]
@@ -338,9 +341,12 @@ class NonlinearSafetyPlanner:
                 or estimate.clock_fingerprint!=self.clock.fingerprint
                 or estimate.frame_id!='reference-orbit-frame-v1'):
             raise ValueError('Safety preparation needs a typed same-model/frame/clock valid current navigation prior')
-        expected={c.chaser_id for c in self.scenario.fleet.chasers('multi')}
-        if len(expected)!=8 or set(estimate.relative_state_box_by_agent)!=expected:
-            raise ValueError('Safety preparation requires the complete eight-member navigation prior')
+        declared=tuple(c.chaser_id for c in self.scenario.fleet.chasers('multi'))
+        expected=set(declared)
+        if (not declared or len(expected)!=len(declared)
+                or any(not isinstance(key,str) or not key.strip() for key in declared)
+                or set(estimate.relative_state_box_by_agent)!=expected):
+            raise ValueError('Safety preparation requires the complete unique declared navigation fleet')
 
     @staticmethod
     def _prior_record(estimate):
@@ -487,7 +493,7 @@ class NonlinearSafetyPlanner:
                 self.model,self.clock,gravity_gradient=True)
             if not attitude.proven:
                 raise ValueError('Nonlinear refuge pose forecast unresolved: '+attitude.reason)
-            pose=AttitudePoseBoundsProvider(lambda start,end:attitude,clock=self.clock,
+            pose=AttitudePoseBoundsProvider(FixedProofProvider(attitude),clock=self.clock,
                 geometry_id=self.design.geometry.fingerprint,target_model_id=self.model.target_fingerprint,
                 frame=estimate.frame_id,clock_id=self.clock.fingerprint)
         else:
@@ -520,7 +526,11 @@ class NonlinearSafetyPlanner:
                 actuator_id=self.actuator_id,geometry_id=self.design.geometry.fingerprint,
                 reference_id=references[key].reference_id,fuel_domain_id=self.propulsion.fingerprint)
         widths=np.max(np.array([radius(box) for box in estimate.relative_state_box_by_agent.values()]),axis=0)
-        floors=np.array((.005,)*3+(1.75,)*3) if near else np.array((.03,)*3+(6.5,)*3)
+        # A small current navigation box is not a proof that all future
+        # sensor/observer errors will stay below the installed far budget.
+        # Keep that declared floor for near successors; the final transaction
+        # also refuses any reduction of a larger original controller budget.
+        floors=np.array((.03,)*3+(6.5,)*3)
         sensing=np.maximum(floors,1.1*widths+1e-8)
         # The far profile uses lambda*Omega == Phi exactly. A binary float
         # 0.15 is slightly smaller and would correctly fail the rational
@@ -531,7 +541,7 @@ class NonlinearSafetyPlanner:
         if np.any(sensing[3:]+gain*sensing[:3]>=phi):
             raise ValueError('Navigation uncertainty leaves no refuge sliding margin')
         drift=NonlinearZeroDriftBounds(model=self.model,clock=self.clock,
-            target_provider=lambda start,end:target_flow,maximum_width='.001',
+            target_provider=FixedProofProvider(target_flow),maximum_width='.001',
             extra_acceleration_abs=tuple(max(abs(a),abs(b))
                 for a,b in zip(estimate.acceleration_disturbance.lower,estimate.acceleration_disturbance.upper)))
         tracking=dict(omega=position,phi=phi,lambda_gain=(gain,)*3,

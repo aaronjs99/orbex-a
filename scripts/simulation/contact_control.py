@@ -1,6 +1,7 @@
 """Measured-state stationkeeping and finite-bandwidth positioner commands."""
 from __future__ import annotations
 
+from fractions import Fraction
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -9,7 +10,15 @@ from orbexa.core.attitude import finite_vector
 
 def _limit(vector, maximum):
     norm = float(np.linalg.norm(vector))
-    return np.asarray(vector) * min(1., maximum / max(norm, 1e-30))
+    result = np.asarray(vector) * min(1., maximum / max(norm, 1e-30))
+    squared_limit = Fraction(float(maximum))**2
+    # The rounded normalized vector can lie just outside its true Euclidean
+    # hardware ball. Move inward, never enlarge the declared authority.
+    for _ in range(8):
+        if sum(Fraction(float(value))**2 for value in result) <= squared_limit:
+            return result
+        result = np.nextafter(result, 0.)
+    raise ValueError('Positioner command cannot be rounded inside its declared authority')
 
 
 class ContactController:

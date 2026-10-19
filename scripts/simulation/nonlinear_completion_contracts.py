@@ -22,6 +22,7 @@ _COMPLETION_SOURCE_FILES = (
     'nonlinear_completion_boundary.py',
     'nonlinear_completion_contracts.py',
     'nonlinear_completion_environment.py',
+    'nonlinear_environment_enclosure.py',
     'nonlinear_completion_journal.py',
     'nonlinear_completion_observers.py',
     'nonlinear_completion_propellant.py',

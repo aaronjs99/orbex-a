@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from orbexa.control.reachability import IntervalBox, HeldInputRequest
 from orbexa.control.nonlinear_flow import NonlinearFlowEncloser
 from orbexa.core.nonlinear_relative import NonlinearModelBounds
+from orbexa.control.actuation import CommandDependentActuationPrior
 
 
 def _disjoint(left, right):
@@ -29,6 +30,10 @@ class NonlinearTransitionObservation:
     acceleration_disturbance: IntervalBox = IntervalBox.point((0, 0, 0))
     observation_id: str = ''
     target_observed: IntervalBox | None = None
+    agent_id: str = ''
+    commanded_input: tuple | None = None
+    actuation_prior: CommandDependentActuationPrior | None = None
+    actuation_persistence: str = ''
 
 
 @dataclass(frozen=True)

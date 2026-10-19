@@ -593,6 +593,7 @@ try {
   catalog = await readJSON('catalog.json');
   if (catalog.schema !== 'orbexa.mission.studio.catalog.v1' || !Array.isArray(catalog.entries) || !catalog.entries.length && catalog.live !== true) throw new Error('No recorded mission catalog is available');
   $('scenario').replaceChildren(...catalog.entries.map(entry => option(entry.key, entry.title)));
+  $('scenario').hidden = catalog.entries.length < 2;
   $('theory-select').replaceChildren(...catalog.theory.map((document, index) => option(String(index), document.title)));
   showTheory();
   if (!catalog.entries.length) resetLiveView();

@@ -242,6 +242,17 @@ class ThrusterSystem:
             preflight['fuel_command_scale'] = scale
             if not success or load_scale < 1.:
                 message = load_message
+            if success:
+                whole_hold = assembly.attachment_load_enclosure(state, self, commands, duration,
+                    capacity_fraction=self.attachment_capacity_fraction)
+                preflight['whole_hold'] = whole_hold.as_dict()
+                if not whole_hold.passed:
+                    # A numerical endpoint pass cannot override an unresolved
+                    # whole-step bound or an unsupported environment model.
+                    commands = np.zeros_like(commands)
+                    success, load_scale = False, 0.
+                    message = 'attachment_whole_hold_loads_not_proven: '+whole_hold.reason
+                    preflight.update(passed=False, command_scale=0., reason=message)
             # Every reported wrench, residual and tank flow uses the final
             # commands, including a refused zero command before any propagation.
             flow = np.zeros(len(assembly.elements))
