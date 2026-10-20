@@ -1,6 +1,6 @@
 """Packed physical coordinates and explicit mutable contact/actuator state.
 
-The six leading values track a translating, nonrotating orbital reference.
+The six leading values track the actual target COM in nonrotating ECI axes.
 Each body then stores local position/velocity, quaternion, body spin and fuel;
 each tip stores extension/velocity. The final 19 values are balance ledgers.
 """
@@ -50,7 +50,7 @@ class ContactFleet:
         mounts = np.array([[-m.properties.gripper_offset_m, 0., 0.] for m in members])
         anchors = np.array([m.surface_anchor_body_m for m in members])
         normals = np.array([m.normal_body for m in members])
-        # A translating, nonrotating origin avoids subtracting orbital-scale
+        # The target-following nonrotating origin avoids subtracting orbital-scale
         # kinetic energies and momenta to resolve millimeter contact effects.
         body_slice, tip_start = slice(6, 6 + 14*n), 6 + 14*n
         tip_slice, ledger_start = slice(tip_start, tip_start + 6*count), tip_start + 6*count
@@ -101,6 +101,8 @@ class ContactFleet:
         else:
             gaps = {m.id: diag['rows'][i]['gap'] for i, m in enumerate(members)}
         return dict(target=states[0], chasers={m.id: states[i+1] for i, m in enumerate(members)},
+            positioner_encoders={m.id: dict(extension_body_m=unpack(values)[1][i, :3].tolist(),
+                extension_velocity_body_m_s=unpack(values)[1][i, 3:].tolist()) for i, m in enumerate(members)},
             contact_wrenches_eci={m.id: dict(force_n=(np.zeros(3) if diag is None else diag['rows'][i]['force']).tolist(),
                 couple_nm=(np.zeros(3) if diag is None else diag['rows'][i]['couple']).tolist())
                 for i, m in enumerate(members)},

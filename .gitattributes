@@ -1,4 +1,6 @@
 # Preserve registry bytes used by vendor/manifest.json on every checkout.
+# Physical-model source identities must match the committed bytes on Windows.
+*.py text eol=lf
 scripts/visualization/studio/vendor/** -text linguist-vendored whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # Renderer bundles are reviewed through their pinned hashes and licenses.
 scripts/visualization/studio/vendor/**/*.js -diff

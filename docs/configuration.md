@@ -14,7 +14,7 @@ python run.py --config my-orbit.yaml --spacecraft my-spacecraft.json --study my-
 |---|---|
 | Orbit/controller YAML | Fleet count, reference orbit, MPC input limits, chaser separation, target clearance and solver settings. Use `target.shape: composite_spacecraft`. |
 | Spacecraft JSON | Oriented box enclosures for every occupied component, their uncertainties, attachment patches, target mass/inertia and chaser hardware. Include solar arrays and appendages. |
-| Study JSON | Deployment, tube gains/bandwidth, horizons, parameter priors, sensing, actuator uncertainty, observation windows, update cap and independently selected physical cases. |
+| Study JSON | Deployment, tube gains/bandwidth, horizons, parameter priors, sensing, actuator uncertainty, observation windows, contact/disposal settings, update cap and independently selected physical cases. |
 
 The study's named fields override corresponding controller defaults. Resolved
 values, source bytes and input hashes are recorded before motion. Changing the
@@ -90,6 +90,58 @@ Other exposed study fields include:
   `target_acceleration_bound_rad_s2`.
 - The complete `sensor` record and command-dependent actuator error bounds.
 - Linked identification's finite history, nuisance-cell and flow budgets.
+- `near_feedback_subdivisions`: a positive integer dividing the base feedback
+  hold near the target. The actual executor obeys the shorter certified hold;
+  this is a different control rate, not additional interpolation of a movie.
+- Optional `far_contingency`, with `coast_holds`, `transition_holds` and
+  `acceleration_limit_m_per_rad2`, adds an acceleration-prefix proposal before
+  the existing braking candidates. It uses the projected derivative enclosure,
+  never a future observation. Every original entry, nonlinear, geometry,
+  force and fuel gate still applies. Leaving it absent preserves the original
+  search; a longer unresolved forecast can retry the shorter original search.
+
+## Contact, detumbling and disposal
+
+Use `options.completion` in the study JSON to change stage policies without
+changing spacecraft hardware. Missing fields retain the typed stage defaults;
+unknown fields and invalid physical values refuse setup.
+
+```json
+{
+  "contact": {
+    "handoff_rule": "load_bounded_finite_lock",
+    "max_duration_s": 60,
+    "max_step_s": 0.005,
+    "lock_duration_s": 0.25
+  },
+  "detumbling": {
+    "rate_tolerance_rad_s": 0.00001,
+    "dwell_s": 30,
+    "max_duration_s": 1200,
+    "control_step_s": 1
+  },
+  "deorbit": {
+    "target_perigee_altitude_m": 80000,
+    "entry_interface_altitude_m": 120000,
+    "control_step_s": 2,
+    "coast_sample_step_s": 30,
+    "max_burn_s": 7200,
+    "max_coast_orbits": 2
+  }
+}
+```
+
+The names above are the public option names of the corresponding stage
+dataclasses. Hardware force, moment arm and specific impulse remain in
+`vehicle_design`; the contact policy cannot override them. Numerical contact
+substeps and interval-proof partitions resolve a held command without changing
+its sensor or controller frequency. A longer allowed stage duration is a
+budget, never evidence that its acceptance gates passed.
+
+Disposal ends at a descending entry-interface handoff. It does not establish
+atmospheric breakup, demise or a safe ground footprint. A different target
+also needs valid patches, mass/inertia and load capacities; selecting another
+mesh cannot qualify the new mission.
 
 The maintained environment is Earth central gravity, inclined J2 and a declared
 co-rotating exponential atmosphere. Configurable orbit and target properties

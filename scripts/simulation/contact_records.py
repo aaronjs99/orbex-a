@@ -78,7 +78,9 @@ class ContactRecorder:
                 first_contact_relative_speed_m_s=None if np.isnan(first_touch_speed[k]) else float(first_touch_speed[k]),
                 contact_event_time_resolution_s=o.max_step_s,
                 engagement_start_time_s=None if not np.isfinite(engagement[k]) else started+engagement[k],
-                latch_time_s=started+t if success else None, target_docking_fixture_required=False,
+                latch_time_s=started+t if success and o.handoff_rule == 'settled_passive' else None,
+                finite_lock_eligibility_time_s=started+t if success and o.handoff_rule == 'load_bounded_finite_lock' else None,
+                target_docking_fixture_required=False,
                 surface_point_body_m=(anchors[k]+row['e']-(row['e']@normals[k])*normals[k]).tolist(),
                 tip_at_contact_body_m=(anchors[k]+row['e']).tolist(),
                 contact_residual_m=abs(row['gap']), available_tip_reach_m=member.arm_reach_m,
@@ -86,6 +88,15 @@ class ContactRecorder:
                 tensile_limit_n=o.tensile_limit_n, shear_limit_n=o.shear_limit_n, moment_limit_nm=o.moment_limit_nm)
         finite_minima = {key: None if not np.isfinite(value) else float(value) for key, value in minima.items()}
         audit = dict(model='finite_coupled_rigid_body_compliant_adhesive.v1', options=asdict(o),
+            handoff_admission=dict(rule=o.handoff_rule,
+                success_meaning=('passive settling dwell satisfied; finite lock still required for rigid attachment'
+                    if o.handoff_rule == 'settled_passive' else
+                    'eligibility to request finite active lock; not completed rigid attachment'),
+                conditions=('Original whole-held geometry/load/resource gates and strict passive pose/twist/energy dwell'
+                    if o.handoff_rule == 'settled_passive' else
+                    'Original whole-held geometry/load/resource gates and fully engaged bonds throughout the declared dwell; carried residual motion is admitted only by a subsequent complete finite-work lock preflight, with the old instantaneous-projection energy cap reserved for settled_passive'),
+                endpoint_state_and_strain_projected=False,
+                final_attachment_requires='FiniteLockTransition admission of the entire carried endpoint followed by all completed load/reach/power/acceleration/geometry holds and its zero-relative-twist endpoint'),
             elapsed_s=t, integrated_body_count=n, chaser_count=count, peer_pair_count=count*(count-1)//2,
             occupied_component_count=len(geometry.components) if hasattr(geometry, 'components') else 1,
             geometry_scope='Whole-held-step Arb flow and exact occupied-component support gates precede motion; numerical endpoint/travel checks remain additional diagnostics',
@@ -103,9 +114,10 @@ class ContactRecorder:
             compression_dissipation_j=float(ledger[16]), friction_dissipation_j=float(ledger[17]),
             bond_dissipation_j=float(ledger[18]), initial_kinetic_energy_j=original['kinetic'],
             final_kinetic_energy_j=diag['kinetic'], final_contact_potential_j=diag['potential'],
+            final_contact_potential_enclosure_j=getattr(self, 'continuous_enclosure', {}).get('final_contact_potential_set_j'),
             fuel_used_kg={member.id: float(member.initial_state.fuel_kg-view['chasers'][member.id].fuel_kg) for member in members},
             saturated_control_steps=saturation_count,
-            balance_frame='translating nonrotating central-gravity reference; differential gravity includes the frame acceleration; fuel carries local velocity and specific inertia',
+            balance_frame='actual-target-COM-following nonrotating ECI axes; local external impulse/work includes the accelerating-origin inertial force on every body; fuel carries local velocity and specific inertia',
             environment_scope='injected extra accelerations beyond central gravity and extra body torques beyond gravity gradient; included in external wrench/work ledgers' if environment else 'central gravity and gravity gradient only',
             environment_contract=environment.as_dict() if callable(getattr(environment, 'as_dict', None)) else None,
             feedback_scope='injected estimated relative navigation; physical plant retained' if feedback else 'exact physical feedback assumption',

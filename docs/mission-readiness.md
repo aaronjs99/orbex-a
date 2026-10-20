@@ -1,90 +1,66 @@
 # Mission readiness
 
-ORBEX-A has not yet demonstrated one complete sensed nonlinear mission from
-the 300 m release through attachment, detumbling and disposal. Older movies are
-separate historical evidence. Start with the
-[readiness page](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/research-review.html)
-for plots and a short status view.
+One complete sensed nonlinear mission from the 300 m payload release through
+all attachments, detumbling and disposal is still under verification. A safe
+prefix, a local contact fixture or a successful coast does not complete it.
+The [Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/)
+keeps recorded outcomes separate from explanatory figures.
 
-## What changed
+## What now works, and what the evidence means
 
-| Problem | Implementation | Evidence and limit |
+| Part | Implemented behavior | Verified scope |
 |---|---|---|
-| Planning blocks feedback | A separate process prepares future proof products; one executor owns the finite backup, observations, clock and fuel. | Numerical fallback continues while a worker is busy. Current physical-period checks still refuse; a general-purpose process split is not a flight deadline guarantee. |
-| Each hold gets an unrelated actuator error | A bounded linked window keeps one affine actuator hypothesis per chaser and physical candidate. | Discriminating examples exclude inconsistent hypotheses and retain truth. The actual mission window retains all four drag candidates and is too slow for synchronous online use. |
-| Sampling misses intermediate contact/load peaks | Continuous interval contact flows and held-assembly load bounds gate numerical propagation. | Interior-overload examples are refused. These remain conditional on their initial sets, declared rigid/contact model and supported environment. |
-| Rotation bounds obstruct otherwise safe approach regions | All-attitude component supports retain rotation orthogonality. | The unchanged Envisat geometry admits a separation example previously refused by independent matrix-entry bounds. Full mission convergence does not follow. |
-| Sensor overlap cannot be audited | Acquisition and delivery events stream full measured packets before use. | Matched 22-update prefixes cover the same 6,001 physical-slot/agent/channel keys and execute control after adaptation. Packet identities need not match when trajectories differ. |
-| Envisat and eight chasers are embedded in setup | Explicit composite-target, vehicle and fleet declarations; configurable horizons, sensing/prior bounds and three-axis spin. | Two different synthetic targets with fleets of two and three install initial nonlinear finite backups. This does not qualify their complete missions. |
+| Independent feedback | A separate process prepares an extended finite backup; the executor owns the current sensing, clock, commands and fuel. Late/stale proposals refuse. | A closed sensed run executes 2,200 fleet holds over 66.09 s, crossing the original policy's expiry with an independently rebuilt extension. It still misses the physical 30 ms timing budget. |
+| Bounded navigation | Multiple exact position baselines constrain velocity using the admitted acceleration history; contradictions latch. | Analytic histories, eviction, cache mutation and unsupported-history cases pass. Physical sensor supports and timestamps remain unchanged. |
+| Near-target fallback | Held reference-acceleration cancellation reduces a valid error bound; actual near feedback uses the declared shorter hold. | Complete Envisat staging/terminal backups pass every component, peer, force, entry and fuel gate. These are installations, not executed docking trajectories. |
+| Mixed fleets | Any close member triggers whole-fleet pose-conditioned geometry, while far/high-speed tracking retains its own law. | A declared mixed case passes where the all-rotation envelope refused. All-far, staging and terminal plan/witness hashes remain unchanged. |
+| Contact and lock | Terminal sets enter a target-relative contact chart; supported observations condition continuous contact. A finite lock carries residual motion and strain before rigid attachment is counted. | Frame, momentum/work, interior-overload, redundant-state and finite-lock component checks pass. The production contact and complete handoff remain under investigation. |
+| Attached flight | State, geometry, inertia and load enclosures continue between holds. Chaser-carried sensors observe the assembly. | Controlled/coast continuation and whole-set rate/dwell fixtures pass under the declared mechanism and sensor model. |
+| Entry crossing | A descending whole-set above-to-below coast bracket is required. A numerical point root is insufficient. | A near-interface uncertain coast qualifies; a full mission's burn, coast and final event still need one closed record. |
 
-Generated qualification artifacts stay outside this checkout. Their source,
-inputs, closed-archive hashes, failure outcomes and scope accompany the results.
-Older cohorts are not combined with the v6 linked-estimator study.
+Generated scientific artifacts remain outside this checkout. Each qualification
+retains its exact source/input hashes, outcomes and limits. Source changes do
+not retroactively upgrade an older run.
 
-The closed v6 central comparison has four 22-update arms, each with 704
-acknowledged fleet holds and 21.1496 simulated seconds. All 88 outer updates
-miss their physical timing budget; all four physical drag candidates remain.
-The independent archive audit authenticates source/native records, measured
-packets, certificate links and exact fuel/effort accounting. It does not rerun
-the interval differential proofs. This is development evidence, not a held-out
-superiority result or a complete mission.
+## Identification and timing remain measurable obligations
 
-[Mission configuration](configuration.md) explains the three input files and
-which declarations the maintained physical model supports.
+The linked estimator keeps one persistent affine actuator hypothesis per
+chaser, rather than assigning unrelated errors to each hold. Its existing
+short mission window still retains every physical drag candidate.
 
-## Code map
+The optional integral membership estimator uses streamed three-position
+integral constraints and shared drag/gain/bias parameters. Exact dual-residual
+certificates authenticate any proposed support contraction or exclusion.
+Physical coefficient enclosures must come from an explicit provider. On the
+closed 66 s history, five longer arcs still give no certified parameter-support
+contraction: all drag-prior corners remain feasible in that affine outer set.
+This is not a proof of full nonlinear indistinguishability. Manufactured
+informative cases qualify the estimator's arithmetic, not useful learning on
+the mission or adaptive superiority.
 
-- Execution: `simulation/online_worker.py`, `simulation/online_execution.py`,
-  `control/prepared_admission.py`. The default nonlinear mission runner is still
-  an explicitly offline study.
-- Identification: `estimation/linked_membership.py`; observations enter through
-  `simulation/nonlinear_execution.py`. The estimator receives declared commands
-  and uncertainty, never the realized matrix, bias or physical drag truth.
-- Contact and loads: `simulation/contact_enclosure.py`,
-  `simulation/attachment_enclosure.py`, `simulation/rigid_interval.py` and
-  `simulation/nonlinear_environment_enclosure.py`.
-- Geometry: `control/rotation_support.py`, used by the finite refuge provider.
-- Measurement evidence: `simulation/nonlinear_sensing.py`.
+Online timing includes current observations, integrity checks, feedback,
+admission, dispatch and resource commitment. Numerical plant integration and
+synthetic packet generation are measured separately; durable evidence I/O is
+also reported. A faster message transfer, solver or median is insufficient
+to establish the complete physical deadline.
 
-## The mathematical distinctions that matter
+## Comparisons and generalization
 
-For a fixed actuator matrix \(M_i\), bias \(b_i\), commanded input \(u_k\)
-and bounded evaluation error \(r_k\), a chaser receives
-\(u_k^{\mathrm{applied}}=M_i u_k+b_i+r_k\). A linked branch must explain every
-retained observation with the same \((M_i,b_i)\). State and target/time endpoint
-sets are carried between contiguous holds. A physical candidate is removed
-only after every covering actuator branch is proved inconsistent; unresolved
-or unevaluated branches remain. This establishes conditional exclusion
-soundness, not excitation or useful identification.
+The closed v6 development comparison has four adaptive/frozen × dynamic/fixed
+22-update arms. Each has 704 acknowledged fleet holds and 21.1496 simulated
+seconds. All 88 outer updates miss their physical timing budget, and all four
+drag candidates remain. Source/native outputs, complete archives, measured
+packets, certificate links and exact fuel/effort ledgers are authenticated;
+that audit does not rerun every interval differential proof. These cases
+informed development and are not held out.
 
-For a fixed projection direction \(n\), expanded component vertex \(v\)
-and any proper rotation \(R\),
-
-\[
- |n^T Rv|\le\|n\|_2\|v\|_2.
-\]
-
-The maximum squared vertex norm is exact and its square root rounds outward.
-Convexity extends the bound to the solid component. This avoids treating nine
-rotation entries as independent physical degrees of freedom. It reduces
-unnecessary conservatism while retaining every declared appendage and its
-uncertainty.
-
-Whole-step contact/load bounds concern an exact declared ODE and a supplied
-initial set. They do not turn a numerical point from an earlier stage into an
-authenticated physical uncertainty set. The contact-to-rigid-assembly handover
-and an uninterrupted complete mission still need their own source-bound result.
-
-## What still fails
-
-Useful drag identification, timely useful replanning and full mission progress
-remain empirical obligations. The default short observation window is weakly
-informative; increasing it also increases proof cost. A stored policy suffix
-keeps its original finite expiry. It cannot replace an extended safe policy or
-an arrival argument. Physical clock synchronization and bounded dispatch jitter
-also need an actuator/sensor adapter contract.
+Two distinct synthetic spacecraft with two and three chasers install initial
+nonlinear finite backups using their own mass, inertia and propulsion.
+Their complete missions remain unverified. [Mission configuration](configuration.md)
+describes the explicit geometry, hardware, sensing, deployment and completion
+inputs. Flexible appendages, physical adhesive/servo qualification and
+atmospheric demise are outside the maintained rigid/mechanism model.
 
 See [nonlinear mission theory](nonlinear-mission.md),
-[sensed feedback](sensed-tube.md), [finite fallback](fleet-fallback.md),
-[finite contact](finite-contact.md) and the
-[primary-source review](research-review.md) for the detailed assumptions.
+[navigation](nonlinear-navigation.md), [finite fallback](fleet-fallback.md),
+[finite contact](finite-contact.md) and the [primary-source review](research-review.md).

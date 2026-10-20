@@ -8,6 +8,7 @@ breakup, demise, thermal protection and ground impact are outside this model.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from fractions import Fraction
 from typing import Optional
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -17,6 +18,14 @@ from scipy.spatial.transform import Rotation
 from orbexa.core.attitude import finite_vector
 from orbexa.simulation.assembly import AttachedAssembly, AssemblyState, STANDARD_GRAVITY, positive
 from orbexa.simulation.propulsion import ThrusterSystem
+from orbexa.simulation.deorbit_entry import EntryInterfaceMonitor, radial_status
+
+
+def _rate_within(state, limit):
+    if state.enclosure is None:
+        return bool(np.linalg.norm(state.angular_velocity_body_rad_s) <= limit)
+    angular = state.enclosure.box.slice(10, 13)
+    return sum(max(abs(lo), abs(hi))**2 for lo, hi in zip(angular.lower, angular.upper)) <= Fraction(float(limit))**2
 
 
 def orbital_elements(position_eci_m, velocity_eci_m_s, mu_m3_s2=3.986004418e14):
@@ -174,9 +183,13 @@ class DeorbitSimulator:
                       perigee_altitude_m=elements["perigee_radius_m"] - assembly.earth_radius_m)
         return record
 
-    def _coast(self, assembly, initial, duration, history, phase, *, stop_at_entry=True):
+    def _coast(self, assembly, initial, duration, history, phase, *, stop_at_entry=True, propulsion=None, observer=None,
+               entry_monitor=None):
         if duration <= 1e-9:
             return initial, False, dict(relative_energy_drift=0., relative_angular_momentum_drift=0.)
+        if initial.enclosure is not None:
+            return self._carried_coast(assembly, initial, duration, history, phase,
+                stop_at_entry=stop_at_entry, propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
         mass, _, inertia = assembly.mass_properties(initial.fuel_kg)
         values = np.r_[initial.position_eci_m, initial.velocity_eci_m_s, initial.quaternion_body_to_eci,
                        initial.angular_velocity_body_rad_s]
@@ -209,9 +222,70 @@ class DeorbitSimulator:
         crossed = bool(stop_at_entry and len(solution.t_events[0]) > 0)
         return state, crossed, drift
 
-    def run(self, assembly: AttachedAssembly, initial: AssemblyState, propulsion: ThrusterSystem) -> DeorbitResult:
+    def _carried_coast(self, assembly, initial, duration, history, phase, *, stop_at_entry, propulsion, observer=None,
+                       entry_monitor=None):
+        """Zero-nozzle coasts retain the same admitted set and joint-load gates."""
+        if propulsion is None:
+            raise ValueError('A carried deorbit coast requires the actual installed propulsion declaration')
+        commands = np.zeros(len(propulsion.thrusters))
+        zero, flow = np.zeros(3), np.zeros(len(assembly.elements))
+        state, elapsed, crossed = initial, 0., False
+        entry_radius = assembly.earth_radius_m+self.options.entry_interface_altitude_m
+        monitor = entry_monitor or EntryInterfaceMonitor(entry_radius)
+        def conclude(refusal=None):
+            before = orbital_elements(initial.position_eci_m, initial.velocity_eci_m_s, assembly.mu_m3_s2)
+            after = orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)
+            result = dict(relative_energy_drift=abs(after['specific_energy_j_kg']/before['specific_energy_j_kg']-1),
+                relative_angular_momentum_drift=abs(after['specific_angular_momentum_m2_s']/before['specific_angular_momentum_m2_s']-1),
+                carried_state_enclosure=state.enclosure.as_dict(),
+                entry_interface_certificate=monitor.certificate,
+                scope='Carried whole-state and whole-hold zero-command load inclusion; successful entry requires a continuous whole-set descending above-to-below bracket')
+            if refusal is not None:
+                result['refusal'] = dict(time_s=state.time_s, exception_type=type(refusal).__name__,
+                    message=str(refusal), proposed_hold_applied=False, accepted_elapsed_s=elapsed)
+            return state, crossed, result
+        while elapsed < duration-1e-9:
+            measurement = None
+            try:
+                if observer is not None:
+                    state, _, measurement = observer.update(assembly, state)
+                hold = min(assembly.max_integration_step_s, self.options.coast_sample_step_s, duration-elapsed)
+                loads = assembly.attachment_load_enclosure(state, propulsion, commands, hold,
+                    capacity_fraction=propulsion.attachment_capacity_fraction)
+                if not loads.passed:
+                    raise ValueError('Carried zero-thrust coast loads not proven: '+loads.reason)
+                next_state, integration = assembly.advance_with_audit(state, hold, zero, zero, flow,
+                    propulsion=propulsion, commands_n=commands, max_angular_rate_rad_s=self.options.max_body_rate_rad_s)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                return conclude(error)
+            interface = monitor.interval(state, next_state, fuel_flow_kg_s=flow)
+            crossed = bool(stop_at_entry and interface is not None)
+            row = self._record(assembly, next_state, phase)
+            row['integration'] = integration
+            row['whole_hold_attachment_loads'] = loads.as_dict()
+            if measurement is not None:
+                row['observation_conditioning'] = measurement
+            if interface is not None:
+                row['entry_interface_certificate'] = interface
+            history.append(row)
+            state, elapsed = next_state, elapsed+hold
+            if crossed:
+                break
+        return conclude()
+
+    def run(self, assembly: AttachedAssembly, initial: AssemblyState, propulsion: ThrusterSystem, *, observer=None) -> DeorbitResult:
         options, state = self.options, initial
+        observations = []
+        feedback_state = state
+        if initial.enclosure is not None:
+            if observer is None:
+                from orbexa.simulation.assembly_observation import BoundedAssemblyObserver
+                observer = BoundedAssemblyObserver()
+            state, feedback_state, measurement = observer.update(assembly, state)
+            observations.append(measurement)
         history, controls, coasts = [self._record(assembly, initial, "deorbit_planning")], [], []
+        entry_monitor = (EntryInterfaceMonitor(assembly.earth_radius_m+options.entry_interface_altitude_m)
+                         if initial.enclosure is not None else None)
         assembly_model = assembly.to_dict()
         audit = dict(entry_interface_altitude_m=options.entry_interface_altitude_m,
                      target_perigee_altitude_m=options.target_perigee_altitude_m,
@@ -227,6 +301,10 @@ class DeorbitSimulator:
         force_residual, torque_residual, burn_time = 0., 0., 0.
 
         def finish(success, message):
+            if entry_monitor is not None:
+                audit['entry_interface_certificate'] = entry_monitor.certificate
+                if success and entry_monitor.certificate is None:
+                    success, message = False, 'deorbit_whole_set_entry_interface_not_proven'
             final = orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)
             audit.update(elapsed_s=state.time_s - initial.time_s, fuel_used_kg=float(np.sum(initial.fuel_kg - state.fuel_kg)),
                 final_orbit=final, final_altitude_m=final["radius_m"] - assembly.earth_radius_m,
@@ -235,11 +313,17 @@ class DeorbitSimulator:
                 integrated_thrust_delta_v_m_s=thrust_delta_v, saturated_steps=saturated_steps,
                 maximum_force_allocation_residual_n=force_residual, maximum_torque_allocation_residual_nm=torque_residual,
                 max_step_angular_balance_residual_kg_m2_s=max_balance, coast_invariant_audits=coasts)
+            audit.update(observer=None if observer is None else observer.as_dict(), observations=observations)
             return DeorbitResult(success, message, state, history, controls, audit)
 
-        if np.linalg.norm(initial.angular_velocity_body_rad_s) > options.max_initial_rate_rad_s:
+        if not _rate_within(state, options.max_initial_rate_rad_s):
             return finish(False, "deorbit_requires_detumbled_initial_state")
-        initial_elements = history[0]["orbit"]
+        initial_elements = orbital_elements(feedback_state.position_eci_m, feedback_state.velocity_eci_m_s,
+                                            assembly.mu_m3_s2)
+        audit['sensed_planning_orbit'] = initial_elements
+        if state.enclosure is not None and not radial_status(state.enclosure.box,
+                assembly.earth_radius_m+options.entry_interface_altitude_m)['entirely_above']:
+            return finish(False, 'deorbit_initial_whole_state_not_above_entry_interface')
         if initial_elements["radius_m"] <= assembly.earth_radius_m + options.entry_interface_altitude_m:
             return finish(False, "deorbit_initial_state_already_below_entry_interface")
         if initial_elements["apogee_radius_m"] is None:
@@ -253,8 +337,10 @@ class DeorbitSimulator:
             period = 2 * np.pi * np.sqrt(initial_elements["semi_major_axis_m"]**3 / assembly.mu_m3_s2)
             audit["burn_cutoff_reason"] = "initial_orbit_intersects_entry_interface"
             state, crossed, drift = self._coast(assembly, state, options.max_coast_orbits * period,
-                                               history, "coast_to_entry_interface")
+                history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
             coasts.append(drift)
+            if drift.get('refusal'):
+                return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])
             if crossed and np.dot(state.position_eci_m, state.velocity_eci_m_s) < 0:
                 final_perigee = orbital_elements(state.position_eci_m, state.velocity_eci_m_s,
                                                 assembly.mu_m3_s2)["perigee_radius_m"]
@@ -279,20 +365,37 @@ class DeorbitSimulator:
             return finish(False, "deorbit_propellant_budget_insufficient_for_planned_apoapsis_strategy")
         if audit["propulsion_authority"]["wrench_rank"] < 6:
             return finish(False, "deorbit_insufficient_six_axis_wrench_authority")
-        apo_time = state.time_s + time_to_apoapsis_s(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)
+        apo_time = state.time_s + time_to_apoapsis_s(feedback_state.position_eci_m, feedback_state.velocity_eci_m_s, assembly.mu_m3_s2)
         coast_duration = max(0., apo_time - state.time_s - options.alignment_lead_s)
-        state, crossed, drift = self._coast(assembly, state, coast_duration, history, "coast_to_apoapsis")
+        state, crossed, drift = self._coast(assembly, state, coast_duration, history, "coast_to_apoapsis",
+            propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
         coasts.append(drift)
+        if drift.get('refusal'):
+            return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])
         if crossed:
             return finish(True, "descending_entry_interface_reached_during_coast")
         alignment_start, burn_start = state.time_s, None
+        feedback_state = state
+        if observer is not None:
+            try:
+                state, feedback_state, measurement = observer.update(assembly, state)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit['refused_observation'] = dict(time_s=state.time_s, applied=False,
+                    exception_type=type(error).__name__, message=str(error))
+                return finish(False, 'deorbit_observation_refused: '+str(error))
+            observations.append(measurement)
         pointing_policy = self.pointing_policy
         axis = np.asarray(getattr(pointing_policy, 'thrust_axis_body', (1., 0., 0.)))
         plan = None
         if self.burn_axis_planner is not None:
             if not callable(getattr(pointing_policy, 'with_thrust_axis', None)):
-                raise ValueError('A selected burn axis requires a pointing policy with with_thrust_axis')
-            plan = self.burn_axis_planner.select(assembly, state, propulsion, options.control_step_s)
+                return finish(False, 'deorbit_pointing_policy_cannot_use_selected_axis')
+            try:
+                plan = self.burn_axis_planner.select(assembly, feedback_state, propulsion, options.control_step_s)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit['refused_axis_plan'] = dict(time_s=state.time_s, applied=False,
+                    exception_type=type(error).__name__, message=str(error))
+                return finish(False, 'deorbit_axis_plan_refused: '+str(error))
             pointing_policy = pointing_policy.with_thrust_axis(plan.direction_body)
             axis = np.asarray(plan.direction_body)
             default_force = plan.commanded_force_n
@@ -303,8 +406,13 @@ class DeorbitSimulator:
         burn_force = default_force if options.burn_force_n is None else options.burn_force_n
         if self.burn_throttle_planner is not None:
             if plan is None or options.burn_force_n is not None:
-                raise ValueError('Finite throttle planning requires a coupled axis plan and no conflicting force override')
-            throttle = self.burn_throttle_planner.select(assembly, state, propulsion, plan, options)
+                return finish(False, 'deorbit_throttle_requires_coupled_axis_plan_without_force_override')
+            try:
+                throttle = self.burn_throttle_planner.select(assembly, feedback_state, propulsion, plan, options)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit['refused_throttle_plan'] = dict(time_s=state.time_s, applied=False,
+                    exception_type=type(error).__name__, message=str(error))
+                return finish(False, 'deorbit_throttle_plan_refused: '+str(error))
             audit['finite_burn_plan'] = throttle
             if throttle['status'] != 'FINITE_BURN_PREDICTED':
                 return finish(False, 'deorbit_no_admitted_finite_burn_preview')
@@ -312,7 +420,22 @@ class DeorbitSimulator:
         audit.update(commanded_burn_force_n=burn_force, planned_apoapsis_time_s=apo_time,
                      thrust_axis_body=axis.tolist())
         while True:
-            torque, pointing, tracking_rate = pointing_policy.command(assembly, state)
+            feedback_state = state
+            measurement = None
+            if observer is not None:
+                try:
+                    state, feedback_state, measurement = observer.update(assembly, state)
+                except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                    audit['refused_observation'] = dict(time_s=state.time_s, applied=False,
+                        exception_type=type(error).__name__, message=str(error))
+                    return finish(False, 'deorbit_observation_refused: '+str(error))
+                observations.append(measurement)
+            try:
+                torque, pointing, tracking_rate = pointing_policy.command(assembly, feedback_state)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit['refused_control'] = dict(time_s=state.time_s, applied=False,
+                    exception_type=type(error).__name__, message=str(error))
+                return finish(False, 'deorbit_control_refused: '+str(error))
             aligned = pointing <= options.pointing_tolerance_rad and tracking_rate <= options.pointing_rate_tolerance_rad_s
             if burn_start is None and state.time_s >= apo_time and aligned:
                 burn_start = state.time_s
@@ -322,12 +445,17 @@ class DeorbitSimulator:
                 return finish(False, "deorbit_pointing_alignment_timeout")
             if burn_start is not None and state.time_s - burn_start > options.max_burn_s:
                 return finish(False, "deorbit_finite_burn_duration_limit")
-            if np.linalg.norm(state.angular_velocity_body_rad_s) > options.max_body_rate_rad_s:
+            if not _rate_within(state, options.max_body_rate_rad_s):
                 return finish(False, "deorbit_body_rate_limit_exceeded")
             duration = options.control_step_s
             fire = burn_start is not None and aligned
             force = axis * (burn_force if fire else 0.)
-            allocation = propulsion.allocate(assembly, state, force, torque, duration)
+            try:
+                allocation = propulsion.allocate(assembly, state, force, torque, duration)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit.setdefault('refused_holds', []).append(dict(time_s=state.time_s, duration_s=duration,
+                    applied=False, phase='allocation', exception_type=type(error).__name__, message=str(error)))
+                return finish(False, 'deorbit_allocation_refused: '+str(error))
             if not allocation.success:
                 audit.setdefault('refused_allocations', []).append(dict(time_s=state.time_s,
                     duration_s=duration, requested_force_body_n=force.tolist(),
@@ -337,27 +465,54 @@ class DeorbitSimulator:
             def propagate(dt):
                 if dt <= 0:
                     return state
-                return assembly.advance(state, dt, allocation.force_body_n, allocation.torque_body_nm, allocation.fuel_flow_kg_s)
+                return assembly.advance(state, dt, allocation.force_body_n, allocation.torque_body_nm,
+                    allocation.fuel_flow_kg_s, propulsion=propulsion, commands_n=allocation.commands_n,
+                    max_angular_rate_rad_s=options.max_body_rate_rad_s)
 
-            next_state = propagate(duration)
+            def predict(dt):
+                if dt <= 0:
+                    return feedback_state
+                estimate = replace(feedback_state, enclosure=None)
+                return assembly.advance(estimate, dt, allocation.force_body_n, allocation.torque_body_nm,
+                    allocation.fuel_flow_kg_s)
+
+            try:
+                next_state = propagate(duration)
+                predicted = predict(duration)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit.setdefault('refused_holds', []).append(dict(time_s=state.time_s, duration_s=duration,
+                    applied=False, allocation=allocation.to_dict(), exception_type=type(error).__name__, message=str(error)))
+                return finish(False, 'deorbit_held_preview_refused: '+str(error))
             next_orbit = orbital_elements(next_state.position_eci_m, next_state.velocity_eci_m_s, assembly.mu_m3_s2)
-            perigee_reached = burn_start is not None and next_orbit["perigee_radius_m"] <= rp
+            planned_orbit = orbital_elements(predicted.position_eci_m, predicted.velocity_eci_m_s, assembly.mu_m3_s2)
+            perigee_reached = burn_start is not None and planned_orbit["perigee_radius_m"] <= rp
             entry_reached = (np.linalg.norm(next_state.position_eci_m) <= assembly.earth_radius_m + options.entry_interface_altitude_m
                              and np.dot(next_state.position_eci_m, next_state.velocity_eci_m_s) < 0)
             perigee_time, entry_time = None, None
             if perigee_reached:
-                previous_rp = orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)["perigee_radius_m"]
+                previous_rp = orbital_elements(feedback_state.position_eci_m, feedback_state.velocity_eci_m_s,
+                                               assembly.mu_m3_s2)["perigee_radius_m"]
                 if previous_rp > rp:
                     def perigee_event(dt):
-                        candidate = propagate(dt)
+                        candidate = predict(dt)
                         return orbital_elements(candidate.position_eci_m, candidate.velocity_eci_m_s,
                                                 assembly.mu_m3_s2)["perigee_radius_m"] - rp
-                    perigee_time = brentq(perigee_event, 0, duration, xtol=1e-7)
+                    try:
+                        perigee_time = brentq(perigee_event, 0, duration, xtol=1e-7)
+                    except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                        audit['refused_perigee_preview'] = dict(time_s=state.time_s, applied=False,
+                            exception_type=type(error).__name__, message=str(error))
+                        return finish(False, 'deorbit_perigee_preview_refused: '+str(error))
                 else:
                     perigee_time = 0.
-            if entry_reached:
-                entry_time = brentq(lambda dt: np.linalg.norm(propagate(dt).position_eci_m)
-                    - assembly.earth_radius_m - options.entry_interface_altitude_m, 0, duration, xtol=1e-7)
+            if entry_reached and entry_monitor is None:
+                try:
+                    entry_time = brentq(lambda dt: np.linalg.norm(propagate(dt).position_eci_m)
+                        - assembly.earth_radius_m - options.entry_interface_altitude_m, 0, duration, xtol=1e-7)
+                except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                    audit['refused_entry_preview'] = dict(time_s=state.time_s, applied=False,
+                        exception_type=type(error).__name__, message=str(error))
+                    return finish(False, 'deorbit_entry_preview_refused: '+str(error))
             # Both roots are bracketed against the original complete hold.
             # A later perigee cutoff must never hide an earlier entry handoff.
             # Entry takes precedence when the located times agree to root accuracy.
@@ -369,8 +524,21 @@ class DeorbitSimulator:
                 audit["burn_cutoff_orbit"] = history[-1]["orbit"]
                 audit["burn_cutoff_reason"] = "target_perigee_event"
                 break
-            next_state, angular_audit = assembly.advance_with_audit(state, duration, allocation.force_body_n,
-                allocation.torque_body_nm, allocation.fuel_flow_kg_s)
+            try:
+                next_state, angular_audit = assembly.advance_with_audit(state, duration, allocation.force_body_n,
+                    allocation.torque_body_nm, allocation.fuel_flow_kg_s,
+                    propulsion=propulsion, commands_n=allocation.commands_n,
+                    max_angular_rate_rad_s=options.max_body_rate_rad_s)
+            except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                audit.setdefault('refused_holds', []).append(dict(time_s=state.time_s, duration_s=duration,
+                    applied=False, allocation=allocation.to_dict(), exception_type=type(error).__name__, message=str(error)))
+                return finish(False, 'deorbit_held_flow_refused: '+str(error))
+            interface = None
+            if entry_monitor is not None:
+                if np.any(allocation.fuel_flow_kg_s != 0):
+                    entry_monitor.reset()
+                else:
+                    interface = entry_monitor.interval(state, next_state, fuel_flow_kg_s=allocation.fuel_flow_kg_s)
             mass_before = assembly.mass_properties(state.fuel_kg)[0]
             mass_after = assembly.mass_properties(next_state.fuel_kg)[0]
             thrust_delta_v += np.linalg.norm(allocation.force_body_n) * duration / ((mass_before + mass_after) / 2)
@@ -386,14 +554,24 @@ class DeorbitSimulator:
             state = next_state
             history.append(self._record(assembly, state, "finite_burn" if fire else "thrust_alignment"))
             if assembly.attachment_limits:
-                endpoint = assembly.attachment_load_audit(state, propulsion, allocation.commands_n)
+                try:
+                    endpoint = assembly.attachment_load_audit(state, propulsion, allocation.commands_n)
+                except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+                    audit.setdefault('refused_holds', []).append(dict(time_s=state.time_s,
+                        phase='accepted_endpoint_diagnostic', proposed_hold_applied=True,
+                        exception_type=type(error).__name__, message=str(error)))
+                    return finish(False, 'deorbit_endpoint_audit_refused: '+str(error))
                 angular_audit['attachment_load_endpoint'] = endpoint
                 if not endpoint['passed']:
                     return finish(False, 'deorbit_attachment_capacity_exceeded')
-            if entry_reached:
+            if (entry_reached and entry_monitor is None) or interface is not None:
                 audit["burn_cutoff_reason"] = "entry_interface_event_during_powered_phase"
                 audit["burn_cutoff_orbit"] = history[-1]["orbit"]
                 return finish(True, "deorbit_descending_entry_interface_handoff_completed_during_powered_phase")
+            if entry_reached and entry_monitor is not None:
+                audit['burn_cutoff_reason'] = 'numerical_entry_neighborhood_requires_whole_set_coast_bracket'
+                audit['burn_cutoff_orbit'] = history[-1]['orbit']
+                break
             if perigee_reached:
                 audit["burn_cutoff_orbit"] = history[-1]["orbit"]
                 audit["burn_cutoff_reason"] = "target_perigee_event"
@@ -407,8 +585,10 @@ class DeorbitSimulator:
         axis = history[-1]["orbit"]["semi_major_axis_m"]
         period = 2 * np.pi * np.sqrt(axis**3 / assembly.mu_m3_s2)
         state, crossed, drift = self._coast(assembly, state, options.max_coast_orbits * period,
-                                           history, "coast_to_entry_interface")
+            history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
         coasts.append(drift)
+        if drift.get('refusal'):
+            return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])
         if crossed and np.dot(state.position_eci_m, state.velocity_eci_m_s) < 0:
             if orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)["perigee_radius_m"] > rp + .01:
                 return finish(True, "deorbit_entry_interface_reached_perigee_target_not_achieved")

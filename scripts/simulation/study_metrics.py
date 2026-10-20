@@ -2,6 +2,40 @@
 from __future__ import annotations
 
 import json
+from fractions import Fraction
+
+
+def completion_progress_endpoint(lifecycle, approach_end_time_s):
+    """Retain admitted physical progress when a later hybrid stage refuses."""
+    end_time, end_stage = approach_end_time_s, 'approach'
+    contact = lifecycle.capture.audit.get('finite_contact')
+    if contact is not None:
+        end_time, end_stage = float(contact['final_target']['time_s']), 'finite_contact'
+        lock = lifecycle.capture.audit.get('finite_lock', {})
+        records = lock.get('step_records', ())
+        if records:
+            previous = Fraction(0)
+            for record in records:
+                start, end = map(Fraction, (record['exact_start_time_s'], record['exact_end_time_s']))
+                if start != previous or end <= start:
+                    raise ValueError('Finite-lock progress must be an exact contiguous admitted prefix')
+                previous = end
+            if lock.get('accepted_steps') != len(records):
+                raise ValueError('Finite-lock progress count differs from its admitted prefix')
+            end_time, end_stage = end_time+float(previous), 'finite_lock'
+    if lifecycle.capture.state is not None:
+        time_s = float(lifecycle.capture.state.time_s)
+        if end_time is not None and time_s < end_time-1e-9:
+            raise ValueError('Attachment state precedes its retained contact/lock prefix')
+        end_time, end_stage = time_s, 'attachment'
+    for name in ('detumbling', 'deorbit'):
+        stage = getattr(lifecycle, name)
+        if stage is not None:
+            time_s = float(stage.final_state.time_s)
+            if end_time is not None and time_s < end_time-1e-9:
+                raise ValueError('Completion stage clock precedes its admitted physical prefix')
+            end_time, end_stage = time_s, name
+    return end_time, end_stage
 
 
 def native_attempt_metrics(directory):
@@ -45,16 +79,7 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
     start_time = float(elapsed[0]) if elapsed else 0.
     end_time, end_stage = actual_time, 'approach'
     if completion is not None and completion.lifecycle is not None:
-        lifecycle = completion.lifecycle
-        contact = lifecycle.capture.audit.get('finite_contact')
-        if contact is not None:
-            end_time, end_stage = float(contact['final_target']['time_s']), 'finite_contact'
-        if lifecycle.capture.state is not None:
-            end_time, end_stage = float(lifecycle.capture.state.time_s), 'attachment'
-        for name in ('detumbling', 'deorbit'):
-            stage = getattr(lifecycle, name)
-            if stage is not None:
-                end_time, end_stage = float(stage.final_state.time_s), name
+        end_time, end_stage = completion_progress_endpoint(completion.lifecycle, actual_time)
     widths = {}
     for key in approach.initial_belief.get('feasible_sets', {}):
         history = [float(value[key][1]-value[key][0]) for value in approach.feasible_set_history if key in value]

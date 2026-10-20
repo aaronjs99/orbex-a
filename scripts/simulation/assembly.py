@@ -110,6 +110,7 @@ class AssemblyState:
     quaternion_body_to_eci: np.ndarray
     angular_velocity_body_rad_s: np.ndarray
     fuel_kg: np.ndarray
+    enclosure: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         object.__setattr__(self, "time_s", finite_scalar(self.time_s, "Assembly time"))
@@ -129,9 +130,19 @@ class AssemblyState:
         fuel = fuel.copy()
         fuel.setflags(write=False)
         object.__setattr__(self, "fuel_kg", fuel)
+        if self.enclosure is not None:
+            from orbexa.simulation.assembly_enclosure import AssemblyStateEnclosure, packed_state
+            from orbexa.control.reachability import IntervalBox
+            if (not isinstance(self.enclosure, AssemblyStateEnclosure) or
+                    not self.enclosure.box.contains(IntervalBox.point(packed_state(self)))):
+                raise ValueError('Assembly state requires a complete enclosing carried state set')
 
     def to_dict(self):
-        return {name: float(value) if name == "time_s" else value.tolist() for name, value in vars(self).items()}
+        result = {name: float(value) if name == "time_s" else value.tolist() for name, value in vars(self).items()
+                  if name != 'enclosure'}
+        if self.enclosure is not None:
+            result['enclosure'] = self.enclosure.as_dict()
+        return result
 
 
 @dataclass(frozen=True)
@@ -143,6 +154,7 @@ class AttachedAssembly:
     max_integration_step_s: float = 1.0
     attachment_limits: Sequence[dict] = ()
     environment: object = field(default=None, repr=False, compare=False)
+    parameter_enclosure: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         elements = tuple(self.elements)
@@ -165,6 +177,28 @@ class AttachedAssembly:
         object.__setattr__(self, 'attachment_limits', limits)
         if self.environment is not None and not callable(self.environment):
             raise TypeError('Assembly environment must be an explicit callable')
+        if self.parameter_enclosure is not None:
+            from orbexa.control.reachability import IntervalBox
+            fields = dict(position_body_m=('position_body_m', 3),
+                inertia_per_kg_m2=('inertia_per_kg_m2', 9),
+                rotation_element_to_assembly=('rotation_element_to_assembly', 9))
+            parameters = {key: tuple(value) for key, value in self.parameter_enclosure.items()}
+            if (not set(fields) <= set(parameters) or set(parameters)-set(fields)-{'attachment_anchor_body_m'} or
+                    any(len(value) != len(elements) for value in parameters.values())):
+                raise ValueError('Assembly parameter sets must cover every constituent element')
+            for key, (attribute, dimension) in fields.items():
+                for element, box in zip(elements, parameters[key]):
+                    point = np.asarray(getattr(element, attribute)).reshape(-1)
+                    if (not isinstance(box, IntervalBox) or box.dimension != dimension or
+                            not box.contains(IntervalBox.point(point))):
+                        raise ValueError('Assembly parameter set omits its numerical geometry')
+            if 'attachment_anchor_body_m' in parameters:
+                anchors = {value['name']: value['surface_anchor_body_m'] for value in limits}
+                for element, box in zip(elements, parameters['attachment_anchor_body_m']):
+                    if (not isinstance(box, IntervalBox) or box.dimension != 3 or not box.contains(
+                            IntervalBox.point(anchors.get(element.name, (0., 0., 0.))))):
+                        raise ValueError('Assembly anchor set omits its declared physical joint location')
+            object.__setattr__(self, 'parameter_enclosure', parameters)
 
     @property
     def initial_mass_kg(self):
@@ -284,10 +318,13 @@ class AttachedAssembly:
                        qdot, np.linalg.solve(inertia, torque - np.cross(omega, inertia @ omega))]
         return result, rotation @ torque
 
-    def advance(self, state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s):
-        return self.advance_with_audit(state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s)[0]
+    def advance(self, state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s, *, propulsion=None, commands_n=None,
+                max_angular_rate_rad_s=None):
+        return self.advance_with_audit(state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s,
+            propulsion=propulsion, commands_n=commands_n, max_angular_rate_rad_s=max_angular_rate_rad_s)[0]
 
-    def advance_with_audit(self, state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s):
+    def advance_with_audit(self, state, duration_s, force_body_n, torque_body_nm, fuel_flow_kg_s, *, propulsion=None, commands_n=None,
+                           max_angular_rate_rad_s=None):
         """Integrate an actual held wrench, without instantaneous attitude resets.
 
         The angular audit separates external torque impulse from angular
@@ -302,6 +339,29 @@ class AttachedAssembly:
             raise ValueError("Fuel flow must match the assembly and be finite and nonnegative")
         if np.any(flow * duration > state.fuel_kg + 1e-12):
             raise ValueError("Held propulsion command would consume unavailable fuel")
+        certificate = None
+        if state.enclosure is not None:
+            if propulsion is None or commands_n is None:
+                raise ValueError('Carried assembly propagation requires the actual physical nozzle commands')
+            expected = propulsion.matrix(self, state.fuel_kg)@np.asarray(commands_n)
+            if not np.array_equal(expected, np.r_[force, torque]):
+                raise ValueError('Assembly point wrench differs from the supplied physical nozzle commands')
+            expected_flow = np.zeros(len(self.elements))
+            for command, nozzle in zip(commands_n, propulsion.thrusters):
+                expected_flow[nozzle.owner_index] += abs(command)/(nozzle.specific_impulse_s*STANDARD_GRAVITY)
+            if not np.array_equal(expected_flow, flow):
+                raise ValueError('Assembly tank flow differs from the supplied physical nozzle commands')
+            from orbexa.simulation.assembly_enclosure import AssemblyFlowEncloser
+            certificate = AssemblyFlowEncloser().bound(assembly=self, state=state,
+                propulsion=propulsion, commands_n=commands_n, duration_s=duration)
+            if not certificate.passed:
+                raise ValueError('Carried assembly whole-state propagation not proven: '+certificate.reason)
+            if max_angular_rate_rad_s is not None:
+                from fractions import Fraction
+                bound = positive(max_angular_rate_rad_s, 'Whole-held angular-rate ceiling')
+                angular = certificate.swept.slice(10, 13)
+                if sum(max(abs(lo), abs(hi))**2 for lo, hi in zip(angular.lower, angular.upper)) > Fraction(bound)**2:
+                    raise ValueError('Whole-held assembly angular-rate ceiling is not proven')
         count = max(1, int(np.ceil(duration / self.max_integration_step_s)))
         dt = duration / count
         values = np.r_[state.position_eci_m, state.velocity_eci_m_s, state.quaternion_body_to_eci,
@@ -337,19 +397,32 @@ class AttachedAssembly:
         if not np.all(np.isfinite(values)):
             raise RuntimeError("Assembly integration produced a non-finite state")
         final = AssemblyState(state.time_s + duration, values[:3], values[3:6], values[6:10], values[10:13], fuel)
+        flow_audit = None
+        if certificate is not None:
+            from dataclasses import replace
+            final = replace(final, enclosure=state.enclosure.successor(certificate, final))
+            flow_audit = certificate.as_dict()
         residual = self.angular_momentum_eci(final) - self.angular_momentum_eci(state) - impulse - flux
-        return final, dict(external_angular_impulse_eci_kg_m2_s=impulse.tolist(),
+        audit = dict(external_angular_impulse_eci_kg_m2_s=impulse.tolist(),
                            fuel_corotation_angular_impulse_eci_kg_m2_s=flux.tolist(),
                            angular_momentum_balance_residual_kg_m2_s=float(np.linalg.norm(residual)))
+        if flow_audit is not None:
+            audit['continuous_state_flow'] = flow_audit
+            audit['carried_endpoint'] = final.enclosure.as_dict()
+        return final, audit
 
     def to_dict(self):
-        return dict(elements=[element.to_dict() for element in self.elements], mu_m3_s2=self.mu_m3_s2,
+        result = dict(elements=[element.to_dict() for element in self.elements], mu_m3_s2=self.mu_m3_s2,
                     earth_radius_m=self.earth_radius_m, gravity_gradient=self.gravity_gradient,
                     max_integration_step_s=self.max_integration_step_s,
                     attachment_limits=[dict(value) for value in self.attachment_limits],
                     environment='injected per-component extra ECI acceleration and intrinsic body torque' if self.environment else 'central gravity and configured gravity gradient only',
                     environment_contract=self.environment.as_dict() if callable(getattr(self.environment, 'as_dict', None)) else None,
                     mass_model="component-proportional fuel distribution; symmetric depletion splitting")
+        if self.parameter_enclosure is not None:
+            result['parameter_enclosure'] = {key: [box.as_dict() for box in value]
+                                           for key, value in self.parameter_enclosure.items()}
+        return result
 
     def attachment_load_audit(self, state, propulsion, commands_n):
         """Reconstruct joint wrenches from actual allocated nozzle commands.
@@ -421,6 +494,12 @@ class AttachedAssembly:
         infer accumulated integration or navigation uncertainty from a point.
         """
         from orbexa.simulation.attachment_enclosure import AttachmentLoadEncloser
+        if state.enclosure is not None:
+            initial_sets = dict(initial_spin=state.enclosure.box.slice(10, 13),
+                initial_position=state.enclosure.box.slice(0, 3),
+                initial_velocity=state.enclosure.box.slice(3, 6),
+                initial_quaternion=state.enclosure.box.slice(6, 10),
+                initial_fuel=state.enclosure.box.slice(13, state.enclosure.box.dimension), **initial_sets)
         return AttachmentLoadEncloser().bound(assembly=self, state=state,
             propulsion=propulsion, commands_n=commands_n, duration_s=duration_s, **initial_sets)
 

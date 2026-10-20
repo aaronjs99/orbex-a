@@ -63,6 +63,17 @@ class ContactController:
         if feedback is not None:
             observation = feedback(started+t, observation)
         check_observation(observation, started+t)
+        sensed_tips = tips.copy()
+        if observation.get('positioner_encoders') is not None:
+            encoders = observation['positioner_encoders']
+            if set(encoders) != {member.id for member in members}:
+                raise ValueError('Contact positioner encoders must name the exact fleet')
+            for k, member in enumerate(members):
+                sensed_tips[k, :3] = finite_vector(encoders[member.id]['extension_body_m'], 'Positioner extension encoder', 3)
+                sensed_tips[k, 3:] = finite_vector(encoders[member.id]['extension_velocity_body_m_s'], 'Positioner velocity encoder', 3)
+        # Positioner commands use their proprioceptive encoder products.
+        # The plant's packed tip states remain separate.
+        tips = sensed_tips
         target = observation['target']
         rt = Rotation.from_quat(target.quaternion_body_to_eci).as_matrix()
         wt = rt@target.angular_velocity_body_rad_s
@@ -155,3 +166,4 @@ class ContactController:
                 outward = ri.T@normal
                 acceleration += outward*(o.extension_acceleration_m_s2-acceleration@outward)
             extension_acceleration[k] = _limit(acceleration, o.extension_acceleration_m_s2)
+        return observation

@@ -691,7 +691,8 @@ class NonlinearDenseExecutor:
             self._execution_stage='PRE_ADMISSION'
             q=self.observed_q
             segment=self.runtime.active_fallback.segment_at(q)
-            h=min(base_h,outer_end-q,segment.end-q)
+            h=min(base_h,outer_end-q,segment.end-q,
+                *(controller.certificate.spec.maximum_hold for _,controller in segment.controllers))
             if h<=0:raise ValueError('No positive hold remains in the installed feedback scope')
             observations=self.observations()
             if not self.blackout_holds:

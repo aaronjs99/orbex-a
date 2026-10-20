@@ -160,11 +160,21 @@ class _AccelerationMomentLedger:
                                       (previous[2], upper, dt), (previous[3], upper, moment)))
 
     def integral(self, history, agent, q0, q1):
-        if (type(q0) not in (Fraction, int) or type(q1) not in (Fraction, int)
-                or any(type(q) is Fraction and (type(q.numerator) is not int or type(q.denominator) is not int
-                    or q.denominator <= 0 or math.gcd(q.numerator, q.denominator) != 1) for q in (q0, q1))
+        result = self.integrals(history, agent, ((q0, q1),))
+        return result if result is NotImplemented else result[0]
+
+    def integrals(self, history, agent, queries):
+        """Check the actual source once for a finite synchronous query batch."""
+        queries = tuple(queries)
+        if (any(type(q) not in (Fraction, int) or type(q) is Fraction and
+                    (type(q.numerator) is not int or type(q.denominator) is not int
+                     or q.denominator <= 0 or math.gcd(q.numerator, q.denominator) != 1)
+                for query in queries for q in query)
                 or not self._prepare(history, agent)):
             return NotImplemented
+        return tuple(self._integral_prepared(q0, q1) for q0, q1 in queries)
+
+    def _integral_prepared(self, q0, q1):
         if not self.starts[self.head] <= q0 < q1 <= self.ends[-1]:
             return None
         first, last = self._at(q0), self._at(q1)
@@ -501,30 +511,53 @@ class BoundedNavigationFilter:
         return intersect(box, IntervalBox(position.lower+box.lower[3:], position.upper+box.upper[3:]))
 
     def _velocity_constraint(self, agent, acquired, position):
-        """Use exact bounded moments, preserving the original scan fallback."""
+        """Intersect genuine short and long position-baseline constraints.
+
+        The longest baseline alone eventually magnifies acceleration
+        uncertainty. A logarithmic set retains the short-baseline information
+        without assuming an independent sensor draw or a measured velocity.
+        """
         earliest = self.history[0]['start'] if self.history else self.q
-        previous = next(((q, p) for q, p in self.position_observations[agent]
-                         if earliest <= q < acquired), None)
-        if previous is None:
+        previous = [(q, p) for q, p in self.position_observations[agent] if earliest <= q < acquired]
+        if not previous:
             return None
-        q0, p0 = previous
+        original_first_q = previous[0][0]
+        previous.sort(key=lambda item: item[0])
+        indexes, lookback = {0, next(i for i, item in enumerate(previous) if item[0] == original_first_q)}, 1
+        while lookback <= len(previous):
+            indexes.add(len(previous)-lookback)
+            lookback *= 2
+        selected = tuple(previous[index] for index in sorted(indexes))
         if not hasattr(self, '_acceleration_moments'):
             self._acceleration_moments = {}
         ledger = self._acceleration_moments.get(agent)
         if ledger is None:
             ledger = _AccelerationMomentLedger()
             self._acceleration_moments[agent] = ledger
-        integral = ledger.integral(self.history, agent, q0, acquired)
-        if integral is NotImplemented:
-            return BoundedNavigationFilter._velocity_constraint_scan(self, agent, acquired, position)
-        if integral is None:
-            return None
-        lower, upper = integral
-        duration = acquired-q0
-        return IntervalBox(tuple((a-b+value)/duration for a, b, value in zip(position.lower, p0.upper, lower)),
-                           tuple((a-b+value)/duration for a, b, value in zip(position.upper, p0.lower, upper)))
+        integrals = ledger.integrals(self.history, agent, tuple((q0, acquired) for q0, _ in selected))
+        result = None
+        for index, (q0, p0) in enumerate(selected):
+            if integrals is NotImplemented:
+                candidate = BoundedNavigationFilter._velocity_constraint_scan(
+                    self, agent, acquired, position, previous=(q0, p0))
+            else:
+                integral = integrals[index]
+                if integral is None:
+                    continue
+                lower, upper = integral
+                duration = acquired-q0
+                candidate = IntervalBox(
+                    tuple((a-b+value)/duration for a, b, value in zip(position.lower, p0.upper, lower)),
+                    tuple((a-b+value)/duration for a, b, value in zip(position.upper, p0.lower, upper)))
+            if candidate is None:
+                continue
+            result = candidate if result is None else intersect(result, candidate)
+            if result is None:
+                self.status, self.reason = 'INCONSISTENT', 'Linked position and acceleration supports imply disjoint velocities'
+                raise ValueError(self.reason)
+        return result
 
-    def _velocity_constraint_scan(self, agent, acquired, position):
+    def _velocity_constraint_scan(self, agent, acquired, position, *, previous=None):
         """Bound endpoint velocity from two positions and certified acceleration.
 
         w(q1)=(p1-p0)/dq + integral((s-q0)*w'(s),q0,q1)/dq.
@@ -532,8 +565,9 @@ class BoundedNavigationFilter:
         rigorous. No measured or numerical truth velocity is used.
         """
         earliest = self.history[0]['start'] if self.history else self.q
-        previous = next(((q, p) for q, p in self.position_observations[agent]
-                         if earliest <= q < acquired), None)
+        if previous is None:
+            previous = next(((q, p) for q, p in self.position_observations[agent]
+                             if earliest <= q < acquired), None)
         if previous is None:
             return None
         q0, p0 = previous
@@ -613,6 +647,8 @@ class BoundedNavigationFilter:
         return candidate
 
     def consume(self, packets, event_q=None, physical_time_box=None):
+        if self.status == 'INCONSISTENT':
+            raise ValueError('An inconsistent navigation filter cannot resume silently')
         if event_q is not None and exact(event_q) != self.q:
             raise ValueError('Measurements cannot relabel the navigation event')
         if physical_time_box is not None and physical_time_box != self.time:

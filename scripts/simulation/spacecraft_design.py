@@ -120,17 +120,20 @@ class SpacecraftMissionDesign:
             gravity_gradient=gravity_gradient,docking_standoff=self.com_standoff_m)
 
     def completion_runner(self,*,input_component_bound,approach_runner=None,stage_sink=None,
-                          translation_accountant=None):
+                          translation_accountant=None,completion_profile=None):
+        from orbexa.simulation.completion_profile import MissionCompletionProfile
+        profile=MissionCompletionProfile.from_declaration(completion_profile)
         tracker=ChaserAttitudeTracker(default_chaser=self.chaser,actuators=ChaserAttitudeActuators(
             moment_arm_m=self.attitude_moment_arm_m,nozzle_force_limit_n=self.attitude_nozzle_force_n,
             specific_impulse_s=self.specific_impulse_s))
         return CompleteMissionRunner(options=CompleteMissionOptions(input_component_bound=input_component_bound,
             target_mass_kg=self.target_mass_kg,translation_force_n=self.translation_force_n,
-            specific_impulse_s=self.specific_impulse_s),approach_runner=approach_runner,attitude_tracker=tracker,
+            specific_impulse_s=self.specific_impulse_s,finite_contact=profile.contact),
+            approach_runner=approach_runner,attitude_tracker=tracker,
             capture_options=CaptureOptions(arm_reach_m=self.arm_reach_m),
-            detumbling=DetumblingSimulator(policy=RateDampingPolicy(self.detumbling_gain_nm_s,
+            detumbling=DetumblingSimulator(options=profile.detumbling,policy=RateDampingPolicy(self.detumbling_gain_nm_s,
                 compensate_gravity_gradient=True)),
-            deorbit=DeorbitSimulator(pointing_policy=ThrustPointingPolicy(
+            deorbit=DeorbitSimulator(options=profile.deorbit,pointing_policy=ThrustPointingPolicy(
                 self.pointing_attitude_gain_nm,self.pointing_rate_gain_nm_s,
                 compensate_gravity_gradient=True), burn_axis_planner=AxialBurnPlanner(),
                 burn_throttle_planner=FiniteBurnThrottlePlanner()),stage_sink=stage_sink,

@@ -118,15 +118,19 @@ class BiasedContactObserver:
             target.velocity_eci_m_s+common_v, target_rotation.as_quat(),
             target.angular_velocity_body_rad_s+np.array((0., 1e-4, 0.)), target.fuel_kg), chasers={},
             contact_gaps_m={key: value+.001 for key, value in snapshot['contact_gaps_m'].items()},
-            contact_wrenches_eci={})
+            contact_wrenches_eci={}, positioner_encoders={})
         for number, (key, state) in enumerate(snapshot['chasers'].items()):
             sign = (-1.)**number
             direction = np.array((np.cos(.7*number), np.sin(.7*number), 0.))
             camera_p = np.array((sign*.0015, -.002, .0015))
             rotation = Rotation.from_quat(state.quaternion_body_to_eci)*Rotation.from_rotvec(.0003*direction)
             measured['chasers'][key] = ContactBodyState(time_s, state.position_eci_m+common_p+camera_p,
-                state.velocity_eci_m_s+common_v, rotation.as_quat(), state.angular_velocity_body_rad_s+1e-5*direction,
+                state.velocity_eci_m_s+common_v+5e-5*direction, rotation.as_quat(), state.angular_velocity_body_rad_s+1e-5*direction,
                 state.fuel_kg)
+            encoder = snapshot['positioner_encoders'][key]
+            measured['positioner_encoders'][key] = dict(
+                extension_body_m=(np.asarray(encoder['extension_body_m'])+np.array((1e-6, -1e-6, 1e-6))).tolist(),
+                extension_velocity_body_m_s=(np.asarray(encoder['extension_velocity_body_m_s'])+1e-7*direction).tolist())
             wrench = snapshot['contact_wrenches_eci'][key]
             measured['contact_wrenches_eci'][key] = dict(force_n=np.asarray(wrench['force_n'])+np.array((.003, -.002, .003)),
                 couple_nm=np.asarray(wrench['couple_nm'])+np.array((.0001, -.0001, .0001)))
@@ -137,7 +141,14 @@ class BiasedContactObserver:
         return dict(method='declared-biased-synthetic-contact-observations-v1', calls=self.calls,
             common_gnss_position_bias_eci_m=(.35, -.4, .2), common_gnss_velocity_bias_eci_m_s=(.001, -.001, 0.),
             individual_camera_position_bias_norm_upper_m=.003, target_pose_error_rad=.001,
+            individual_relative_velocity_bias_norm_upper_m_s=.0001,
             target_rate_error_norm_rad_s=1e-4, own_bus_pose_error_norm_rad=.0003,
             own_bus_rate_error_norm_rad_s=1e-5, local_range_bias_m=.001,
             wrench_force_bias_eci_n=(.003, -.002, .003), wrench_couple_bias_eci_nm=(.0001, -.0001, .0001),
+            encoder_position_bias_body_m=(1e-6, -1e-6, 1e-6), encoder_velocity_bias_norm_m_s=1e-7,
+            deterministic_support=self.observation_support().as_dict(),
             scope='Synthetic bounded processed products; no raw perception, calibrated material sensing or hardware claim')
+
+    def observation_support(self):
+        from orbexa.simulation.contact_observation import ContactObservationBounds
+        return ContactObservationBounds()

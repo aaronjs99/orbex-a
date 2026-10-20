@@ -307,6 +307,7 @@ class RefugeCertificate:
     sensing_box: IntervalBox
     velocity_error_bound: tuple[Fraction, ...]
     drift_hold_error: tuple[Fraction, ...]
+    relative_acceleration_bound: tuple[Fraction, ...]
     position_margin: tuple[Fraction, ...]
     acceleration_margin: tuple[Fraction, ...]
     sliding_margin: tuple[Fraction, ...]
@@ -388,10 +389,23 @@ class RefugeBoundsBuilder:
             tuple(tau*x for x in d.clock_derivative_abs),
             _dot(d.position_jacobian_abs, tuple(e+tau*v for e, v in zip(ep, absolute_velocity))),
             _dot(d.velocity_jacobian_abs, tuple(e+tau*v for e, v in zip(ev, b.acceleration_bound))))
-        relative_acceleration = _add(b.acceleration_bound, ap)
+        # A second bound retains cancellation of the held reference feedforward.
+        # Writing e_v'=a_actual-r_a(q), the implemented law gives
+        # e_v' = [F(q,x)-Fbar(q_k,xhat_k)+actuation_error]
+        #        +[r_a_evaluated(q_k)-r_a(q)]
+        #        -Lambda*(vhat_k-r_v_evaluated(q_k))-beta*sat(s_hat_k/Phi).
+        # The four terms are bounded by drift_error, reference_hold,
+        # Lambda*(Ve+Ev+Rv), and beta. Both this bound and the independent
+        # absolute-acceleration-plus-reference bound are valid until first exit.
+        # The physical acceleration self-bound above remains mandatory.
+        reference_hold = tuple(a+tau*j for a, j in zip(ra, r.jerk_abs))
+        cancelled_relative_acceleration = _add(drift_error, reference_hold,
+            tuple(l*(v+e+r0) for l,v,e,r0 in zip(lam,ve,ev,rv)), beta)
+        relative_acceleration = tuple(min(absolute+reference,cancelled)
+            for absolute,reference,cancelled in
+            zip(b.acceleration_bound,ap,cancelled_relative_acceleration))
         sliding_rate = _add(relative_acceleration, tuple(l*v for l, v in zip(lam, ve)))
         sensing_s = _add(ev, rv, tuple(l*(e+r0) for l, e, r0 in zip(lam, ep, rp)))
-        reference_hold = tuple(a+tau*j for a, j in zip(ra, r.jerk_abs))
         acceleration_required = _add(ap, ra, tuple(l*(v+e+r0) for l, v, e, r0 in zip(lam, ve, ev, rv)), beta, drift_error)
         sliding_required = _add(drift_error, reference_hold,
             tuple(l*(e+r0+tau*dv) for l, e, r0, dv in zip(lam, ev, rv, relative_acceleration)),
@@ -415,7 +429,7 @@ class RefugeBoundsBuilder:
         fuel = (b.end-b.start)*b.fuel_rate_upper_per_q
         if fuel > b.available_fuel:
             reasons.append("Finite feedback scope exceeds the declared fuel reserve")
-        return RefugeCertificate(b, r, d, state_box, sensing_box, ve, drift_error,
+        return RefugeCertificate(b, r, d, state_box, sensing_box, ve, drift_error,relative_acceleration,
             position_margin, acceleration_margin, sliding_margin, input_box, fuel, tuple(reasons))
 
 

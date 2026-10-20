@@ -115,6 +115,23 @@ Before a planning context is returned, a supplied certificate sink acknowledges 
 
 ## Sensed dense execution and proof blackout
 
+Delivered position observations also constrain velocity over multiple past
+baselines. If \(p_0,p_1\) are bounded positions at exact reference anomalies
+\(q_0<q_1\), and \(A(s)\) encloses the admitted acceleration \(w'(s)\), then
+
+\[
+w(q_1)\in\frac{p_1-p_0}{q_1-q_0}
+ +\frac{1}{q_1-q_0}\int_{q_0}^{q_1}(s-q_0)A(s)\,ds.
+\]
+
+The filter intersects this constraint for the oldest supported observation,
+the original supported baseline and logarithmically spaced recent baselines.
+Exact cumulative acceleration moments make each integral query inexpensive;
+every query still authenticates the retained hold history. Finite-history
+eviction removes unsupported baselines. A contradiction latches
+`INCONSISTENT`; subsequent measurements cannot silently restart prediction.
+No position support or acquisition timestamp is narrowed by this construction.
+
 `orbexa.simulation.nonlinear_execution.NonlinearDenseExecutor` takes a scenario, navigation filter, separate literal `NonlinearTargetTruth`, private relative truth states, fixed clock, global model bounds, point physical realization, sensor suite, and a pure bounded actuator realization. Its controller-facing `CoupledMissionState.states` contains estimates only. `AffineActuatorRealization` supports a fixed gain/axis matrix and coordinate-acceleration bias; the applied realization must remain inside each decision's declared input support.
 
 Install a complete `FleetAdmissionRuntime` before motion. `.flow_provider(agent,request)` caches the complete nonlinear certificate by exact request and current target identity. Each proposed performance hold checks the v2 sensed tube, measurement coverage, actual feedback reserve, command box, model/clock context, prospective regional inclusion, and a complete finite successor. Target enclosure starts from navigation, never literal truth. Every agent is selected together by the fallback runtime.

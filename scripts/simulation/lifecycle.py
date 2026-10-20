@@ -76,7 +76,8 @@ class MissionLifecycle:
         return configuration
 
     def run(self, approach, *, capture_truth=None, chaser_attitudes=None,
-            terminal_handoff=None, contact_feedback=None, contact_environment=None) -> MissionLifecycleResult:
+            terminal_handoff=None, contact_feedback=None, contact_environment=None,
+            contact_initial_enclosure=None) -> MissionLifecycleResult:
         configuration = self.configuration()
         expected = (ValueError, RuntimeError, ArithmeticError, ImportError)
         def failure(stage, error):
@@ -92,6 +93,7 @@ class MissionLifecycle:
             arguments = dict(truth=capture_truth, chaser_attitudes=chaser_attitudes)
             arguments['contact_feedback'] = contact_feedback
             arguments['contact_environment'] = contact_environment
+            arguments['contact_initial_enclosure'] = contact_initial_enclosure
             if terminal_handoff is not None:
                 arguments["terminal_handoff"] = terminal_handoff
             attachment = self.capture.capture(approach, **arguments)

@@ -68,7 +68,9 @@ candidate bound on |v'|. The code computes
    +L_v(\epsilon_v+\tau D_v),
 \]
 \[
- D_w=D_v+A_r,\quad D_s=D_w+\Lambda V_e,\quad
+ D_w=\min\{D_v+A_r,\ E+\delta_a+\tau J
+                   +\Lambda(V_e+\epsilon_v+\delta_v)+\beta\},\quad
+ D_s=D_w+\Lambda V_e,\quad
  \epsilon_s=\epsilon_v+\delta_v+\Lambda(\epsilon_p+\delta_p).
 \]
 
@@ -89,6 +91,17 @@ It verifies, using exact rational comparisons,
 The complete evaluated command range, including all error budgets, must lie
 inside the hardware input interval. The full true and sensor-expanded tubes
 must lie inside the supplied nonlinear model domains.
+
+The second bound on relative acceleration retains the cancellation of the
+held reference acceleration. In
+\(e_v'=F-\hat F+\epsilon_u+(\hat r''_k-r''(q))
+-\Lambda(\hat v_k-\hat r'_k)-\beta\operatorname{sat}(\hat s_k/\phi)\),
+the four terms are bounded respectively by \(E\),
+\(\delta_a+\tau J\), \(\Lambda(V_e+\epsilon_v+\delta_v)\), and
+\(\beta\). Both relative-acceleration bounds hold before the hypothetical
+first exit, so their componentwise minimum is valid. The separate absolute
+acceleration self-bound, hardware input bound and fuel debit still apply.
+The earlier sum \(D_v+A_r\) remains available when it is tighter.
 
 Before a hypothetical first exit, the acceleration self-bound controls sample
 displacement. Saturation is 1/phi-Lipschitz, giving the sliding-boundary inward

@@ -53,7 +53,7 @@ from orbexa.simulation.nonlinear_completion_observers import (
 
 def complete_nonlinear_mission(approach, nonlinear_runner=None, *, capture_truth=None, model=None, clock=None,
                                design=None, hold_records=None, completion_runner=None, stage_sink=None,
-                               drag_area_m2_by_name=None):
+                               drag_area_m2_by_name=None, verified_approach_boundary=None):
     """Run actual saved approach -> observed attitude -> finite contact -> disposal.
 
     Supply the live nonlinear runner, or explicit typed model/clock/design and
@@ -69,7 +69,14 @@ def complete_nonlinear_mission(approach, nonlinear_runner=None, *, capture_truth
             hold_records = nonlinear_runner.executor.journal
     _require(model is not None and clock is not None and design is not None and hold_records is not None,
              'supply model, clock, design and the complete full nonlinear hold journal')
-    arrival_verification = verify_nonlinear_arrival(approach, clock=clock)
+    if verified_approach_boundary is None:
+        arrival_verification = verify_nonlinear_arrival(approach, clock=clock)
+    else:
+        from orbexa.simulation.nonlinear_completion_bridge import VerifiedClosedApproachBoundary
+        _require(type(verified_approach_boundary) is VerifiedClosedApproachBoundary,
+                 'an independently verified typed old-source boundary is required')
+        arrival_verification = verified_approach_boundary.verify(approach, model=model, clock=clock,
+            design=design, hold_records=hold_records)
     _require(digest(approach.metadata['scenario']['vehicle_design']) == digest(design.as_dict()), 'declared vehicle differs from the saved approach')
     saved_truth = capture_truth_from_nonlinear(approach, model=model, clock=clock)
     if capture_truth is None:
@@ -82,8 +89,10 @@ def complete_nonlinear_mission(approach, nonlinear_runner=None, *, capture_truth
         expected_sensor_id=None if nonlinear_runner is None else nonlinear_runner.options.sensor.fingerprint)
     certificate = approach.metadata['continuous_execution_certificate']
     bound = max(abs(float(value)) for value in (*certificate['input_lower'], *certificate['input_upper']))
+    profile = (getattr(nonlinear_runner.options, 'completion', None) if nonlinear_runner is not None else
+               approach.metadata.get('study_options', {}).get('completion'))
     complete = completion_runner or design.completion_runner(input_component_bound=float(np.nextafter(bound, np.inf)),
-        stage_sink=stage_sink, translation_accountant=accountant)
+        stage_sink=stage_sink, translation_accountant=accountant, completion_profile=profile)
     _require(complete.options.target_mass_kg == design.target_mass_kg and
              complete.options.translation_force_n == design.translation_force_n and
              complete.options.specific_impulse_s == design.specific_impulse_s and
@@ -109,8 +118,13 @@ def complete_nonlinear_mission(approach, nonlinear_runner=None, *, capture_truth
         drag_area_m2_by_name=drag_area_m2_by_name)
     attitude_observer = PastNavigationAttitudeObserver(approach, model=model, clock=clock)
     contact_observer = BiasedContactObserver()
+    from orbexa.simulation.contact_boundary import TerminalContactBoundary
+    contact_boundary = TerminalContactBoundary.from_approach(approach, clock,
+        orientation_gate_rad=complete.capture_options.max_orientation_error_rad,
+        spin_gate_rad_s=complete.capture_options.max_spin_error_rad_s)
     result = complete.complete(approach, capture_truth=capture_truth, contact_feedback=contact_observer,
-        contact_environment=environment, attitude_observations=attitude_observer)
+        contact_environment=environment, attitude_observations=attitude_observer,
+        contact_initial_enclosure=contact_boundary)
     audit = dict(method='nonlinear-actual-boundary-physical-completion-v1',
         source_approach_sha256=semantic_sha256(vars(approach)), environment=environment.as_dict(),
         arrival_verification=arrival_verification,

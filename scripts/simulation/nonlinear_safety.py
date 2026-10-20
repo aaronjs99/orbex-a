@@ -6,20 +6,36 @@ from fractions import Fraction
 from types import MappingProxyType
 import numpy as np
 
-from orbexa.control.attitude_flow import AttitudeFlowEncloser
+from orbexa.control.attitude_flow import AttitudeFlowEncloser, _SOURCE_SHA256 as ATTITUDE_SOURCE_SHA256
 from orbexa.control.fleet_fallback import FleetGeometryOracle,FleetAdmissionRuntime
 from orbexa.control.fuel_budget import FleetFuelBudget
 from orbexa.control.refuge import ControlContext,RefugeObservation
 from orbexa.control.reachability import (IntervalBox,HeldInputRequest,FlowCertificate,
-    SweptCollisionGuard)
-from orbexa.control.nonlinear_flow import TargetEphemerisCertificate
+    SweptCollisionGuard,EnclosureStatus)
+from orbexa.control.nonlinear_flow import (TargetEphemerisCertificate,
+    _SOURCE_SHA256 as TARGET_SOURCE_SHA256)
 from orbexa.core.reference_frame import exact
 from orbexa.simulation.nonlinear_refuge import (C2RefugeReference,NonlinearZeroDriftBounds,
     StudyPropulsionBounds,CompositeOccupiedBoundsProvider,AnyProperTargetPose,
     AttitudePoseBoundsProvider,construct_refuge_plan,construct_patch_refuge_candidates,ZERO_NOMINAL_ID)
 from orbexa.simulation.fleet_braking import coordinated_braking_references
+from orbexa.simulation.contingency_reference import (
+    AccelerationContingencyOptions, acceleration_contingency_references)
 from orbexa.simulation.proof_provider import FixedProofProvider
 from orbexa.control.refuge import exact_record,fingerprint
+
+
+class _ForecastEnclosureRefusal(ValueError):
+    """A declared target/pose enclosure could not prove its requested scope."""
+
+
+class _ExtendedContingencyForecastRefusal(ValueError):
+    """Only an optional longer proposal enlarged the refused forecast."""
+
+    def __init__(self, reason, extended_width, legacy_width):
+        super().__init__(reason)
+        self.extended_width = extended_width
+        self.legacy_width = legacy_width
 
 
 def radius(box):
@@ -205,10 +221,19 @@ class _SafetyInitialSet:
 class NonlinearSafetyPlanner:
     """The optimizer never installs its own unproved successor or a stopped clock."""
     def __init__(self,scenario,*,model,clock,encloser,study_options,design,
-                 actuator_error_abs=(300.,300.,300.),attitude_encloser=None):
+                 actuator_error_abs=(300.,300.,300.),attitude_encloser=None,
+                 near_feedback_subdivisions=1,acceleration_contingency=None):
         self.scenario,self.model,self.clock=scenario,model,clock
         self.encloser,self.options,self.design=encloser,study_options,design
         self.actuator_error_abs=tuple(actuator_error_abs)
+        if (isinstance(near_feedback_subdivisions,bool)
+                or not isinstance(near_feedback_subdivisions,int)
+                or near_feedback_subdivisions<1):
+            raise ValueError('Near feedback subdivisions must be a positive integer')
+        self.near_feedback_subdivisions=near_feedback_subdivisions
+        if acceleration_contingency is not None and not isinstance(acceleration_contingency,AccelerationContingencyOptions):
+            raise TypeError('Declare typed acceleration-contingency proposal options')
+        self.acceleration_contingency=acceleration_contingency
         self.attitude_encloser=attitude_encloser or AttitudeFlowEncloser(encloser.config)
         self.propulsion=StudyPropulsionBounds(mass_upper_kg=design.chaser.mass_kg,
             installed_force_n=design.translation_force_n,specific_impulse_lower_s=design.specific_impulse_s,
@@ -226,11 +251,23 @@ class NonlinearSafetyPlanner:
             for key,box in estimate.relative_state_box_by_agent.items()}
 
     def target_forecast(self,estimate,width):
-        q=exact(estimate.exact_event_q)
+        q,width=exact(estimate.exact_event_q),exact(width)
         value=self.encloser.enclose_target(estimate.target_ephemeris_box,(q,q),(width,width),
             self.model,self.clock,estimate.physical_time_box)
+        if (not isinstance(value,TargetEphemerisCertificate)
+                or value.model!='nonlinear-target-ephemeris-v1'
+                or value.frame!='inertial-cartesian-si-v1'
+                or value.start_anomaly!=(q,q) or value.hold_width!=(width,width)
+                or value.initial_state!=estimate.target_ephemeris_box
+                or value.physical_time_initial!=estimate.physical_time_box
+                or value.model_bounds.get('backend_source_sha256')!=TARGET_SOURCE_SHA256
+                or value.model_bounds.get('target_model_fingerprint')!=self.model.target_fingerprint
+                or value.model_bounds.get('clock_fingerprint')!=self.clock.fingerprint):
+            raise ValueError('Nonlinear safety target forecast source, model, request or clock changed')
         if not value.proven:
-            raise ValueError('Nonlinear safety target forecast unresolved: '+value.reason)
+            if value.status==EnclosureStatus.UNRESOLVED:
+                raise _ForecastEnclosureRefusal('Nonlinear safety target forecast unresolved: '+value.reason)
+            raise ValueError('Nonlinear safety target forecast unavailable: '+value.reason)
         return value
 
     def prepare(self,estimate,*,flow_provider,remaining_fuel=None,near_target=None,certificate_sink=None):
@@ -281,6 +318,7 @@ class NonlinearSafetyPlanner:
                 or oracle.minimum_pair_center_distance!=exact(self.scenario.config.mpc.min_chaser_separation)):
             raise ValueError('Reusable runtime physical geometry, frame/clock or clearance declaration changed')
         dense=exact(self.scenario.config.anom_step)/self.scenario.config.tube.feedback_substeps
+        declared_holds=(dense,dense/self.near_feedback_subdivisions)
         inputs=IntervalBox(tuple(float(b['lower']) for b in self.scenario.config.mpc.input_bounds),
                            tuple(float(b['upper']) for b in self.scenario.config.mpc.input_bounds))
         actuator=tuple(map(exact,self.actuator_error_abs))
@@ -296,7 +334,7 @@ class NonlinearSafetyPlanner:
             for _,controller in segment.controllers:
                 cert=controller.certificate;spec=cert.spec
                 if (any(getattr(spec.context,name)!=value for name,value in expected.items())
-                        or spec.maximum_hold!=dense or spec.input_limits!=inputs
+                        or spec.maximum_hold not in declared_holds or spec.input_limits!=inputs
                         or spec.actuator_error_abs!=actuator
                         or spec.available_fuel!=self.propulsion.available_fuel_kg):
                     raise ValueError('Reusable runtime plant/sensor/actuator/fuel/input or sampled-hold declaration changed')
@@ -393,8 +431,21 @@ class NonlinearSafetyPlanner:
             projection.target_flow.endpoint,projection.target_flow.physical_time_endpoint,
             projection.frame_id,'PROVED_FULL_PERFORMANCE_ENDPOINT',projection.fingerprint,
             projection.acceleration_disturbance)
-        plan,record,witness=self._build_plan(initial,sensing_prior=sensing_prior,
-            make_witness=True,projection=projection,fuel_budget=projection.fuel_budget)
+        abandoned_forecast=None
+        try:
+            plan,record,witness=self._build_plan(initial,sensing_prior=sensing_prior,
+                make_witness=True,projection=projection,fuel_budget=projection.fuel_budget)
+        except _ExtendedContingencyForecastRefusal as error:
+            # An optional proposal must not suppress the shorter, previously
+            # available finite search merely by enlarging its common forecast.
+            # No motion or witness publication has occurred at this point.
+            abandoned_forecast=dict(status='REFUSED',reason=str(error),
+                forecast_width_q=str(error.extended_width),
+                legacy_forecast_width_q=str(error.legacy_width),
+                scope='Optional acceleration-prefix forecast; no plan installed')
+            plan,record,witness=self._build_plan(initial,sensing_prior=sensing_prior,
+                make_witness=True,projection=projection,fuel_budget=projection.fuel_budget,
+                allow_acceleration_prefix=False)
         # Recheck mutable producer payloads after the potentially long bound
         # construction, before acknowledging any candidate witness.
         projection.verify_integrity()
@@ -404,6 +455,9 @@ class NonlinearSafetyPlanner:
             installed=False,scope='Prepared prospective candidate; only a committed fleet transaction installs it')
         witness.update(projection_id=projection.fingerprint,
             projection=projection.as_dict(include_flows=True))
+        if abandoned_forecast is not None:
+            record['abandoned_optional_forecast']=abandoned_forecast
+            witness['abandoned_optional_forecast']=abandoned_forecast
         self._publish_witness(record,witness,certificate_sink,'fallback_successor')
         return plan,record
 
@@ -415,7 +469,8 @@ class NonlinearSafetyPlanner:
         certificate_sink(dict(identity=witness_id,**witness))
         record.update(archived_witness_id=witness_id,full_witness_archived=True)
 
-    def _build_plan(self,estimate,*,sensing_prior,near_target=None,make_witness=False,projection=None,fuel_budget=None):
+    def _build_plan(self,estimate,*,sensing_prior,near_target=None,make_witness=False,projection=None,fuel_budget=None,
+                    allow_acceleration_prefix=True):
         q=exact(estimate.exact_event_q)
         points={key:np.asarray(point,dtype=float) for key,point in estimate.point_relative_by_agent.items()}
         if fuel_budget is not None:
@@ -423,6 +478,11 @@ class NonlinearSafetyPlanner:
                 raise TypeError('Finite continuation search needs an exact FleetFuelBudget')
             fuel_budget.check_context(points,q,self.propulsion.fingerprint)
         near=bool(max(np.linalg.norm(v[:3]) for v in points.values())<30. if near_target is None else near_target)
+        # One close member needs the observed-pose geometry for the whole
+        # fleet, even while other members still need the far braking law.
+        # Geometry selection must not switch the mixed fleet's tracking
+        # gains, force bounds, reference policy or feedback hold.
+        pose_conditioned_geometry=near or any(np.linalg.norm(v[:3])<30. for v in points.values())
         dense=exact(self.scenario.config.anom_step)/self.scenario.config.tube.feedback_substeps
         # All route and proof-window boundaries share the executed rational
         # clock. Decimal approximations can otherwise create microscopic
@@ -457,17 +517,25 @@ class NonlinearSafetyPlanner:
             ('original-60k','.15',30.,60000.,None),
             ('medium-60k','.12',24.,60000.,None),
             ('medium-63k','.12',24.,63000.,None))
+        prefix=(self.acceleration_contingency
+            if allow_acceleration_prefix and not near and projection is not None else None)
+        prefix_width=Fraction(0)
+        if prefix is not None:
+            prefix_width=(prefix.coast_holds+prefix.transition_holds)*dense
+            profiles=(('acceleration-prefix','.15',30.,60000.,Fraction(1)),*profiles)
         candidate_widths={}
         if not near:
             for label,_,_,reference_acceleration,retiming in profiles:
                 candidate_widths[label]=(max(1600*dense,rounded_width(coordinated_width*retiming))
                     if retiming is not None else max(1600*dense,rounded_width(3*velocity/reference_acceleration)))
+                if label=='acceleration-prefix':
+                    candidate_widths[label]+=prefix_width
             eligible=[width for width in candidate_widths.values() if q+width+hold_width<=self.clock.q_domain[1]]
             if not eligible:
                 raise ValueError('No complete finite retreat and holding candidate fits the declared clock domain')
             forecast_width=max(eligible)
         else:
-            near_retreat_durations=tuple(width for width in (480*dense,642*dense)
+            near_retreat_durations=tuple(width for width in (480*dense,642*dense,800*dense,1024*dense)
                 if q+width+hold_width<=self.clock.q_domain[1])
             if not near_retreat_durations:
                 raise ValueError('No complete finite patch retreat and holding candidate fits the declared clock domain')
@@ -475,23 +543,47 @@ class NonlinearSafetyPlanner:
         end=q+forecast_width+hold_width
         if end>self.clock.q_domain[1]:
             raise ValueError('A complete retreat and holding suffix exceed the declared clock domain')
-        target_flow=self.target_forecast(estimate,forecast_width+hold_width)
+        legacy_widths=[width for label,width in candidate_widths.items()
+            if label!='acceleration-prefix' and q+width+hold_width<=self.clock.q_domain[1]]
+        legacy_forecast_width=max(legacy_widths) if legacy_widths else forecast_width
+        extended_forecast=prefix is not None and forecast_width>legacy_forecast_width
+        def forecast(initial,width):
+            try:
+                return self.target_forecast(initial,width)
+            except _ForecastEnclosureRefusal as error:
+                if extended_forecast:
+                    raise _ExtendedContingencyForecastRefusal(str(error),
+                        forecast_width+hold_width,legacy_forecast_width+hold_width) from error
+                raise
+        target_flow=forecast(estimate,forecast_width+hold_width)
         # A longer ineligible independent route must not prevent construction
         # of a shorter eligible coordinated route. Its placeholder is never
         # selected; the per-candidate clock guard below precedes every proof.
         base_retreat_width=min(retreat_width,forecast_width)
         attitude=pose_target=None
-        if near:
+        if pose_conditioned_geometry:
             # A prospective endpoint has no newly observed pose. Continue the
             # genuine current pose/rate inclusion over the entire intervening
             # time, then query its tight quaternion windows at the future q.
             pose_q=exact(sensing_prior.exact_event_q)
-            pose_target=(target_flow if pose_q==q else self.target_forecast(sensing_prior,end-pose_q))
+            pose_target=(target_flow if pose_q==q else forecast(sensing_prior,end-pose_q))
             attitude=self.attitude_encloser.enclose_observation(sensing_prior.target_orientation_matrix,
                 sensing_prior.target_orientation_operator_error,sensing_prior.target_angular_velocity_box,
                 pose_target,self.design.geometry.metadata['mass_properties']['inertia_kg_m2'],
                 self.model,self.clock,gravity_gradient=True)
+            if (attitude.context.get('source_sha256')!=ATTITUDE_SOURCE_SHA256
+                    or attitude.context.get('model')!='nonlinear-ephemeris-quaternion-euler-v1'
+                    or attitude.context.get('quaternion_order')!='xyzw'
+                    or attitude.context.get('plant_fingerprint')!=self.model.fingerprint
+                    or attitude.context.get('target_model_fingerprint')!=self.model.target_fingerprint
+                    or attitude.context.get('clock_fingerprint')!=self.clock.fingerprint
+                    or attitude.context.get('target_flow_fingerprint')!=pose_target.fingerprint):
+                raise ValueError('Nonlinear refuge pose source, model, quaternion order or clock changed')
             if not attitude.proven:
+                if extended_forecast and attitude.status==EnclosureStatus.UNRESOLVED:
+                    raise _ExtendedContingencyForecastRefusal(
+                        'Nonlinear refuge pose forecast unresolved: '+attitude.reason,
+                        forecast_width+hold_width,legacy_forecast_width+hold_width)
                 raise ValueError('Nonlinear refuge pose forecast unresolved: '+attitude.reason)
             pose=AttitudePoseBoundsProvider(FixedProofProvider(attitude),clock=self.clock,
                 geometry_id=self.design.geometry.fingerprint,target_model_id=self.model.target_fingerprint,
@@ -545,28 +637,57 @@ class NonlinearSafetyPlanner:
             extra_acceleration_abs=tuple(max(abs(a),abs(b))
                 for a,b in zip(estimate.acceleration_disturbance.lower,estimate.acceleration_disturbance.upper)))
         tracking=dict(omega=position,phi=phi,lambda_gain=(gain,)*3,
-            maximum_hold=dense,
+            maximum_hold=dense/self.near_feedback_subdivisions if near else dense,
             input_limits=IntervalBox(tuple(float(b['lower']) for b in self.scenario.config.mpc.input_bounds),
                                     tuple(float(b['upper']) for b in self.scenario.config.mpc.input_bounds)),
             sensing_error_abs=tuple(sensing),actuator_error_abs=self.actuator_error_abs,
             command_rounding_abs=(1e-9,)*3,maximum_window=(6 if near else 64)*dense)
-        attempts=[];refused_candidates=[];far_profile=None
+        attempts=[];refused_candidates=[];far_profile=near_profile=None
         if near:
             patch=self.design.geometry.attachment_patch(next(iter(assignments.values())).attachment_patch_id)
             u=rotation@np.asarray(patch.tangent_u_body)
             v=rotation@np.asarray(patch.tangent_v_body)
             plan=None
-            for beta,acceleration in ((10000.,100000.),(35000.,120000.)):
+            # The original compact tube can have no sliding inward margin
+            # under the installed far sensing floor: Ev+Lambda*Ep=21.5,
+            # Phi=25, and held acceleration variation consumes the remainder.
+            # Search a second tracking shape as a proposal; its larger box,
+            # physical force, entry, fuel and every component/peer sweep still
+            # have to pass the same complete independent certificate.
+            near_profiles=(
+                ('compact-original','.05',25.,500.,10000.,100000.),
+                ('compact-high-gain','.05',25.,500.,35000.,120000.),
+                ('compact-cancelled-reference','.05',25.,500.,40000.,110000.),
+                ('compact-fast-sampling','.05',25.,500.,45000.,100000.),
+                ('compact-fast-sampling-high-gain','.05',25.,500.,50000.,110000.),
+                ('sensing-compatible','.10',30.,300.,22000.,120000.),
+                ('sensing-compatible-high-gain','.10',30.,300.,35000.,120000.))
+            near_offsets=(('.5',0),(1,0),(0,0),('-.5',0),(-1,0),
+                (0,'.5'),(0,1),(0,'-.5'),(0,-1),
+                ('.5','.5'),('.5','-.5'),('-.5','.5'),('-.5','-.5'))
+            for label,omega,sliding,near_gain,beta,acceleration in near_profiles:
+                candidate_tracking=dict(tracking,omega=(exact(omega),)*3,
+                    phi=(sliding,)*3,lambda_gain=(near_gain,)*3)
                 search=construct_patch_refuge_candidates(initial_states=points,
                     initial_enclosures=dict(estimate.relative_state_box_by_agent),outward_directions=directions,
                     tangent_u=tuple(u),tangent_v=tuple(v),start=q,contexts=contexts,drift_adapter=drift,
                     geometry_oracle=oracle,propulsion=self.propulsion,holding_duration=hold_width,
                     fuel_budget=fuel_budget,
                     retreat_durations=near_retreat_durations,
-                    beta=(beta,)*3,acceleration_bound=(acceleration,)*3,**tracking)
-                attempts.append(dict(beta=beta,acceleration_bound=acceleration,attempts=exact_record(search.attempts)))
+                    tangent_offsets=near_offsets,
+                    maximum_candidates=len(near_offsets)*len(near_retreat_durations),
+                    beta=(beta,)*3,acceleration_bound=(acceleration,)*3,**candidate_tracking)
+                attempts.append(dict(profile=label,omega=omega,phi=sliding,
+                    lambda_gain=near_gain,beta=beta,acceleration_bound=acceleration,
+                    attempts=exact_record(search.attempts)))
                 if search.admissible:
-                    plan=search.plan;break
+                    plan=search.plan
+                    retreat_width=search.attempts[-1].retreat_duration
+                    near_profile=dict(profile=label,omega=omega,phi=sliding,
+                        lambda_gain=near_gain,beta=beta,acceleration_bound=acceleration,
+                        tangent_offset=exact_record(search.attempts[-1].tangent_offset),
+                        maximum_hold_q=str(candidate_tracking['maximum_hold']))
+                    break
             if plan is None:
                 raise ValueError('All finite patch-refuge candidates refused: '+str(attempts[-1]['attempts'][-1]))
         else:
@@ -588,18 +709,34 @@ class NonlinearSafetyPlanner:
                     continue
                 candidate_relative_width=relative_width
                 candidate_references,candidate_contexts=references,contexts
-                if label.startswith('coordinated'):
-                    if candidate_width in tried_coordinated_widths:
+                coordinated=label.startswith('coordinated') or label=='acceleration-prefix'
+                braking_width=candidate_width-prefix_width if label=='acceleration-prefix' else candidate_width
+                proposal_accelerations=None
+                if coordinated:
+                    if label!='acceleration-prefix' and candidate_width in tried_coordinated_widths:
                         continue
-                    tried_coordinated_widths.add(candidate_width)
-                    candidate_relative_width=min(relative_width,candidate_width)
+                    if label!='acceleration-prefix':
+                        tried_coordinated_widths.add(candidate_width)
+                    candidate_relative_width=min(relative_width,braking_width)
                     center=np.mean([value[:3] for value in points.values()],axis=0)
                     norm=np.linalg.norm(center)
                     outward=center/norm if norm>1e-12 else np.asarray(next(iter(directions.values())))
-                    candidate_references=coordinated_braking_references(initial_states=points,start=q,
-                        common_duration=candidate_width,relative_duration=candidate_relative_width,
+                    reference_arguments=dict(initial_states=points,start=q,
+                        common_duration=braking_width,relative_duration=candidate_relative_width,
                         holding_duration=hold_width,outward_displacement=tuple(2*outward),
                         frame=estimate.frame_id,clock_id=self.clock.fingerprint)
+                    if label=='acceleration-prefix':
+                        limit=exact(prefix.acceleration_limit_m_per_rad2)
+                        proposal_accelerations={key:tuple(max(-limit,min(limit,(lo+hi)/2))
+                            for lo,hi in zip(flow.segments[-1].derivative.lower[3:6],
+                                             flow.segments[-1].derivative.upper[3:6]))
+                            for key,flow in projection.flows}
+                        candidate_references=acceleration_contingency_references(**reference_arguments,
+                            initial_accelerations=proposal_accelerations,
+                            coast_duration=prefix.coast_holds*dense,
+                            transition_duration=prefix.transition_holds*dense)
+                    else:
+                        candidate_references=coordinated_braking_references(**reference_arguments)
                     candidate_contexts={key:replace(contexts[key],reference_id=reference.reference_id)
                         for key,reference in candidate_references.items()}
                 elif reference_acceleration!=60000.:
@@ -618,11 +755,19 @@ class NonlinearSafetyPlanner:
                     reference_acceleration_target=reference_acceleration,
                     retreat_duration_q=str(candidate_width),holding_duration_q=str(hold_width),
                     reference_ids={key:value.reference_id for key,value in candidate_references.items()})
-                if label.startswith('coordinated'):
-                    profile.update(common_duration_q=str(candidate_width),relative_duration_q=str(candidate_relative_width),
+                if coordinated:
+                    profile.update(common_duration_q=str(braking_width),relative_duration_q=str(candidate_relative_width),
                         common_duration_scale=str(retiming),
                         common_acceleration_target=float(50000/retiming),relative_acceleration_target=10000.,
                         reference_policy='shared-translation-with-faster-relative-braking')
+                    if label=='acceleration-prefix':
+                        profile.update(reference_policy='bounded-acceleration-prefix-then-coordinated-braking',
+                            coast_duration_q=str(prefix.coast_holds*dense),
+                            transition_duration_q=str(prefix.transition_holds*dense),
+                            acceleration_limit_m_per_rad2=prefix.acceleration_limit_m_per_rad2,
+                            proposal_accelerations=exact_record(proposal_accelerations),
+                            proposal_source='Clipped prospective whole-hold interval derivative midpoint; not a new observation',
+                            projection_id=projection.fingerprint)
                 candidate=None
                 try:
                     candidate_tracking=dict(tracking,omega=(exact(omega),)*3,phi=(sliding,)*3)
@@ -697,10 +842,13 @@ class NonlinearSafetyPlanner:
                 current_navigation_prior=self._prior_record(sensing_prior),
                 endpoint_projection_id=None if projection is None else projection.fingerprint,
                 finite_candidate_search=attempts,refused_candidates=refused_candidates)
-        record=dict(exact_start=str(q),near_target=near,plan=summary,
+        record=dict(exact_start=str(q),near_target=near,
+            pose_conditioned_geometry=pose_conditioned_geometry,plan=summary,
+            feedback_maximum_hold_q=str(tracking['maximum_hold']),
+            near_feedback_subdivisions=self.near_feedback_subdivisions,
             retreat_duration_q=str(retreat_width),holding_duration_q=str(hold_width),
             refuge_policy='finite-patch-candidates' if near else 'finite-fleet-braking-candidates',
-            far_candidate_profile=far_profile,
+            far_candidate_profile=far_profile,near_candidate_profile=near_profile,
             target_flow_fingerprint=target_flow.fingerprint,
             attitude_flow_fingerprint=None if attitude is None else attitude.fingerprint,
             observation_packet_ids=list(sensing_prior.packet_ids[-32:]),sensing_error_abs=sensing.tolist(),

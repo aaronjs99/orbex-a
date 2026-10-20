@@ -18,6 +18,7 @@ from orbexa.control.prepared_admission import (PreparedFleetReplacement,
     AdmissionContextChanged, activate_fleet_replacement)
 from orbexa.control.reachability import _exact
 from orbexa.control.refuge import fingerprint
+from .online_clock import MONOTONIC_CLOCK,wall_time_ns
 
 
 @dataclass(frozen=True)
@@ -27,14 +28,19 @@ class OnlineHoldWindow:
     release_ns: int
     dispatch_deadline_ns: int
     acknowledgement_deadline_ns: int
+    wall_clock_id: str = MONOTONIC_CLOCK
 
     def __post_init__(self):
         object.__setattr__(self, 'start', _exact(self.start))
         object.__setattr__(self, 'hold_width', _exact(self.hold_width))
+        wall_time_ns(self.wall_clock_id)
         values = (self.release_ns, self.dispatch_deadline_ns, self.acknowledgement_deadline_ns)
         if (self.hold_width <= 0 or any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in values)
                 or not values[0] <= values[1] <= values[2]):
             raise ValueError('Declare a finite exact hold and ordered monotonic wall-clock deadlines')
+
+    def now_ns(self):
+        return wall_time_ns(self.wall_clock_id)
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,71 @@ class AppliedHoldReceipt:
                 not isinstance(self.endpoint_observations, dict) or
                 self.dispatched_ns <= 0 or self.acknowledged_ns < self.dispatched_ns):
             raise ValueError('An exact physical hold acknowledgment and adapter identity are required')
+
+
+@dataclass(frozen=True)
+class SampledActuationReceipt:
+    """Actual actuation acknowledgment plus the delivered processed packets.
+
+    The injected actuator owns physical execution and truthful timestamps.
+    A numerical plant must identify itself as numerical.  The packet consumer
+    owns prediction and delayed sensing; the actuator never supplies a hidden
+    truth state as an observation.
+    """
+    decision_id: str
+    exact_end_q: Fraction
+    packets: tuple
+    dispatched_ns: int
+    acknowledged_ns: int
+    physical_adapter_id: str
+
+    def __post_init__(self):
+        object.__setattr__(self,'exact_end_q',_exact(self.exact_end_q))
+        object.__setattr__(self,'packets',tuple(self.packets))
+        if (not self.decision_id or not self.physical_adapter_id or self.dispatched_ns <= 0
+                or self.acknowledged_ns < self.dispatched_ns):
+            raise ValueError('A sampled actuator must acknowledge its exact hold and monotonic dispatch times')
+
+
+class SampledOnlineAdapter:
+    """Connect independent execution to a sampled sensing/actuation boundary.
+
+    ``actuate`` returns only a typed actual hold acknowledgment and delivered
+    processed packets. ``receive`` optionally drains additional ready packets
+    between holds.  Neither callback is permitted to wait for the planner.
+    The original per-agent sensing-age limit is checked before actuation.
+    """
+    def __init__(self,observer,*,active_plan,actuate,receive=None):
+        from .online_observation import OnlineRelativeObserver
+        if (not isinstance(observer,OnlineRelativeObserver) or not callable(active_plan)
+                or not callable(actuate) or receive is not None and not callable(receive)):
+            raise TypeError('Supply a bounded relative observer, current-plan getter and physical adapter callbacks')
+        self.observer,self.active_plan,self.actuate,self.receive=observer,active_plan,actuate,receive
+        self.last_boundary_timing_ns=None
+
+    def observe(self,q):
+        if _exact(q) != self.observer.q:
+            raise ValueError('Physical release and the sampled observation clock disagree')
+        if self.receive is not None:
+            self.observer.consume(self.receive(q,self.observer.time))
+        return self.observer.observations()
+
+    def apply_hold(self,decision,window):
+        before=window.now_ns()
+        prediction=self.observer.prepare_hold(decision,self.active_plan())
+        prepared=window.now_ns()
+        if prepared > window.dispatch_deadline_ns:
+            raise ValueError('Sensed hold preflight exceeded the actual dispatch deadline before actuation')
+        receipt=self.actuate(decision,window,prediction.endpoint_time)
+        if (not isinstance(receipt,SampledActuationReceipt) or receipt.decision_id != decision.fingerprint
+                or receipt.exact_end_q != prediction.end or receipt.dispatched_ns < prepared
+                or receipt.acknowledged_ns > window.now_ns()):
+            raise ValueError('Sampled actuator did not acknowledge the exact preflighted hold')
+        observations=self.observer.commit_hold(prediction,packets=receipt.packets)
+        self.last_boundary_timing_ns=dict(preflight=prepared-before,
+            actuate=receipt.acknowledged_ns-prepared,observation_commit=window.now_ns()-receipt.acknowledged_ns)
+        return AppliedHoldReceipt(receipt.decision_id,receipt.exact_end_q,observations,
+            receipt.dispatched_ns,receipt.acknowledged_ns,receipt.physical_adapter_id)
 
 
 class OnlineExecutionFailure(RuntimeError):
@@ -72,7 +143,7 @@ def execution_context_id(runtime, *, source_id):
 class OnlineFiniteExecutor:
     """Single owner of runtime/actuation; one buffered future product at most."""
     def __init__(self, runtime, *, worker, source_id, observe, apply_hold, event_sink=None,
-                 maximum_retained_commits=1):
+                 maximum_retained_commits=1, prepare_decisions=False):
         if not isinstance(runtime, FleetAdmissionRuntime) or runtime._pending is not None:
             raise TypeError('Install a complete idle finite fallback before starting online execution')
         if any(not callable(value) for value in (observe, apply_hold)):
@@ -82,9 +153,12 @@ class OnlineFiniteExecutor:
         if (isinstance(maximum_retained_commits, bool) or not isinstance(maximum_retained_commits, int)
                 or maximum_retained_commits < 0):
             raise ValueError('Declare a nonnegative bounded retained-commit count')
+        if not isinstance(prepare_decisions, bool):
+            raise TypeError('Prepared decision records require an explicit boolean')
         self.runtime, self.worker, self.source_id = runtime, worker, source_id
         self.observe, self.apply_hold, self.event_sink = observe, apply_hold, event_sink
         self.maximum_retained_commits = maximum_retained_commits
+        self.prepare_decisions = prepare_decisions
         self._ready, self._failed, self.sequence = None, None, 0
 
     def _emit(self, record):
@@ -126,9 +200,10 @@ class OnlineFiniteExecutor:
         if activation < window.start:
             return None, 'STALE_PROPOSAL'
         if (_exact(result.request.hold_width) != window.hold_width or
+                result.request.wall_clock_id != window.wall_clock_id or
                 result.request.context_id != execution_context_id(self.runtime, source_id=self.source_id)):
             return None, 'CONTEXT_OR_SCHEDULE_CHANGED'
-        now = time.monotonic_ns()
+        now = window.now_ns()
         if (result.completed_ns > result.request.deadline_ns or result.received_ns is None
                 or result.received_ns > result.request.deadline_ns
                 or now > min(result.request.deadline_ns, window.dispatch_deadline_ns)):
@@ -143,7 +218,7 @@ class OnlineFiniteExecutor:
         except Exception as error:
             record['product_refusal'] = type(error).__name__+': '+str(error)
             return None, 'INVALID_PREPARED_PRODUCT'
-        if time.monotonic_ns() > min(result.request.deadline_ns, window.dispatch_deadline_ns):
+        if window.now_ns() > min(result.request.deadline_ns, window.dispatch_deadline_ns):
             return None, 'LATE_PROPOSAL'
         record['proposal_ready_deadline_ns'] = result.request.deadline_ns
         return candidate, 'READY'
@@ -159,12 +234,13 @@ class OnlineFiniteExecutor:
             raise OnlineExecutionFailure('A failed execution requires an explicit recovery contract', record=self._failed)
         if not isinstance(window, OnlineHoldWindow):
             raise TypeError('Use an explicit exact physical hold window')
-        if time.monotonic_ns() < window.release_ns:
+        if window.now_ns() < window.release_ns:
             raise ValueError('Call the executor when the physical window is released')
         record = dict(schema='orbexa.online-execution-event.v1', sequence=self.sequence,
             exact_start=str(window.start), exact_hold_width=str(window.hold_width),
             release_ns=window.release_ns, dispatch_deadline_ns=window.dispatch_deadline_ns,
             acknowledgement_deadline_ns=window.acknowledgement_deadline_ns,
+            wall_clock_id=window.wall_clock_id,
             source_id=self.source_id, worker_independent=True)
         self.sequence += 1
         try:
@@ -181,7 +257,7 @@ class OnlineFiniteExecutor:
                     record['feedback_replacement'] = activate_fleet_replacement(
                         self.runtime, candidate, observations, q=window.start, hold_width=window.hold_width)
                     reason = 'PREPARED_FEEDBACK_POLICY_ACTIVATED'
-                    if time.monotonic_ns() > record['proposal_ready_deadline_ns']:
+                    if window.now_ns() > record['proposal_ready_deadline_ns']:
                         # No motion or debit has occurred. A slow final exact
                         # gate cannot turn a late product into an active policy.
                         self.runtime.active_fallback = old_plan
@@ -200,10 +276,13 @@ class OnlineFiniteExecutor:
                 decision = self.runtime.decide(observations, q=window.start, hold_width=window.hold_width,
                     failed_attempt=PerformanceAttempt(reason, 'Independent executor retained the installed finite feedback',
                         solver_id='asynchronous-source-bound-worker'), refine_fallback_resources=False)
+            if self.prepare_decisions:
+                from .online_decision import prepare_pending_decision
+                decision = prepare_pending_decision(self.runtime, decision)
             record['decision_id'], record['command_source'] = decision.fingerprint, decision.source
             record['decision'] = decision.as_dict()
             self._emit(dict(record, status='ADMITTED_BEFORE_MOTION'))
-            record['decision_ready_ns'] = time.monotonic_ns()
+            record['decision_ready_ns'] = window.now_ns()
             if record['decision_ready_ns'] > window.dispatch_deadline_ns:
                 self._failure('Executor did not produce a command within the declared dispatch budget', record)
             # The adapter must acknowledge actual dispatch/end observations.
@@ -212,7 +291,7 @@ class OnlineFiniteExecutor:
             if (not isinstance(receipt, AppliedHoldReceipt) or receipt.decision_id != decision.fingerprint or
                     receipt.exact_end_q != window.start+window.hold_width or
                     receipt.dispatched_ns < record['decision_ready_ns'] or
-                    receipt.acknowledged_ns > time.monotonic_ns()):
+                    receipt.acknowledged_ns > window.now_ns()):
                 self._failure('Actuation adapter did not acknowledge the exact admitted hold', record)
             record.update(dispatched_ns=receipt.dispatched_ns, acknowledged_ns=receipt.acknowledged_ns,
                 physical_adapter_id=receipt.physical_adapter_id,

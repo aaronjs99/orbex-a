@@ -120,6 +120,17 @@ class ContactMechanics:
                 tip_velocity=tip_velocity, relative_rotation=r[0].T@r[j]))
         force += internal_force
         torque += np.einsum('nji,nj->ni', r, internal_torque)
+        # Follow the actual target translation. Its common inertial position
+        # and velocity live in the six leading coordinates; target-local
+        # translation stays zero by definition. This retains shared target
+        # motion instead of independently boxing it a second time in every
+        # contact gap. Account for the accelerating origin in all local
+        # momentum, angular-momentum and energy ledgers.
+        frame_increment = force[0]/mass[0]
+        reference_acceleration = reference_acceleration+frame_increment
+        external_force -= mass[:, None]*frame_increment
+        force -= mass[:, None]*frame_increment
+        force[0] = 0.
         flow = np.zeros(n)
         flow[1:] = (np.sum(np.abs(controls[1:, :3]), axis=1)+
             np.sum(np.abs(controls[1:, 3:]), axis=1)/o.attitude_moment_arm_m)/(o.specific_impulse_s*STANDARD_GRAVITY)

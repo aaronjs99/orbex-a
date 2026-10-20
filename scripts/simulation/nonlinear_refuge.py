@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace, fields, is_dataclass
 from collections import OrderedDict
 from collections.abc import Mapping
 from fractions import Fraction
-from math import comb, factorial, gcd
+from math import comb, factorial, gcd, perm
 from typing import Any
 
 from orbexa.control.reachability import IntervalBox, _exact, _ARB_LOCK
@@ -59,22 +59,51 @@ class _FrozenProofIdentityCache:
 
 
 def _derivative(coefficients, order):
+    if type(order) is int and order == 0:
+        return coefficients
+    if type(order) is int and order > 0:
+        return tuple(value*perm(i, order) for i, value in enumerate(coefficients)
+                     if i >= order) or (Fraction(0),)
     return tuple(value*Fraction(factorial(i), factorial(i-order))
                  for i, value in enumerate(coefficients) if i >= order) or (Fraction(0),)
 
 
 def _polynomial(coefficients, value):
-    total = Fraction(0)
-    for coefficient in reversed(coefficients):
+    iterator = reversed(coefficients)
+    total = next(iterator, Fraction(0))
+    if len(coefficients) == 1 and type(total) is Fraction:
+        # Keep a returned constant independent of the source Fraction object.
+        return Fraction(total.numerator, total.denominator)
+    for coefficient in iterator:
         total = total*value+coefficient
     return total
+
+
+def _fraction_scalars(value):
+    if type(value) is not Fraction:
+        raise ValueError("Polynomial source scalars must remain exact Fractions")
+    numerator, denominator = value.numerator, value.denominator
+    if (type(numerator) is not int or type(denominator) is not int
+            or denominator <= 0 or gcd(numerator, denominator) != 1):
+        raise ValueError("Polynomial source rationals must remain normalized")
+    return numerator, denominator
+
+
+def _coefficient_scalars(rows):
+    if type(rows) is not tuple or len(rows) != 3 or any(
+            type(row) is not tuple or not 1 <= len(row) <= 6 for row in rows):
+        raise ValueError("Three immutable finite polynomial rows are required")
+    return tuple(tuple(_fraction_scalars(value) for value in row) for row in rows)
 
 
 def _bernstein(coefficients, lower, upper):
     """Exact range enclosure on [lower,upper] by Bernstein convex hull."""
     degree = len(coefficients)-1
     if degree == 0:
-        return coefficients[0], coefficients[0]
+        value = coefficients[0]
+        if type(value) is Fraction:
+            value = Fraction(value.numerator, value.denominator)
+        return value, value
     power = tuple(sum(coefficients[i]*comb(i,j)*lower**(i-j)*(upper-lower)**j
                       for i in range(j, degree+1)) for j in range(degree+1))
     bernstein = tuple(sum(power[j]*Fraction(comb(k,j), comb(degree,j))
@@ -101,7 +130,17 @@ class PolynomialReferencePiece:
         q = _exact(q)
         if not self.start <= q <= self.end:
             raise ValueError("Polynomial query exceeds its finite piece")
-        return tuple(_polynomial(_derivative(row, order), q-self.start) for row in self.coefficients)
+        offset = q-self.start
+        return tuple(_polynomial(_derivative(row, order), offset) for row in self.coefficients)
+
+    def jets(self, q):
+        """Evaluate all three exact jets with one shared rational clock offset."""
+        q = _exact(q)
+        if not self.start <= q <= self.end:
+            raise ValueError("Polynomial query exceeds its finite piece")
+        offset = q-self.start
+        return tuple(tuple(_polynomial(_derivative(row, order), offset)
+                           for row in self.coefficients) for order in range(3))
 
     def enclose(self, start, end, order):
         if not self.start <= start <= end <= self.end:
@@ -109,6 +148,12 @@ class PolynomialReferencePiece:
         pairs = tuple(_bernstein(_derivative(row, order), start-self.start, end-self.start)
                       for row in self.coefficients)
         return IntervalBox(tuple(lo for lo, _ in pairs), tuple(hi for _, hi in pairs))
+
+
+_PIECE_JET_METHOD = PolynomialReferencePiece.jet
+_PIECE_JETS_METHOD = PolynomialReferencePiece.jets
+_DERIVATIVE_METHOD = _derivative
+_POLYNOMIAL_METHOD = _polynomial
 
 
 class C2RefugeReference:
@@ -149,7 +194,12 @@ class C2RefugeReference:
             piece = self.pieces[-1]
         if piece is None:
             raise ValueError("Reference sample exceeds its finite route")
-        return ReferenceJet(q, *(piece.jet(q, order) for order in range(3)),
+        known = (type(piece) is PolynomialReferencePiece
+                 and getattr(piece.jet, "__func__", piece.jet) is _PIECE_JET_METHOD
+                 and getattr(piece.jets, "__func__", piece.jets) is _PIECE_JETS_METHOD
+                 and _derivative is _DERIVATIVE_METHOD and _polynomial is _POLYNOMIAL_METHOD)
+        jets = piece.jets(q) if known else tuple(piece.jet(q, order) for order in range(3))
+        return ReferenceJet(q, *jets,
                             self.reference_id,self.frame,self.clock_id)
 
     def polynomial_source(self):
@@ -161,19 +211,26 @@ class C2RefugeReference:
         """
         if type(self.pieces) is not tuple or not self.pieces or any(type(piece) is not PolynomialReferencePiece for piece in self.pieces):
             raise ValueError("Polynomial source caching requires immutable typed reference pieces")
-        pieces=tuple((piece.start,piece.end,piece.coefficients) for piece in self.pieces)
-        if any(type(start) is not Fraction or type(end) is not Fraction or type(rows) is not tuple or len(rows)!=3
-               or any(type(row) is not tuple or not 1<=len(row)<=6 or any(type(value) is not Fraction for value in row)
-                      for row in rows) for start,end,rows in pieces):
-            raise ValueError("Polynomial source fields must remain exact immutable Fractions and tuples")
+        pieces=tuple((_fraction_scalars(piece.start),_fraction_scalars(piece.end),
+                      _coefficient_scalars(piece.coefficients)) for piece in self.pieces)
         key=(self.reference_id,self.frame,self.clock_id,pieces)
         cached=getattr(self,"_polynomial_source_cache",None)
         if type(cached) is tuple and len(cached)==2 and cached[0]==key and type(cached[1]) is PolynomialReferenceSource:
             source=cached[1]
-            if (source.reference_id,source.frame,source.clock_id,
-                    tuple((piece.start,piece.end,piece.coefficients) for piece in source.pieces))==key:
+            try:
+                unchanged=(type(source.pieces) is tuple
+                    and all(type(piece) is PolynomialReferenceSpan for piece in source.pieces)
+                    and (source.reference_id,source.frame,source.clock_id,
+                        tuple((_fraction_scalars(piece.start),_fraction_scalars(piece.end),
+                               _coefficient_scalars(piece.coefficients)) for piece in source.pieces))==key)
+            except (AttributeError,TypeError,ValueError):
+                unchanged=False
+            if unchanged:
                 return source
-        source=PolynomialReferenceSource(tuple(PolynomialReferenceSpan(start,end,rows) for start,end,rows in pieces),
+        # Copy every rational from native integers; the reusable source must
+        # not alias a source/cache Fraction forced to change after admission.
+        source=PolynomialReferenceSource(tuple(PolynomialReferenceSpan(Fraction(*start),Fraction(*end),
+            tuple(tuple(Fraction(*value) for value in row) for row in rows)) for start,end,rows in pieces),
             self.reference_id,self.frame,self.clock_id)
         self._polynomial_source_cache=(key,source)
         return source
@@ -490,7 +547,8 @@ class AttitudePoseBoundsProvider:
             raise ValueError("A same-identity actual reference clock and bounded Arb precision are required")
 
     def __call__(self,start,end):
-        from orbexa.control.attitude_flow import AttitudeFlowCertificate,AttitudeSegment,_matrix
+        from orbexa.control.attitude_flow import (AttitudeFlowCertificate,AttitudeSegment,_matrix,
+            _SOURCE_SHA256 as attitude_source)
         value = self.attitude_provider(start,end)
         if (not isinstance(value,AttitudeFlowCertificate) or not value.proven
                 or value.context.get("target_model_fingerprint") != self.target_model_id
@@ -520,6 +578,22 @@ class AttitudePoseBoundsProvider:
             offset,previous = segment.offset[1],segment.endpoint
         if attitude_id not in self._verified_attitudes and (offset != width[0] or value.endpoint != previous):
             raise ValueError("Attitude certificate omits part of its full finite clock domain")
+        # The maintained quaternion ODE preserves unit norm of the physical
+        # state. Its Picard boxes contain additional off-sphere points, which
+        # only widen the polynomial image. Interval-normalizing that ambient
+        # box reintroduces dependencies without covering any extra physical
+        # attitude. Keep the generic normalization for other declared flows.
+        physical_unit=(value.context.get('model')=='nonlinear-ephemeris-quaternion-euler-v1'
+            and value.context.get('source_sha256')==attitude_source
+            and value.context.get('quaternion_order')=='xyzw'
+            and 'Initial box contains a unit physical quaternion' in value.context.get('assumptions',()))
+        if physical_unit:
+            initial=value.initial_state.slice(0,4)
+            norm_lower=sum(0 if lo<=0<=hi else min(lo*lo,hi*hi)
+                for lo,hi in zip(initial.lower,initial.upper))
+            norm_upper=sum(max(lo*lo,hi*hi) for lo,hi in zip(initial.lower,initial.upper))
+            if not norm_lower<=1<=norm_upper:
+                raise ValueError('Maintained attitude flow has no admissible unit initial quaternion')
         self._verified_attitudes[attitude_id] = True
         self._verified_attitudes.move_to_end(attitude_id)
         while len(self._verified_attitudes) > 4:
@@ -533,9 +607,9 @@ class AttitudePoseBoundsProvider:
                 if lower > upper:
                     continue
                 quat = ar.vector(segment.swept_state.slice(0,4))
-                norm = ar.sqrt(sum(ar.square(x) for x in quat))
-                if norm > 0:
-                    body = _matrix(tuple(x/norm for x in quat),ar)
+                norm = None if physical_unit else ar.sqrt(sum(ar.square(x) for x in quat))
+                if physical_unit or norm > 0:
+                    body = _matrix(quat if physical_unit else tuple(x/norm for x in quat),ar)
                     reference = self.clock.evaluate(ar.interval((lower,upper)),ar)[0]
                     local = ar.box(tuple(sum(reference[k][i]*body[k][j] for k in range(3))
                                          for i in range(3) for j in range(3)))
@@ -550,9 +624,12 @@ class AttitudePoseBoundsProvider:
         if rotation is None:
             raise ValueError("No continuous attitude segment covers the requested occupied window")
         result = TargetPoseEnclosure(start,end,rotation,IntervalBox.point((0,0,0)),self.geometry_id,
-            self.target_model_id,self.frame,self.clock_id,"local-quaternion-Euler-sweeps-Arb-reference-rotation:"+attitude_id,
+            self.target_model_id,self.frame,self.clock_id,("unit-quaternion-polynomial-sweeps:" if physical_unit else
+                "local-quaternion-Euler-sweeps-Arb-reference-rotation:")+attitude_id,
             ("Proved quaternion/Euler continuous flow on the nonlinear ephemeris",
-             "Every queried swept quaternion box is normalized with Arb and transformed by C_ref(q)^T",
+             ("Unit physical quaternion polynomial image of each complete swept box; no ambient normalization" if physical_unit else
+              "Every queried swept quaternion box is normalized with Arb"),
+             "Every image is transformed by the complete interval C_ref(q)^T",
              "Unit true quaternion invariance; all proper rotations retained if a wide interval includes zero"))
         self._pose_boxes[cache_key] = result
         while len(self._pose_boxes) > 4096:

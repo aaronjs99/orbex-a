@@ -6,7 +6,7 @@ The unilateral dashpot's contact discontinuity is covered by a branch hull.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from fractions import Fraction
 import hashlib
 import copy
@@ -17,6 +17,8 @@ from scipy.spatial.transform import Rotation
 
 from orbexa.control.reachability import IntervalBox, _ARB_LOCK, _ArbArithmetic, _ProofUnresolved
 from orbexa.core.reference_frame import fingerprint
+from orbexa.simulation.contact_rotation import auxiliary_initial, rotation_derivative
+from orbexa.simulation.contact_strain import initial_strain_boxes, potential_box
 from orbexa.simulation.rigid_interval import (
     add, cross, inverse3, matvec, norm, norm_upper, normalized_quaternion,
     quaternion_conjugate, quaternion_product, quaternion_rotation, rotation_vector,
@@ -25,7 +27,7 @@ from orbexa.simulation.rigid_interval import (
 
 
 _SOURCE = {name: hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
-    for name in ('contact_enclosure.py', 'rigid_interval.py')}
+    for name in ('contact_enclosure.py', 'rigid_interval.py', 'contact_rotation.py', 'contact_strain.py')}
 
 
 def _max_zero(value, ar):
@@ -46,6 +48,14 @@ class ContactStepCertificate:
     endpoint: IntervalBox | None = None
     swept: IntervalBox | None = None
     checks: dict | None = None
+    refinement_attempts: tuple = ()
+    rotation_endpoint: tuple = ()
+    rotation_swept: tuple = ()
+    gap_endpoint: tuple = ()
+    gap_swept: tuple = ()
+    strain_endpoint: tuple = ()
+    strain_swept: tuple = ()
+    endpoint_potential: IntervalBox | None = None
 
     @property
     def passed(self):
@@ -57,6 +67,14 @@ class ContactStepCertificate:
             context=copy.deepcopy(self.context), initial=self.initial.as_dict(),
             endpoint=None if self.endpoint is None else self.endpoint.as_dict(),
             swept=None if self.swept is None else self.swept.as_dict(), checks=copy.deepcopy(self.checks or {}),
+            refinement_attempts=copy.deepcopy(list(self.refinement_attempts)),
+            rotation_endpoint=[box.as_dict() for box in self.rotation_endpoint],
+            rotation_swept=[box.as_dict() for box in self.rotation_swept],
+            gap_endpoint=[box.as_dict() for box in self.gap_endpoint],
+            gap_swept=[box.as_dict() for box in self.gap_swept],
+            strain_endpoint=[box.as_dict() for box in self.strain_endpoint],
+            strain_swept=[box.as_dict() for box in self.strain_swept],
+            endpoint_potential=None if self.endpoint_potential is None else self.endpoint_potential.as_dict(),
             scope='Declared unit-quaternion rigid ODE, unilateral compliant pads and fixed held commands/bond parameters; conditional initial set, exact specified geometry and the maintained typed J2/drag environment when supplied')
 
 
@@ -102,6 +120,11 @@ class _ContactField:
             rest = None if rest_enclosures is None else rest_enclosures[k]
             nominal_quaternion = None if not np.isfinite(engaged) else normalized_quaternion(
                 tuple(ar.scalar(x) for x in Rotation.from_matrix(bonds.rotation_rest[k]).as_quat()), ar)
+            if rest is not None and nominal_quaternion is not None:
+                center = tuple((lo+hi)/2 for lo, hi in zip(rest['quaternion'].lower, rest['quaternion'].upper))
+                if sum(float(value)*float(sum(ar.box((coordinate,)).lower+ar.box((coordinate,)).upper)/2)
+                       for value, coordinate in zip(center, nominal_quaternion)) < 0:
+                    nominal_quaternion = tuple(-value for value in nominal_quaternion)
             self.rest_quaternions.append(nominal_quaternion if rest is None or nominal_quaternion is None else
                 ar.vector(rest['quaternion'].hull(ar.box(nominal_quaternion))))
             rest_position = IntervalBox.point(bonds.bond_rest[k])
@@ -125,7 +148,14 @@ class _ContactField:
     def evaluate(self, time, values):
         fleet, o, ar = self.fleet, self.o, self.ar
         body, tips = self.unpack(values)
-        rotations = tuple(quaternion_rotation(row[6:10]) for row in body)
+        rotation_start = fleet.ledger_start
+        gap_start = rotation_start+9*fleet.body_count
+        strain_start = gap_start+fleet.chaser_count
+        augmented = len(values) in (strain_start, strain_start+7*fleet.chaser_count)
+        strained = len(values) == strain_start+7*fleet.chaser_count
+        rotations = (tuple(tuple(tuple(values[rotation_start+9*k+3*i:rotation_start+9*k+3*i+3])
+            for i in range(3)) for k in range(fleet.body_count)) if augmented else
+            tuple(quaternion_rotation(row[6:10]) for row in body))
         spins = tuple(matvec(r, row[10:13]) for r, row in zip(rotations, body))
         masses = tuple(ar.scalar(dry)+row[13] for dry, row in zip(fleet.dry, body))
         if any(not mass > 0 for mass in masses):
@@ -153,13 +183,26 @@ class _ContactField:
             rt, rj = rotations[0], rotations[j]
             tip_offset = matvec(rj, add(self.mounts[k], tips[k][:3]))
             tip = add(body[j][:3], tip_offset)
-            patch = add(body[0][:3], matvec(rt, self.anchors[k]))
-            e = matvec(transpose(rt), subtract(tip, patch))
+            # Retain the exact SO(3) identities instead of multiplying
+            # independent interval copies of R^T R through fixed anchors
+            # or the target's own angular velocity.
+            com_target = matvec(transpose(rt), subtract(body[j][:3], body[0][:3]))
+            relative_rotation = tuple(tuple(sum(rt[k][i]*rj[k][j] for k in range(3))
+                for j in range(3)) for i in range(3))
+            lever_target = matvec(relative_rotation, add(self.mounts[k], tips[k][:3]))
+            e = subtract(add(com_target, lever_target), self.anchors[k])
             tip_velocity = add(add(body[j][3:6], cross(spins[j], tip_offset)), matvec(rj, tips[k][3:]))
-            u = matvec(transpose(rt), subtract(subtract(tip_velocity, body[0][3:6]),
-                cross(spins[0], subtract(tip, body[0][:3]))))
+            spin = subtract(matvec(relative_rotation, body[j][10:13]), body[0][10:13])
+            u = add(subtract(matvec(transpose(rt), subtract(body[j][3:6], body[0][3:6])),
+                cross(body[0][10:13], com_target)),
+                add(cross(spin, lever_target), matvec(relative_rotation, tips[k][3:])))
             normal = self.normals[k]
-            gap, speed = _dot(e, normal), _dot(u, normal)
+            gap, speed = (values[gap_start+k] if augmented else _dot(e, normal)), _dot(u, normal)
+            if augmented:
+                normal_squared = _dot(normal, normal)
+                projector = tuple(tuple(ar.scalar(int(i == j))-normal[i]*normal[j]/normal_squared
+                    for j in range(3)) for i in range(3))
+                e = add(matvec(projector, e), scale(gap/normal_squared, normal))
             compression = _max_zero(-gap, ar)
             closing = _max_zero(-speed, ar)
             compression_box = ar.box((compression,))
@@ -169,21 +212,38 @@ class _ContactField:
             elif compression_box.lower[0] <= 0:
                 dashpot = ar.interval((0, ar.box((dashpot,)).upper[0]))
             normal_force = ar.scalar(o.compression_stiffness_n_m)*compression+dashpot
-            slip = subtract(u, scale(speed, normal))
+            # Evaluate the fixed tangent projector as a linear map. Reusing
+            # independent interval copies in u-n*(n.u) invents normal slip
+            # even for an exactly axis-aligned patch.
+            projector = tuple(tuple(ar.scalar(int(i == j))-normal[i]*normal[j] for j in range(3))
+                              for i in range(3))
+            slip = matvec(projector, u)
             slip_length = (sum(square(x, ar) for x in slip)+ar.scalar(o.friction_regularization_m_s)**2).sqrt()
-            friction = scale(-ar.scalar(o.friction_coefficient)*normal_force/slip_length, slip)
+            friction_raw = scale(-ar.scalar(o.friction_coefficient)*normal_force/slip_length, slip)
+            # The regularized law always has |F_friction| <= mu*F_normal.
+            # Intersect this analytic cone bound with its direct interval
+            # evaluation so an uncertain near-zero slip cannot create
+            # fictitious arbitrarily large friction during Picard iteration.
+            friction_limit = Fraction(o.friction_coefficient)*max(Fraction(0), ar.box((normal_force,)).upper[0])
+            friction = tuple(ar.interval((max(-friction_limit, lo), min(friction_limit, hi)))
+                for lo, hi in zip(ar.box(friction_raw).lower, ar.box(friction_raw).upper))
             force_patch = add(scale(normal_force, normal), friction)
             couple_patch = tuple(ar.scalar(0) for _ in range(3))
-            spin = matvec(transpose(rt), subtract(spins[j], spins[0]))
             activation = ar.scalar(0)
             bond_force = couple_unscaled = tuple(ar.scalar(0) for _ in range(3))
+            deformation = angle = tuple(ar.scalar(0) for _ in range(3))
             if self.rest_quaternions[k] is not None:
                 elapsed = ar.box((time-ar.scalar(self.engagement_times[k]),))
                 activation = ar.interval(tuple(max(Fraction(0), min(Fraction(1), x/Fraction(o.bond_engagement_s)))
                     for x in (elapsed.lower[0], elapsed.upper[0])))
-                deformation = subtract(e, self.rest_positions[k])
-                relative = quaternion_product(quaternion_conjugate(body[0][6:10]), body[j][6:10])
-                relative = quaternion_product(relative, quaternion_conjugate(self.rest_quaternions[k]))
+                if strained:
+                    begin = strain_start+7*k
+                    deformation = tuple(values[begin:begin+3])
+                    relative = tuple(values[begin+3:begin+7])
+                else:
+                    deformation = subtract(e, self.rest_positions[k])
+                    relative = quaternion_product(quaternion_conjugate(body[0][6:10]), body[j][6:10])
+                    relative = quaternion_product(relative, quaternion_conjugate(self.rest_quaternions[k]))
                 angle = rotation_vector(relative, ar)
                 bond_force = scale(-1, add(scale(ar.scalar(o.bond_stiffness_n_m), deformation),
                     scale(ar.scalar(o.bond_damping_n_s_m), u)))
@@ -199,9 +259,11 @@ class _ContactField:
             rows.append(dict(e=e, u=u, gap=gap, compression=compression, normal_force=normal_force,
                 force=force, force_patch=force_patch, couple=couple, spin=spin,
                 activation=activation, bond_force_unscaled=bond_force, couple_unscaled=couple_unscaled,
+                deformation=deformation, strain_angle=angle,
                 power=power, tip=tip, tip_velocity=tip_velocity))
         derivative = [ar.scalar(0) for _ in values]
-        derivative[:6] = (*values[3:6], *reference_gravity)
+        target_acceleration = scale(1/masses[0], forces[0])
+        derivative[:6] = (*values[3:6], *add(reference_gravity, target_acceleration))
         from orbexa.simulation.assembly import STANDARD_GRAVITY
         for k, (row, r, mass, force, torque) in enumerate(zip(body, rotations, masses, forces, moments)):
             wb, q = row[10:13], row[6:10]
@@ -210,10 +272,22 @@ class _ContactField:
             alpha = matvec(self.inverse[k], subtract(scale(1/mass, torque), cross(wb, matvec(self.specific[k], wb))))
             flow = sum(abs(x) for x in self.actuation.controls[k, :3])+sum(abs(x) for x in self.actuation.controls[k, 3:])/o.attitude_moment_arm_m
             flow = 0. if k == 0 else flow/(o.specific_impulse_s*STANDARD_GRAVITY)
-            derivative[6+14*k:6+14*(k+1)] = (*row[3:6], *scale(1/mass, force), *quaternion_dot, *alpha, -ar.scalar(flow))
+            relative_acceleration = ((ar.scalar(0),)*3 if k == 0 else subtract(scale(1/mass, force), target_acceleration))
+            relative_velocity = (ar.scalar(0),)*3 if k == 0 else row[3:6]
+            derivative[6+14*k:6+14*(k+1)] = (*relative_velocity, *relative_acceleration, *quaternion_dot, *alpha, -ar.scalar(flow))
         for k, tip in enumerate(tips):
             start = fleet.tip_slice.start+6*k
             derivative[start:start+6] = (*tip[3:], *self.extension[k])
+        if augmented:
+            for k, (rotation, row) in enumerate(zip(rotations, body)):
+                start = rotation_start+9*k
+                derivative[start:start+9] = rotation_derivative(rotation, row[10:13])
+            for k, row in enumerate(rows):
+                derivative[gap_start+k] = _dot(row['u'], self.normals[k])
+                if strained and self.rest_quaternions[k] is not None:
+                    begin = strain_start+7*k
+                    derivative[begin:begin+7] = (*row['u'], *scale(ar.scalar(Fraction(1, 2)),
+                        quaternion_product((*row['spin'], ar.scalar(0)), values[begin+3:begin+7])))
         return tuple(derivative), dict(body=body, tips=tips, rotations=rotations, spins=spins, masses=masses, rows=rows)
 
 
@@ -238,6 +312,8 @@ class ContactStepEncloser:
             raise ValueError('Contact initial enclosure must match the packed physical coordinates without ledgers')
         if not box.contains(IntervalBox.point(fleet.initial_values[:fleet.ledger_start])):
             raise ValueError('Contact initial set does not contain the supplied numerical representative')
+        if box.slice(6, 12) != IntervalBox.point((0,)*6):
+            raise ValueError('Target-following contact coordinates require identically zero target-local translation; retain absolute uncertainty in the leading ephemeris')
         import flint
         with _ARB_LOCK, flint.ctx.workprec(self.precision_bits):
             ar = _ArbArithmetic(flint)
@@ -249,15 +325,38 @@ class ContactStepEncloser:
             # its exact unit-quaternion interpretation.
             return box.hull(ar.box(values))
 
+    def refined_bound(self, **request):
+        """Refine an unresolved same-command proof before allowing motion.
+
+        Physical time, command, initial set, model and all limits remain
+        unchanged. The finite substep cap bounds every retry as well as the
+        final proof. Numerical failure is never accepted as a safe hold.
+        """
+        width = Fraction(request['duration_s'])
+        engine, attempts = self, []
+        while True:
+            certificate = engine.bound(**request)
+            attempts.append(dict(max_step_s=engine.max_step_s, status=certificate.status,
+                                 reason=certificate.reason))
+            if certificate.passed or certificate.status != 'UNRESOLVED':
+                break
+            next_step = engine.max_step_s/2
+            if max(1, -(-width//Fraction(next_step))) > self.max_substeps:
+                break
+            engine = replace(engine, max_step_s=next_step)
+        return replace(certificate, refinement_attempts=tuple(attempts))
+
     def event_support(self, *, fleet, options, bonds, actuation, time_s, initial, rest_enclosures=None,
-                      engagement_times=None):
+                      engagement_times=None, rotation_initial=None, gap_initial=None, strain_initial=None):
         """Current whole-set preload and actual rest sets for a digital bond event."""
         import flint
         with _ARB_LOCK, flint.ctx.workprec(self.precision_bits):
             ar = _ArbArithmetic(flint)
             model = _ContactField(fleet, options, bonds, actuation, ar, rest_enclosures,
                 engagement_times=engagement_times)
-            _, diag = model.evaluate(ar.scalar(time_s), ar.vector(initial))
+            combined, _, _ = auxiliary_initial(fleet, initial, ar, rotations=rotation_initial, gaps=gap_initial)
+            combined, _ = initial_strain_boxes(model, time_s, combined, ar, strain_initial)
+            _, diag = model.evaluate(ar.scalar(time_s), ar.vector(combined))
             result = []
             for k, row in enumerate(diag['rows']):
                 comp, force, gap = (ar.box((row[key],)) for key in ('compression', 'normal_force', 'gap'))
@@ -269,11 +368,14 @@ class ContactStepEncloser:
             return result
 
     def bound(self, *, fleet, options, bonds, actuation, geometry, time_s, duration_s, initial, environment=None,
-              rest_enclosures=None, engagement_times=None):
+              rest_enclosures=None, engagement_times=None, rotation_initial=None, gap_initial=None, strain_initial=None):
         time, h = Fraction(time_s), Fraction(duration_s)
         if h <= 0 or not isinstance(initial, IntervalBox) or initial.dimension != fleet.ledger_start:
             raise ValueError('Contact hold needs a positive duration and the exact packed start set')
+        if initial.slice(6, 12) != IntervalBox.point((0,)*6):
+            raise ValueError('Contact held-flow source is off the declared actual-target-COM chart')
         context = dict(time_s=str(time), duration_s=str(h), options=asdict(options),
+            translation_chart='actual-target-COM-following nonrotating ECI axes; common ephemeris in six leading coordinates',
             controls_body=actuation.controls.tolist(), extension_acceleration_body_m_s2=actuation.extension_acceleration.tolist(),
             engagement_s=bonds.engagement.tolist(), bond_rest_body_m=bonds.bond_rest.tolist(), rotation_rest=bonds.rotation_rest.tolist(),
             exact_engagement_times_s=None if engagement_times is None else [None if value is None else str(value) for value in engagement_times],
@@ -304,10 +406,18 @@ class ContactStepEncloser:
             with _ARB_LOCK, flint.ctx.workprec(self.precision_bits):
                 ar = _ArbArithmetic(flint)
                 model = _ContactField(fleet, options, bonds, actuation, ar, rest_enclosures, environment_model, engagement_times)
+                combined, rotations, gaps = auxiliary_initial(fleet, initial, ar, rotations=rotation_initial, gaps=gap_initial)
+                combined, strains = initial_strain_boxes(model, time, combined, ar, strain_initial)
+                context['rotation_initial'] = [box.as_dict() for box in rotations]
+                context['gap_initial'] = [box.as_dict() for box in gaps]
+                context['strain_initial'] = [box.as_dict() for box in strains]
+                context['auxiliary_scope'] = 'Redundant coordinates on the same physical initial graph: Rdot=R[omega], gdot=n.u, displacement-strain dot=u and relative-strain quaternion dot=(spin,0)*Q/2; zero displacement/identity Q only at the actual digital engagement event, otherwise carried endpoints intersect the complete uncertain current/rest graph'
+                context['request_fingerprint'] = fingerprint({key: value for key, value in context.items()
+                    if key != 'request_fingerprint'})
                 count = max(1, -(-h//Fraction(self.max_step_s)))
                 if count > self.max_substeps:
                     raise _ProofUnresolved('contact substep budget exceeded')
-                dt, endpoint, swept, checks, iterations = h/count, initial, initial, [], 0
+                dt, endpoint, swept, substeps, iterations = h/count, combined, combined, [], 0
                 for substep in range(count):
                     start = ar.vector(endpoint)
                     trial = IntervalBox.from_center_radius(tuple((lo+hi)/2 for lo, hi in zip(endpoint.lower, endpoint.upper)),
@@ -317,12 +427,11 @@ class ContactStepEncloser:
                         field, diag = model.evaluate(ar.interval((time+substep*dt, time+(substep+1)*dt)), ar.vector(trial))
                         image = ar.box(add(start, scale(ar.interval((0, dt)), field)))
                         if all(a < c and d < b for a, b, c, d in zip(trial.lower, trial.upper, image.lower, image.upper)):
-                            local = self._checks(model, diag, geometry, dt)
                             endpoint = ar.box(add(start, scale(ar.scalar(dt), field)))
                             if any(endpoint.lower[6+14*k+13] < 0 for k in range(fleet.body_count)):
                                 raise _ProofUnresolved('whole-contact tank nonnegativity not proven')
                             swept = swept.hull(trial)
-                            checks.append(local)
+                            substeps.append(diag)
                             break
                         # Do not repeatedly widen an already-contained orbital
                         # coordinate while another coordinate converges. Such
@@ -337,11 +446,34 @@ class ContactStepEncloser:
                             for lo, hi, old, change in zip(joined.lower, joined.upper, trial.upper, selected)))
                     else:
                         raise _ProofUnresolved('contact Picard inclusion exceeded its finite budget')
-                context.update(proved_substeps=count, picard_iterations=iterations)
+                # One guard evaluation on the complete swept hull is a
+                # sufficient whole-hold proof and often avoids repeating
+                # the same expensive occupied geometry at every tiny
+                # integrator interval. If that hull loses useful temporal
+                # dependency, retain the original substep guard proof.
+                try:
+                    _, whole_diag = model.evaluate(ar.interval((time, time+h)), ar.vector(swept))
+                    checks = [self._checks(model, whole_diag, geometry, dt)]
+                    context['guard_partition'] = 'complete-held-swept-hull'
+                except _ProofUnresolved as whole_refusal:
+                    context['whole_swept_guard_refusal'] = str(whole_refusal)
+                    checks = [self._checks(model, local, geometry, dt) for local in substeps]
+                    context['guard_partition'] = 'internal-picard-substeps'
+                context.update(proved_substeps=count, picard_iterations=iterations, guard_partitions=len(checks))
+                _, final_diag = model.evaluate(ar.scalar(time+h), ar.vector(endpoint))
+                strain_start = fleet.ledger_start+9*fleet.body_count+fleet.chaser_count
                 return ContactStepCertificate('PROVEN', 'whole_contact_hold_flow_and_guards_proven', context,
-                    initial, endpoint, swept, dict(substeps=checks,
+                    initial, endpoint.slice(0, fleet.ledger_start), swept.slice(0, fleet.ledger_start), dict(substeps=checks,
                         preload_supported=[all(item['preload_supported'][k] for item in checks) for k in range(fleet.chaser_count)],
-                        quiet_supported=all(item['quiet_supported'] for item in checks)))
+                        quiet_supported=all(item['quiet_supported'] for item in checks),
+                        finite_lock_ready=all(item['finite_lock_ready'] for item in checks)),
+                    rotation_endpoint=tuple(endpoint.slice(fleet.ledger_start+9*k, fleet.ledger_start+9*(k+1)) for k in range(fleet.body_count)),
+                    rotation_swept=tuple(swept.slice(fleet.ledger_start+9*k, fleet.ledger_start+9*(k+1)) for k in range(fleet.body_count)),
+                    gap_endpoint=tuple(endpoint.slice(fleet.ledger_start+9*fleet.body_count+k, fleet.ledger_start+9*fleet.body_count+k+1) for k in range(fleet.chaser_count)),
+                    gap_swept=tuple(swept.slice(fleet.ledger_start+9*fleet.body_count+k, fleet.ledger_start+9*fleet.body_count+k+1) for k in range(fleet.chaser_count)),
+                    strain_endpoint=tuple(endpoint.slice(strain_start+7*k, strain_start+7*(k+1)) for k in range(fleet.chaser_count)),
+                    strain_swept=tuple(swept.slice(strain_start+7*k, strain_start+7*(k+1)) for k in range(fleet.chaser_count)),
+                    endpoint_potential=potential_box(model, final_diag))
         except ImportError:
             return ContactStepCertificate('UNAVAILABLE', 'arb_backend_unavailable', context, initial)
         except (_ProofUnresolved, ArithmeticError, ValueError) as error:
@@ -377,6 +509,12 @@ class ContactStepEncloser:
                     margin = lower(_dot(direction, point))-support-Fraction(radius)*length
                     normalized = margin/length
                     best = normalized if best is None else max(best, normalized)
+                    if normalized > 0:
+                        # A single exact separating support inequality is
+                        # sufficient. Further numeric direction choices can
+                        # improve a displayed margin but add no safety fact.
+                        margins.append(normalized)
+                        return
             if best is None or best <= 0:
                 raise _ProofUnresolved('whole-contact occupied-component separation not proven: '+component.id)
             margins.append(best)
@@ -397,16 +535,17 @@ class ContactStepEncloser:
                 raise _ProofUnresolved(member.id+': whole-step pad compression/force/power not proven')
             normal = model.normals[k]
             if upper(row['activation']) > 0:
-                exact_unit = sum(Fraction(float(x))**2 for x in fleet.normals[k]) == 1
-                selected_force = row['bond_force_unscaled'] if exact_unit else row['force_patch']
-                fn = _dot(selected_force, normal)
-                shear = subtract(selected_force, scale(fn, normal))
-                activated = Fraction(1) if exact_unit else lower(row['activation'])
-                friction_reserve = Fraction(0) if exact_unit else Fraction(o.friction_coefficient)*lower(row['normal_force'])
-                selected_couple = row['couple_unscaled'] if exact_unit else row['couple']
-                if (max(0, -lower(fn)) > activated*Fraction(o.tensile_limit_n)
-                        or normup(shear) > activated*Fraction(o.shear_limit_n)+friction_reserve
-                        or normup(selected_couple) > activated*Fraction(o.moment_limit_nm)):
+                unit_normal = scale(1/norm(normal, ar), normal)
+                # Both adhesive strength and wrench scale by the same
+                # nonnegative activation. Test the unscaled bond law without
+                # crediting compression friction; this remains sufficient at
+                # every activation, including an interval beginning at zero.
+                selected_force = row['bond_force_unscaled']
+                fn = _dot(selected_force, unit_normal)
+                shear = subtract(selected_force, scale(fn, unit_normal))
+                if (max(0, -lower(fn)) > Fraction(o.tensile_limit_n)
+                        or normup(shear) > Fraction(o.shear_limit_n)
+                        or normup(row['couple_unscaled']) > Fraction(o.moment_limit_nm)):
                     raise _ProofUnresolved(member.id+': whole-step adhesive capacity not proven')
             com = matvec(transpose(rt), subtract(body[j][:3], body[0][:3]))
             tip = matvec(transpose(rt), subtract(row['tip'], body[0][:3]))
@@ -434,7 +573,10 @@ class ContactStepEncloser:
                 if margin < 0:
                     raise _ProofUnresolved(member.id+': whole-step pad footprint not proven')
                 margins.append(margin)
-            if lower(_dot(point_delta, patch_normal)) < -Fraction(o.max_compression_m)*normup(patch_normal):
+            same_face = (np.array_equal(member.normal_body, patch.normal_body)
+                         and np.array_equal(member.surface_anchor_body_m, patch.point_body_m))
+            face_gap = row['gap'] if same_face else _dot(point_delta, patch_normal)
+            if lower(face_gap) < -Fraction(o.max_compression_m)*normup(patch_normal):
                 raise _ProofUnresolved(member.id+': selected-face compliant travel not proven')
             preload.append(lower(row['compression']) > 0 and lower(row['normal_force']) >= Fraction(.8*o.preload_n)
                 and upper(row['gap']) <= Fraction(o.range_error_bound_m))
@@ -485,5 +627,8 @@ class ContactStepEncloser:
             inverse_norm = normup(tuple(x for row in model.inverse[k] for x in row))/minimum_mass
             quiet = quiet and 2*energy <= minimum_mass*Fraction(o.settling_speed_m_s)**2
             quiet = quiet and 2*energy*inverse_norm <= Fraction(o.settling_spin_rad_s)**2
+        finite_lock_ready = all(lower(row['activation']) >= 1 for row in rows)
         return dict(member_upper=maxima, minimum_geometry_margin_m=str(min(margins)),
-            preload_supported=preload, quiet_supported=bool(quiet), rigidization_energy_upper_j=str(energy))
+            preload_supported=preload, quiet_supported=bool(quiet), finite_lock_ready=bool(finite_lock_ready),
+            active_lock_admission='Eligibility only; complete immutable finite-lock load/travel/power/work preflight must pass before any lock motion. The instantaneous projection-energy cap applies only to settled_passive.',
+            rigidization_energy_upper_j=str(energy))

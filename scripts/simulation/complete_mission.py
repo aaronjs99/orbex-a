@@ -283,7 +283,7 @@ class CompleteMissionRunner:
     def complete(self, approach: ADTMPCMissionResult, *,
                  terminal_handoff: Optional[PhysicalTerminalHandoff] = None,
                  capture_truth=None, contact_feedback=None, contact_environment=None,
-                 attitude_observations=None) -> CompleteMissionResult:
+                 attitude_observations=None, contact_initial_enclosure=None) -> CompleteMissionResult:
         self._record("approach", approach)
         if not approach.success or not approach.metadata.get("mission_complete", False):
             return CompleteMissionResult(False, f"approach_incomplete: {approach.message}", approach)
@@ -324,7 +324,7 @@ class CompleteMissionRunner:
                     attitude_moment_arm_m=self.attitude_tracker.actuators.moment_arm_m)), detumbling=self.detumbling, deorbit=self.deorbit,
                 propulsion_factory=self.propulsion_factory).run(approach, chaser_attitudes=attitude.final_attitudes,
                     terminal_handoff=verified_handoff, capture_truth=capture_truth, contact_feedback=contact_feedback,
-                    contact_environment=contact_environment)
+                    contact_environment=contact_environment, contact_initial_enclosure=contact_initial_enclosure)
             self._record("lifecycle", lifecycle)
             return CompleteMissionResult(lifecycle.success, lifecycle.message, approach, budget, attitude, lifecycle,
                                          geometry_binding=geometry, terminal_handoff=verified_handoff)

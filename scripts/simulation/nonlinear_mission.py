@@ -151,7 +151,9 @@ class NonlinearMissionRunner:
             planning_model_validator=self._validate_contracted_model,retain_journal=retain_journal,
             completed_hold_sink=self.recorder.record_completed_hold)
         self.safety=NonlinearSafetyPlanner(self.scenario,model=self.model,clock=self.clock,encloser=self.encloser,
-            study_options=self.options,design=design,attitude_encloser=self.attitude_encloser)
+            study_options=self.options,design=design,attitude_encloser=self.attitude_encloser,
+            near_feedback_subdivisions=self.options.near_feedback_subdivisions,
+            acceleration_contingency=self.options.far_contingency)
         self.executor.successor_preparer=self.safety.prepare_successor
         self.recorder.record_navigation(self.navigation.estimate())
         self.arrival_events=[]

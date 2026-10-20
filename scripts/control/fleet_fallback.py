@@ -396,17 +396,23 @@ class FleetGeometryOracle:
             box = boxes[key]
             if not isinstance(box, IntervalBox) or box.dimension != 3:
                 raise ValueError("A complete swept position box is required per spacecraft")
+            needed = (radii[key]+self.clearance)**2
             for part, occupied in target.components:
                 distance = _box_distance_squared(box, occupied)
-                for projection in target.support_projections:
-                    if projection.component_id == part:
-                        direction = projection.direction
-                        products = tuple((d*lo,d*hi) for d,lo,hi in zip(direction,box.lower,box.upper))
-                        lower,upper = sum(min(a,b) for a,b in products),sum(max(a,b) for a,b in products)
-                        occupied_interval = projection.projected_interval
-                        gap = max(Fraction(0),lower-occupied_interval.upper[0],occupied_interval.lower[0]-upper)
-                        distance = max(distance,gap*gap/sum(d*d for d in direction))
-                needed = (radii[key]+self.clearance)**2
+                # Every bound is independently sufficient. Once one proves
+                # strict separation, further axes cannot change admission.
+                # Unseparated components still exhaust all declared axes.
+                if distance <= needed:
+                    for projection in target.support_projections:
+                        if projection.component_id == part:
+                            direction = projection.direction
+                            products = tuple((d*lo,d*hi) for d,lo,hi in zip(direction,box.lower,box.upper))
+                            lower,upper = sum(min(a,b) for a,b in products),sum(max(a,b) for a,b in products)
+                            occupied_interval = projection.projected_interval
+                            gap = max(Fraction(0),lower-occupied_interval.upper[0],occupied_interval.lower[0]-upper)
+                            distance = max(distance,gap*gap/sum(d*d for d in direction))
+                            if distance > needed:
+                                break
                 records.append(SeparationRecord("target_component", key, part, start, end, distance, needed, bounds_id))
                 if distance <= needed:
                     reasons.append(f"No strict whole-set separation for {key} and component {part}")

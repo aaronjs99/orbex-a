@@ -79,7 +79,9 @@ class AttachmentLoadEncloser:
     def bound(self, *, assembly, state, propulsion, commands_n, duration_s,
               initial_spin: IntervalBox | None = None,
               initial_position: IntervalBox | None = None,
-              initial_velocity: IntervalBox | None = None, capacity_fraction=1.):
+              initial_velocity: IntervalBox | None = None,
+              initial_quaternion: IntervalBox | None = None,
+              initial_fuel: IntervalBox | None = None, capacity_fraction=1.):
         from orbexa.simulation.assembly import STANDARD_GRAVITY, positive
         duration = Fraction(positive(duration_s, 'Attachment hold duration'))
         fraction = Fraction(positive(capacity_fraction, 'Whole-step attachment capacity fraction'))
@@ -99,8 +101,15 @@ class AttachmentLoadEncloser:
         if any(not box.contains(IntervalBox.point(value)) for box, value in zip(boxes,
                 (state.angular_velocity_body_rad_s, state.position_eci_m, state.velocity_eci_m_s))):
             raise ValueError('The declared attachment start sets must contain the supplied state')
+        quaternion = initial_quaternion or IntervalBox.point(state.quaternion_body_to_eci)
+        fuel = initial_fuel or IntervalBox.point(state.fuel_kg)
+        if (quaternion.dimension != 4 or fuel.dimension != len(assembly.elements) or
+                not quaternion.contains(IntervalBox.point(state.quaternion_body_to_eci)) or
+                not fuel.contains(IntervalBox.point(state.fuel_kg))):
+            raise ValueError('The declared attachment quaternion/fuel sets must contain the supplied state')
         context = dict(state=state.to_dict(), initial_spin=boxes[0].as_dict(),
             initial_position=boxes[1].as_dict(), initial_velocity=boxes[2].as_dict(),
+            initial_quaternion=quaternion.as_dict(), initial_fuel=fuel.as_dict(),
             commands_n=commands.tolist(), duration_s=str(duration), assembly=assembly.to_dict(),
             propulsion=propulsion.to_dict(), precision_bits=self.precision_bits,
             capacity_fraction=str(fraction), max_step_s=self.max_step_s,
@@ -120,14 +129,14 @@ class AttachmentLoadEncloser:
         try:
             import flint
             with _ARB_LOCK, flint.ctx.workprec(self.precision_bits):
-                return self._bound(assembly, state, propulsion, commands, duration, boxes,
+                return self._bound(assembly, state, propulsion, commands, duration, boxes, quaternion, fuel,
                     context, _ArbArithmetic(flint), STANDARD_GRAVITY, environment_model)
         except ImportError:
             return AttachmentLoadCertificate('UNAVAILABLE', 'arb_backend_unavailable', context)
         except (_ProofUnresolved, ArithmeticError, ValueError) as error:
             return AttachmentLoadCertificate('UNRESOLVED', str(error), context)
 
-    def _bound(self, assembly, state, propulsion, commands, h, boxes, context, ar, g0, environment_model):
+    def _bound(self, assembly, state, propulsion, commands, h, boxes, quaternion, initial_fuel, context, ar, g0, environment_model):
         z, one = ar.scalar(0), ar.scalar(1)
 
         def norm_upper(vector):
@@ -146,27 +155,41 @@ class AttachmentLoadEncloser:
         flow = [Fraction(0) for _ in range(n)]
         force = [tuple(z for _ in range(3)) for _ in range(n)]
         own_torque = [tuple(z for _ in range(3)) for _ in range(n)]
-        positions = [tuple(ar.scalar(x) for x in element.position_body_m) for element in assembly.elements]
+        parameters = assembly.parameter_enclosure
+        positions = [tuple(ar.scalar(x) for x in element.position_body_m) if parameters is None else
+            ar.vector(parameters['position_body_m'][k]) for k, element in enumerate(assembly.elements)]
         for command, nozzle in zip(commands, propulsion.thrusters):
             index = nozzle.owner_index
-            f = tuple(ar.scalar(command)*ar.scalar(x) for x in nozzle.direction_body)
-            lever = _sub(tuple(ar.scalar(x) for x in nozzle.position_body_m), positions[index])
+            if parameters is None:
+                f = tuple(ar.scalar(command)*ar.scalar(x) for x in nozzle.direction_body)
+                lever = _sub(tuple(ar.scalar(x) for x in nozzle.position_body_m), positions[index])
+            else:
+                element = assembly.elements[index]
+                flat = ar.vector(parameters['rotation_element_to_assembly'][index])
+                local_rotation = tuple(tuple(flat[3*i+j] for j in range(3)) for i in range(3))
+                local_direction = element.rotation_element_to_assembly.T@nozzle.direction_body
+                local_lever = element.rotation_element_to_assembly.T@(nozzle.position_body_m-element.position_body_m)
+                f = _scale(ar.scalar(command), _matvec(local_rotation, tuple(map(ar.scalar, local_direction))))
+                lever = _matvec(local_rotation, tuple(map(ar.scalar, local_lever)))
             force[index] = _add(force[index], f)
             own_torque[index] = _add(own_torque[index], _cross(lever, f))
             flow[index] += abs(Fraction(float(command)))/(Fraction(nozzle.specific_impulse_s)*Fraction(g0))
         fuel = []
-        for initial, rate in zip(state.fuel_kg, flow):
-            remaining = Fraction(float(initial))-h*rate
+        for lo, hi, rate in zip(initial_fuel.lower, initial_fuel.upper, flow):
+            remaining = lo-h*rate
             if remaining < 0:
                 raise _ProofUnresolved('held command cannot prove nonnegative tank mass for the full hold')
-            fuel.append((remaining, Fraction(float(initial))))
+            fuel.append((remaining, hi))
         masses = tuple(ar.interval((Fraction(element.dry_mass_kg)+lo,
             Fraction(element.dry_mass_kg)+hi)) for element, (lo, hi) in zip(assembly.elements, fuel))
         mass = sum(masses)
         center = tuple(sum(m*p[j] for m, p in zip(masses, positions))/mass for j in range(3))
         offsets = tuple(_sub(p, center) for p in positions)
-        inertias = tuple(tuple(tuple(m*ar.scalar(value) for value in row)
-            for row in element.inertia_per_kg_m2) for m, element in zip(masses, assembly.elements))
+        specific = tuple(tuple(tuple(ar.scalar(value) for value in row) for row in element.inertia_per_kg_m2)
+            if parameters is None else tuple(tuple(ar.vector(parameters['inertia_per_kg_m2'][k])[3*i+j]
+                for j in range(3)) for i in range(3)) for k, element in enumerate(assembly.elements))
+        inertias = tuple(tuple(tuple(m*value for value in row) for row in matrix)
+                         for m, matrix in zip(masses, specific))
         inertia = tuple(tuple(sum(local[i][j]+m*(
             sum(square(x[k]) for k in range(3) if k != i) if i == j else -x[i]*x[j])
             for m, x, local in zip(masses, offsets, inertias)) for j in range(3)) for i in range(3))
@@ -202,8 +225,7 @@ class AttachmentLoadEncloser:
             minimum_by_name = {element.name: ar.box((m,)).lower[0] for element, m in zip(assembly.elements, masses)}
             extra_upper = max(environment_model.norm_upper_over_domain(velocity_limit, minimum_by_name, ar).values())
             absolute_acceleration = mu/radial_reserve**2+norm_upper(total_force)/minimum_mass+extra_upper
-            orientation = quaternion_rotation(normalized_quaternion(tuple(ar.scalar(x)
-                for x in state.quaternion_body_to_eci), ar))
+            orientation = quaternion_rotation(normalized_quaternion(ar.vector(quaternion), ar))
             position_swept = _add(p0, symmetric(h*velocity_limit+shift))
             environment_parameters = environment_model.force_parameters(ar)
             context.update(environment_velocity_bootstrap_m_s=str(velocity_limit),
@@ -289,7 +311,9 @@ class AttachmentLoadEncloser:
                 if assembly.gravity_gradient else Fraction(0))
             moment_com = _sub(_add(_matvec(inertias[k], alpha), _cross(w, _matvec(inertias[k], w))),
                 _add(own_torque[k], symmetric(local_gg)))
-            arm = _sub(tuple(ar.scalar(x) for x in limit['surface_anchor_body_m']), positions[k])
+            anchor = (tuple(ar.scalar(x) for x in limit['surface_anchor_body_m']) if parameters is None or
+                'attachment_anchor_body_m' not in parameters else ar.vector(parameters['attachment_anchor_body_m'][k]))
+            arm = _sub(anchor, positions[k])
             moment = _sub(moment_com, _cross(arm, reaction))
             normal = tuple(ar.scalar(x) for x in limit['normal_body'])
             fn = sum(x*y for x, y in zip(reaction, normal))

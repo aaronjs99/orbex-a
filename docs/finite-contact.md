@@ -1,6 +1,6 @@
 # Finite compliant capture
 
-The ordinary `CaptureModel` path admits a qualified physical approach, deploys chaser-carried positioners over finite time, integrates contact between the target and the entire fleet, and locks only after a settling dwell. It requires no target docking fixture. Pad compatibility, strength and actuator properties are declared study assumptions. They are not established material properties of present-day Envisat or a qualified flight gripper.
+The ordinary `CaptureModel` path admits a qualified physical approach, deploys chaser-carried positioners over finite time, integrates contact between the target and the entire fleet, and completes a finite load-bounded lock. It requires no target docking fixture. Pad compatibility, strength and actuator properties are declared study assumptions. They are not established material properties of present-day Envisat or a qualified flight gripper.
 
 The general six-degree-of-freedom contact-force/moment scope is described by Glaese and Tobbe, [Contact dynamics math model, NASA-CR-179147 (1986)](https://ntrs.nasa.gov/citations/19870016368). The code's compliant adhesive-pad law and numerical parameters are separate representative assumptions. The target hull and buses remain rigid, and the finite-bandwidth positioners have negligible moving mass. Positioner reaction work is included explicitly.
 
@@ -16,7 +16,55 @@ The deformation and damping use the rotating target frame. Action and reaction h
 
 Before adhesion, bounded thrusters provide physical stationkeeping and attitude control using the supplied observations and measured pad loads. Their commands, saturation and propellant use are recorded. Their free-flight commands fade to zero as the bond engages; they do not continually cancel the bond's damping. A finite search accommodates uncertainty in global hull pose, using local range and force channels to approach slowly and establish preload.
 
-After all pads satisfy the settling dwell, their actual final positions and mounting rotations define the rigid assembly. Component pose reconstruction must reproduce those poses. The small remaining rigid-twist projection conserves total linear/angular momentum and records every residual impulse/couple and kinetic-energy loss. Remaining pad spring energy removed by the mechanical lock is recorded separately. No position or orientation is projected to a planned patch or nominal trajectory.
+`handoff_rule="load_bounded_finite_lock"` permits a handoff after every pad is
+fully engaged for the declared dwell and the continuous contact, geometry,
+fuel and interface-load gates pass. This establishes eligibility for the
+next phase. Attachment success still requires the complete finite lock to
+pass. `handoff_rule="settled_passive"` additionally requires the original
+small relative-speed/spin and residual-energy gates before that handoff; its old receipts
+retain that interpretation. The active rule makes no claim of passive
+adhesive convergence.
+
+The lock receives the complete carried state, tip velocity, mounting and
+strain-energy bounds. Over its explicit duration \(T\), it brakes relative
+translation and rotation with \(g(t)=1-t/T\) and displacement profile
+\(f(t)=t-t^2/(2T)\). Write total body-frame angular momentum as
+\(H=I(t)\Omega+h_{\mathrm{internal}}(t)\), where \(I\) is the moving assembly
+inertia, \(\Omega\) its common spin and \(h_{\mathrm{internal}}\) the declared
+relative-motion momentum. The common spin obeys
+
+\[
+\dot\Omega=I^{-1}\{\tau_{\mathrm{external}}-\dot I\Omega
+ -\dot h_{\mathrm{internal}}-\Omega\times(I\Omega+h_{\mathrm{internal}})\}.
+\]
+
+The complete lock is proved prospectively from its immutable initial state,
+resolved configuration and source before any lock motion. The executed
+integration must reproduce that same preflight. Newton–Euler reactions,
+mechanical power, travel, geometry, fuel and physical load bounds gate every
+held interval. A later preflight refusal therefore starts no lock motion.
+Remaining pad spring energy has a whole-set ledger, retaining the uncertain
+rest poses and carried strains. The final actual poses define the rigid assembly, with
+zero residual relative velocity at the modeled lock endpoint. No planned
+patch or nominal trajectory replaces those poses. This is an ideal internal
+encoder/servo mechanism model; actual mechanism tracking and material
+qualification are separate obligations.
+
+For an actual tip force \(F\), tip couple \(C\), moving target-body anchor
+\(a\), positioner extension \(x\), and body rotations \(R_t,R_j\), the
+interface power is
+
+\[
+P=F^T(R_t\dot a-R_j\dot x)+C^T(\omega_j-\omega_t).
+\]
+
+The lock bounds this power and its absolute time integral over every held
+step. The active mechanism explicitly permits bidirectional work. The former
+0.1 mJ tolerance bounded energy deleted by an instantaneous velocity
+projection; it is not an actuator energy capacity and does not bound the
+finite active maneuver. It remains a gate for the passive policy. Finite
+work and power accounting still do not qualify a real actuator's battery,
+thermal capacity, servo tracking or attachment material.
 
 ## Representative configuration
 
@@ -36,7 +84,8 @@ After all pads satisfy the settling dwell, their actual final positions and moun
 | Bond tensile / shear / moment capacity | 250 N / 250 N / 5 N m |
 | Preload / engagement / settling dwell | 0.5 s / 1 s / 2 s |
 | Final relative speed / spin | 0.1 mm/s / 10 microrad/s |
-| Maximum residual lock kinetic energy | 0.1 mJ |
+| Passive residual lock kinetic-energy tolerance | 0.1 mJ |
+| Finite lock duration | 0.25 s |
 
 The standoff, gripper offset, arm reach, remaining mass and actuator limits still come from the vehicle/mission configuration. A 0.85 m COM standoff with a 0.8 m gripper offset begins with a 50 mm tip gap. These parameters must be sized against the actual endpoint enclosure, pose error, relative speed and subsequent loads. Numerical successful contact does not establish hardware strength.
 
@@ -94,13 +143,41 @@ the complete held angular-rate bound, including an interior spin peak.
 Actual endpoints, controlled histories and recorded zero-thrust coast states
 remain numerical diagnostics.
 
-These are conditional local results for supplied initial sets and the declared
-rigid/contact model. The production contact boundary still starts from a
-numerical point interpretation; transfer of the whole free-flight terminal set
-into it remains unproved. Rigidization needs an uncertainty transfer and a
-finite impulse/load certificate for its residual lock. Attached-step load
-bounds do not supply accumulated postcapture integration-error propagation.
-They therefore do not establish one robust hybrid mission or physical
-structural qualification.
+`TerminalContactBoundary` intersects the authenticated navigation and terminal
+tube sets in the declared frame and transforms them at the original clock.
+The contact chart stores the full absolute target ephemeris and genuinely
+target-relative chaser translations. The exact target-local translation is a
+coordinate zero. Target acceleration appears in the absolute ephemeris and
+is subtracted from each relative acceleration; local momentum/work ledgers
+include the accelerating-origin terms. Shared target-position error is
+retained once.
+
+Redundant rotation-matrix and pad-gap states preserve observed dependencies:
+\(\dot R=R[\omega]_\times\) and the exact geometric gap derivative accompany
+the quaternion/body equations. Supported current measurements intersect the
+carried set; they never reset it to the physical point. The fixed-normal
+tangent projector retains exact normal cancellation, and friction is bounded
+by its analytic \(\|F_f\|\le\mu F_n\) cone. Finite proof refinements and
+numerical integration substeps remain separate from the held sensor/control
+interval.
+
+`AssemblyEnclosure` carries the post-lock state, uncertain geometry and
+inertia through controlled and zero-thrust intervals. Bounded chaser-carried
+gyros/star trackers condition the common assembly state; the target supplies
+no receiver. Multiple deterministic sensor supports are intersected without
+assuming independent noise or averaging away their biases. Quiet dwell and
+deorbit rate gates concern the complete carried state/flow.
+
+A successful robust entry handoff needs a contiguous coast bracket whose
+entire initial position set is above the interface and whose entire final
+set is at or below it. Every intervening swept set must satisfy
+\(r^Tv<0\). Powered split-depletion steps invalidate a continuous bracket
+because their COM coordinates can jump; a fresh zero-depletion coast must
+establish it. A point root from the numerical integrator is insufficient.
+
+These implementations and local qualifications remain conditional on their
+supplied initial sets and declared rigid/contact/mechanism models. An
+uninterrupted source-bound full mission and its independent archive audit
+remain necessary; component fixtures cannot replace them.
 
 The model does not resolve arm moving mass, flexible appendages, adhesive microstructure, thermal/material compatibility, plume interaction, manufactured mechanism qualification or atmospheric demise. Exact-state reproduction, sensor-biased numerical boundaries, full mission execution and hardware evidence remain distinct.

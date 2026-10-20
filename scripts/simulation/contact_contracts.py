@@ -11,6 +11,7 @@ from orbexa.simulation.assembly import positive
 
 @dataclass(frozen=True)
 class FiniteContactOptions:
+    handoff_rule: str = 'load_bounded_finite_lock'
     max_duration_s: float = 60.
     max_step_s: float = .005
     history_step_s: float = .05
@@ -51,6 +52,7 @@ class FiniteContactOptions:
     settling_speed_m_s: float = .0001
     settling_spin_rad_s: float = .00001
     max_lock_energy_j: float = .0001
+    lock_duration_s: float = .25
     minimum_bus_clearance_m: float = .001
     momentum_absolute_tolerance: float = 1e-7
     momentum_relative_tolerance: float = 1e-7
@@ -58,7 +60,11 @@ class FiniteContactOptions:
     energy_relative_tolerance: float = .001
 
     def __post_init__(self):
+        if self.handoff_rule not in ('load_bounded_finite_lock', 'settled_passive'):
+            raise ValueError('Declare load_bounded_finite_lock or settled_passive contact handoff')
         for name, value in vars(self).items():
+            if name == 'handoff_rule':
+                continue
             object.__setattr__(self, name, positive(value, name, allow_zero=name in (
                 'friction_coefficient', 'minimum_bus_clearance_m')))
         if self.touch_speed_m_s > self.extension_speed_m_s:

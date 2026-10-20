@@ -18,6 +18,8 @@ from orbexa.estimation.navigation import StudySensorProfile
 from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
 from orbexa.simulation.composite_deployment import CompositeDeploymentOptions, CompositePatchDeployment
 from orbexa.simulation.mission_safety import MissionSafety
+from orbexa.simulation.completion_profile import MissionCompletionProfile
+from orbexa.simulation.contingency_reference import AccelerationContingencyOptions
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class NonlinearStudyOptions:
     membership_max_flow_evaluations_per_candidate: int = 256
     rendezvous_horizon_steps: int = 8
     docking_horizon_steps: int = 6
+    near_feedback_subdivisions: int = 1
     terminal_activation_distance_m: float = .3
     initial_target_orientation_error: float = .02
     target_rate_bound_rad_s: float = .08
@@ -68,6 +71,8 @@ class NonlinearStudyOptions:
     chaser_sigma_prior_m2_kg: tuple = (.018,.09)
     nominal_body_spin_rad_s: tuple | None = None
     deployment: CompositeDeploymentOptions | None = None
+    completion: MissionCompletionProfile | None = None
+    far_contingency: AccelerationContingencyOptions | None = None
 
     def __post_init__(self):
         for key,value in vars(self).items():
@@ -75,7 +80,9 @@ class NonlinearStudyOptions:
                        'initial_orbit_conditioning','membership_policy','membership_window_holds',
                        'membership_max_nuisance_cells','membership_max_flow_evaluations_per_candidate',
                        'rendezvous_horizon_steps','docking_horizon_steps','controller_parameter_prior',
-                       'target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg','nominal_body_spin_rad_s','deployment'):
+                       'near_feedback_subdivisions',
+                       'target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg','nominal_body_spin_rad_s','deployment',
+                       'completion','far_contingency'):
                 continue
             if isinstance(value,bool) or not np.isfinite(value) or value <= 0:
                 raise ValueError(key+' must be positive and finite')
@@ -98,6 +105,10 @@ class NonlinearStudyOptions:
             value=getattr(self,name)
             if isinstance(value,bool) or not isinstance(value,int) or value<2:
                 raise ValueError(name+' must contain at least two nodes')
+        if (isinstance(self.near_feedback_subdivisions,bool)
+                or not isinstance(self.near_feedback_subdivisions,int)
+                or self.near_feedback_subdivisions<1):
+            raise ValueError('near_feedback_subdivisions must be a positive integer')
         for name in ('target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg'):
             pair=tuple(map(float,getattr(self,name)))
             if len(pair)!=2 or any(not np.isfinite(v) or v<0 for v in pair) or pair[0]>pair[1]:
@@ -130,6 +141,15 @@ class NonlinearStudyOptions:
             if declared.carrier_center_lvlh_m is None:
                 raise ValueError('A nonlinear deployment requires an explicit carrier LVLH release centre')
             object.__setattr__(self,'deployment',declared)
+        if self.completion is not None:
+            object.__setattr__(self,'completion',MissionCompletionProfile.from_declaration(self.completion))
+        if self.far_contingency is not None:
+            value=self.far_contingency
+            if hasattr(value,'items'):
+                value=AccelerationContingencyOptions(**dict(value))
+            if not isinstance(value,AccelerationContingencyOptions):
+                raise TypeError('far_contingency requires explicit AccelerationContingencyOptions')
+            object.__setattr__(self,'far_contingency',value)
         lo,hi = self.bandwidth_bounds_per_rad
         if not 0 < lo <= self.initial_bandwidth_per_rad <= hi:
             raise ValueError('Initial bandwidth must belong to its prospective range')
@@ -137,12 +157,19 @@ class NonlinearStudyOptions:
     def as_dict(self):
         result=asdict(self) | dict(sensor=self.sensor.as_dict(),
             scope='Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification')
+        if self.completion is None:
+            result.pop('completion')
+        else:
+            result['completion']=self.completion.as_dict()
+        if self.far_contingency is None:
+            result.pop('far_contingency')
         # Old saved cohorts keep their exact declarations and identities.
         if self.membership_policy=='independent-holds-v1':
             for name in ('membership_policy','membership_window_holds','membership_max_nuisance_cells',
                          'membership_max_flow_evaluations_per_candidate'):
                 result.pop(name)
             defaults=dict(rendezvous_horizon_steps=8,docking_horizon_steps=6,terminal_activation_distance_m=.3,
+                near_feedback_subdivisions=1,
                 initial_target_orientation_error=.02,target_rate_bound_rad_s=.08,target_acceleration_bound_rad_s2=.005,
                 controller_parameter_prior=(),target_sigma_prior_m2_kg=(.008,.04),chaser_sigma_prior_m2_kg=(.018,.09),
                 nominal_body_spin_rad_s=None,deployment=None)

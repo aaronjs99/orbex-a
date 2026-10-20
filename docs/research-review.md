@@ -7,6 +7,32 @@ their original source and cohort; they are not results from the newer code.
 
 Review date: 19 October 2026. Baseline: `c30e833`. This is a focused primary-source review, not an exhaustive novelty search. SciSpace was used for discovery; the links below identify the primary material inspected. Preprints are distinguished from published articles, and abstract-only access is stated explicitly.
 
+Publication refresh, 19 October 2026: Buerger and Cannon's ellipsoidal-tube
+work is now published in *IEEE Transactions on Automatic Control*, as verified
+by the [author's publication record](https://markcannon.github.io/publications/).
+Quartullo et al.'s rotating-target work is published in *Journal of Guidance,
+Control, and Dynamics* 49(2), 548–560; the
+[author-hosted article](https://www3.diism.unisi.it/~giannibi/research/papers/jgcd26.pdf)
+was inspected directly. Earlier preprint citations below identify the specific
+version used in the original review, rather than its current publication status.
+
+The latter article's guarantee concerns a finite terminal set under a disturbed
+discrete Hill–Clohessy–Wiltshire model. Its uncertainty still prevents exact
+finite-time docking. ORBEX-A therefore treats whole-set standoff entry and
+finite physical contact as separate phases. The revised contact bridge must
+carry flight uncertainty, remaining fuel and the actual clock through those
+phases. A terminal-set result for that linear guidance model does not certify
+this nonlinear, sensed, multi-body contact transition.
+
+The inspected [adaptive nonlinear tube formulation](https://arxiv.org/html/2209.11713v2)
+assumes exact state/input observations for its membership update and bounded
+derivative error. ORBEX-A's delayed bounded range/bearing products need their
+own observation propagation. The inspected
+[AS-RTI implementation](https://arxiv.org/html/2403.07101v2) separates preparation
+and feedback, but its reported simulation neglects feedback delay. Here the
+complete accepted-command cycle is measured; process separation or faster
+message transfer alone does not establish a physical deadline.
+
 ## Current implementation review: 19 October 2026
 
 The follow-up review used four independent lenses: mathematics, evaluation,

@@ -1,13 +1,13 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-19-v6",
+  "study_id": "nonlinear-envisat-2026-10-19-v7",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
     "nominal_spin_deg_s": 2.4,
     "initial_position_radius_m": 0.005,
     "initial_velocity_radius_m_s": 0.005,
-    "lambda_per_rad": 300.0,
+    "lambda_per_rad": 150.0,
     "initial_bandwidth_per_rad": 1000.0,
     "bandwidth_bounds_per_rad": [
       160.0,
@@ -18,10 +18,10 @@
     "precontact_velocity_tolerance_m_per_rad": 9.0,
     "observation_position_floor_m": 0.0015,
     "observation_velocity_floor_m_per_rad": 0.5,
-    "nominal_position_transfer_budget_m": 1e-09,
-    "nominal_velocity_transfer_budget_m_per_rad": 1e-08,
-    "sliding_peak_padding_m_per_rad": 1e-06,
-    "position_peak_padding_m": 1e-07,
+    "nominal_position_transfer_budget_m": 1E-09,
+    "nominal_velocity_transfer_budget_m_per_rad": 1E-08,
+    "sliding_peak_padding_m_per_rad": 1E-06,
+    "position_peak_padding_m": 1E-07,
     "actuator_gain_error": 0.001,
     "actuator_axis_error_rad": 0.001,
     "actuator_bias_m_per_rad2": 0.2,
@@ -39,17 +39,32 @@
     "target_rate_bound_rad_s": 0.08,
     "target_acceleration_bound_rad_s2": 0.005,
     "controller_parameter_prior": {
-      "eccentricity": [0.0003, 0.0017],
-      "alpha": [8e-10, 4e-9],
-      "beta": [1.8e-9, 9e-9]
+      "eccentricity": [
+        0.0003,
+        0.0017
+      ],
+      "alpha": [
+        8E-10,
+        4E-09
+      ],
+      "beta": [
+        1.8E-09,
+        9E-09
+      ]
     },
-    "target_sigma_prior_m2_kg": [0.008, 0.04],
-    "chaser_sigma_prior_m2_kg": [0.018, 0.09],
+    "target_sigma_prior_m2_kg": [
+      0.008,
+      0.04
+    ],
+    "chaser_sigma_prior_m2_kg": [
+      0.018,
+      0.09
+    ],
     "fallback_fuel_reserve_kg": 10.0,
     "sensor": {
       "range_noise_m": 0.0005,
-      "range_noise_relative": 2e-05,
-      "bearing_component_noise": 3e-05,
+      "range_noise_relative": 2E-05,
+      "bearing_component_noise": 3E-05,
       "range_bias_m": 0.0005,
       "target_rotation_operator_error": 0.001,
       "target_rate_error_rad_s": 0.0001,
@@ -58,7 +73,7 @@
       "acquisition_period_s": 0.05,
       "randomness_policy": "physical-slot-keyed-v1",
       "acquisition_epoch_s": 0.0,
-      "noise_time_quantum_s": 1e-09,
+      "noise_time_quantum_s": 1E-09,
       "minimum_range_m": 0.01,
       "maximum_range_m": 1000.0,
       "gnss_position_error_m": 1.0,
@@ -68,7 +83,29 @@
       "declaration": "Illustrative processed COM range/bearing and target-pose study products; no device qualification",
       "scope": "Processed synthetic products; no raw image/point-cloud or feature-association claim"
     },
-    "scope": "Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification"
+    "scope": "Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification",
+    "near_feedback_subdivisions": 4,
+    "completion": {
+      "deorbit": {
+        "control_step_s": 2.0,
+        "max_burn_s": 7200.0,
+        "entry_interface_altitude_m": 120000.0,
+        "coast_sample_step_s": 30.0,
+        "target_perigee_altitude_m": 80000.0,
+        "max_coast_orbits": 2.0
+      },
+      "detumbling": {
+        "dwell_s": 30.0,
+        "max_duration_s": 1200.0,
+        "control_step_s": 1.0,
+        "rate_tolerance_rad_s": 1E-05
+      },
+      "contact": {
+        "max_duration_s": 60.0,
+        "lock_duration_s": 0.25,
+        "max_step_s": 0.005
+      }
+    }
   },
   "cases": [
     {
@@ -96,5 +133,5 @@
       "seed": 672091
     }
   ],
-  "description": "Central, lower and upper development cases; preserve failed, capped and interrupted outcomes. V6 links eight observed holds per agent using persistent bounded affine-actuator hypotheses, two covering cells and a 256-flow budget per physical candidate. Initial GNSS conditioning and the declared physical-time/channel noise field are shared across matched arms. The 50 ms bins, epoch zero and nearest 1 ns quantization do not enforce identical acquisition schedules or iid noise. Raw measured packets and delivery events are archived. Physical sensing, actuation, geometry and fuel bounds are unchanged. Earlier study cohorts remain separate evidence. These cases are not held out; no adaptive superiority or real-time guarantee is assumed."
+  "description": "Central, lower and upper development cases; preserve failed, capped and interrupted outcomes. V6 links eight observed holds per agent using persistent bounded affine-actuator hypotheses, two covering cells and a 256-flow budget per physical candidate. Initial GNSS conditioning and the declared physical-time/channel noise field are shared across matched arms. The 50 ms bins, epoch zero and nearest 1 ns quantization do not enforce identical acquisition schedules or iid noise. Raw measured packets and delivery events are archived. Physical sensing, actuation, geometry and fuel bounds are unchanged. Earlier study cohorts remain separate evidence. These cases are not held out; no adaptive superiority or real-time guarantee is assumed. V7 explicitly subdivides the near-target held-feedback period by four; far feedback, sensing, physical force and fuel limits are unchanged. The performance sliding gain is explicitly 150 per radian, selected from the declared terminal position/velocity tradeoff; contact admission retains its independent complete gripper-speed gate."
 }

@@ -20,6 +20,7 @@ from pathlib import Path
 import pickle
 import time
 from types import MappingProxyType
+from .online_clock import MONOTONIC_CLOCK,wall_time_ns
 
 
 def _digest(value):
@@ -71,6 +72,7 @@ class PlanningRequest:
     submitted_ns: int
     deadline_ns: int
     payload: bytes
+    wall_clock_id: str = MONOTONIC_CLOCK
 
     def __post_init__(self):
         from fractions import Fraction
@@ -82,6 +84,7 @@ class PlanningRequest:
         Fraction(self.activation_q)
         _positive_int(self.submitted_ns, 'Submission monotonic time')
         _positive_int(self.deadline_ns, 'Activation deadline')
+        wall_time_ns(self.wall_clock_id)
         if self.deadline_ns < self.submitted_ns or not isinstance(self.payload, bytes):
             raise ValueError('Use an immutable payload and a nonpast declared deadline')
 
@@ -90,6 +93,7 @@ class PlanningRequest:
         return _digest(json.dumps(dict(request_id=self.request_id, context_id=self.context_id,
             activation_q=self.activation_q, hold_width=self.hold_width,
             submitted_ns=self.submitted_ns, deadline_ns=self.deadline_ns,
+            wall_clock_id=self.wall_clock_id,
             payload_sha256=_digest(self.payload)), sort_keys=True, separators=(',', ':')).encode())
 
 
@@ -121,6 +125,7 @@ class PlanningResult:
             started_ns=self.started_ns, completed_ns=self.completed_ns,
             received_ns=self.received_ns,
             deadline_ns=self.request.deadline_ns,
+            wall_clock_id=self.request.wall_clock_id,
             ready_by_declared_deadline=(self.status == 'READY' and self.received_ns is not None
                 and self.completed_ns <= self.request.deadline_ns and self.received_ns <= self.request.deadline_ns),
             timing_scope='Completed product serialization in worker; full envelope received/decoded by parent separately',
@@ -131,7 +136,7 @@ class PlanningResult:
 def _execute(spec, source_id, request, buffer, length, completed, maximum_bytes):
     """Child-only entry point. Publish the completion flag after all bytes."""
     import os
-    started = time.monotonic_ns()
+    started = wall_time_ns(request.wall_clock_id)
     try:
         worker, actual_id = _handler(spec)
         if actual_id != source_id:
@@ -139,17 +144,20 @@ def _execute(spec, source_id, request, buffer, length, completed, maximum_bytes)
         product = worker(request)
         payload = serialize_product(product)
         result = PlanningResult(request, spec, source_id, 'READY', started,
-            time.monotonic_ns(), payload, '', os.getpid())
+            wall_time_ns(request.wall_clock_id), payload, '', os.getpid())
     except Exception as error:
         result = PlanningResult(request, spec, source_id, 'REFUSED', started,
-            time.monotonic_ns(), b'', type(error).__name__+': '+str(error), os.getpid())
+            wall_time_ns(request.wall_clock_id), b'', type(error).__name__+': '+str(error), os.getpid())
     wire = pickle.dumps(result, protocol=5)
     if len(wire) > maximum_bytes:
         result = PlanningResult(request, spec, source_id, 'RESULT_TOO_LARGE', started,
-            time.monotonic_ns(), b'', 'Prepared result exceeds the declared bounded buffer', os.getpid())
+            wall_time_ns(request.wall_clock_id), b'', 'Prepared result exceeds the declared bounded buffer', os.getpid())
         wire = pickle.dumps(result, protocol=5)
     if len(wire) <= maximum_bytes:
-        buffer[:len(wire)] = wire
+        # A ctypes slice materializes one Python integer per byte.  A bounded
+        # byte view preserves the exact wire format without that allocation
+        # and interpreter loop on either side of the feedback boundary.
+        memoryview(buffer).cast('B')[:len(wire)] = wire
         length.value = len(wire)
     completed.set()
 
@@ -193,7 +201,7 @@ class ProcessPlanningWorker:
             raise ValueError('Consume or explicitly cancel the single previous planning request')
         if not isinstance(request, PlanningRequest) or len(request.payload) > self.maximum_request_bytes:
             raise ValueError('Use a bounded immutable typed planning request')
-        if time.monotonic_ns() > request.deadline_ns:
+        if wall_time_ns(request.wall_clock_id) > request.deadline_ns:
             raise ValueError('The planning request deadline already passed')
         self._buffer = self._context.RawArray('B', self.maximum_result_bytes)
         self._length = self._context.Value('Q', 0, lock=False)
@@ -228,18 +236,18 @@ class ProcessPlanningWorker:
         try:
             if not self._completed.is_set():
                 result = PlanningResult(self._request, self.worker_spec, self.source_id,
-                    'WORKER_EXITED', 0, time.monotonic_ns(), b'',
+                    'WORKER_EXITED', 0, wall_time_ns(self._request.wall_clock_id), b'',
                     'Worker exited without publishing a complete bounded result', self._process.pid)
             elif not 0 < self._length.value <= self.maximum_result_bytes:
                 result = PlanningResult(self._request, self.worker_spec, self.source_id,
-                    'INVALID_RESULT', 0, time.monotonic_ns(), b'',
+                    'INVALID_RESULT', 0, wall_time_ns(self._request.wall_clock_id), b'',
                     'Worker did not publish a complete result envelope', self._process.pid)
             else:
-                result = pickle.loads(bytes(self._buffer[:self._length.value]))
+                result = pickle.loads(memoryview(self._buffer).cast('B')[:self._length.value].tobytes())
                 if (not isinstance(result, PlanningResult) or result.request != self._request
                         or result.worker_spec != self.worker_spec or result.worker_source_sha256 != self.source_id):
                     raise ValueError('Worker result changed its immutable request or source identity')
-            return replace(result, received_ns=time.monotonic_ns())
+            return replace(result, received_ns=wall_time_ns(self._request.wall_clock_id))
         finally:
             # A completed flag precedes final process teardown. Do not wait for
             # it here. Even malformed bytes must release the sole active slot.
