@@ -447,6 +447,12 @@ class ContactStepEncloser:
                         image = ar.box(add(start, scale(ar.interval((0, dt)), field)))
                         if all(a < c and d < b for a, b, c, d in zip(trial.lower, trial.upper, image.lower, image.upper)):
                             endpoint = ar.box(add(start, scale(ar.scalar(dt), field)))
+                            # Both sets contain the same exact endpoint: the
+                            # point-time enclosure and the strict Picard trial.
+                            # Their exact intersection removes independent
+                            # outward-rounding halos without discarding flow.
+                            from orbexa.simulation.contact_rotation import intersect
+                            endpoint = intersect(endpoint, trial)
                             if any(endpoint.lower[6+14*k+13] < 0 for k in range(fleet.body_count)):
                                 raise _ProofUnresolved('whole-contact tank nonnegativity not proven')
                             swept = swept.hull(trial)
