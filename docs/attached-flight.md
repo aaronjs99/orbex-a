@@ -78,6 +78,28 @@ intervals cover $T_{quiet}$ and the assembly carries their final enclosure.
 The descending entry interface likewise needs a whole-set event bracket;
 an osculating perigee estimate or a point trajectory crossing is insufficient.
 
+## Keep the orbital sweep directed
+
+Let $P_0,V_0$ be the initial inertial position and velocity boxes, $h$ the
+held duration, and $A$ a proved bound on continuous acceleration. Let $S$
+bound the total variation of the split-depletion COM position jumps, and
+$W$ bound angular speed across every previously proved substep and the
+current trial. COM velocity jumps total at most $WS$. Double integration
+then gives the componentwise cover
+
+$$
+P([0,h])\subseteq P_0+[0,h]V_0+[-d,d]^3,
+\qquad d=\frac{Ah^2}{2}+S+hWS.
+$$
+
+The existing radial and velocity bootstraps must still prove that $A$ and
+$W$ apply throughout the hold. With no propellant depletion, $S=0$.
+Retaining the velocity direction avoids treating a tangential coast as
+independent maximum-speed travel along every inertial axis. Member offsets,
+rotation, attachment loads and the original environment-domain checks
+remain active. An unresolved bootstrap or genuinely outside-domain state
+still refuses; this cover supplies no new physical operating domain.
+
 ## Evidence boundary
 
 Closed contact, lock, load-allocation and rigid-flow components qualify

@@ -226,10 +226,10 @@ class AttachmentLoadEncloser:
             extra_upper = max(environment_model.norm_upper_over_domain(velocity_limit, minimum_by_name, ar).values())
             absolute_acceleration = mu/radial_reserve**2+norm_upper(total_force)/minimum_mass+extra_upper
             orientation = quaternion_rotation(normalized_quaternion(ar.vector(quaternion), ar))
-            position_swept = _add(p0, symmetric(h*velocity_limit+shift))
             environment_parameters = environment_model.force_parameters(ar)
             context.update(environment_velocity_bootstrap_m_s=str(velocity_limit),
-                environment_extra_acceleration_norm_upper_m_s2=str(extra_upper))
+                environment_extra_acceleration_norm_upper_m_s2=str(extra_upper),
+                environment_position_rule='p0+[0,h]*v0 plus norm remainder A*h^2/2+shift+h*W*shift; unchanged physical force domain and original velocity/radial bootstraps')
 
         def environmental_wrenches(w):
             if environment_model is None:
@@ -243,6 +243,12 @@ class AttachmentLoadEncloser:
             angle = min(Fraction(2), h*angular_upper)
             rotation = tuple(tuple(value+ar.interval((-angle, angle)) for value in row) for row in orientation)
             velocity_swept = _add(v0, symmetric(h*absolute_acceleration+angular_upper*shift))
+            # Integral of p_dot=v retains the measured velocity direction.
+            # Acceleration contributes at most A*h^2/2; all permitted COM
+            # split jumps contribute shift in position and h*W*shift through
+            # their cumulative velocity change. No force domain is enlarged.
+            position_swept = _add(_add(p0, _scale(ar.interval((0,h)),v0)),
+                symmetric(h*h*absolute_acceleration/2+shift+h*angular_upper*shift))
             extra_forces = []
             for k, (element, offset, wet) in enumerate(zip(assembly.elements, offsets, masses)):
                 position = _add(position_swept, _matvec(rotation, offset))
