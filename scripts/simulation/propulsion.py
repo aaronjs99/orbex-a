@@ -71,6 +71,7 @@ class ThrusterSystem:
     thrusters: tuple[Thruster, ...]
     torque_weight_per_m: float = 20.0
     attachment_capacity_fraction: float = .98
+    attachment_backoff_scales: tuple[float, ...] = (1., .75, .5, .25, .125, 0.)
 
     def __post_init__(self):
         thrusters = tuple(self.thrusters)
@@ -82,11 +83,20 @@ class ThrusterSystem:
         if fraction >= 1:
             raise ValueError('Attachment capacity fraction must be strictly below one')
         object.__setattr__(self, 'attachment_capacity_fraction', fraction)
+        raw_scales = tuple(self.attachment_backoff_scales)
+        if any(isinstance(value, bool) for value in raw_scales):
+            raise ValueError('Attachment backoff scales must be finite real fractions')
+        scales = tuple(positive(value, 'Attachment backoff scale', allow_zero=True) for value in raw_scales)
+        if (not 2 <= len(scales) <= 16 or scales[0] != 1. or scales[-1] != 0.
+                or any(a <= b for a, b in zip(scales, scales[1:]))):
+            raise ValueError('Declare two to sixteen strictly decreasing attachment scales from one to zero')
+        object.__setattr__(self, 'attachment_backoff_scales', scales)
 
     @classmethod
     def for_assembly(cls, assembly: AttachedAssembly, *, translation_force_n: float = 10.0,
                      attitude_force_n: float = .2, moment_arm_m: float = .1,
-                     specific_impulse_s: float = 300.0, attachment_capacity_fraction: float = .98):
+                     specific_impulse_s: float = 300.0, attachment_capacity_fraction: float = .98,
+                     attachment_backoff_scales: tuple[float, ...] = (1., .75, .5, .25, .125, 0.)):
         """Representative multi-nozzle bus on every fueled chaser.
 
         The three translation channels and three opposed torque couples are
@@ -112,7 +122,8 @@ class ThrusterSystem:
                         sign * direction, attitude_force_n, specific_impulse_s))
         if not thrusters:
             raise ValueError("No fueled chasers are available for installed thrusters")
-        return cls(tuple(thrusters), attachment_capacity_fraction=attachment_capacity_fraction)
+        return cls(tuple(thrusters), attachment_capacity_fraction=attachment_capacity_fraction,
+                   attachment_backoff_scales=attachment_backoff_scales)
 
     def matrix(self, assembly, fuel_kg):
         center = assembly.mass_properties(fuel_kg)[1]
@@ -206,6 +217,29 @@ class ThrusterSystem:
                       final_loads=final, reason=reason)
         return commands if passed else zero, passed, reason, record
 
+    def _whole_hold_preflight(self, assembly, state, commands, duration):
+        """Admit the first declared command whose entire held loads prove."""
+        candidates = []
+        for fraction in self.attachment_backoff_scales:
+            candidate = fraction*commands
+            certificate = assembly.attachment_load_enclosure(state, self, candidate, duration,
+                capacity_fraction=self.attachment_capacity_fraction)
+            proof = certificate.as_dict()
+            candidates.append(dict(command_scale=fraction, commands_n=candidate.tolist(),
+                passed=certificate.passed, reason=certificate.reason, proof=proof))
+            if certificate.passed:
+                return candidate, True, dict(
+                    method='finite-common-command-whole-hold-backoff-v1',
+                    declared_scales=list(self.attachment_backoff_scales),
+                    candidates=candidates, selected_scale=fraction, selected_proof=proof,
+                    physical_motion_committed=False,
+                    scope='Finite pre-motion proof search; each selected held command retains the original physical loads, fuel and uncertainty limits')
+        return np.zeros_like(commands), False, dict(
+            method='finite-common-command-whole-hold-backoff-v1',
+            declared_scales=list(self.attachment_backoff_scales), candidates=candidates,
+            selected_scale=None, selected_proof=None, physical_motion_committed=False,
+            scope='Every declared whole-hold candidate refused, including the unforced hold; no motion admitted')
+
     def allocate(self, assembly, state, force_body_n, torque_body_nm, duration_s):
         force = finite_vector(force_body_n, "Requested force", 3)
         torque = finite_vector(torque_body_nm, "Requested torque", 3)
@@ -243,15 +277,22 @@ class ThrusterSystem:
             if not success or load_scale < 1.:
                 message = load_message
             if success:
-                whole_hold = assembly.attachment_load_enclosure(state, self, commands, duration,
-                    capacity_fraction=self.attachment_capacity_fraction)
-                preflight['whole_hold'] = whole_hold.as_dict()
-                if not whole_hold.passed:
-                    # A numerical endpoint pass cannot override an unresolved
-                    # whole-step bound or an unsupported environment model.
-                    commands = np.zeros_like(commands)
-                    success, load_scale = False, 0.
-                    message = 'attachment_whole_hold_loads_not_proven: '+whole_hold.reason
+                commands, success, backoff = self._whole_hold_preflight(assembly, state, commands, duration)
+                preflight['whole_hold_backoff'] = backoff
+                preflight['whole_hold'] = (backoff['selected_proof'] if success else backoff['candidates'][-1]['proof'])
+                if success:
+                    original_scale = load_scale
+                    load_scale *= backoff['selected_scale']
+                    preflight.update(command_scale=load_scale, pre_backoff_command_scale=original_scale,
+                        whole_hold_backoff_scale=backoff['selected_scale'],
+                        final_loads=assembly.attachment_load_audit(state, self, commands))
+                    if backoff['selected_scale'] < 1.:
+                        message = 'attachment_whole_hold_command_backoff_admitted'
+                        preflight['reason'] = message
+                else:
+                    # No endpoint-only or zero-command bypass is permitted.
+                    load_scale = 0.
+                    message = 'attachment_whole_hold_loads_not_proven: '+backoff['candidates'][-1]['reason']
                     preflight.update(passed=False, command_scale=0., reason=message)
             # Every reported wrench, residual and tank flow uses the final
             # commands, including a refused zero command before any propagation.
@@ -269,5 +310,6 @@ class ThrusterSystem:
         return dict(thrusters=[thruster.to_dict() for thruster in self.thrusters],
                     torque_weight_per_m=self.torque_weight_per_m,
                     attachment_capacity_fraction=self.attachment_capacity_fraction,
+                    attachment_backoff_scales=list(self.attachment_backoff_scales),
                     assumptions=["signed channels are opposed nozzle pairs", "continuous throttling",
                                  "unobstructed exhaust; no plume-structure interaction", "no power or thermal model"])

@@ -167,19 +167,25 @@ class _AssemblyField:
         force = tuple(sum(local[j] for local in self.forces) for j in range(3))
         moment_origin = tuple(sum(local[j] for local in self.moments_at_origin) for j in range(3))
         torque = subtract(moment_origin, cross(center, force))
+        common_extra = zero
         if self.environment is not None:
+            # A virtual reference on the same typed model/parameters. The
+            # current fixed-mass COM identity sum(m_i*r_i)=0 removes its
+            # torque exactly; it is not a relocated or sensed spacecraft.
+            common_extra = self.environment.evaluate(assembly.elements[0].name,
+                p, v, fuel[0], ar, self.environment_parameters)
             for k, (element, mass, offset) in enumerate(zip(assembly.elements, masses, offsets)):
                 position = add(p, matvec(rotation, offset))
                 velocity = add(v, matvec(rotation, cross(w, offset)))
                 extra = self.environment.evaluate(element.name, position, velocity, fuel[k], ar, self.environment_parameters)
-                local = scale(mass, matvec(transpose(rotation), extra))
+                local = scale(mass, matvec(transpose(rotation), subtract(extra, common_extra)))
                 force = add(force, local)
                 torque = add(torque, cross(offset, local))
         if assembly.gravity_gradient:
             radial = matvec(transpose(rotation), scale(1/radius, p))
             torque = add(torque, scale(3*ar.scalar(assembly.mu_m3_s2)/radius**3,
                                       cross(radial, matvec(inertia, radial))))
-        linear = add(scale(-ar.scalar(assembly.mu_m3_s2)/radius**3, p), scale(1/total, matvec(rotation, force)))
+        linear = add(add(scale(-ar.scalar(assembly.mu_m3_s2)/radius**3, p), common_extra), scale(1/total, matvec(rotation, force)))
         qdot = scale(ar.scalar(Fraction(1, 2)), quaternion_product(q, (*w, ar.scalar(0))))
         angular = matvec(inverse3(inertia), subtract(torque, cross(w, matvec(inertia, w))))
         return v+linear+qdot+angular+tuple(ar.scalar(0) for _ in fuel)
@@ -207,7 +213,10 @@ class AssemblyFlowEncloser:
             raise ValueError('Carried assembly propagation needs complete physical nozzle commands')
         if any(abs(command) > nozzle.max_force_n for command, nozzle in zip(commands, propulsion.thrusters)):
             raise ValueError('Carried assembly command exceeds the declared hardware')
-        context = dict(exact_start_time_s=str(state.enclosure.exact_time_s),
+        context = dict(
+            physical_graph='All supplied-state physical quaternions are unit; qdot preserves that graph. For every uncertain fixed-mass member family, center=sum(m_i*p_i)/sum(m_i) and r_i=p_i-center imply sum(m_i*r_i)=0. Unchanged half-depletion maps reform that same identity at their actual new masses.',
+            common_environment_reference='Same typed environment and parameters evaluated at the virtual assembly COM with the first member drag law/fuel; every actual body retains its own position, velocity, fuel and drag law. The reference and every body must pass their declared force domains.',
+            exact_start_time_s=str(state.enclosure.exact_time_s),
             parameter_fingerprint=parameter_id, commands_n=commands.tolist(), propulsion=propulsion.to_dict(),
             max_step_s=self.max_step_s, max_substeps=self.max_substeps,
             max_picard_iterations=self.max_picard_iterations, precision_bits=self.precision_bits)
@@ -240,13 +249,19 @@ class AssemblyFlowEncloser:
                                              zip(trial.lower, trial.upper, image.lower, image.upper))
                             if not any(selected):
                                 endpoint = ar.box(add(start, scale(ar.scalar(step), field)))
+                                # Each independently outward endpoint cover
+                                # intersects the already proved whole-flow set.
+                                from orbexa.simulation.contact_rotation import intersect
+                                endpoint = intersect(endpoint,trial)
                                 swept = swept.hull(trial)
                                 break
-                            joined = trial.hull(image)
-                            trial = IntervalBox(tuple((a+b)/2-Fraction(3, 4)*(b-a)-Fraction(1, 10**18) if change else old
-                                for a, b, old, change in zip(joined.lower, joined.upper, trial.lower, selected)),
-                                tuple((a+b)/2+Fraction(3, 4)*(b-a)+Fraction(1, 10**18) if change else old
-                                for a, b, old, change in zip(joined.lower, joined.upper, trial.upper, selected)))
+                            # Keep the inherited uncertainty and enlarge only
+                            # the uncovered Picard image excess. The same
+                            # strict inclusion condition decides the proof.
+                            trial = IntervalBox(tuple(lo-Fraction(3, 2)*max(Fraction(0),lo-c)-Fraction(1, 10**18)
+                                for lo,c in zip(trial.lower,image.lower)),
+                                tuple(hi+Fraction(3, 2)*max(Fraction(0),d-hi)+Fraction(1, 10**18)
+                                for hi,d in zip(trial.upper,image.upper)))
                         else:
                             raise _ProofUnresolved('full assembly Picard inclusion exceeded its finite budget')
                     endpoint = ar.box(model.deplete(ar.vector(endpoint), dt/2))

@@ -259,8 +259,9 @@ error. It is not a mission or optimizer result.
 The 0.85 m COM standoff, 0.8 m tip offset and 0.1 m mechanism reach leave a
 finite closing gap. The actual nine-body [contact simulation](finite-contact.md)
 extends the mechanism, resolves compliant touch and finite adhesion, checks
-load/reach/settling gates, and preserves actual body poses. Detumbling and
-finite-burn orbital lowering use the resulting assembly and remaining tanks.
+load/reach/settling gates, and preserves actual body poses. The
+[attached-flight model](attached-flight.md) uses that assembly and remaining
+tanks for load-certified detumbling and finite-burn orbital lowering.
 A descending 120 km interface is a disposal handoff, not an atmospheric-demise
 or regulatory-compliance result.
 
