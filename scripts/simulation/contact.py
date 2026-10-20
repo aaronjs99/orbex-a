@@ -34,7 +34,7 @@ _CONTACT_SOURCE_FILES = (
     'contact.py', 'contact_contracts.py', 'contact_control.py', 'contact_guards.py',
     'contact_mechanics.py', 'contact_records.py', 'contact_state.py',
     'contact_enclosure.py', 'rigid_interval.py',
-    'contact_boundary.py', 'contact_observation.py', 'finite_lock.py',
+    'contact_boundary.py', 'contact_observation.py', 'finite_lock.py', 'finite_lock_chart.py',
     'contact_rotation.py',
     'contact_strain.py',
     'contact_strain_observation.py',

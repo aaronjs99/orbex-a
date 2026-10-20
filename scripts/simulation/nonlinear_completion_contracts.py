@@ -28,6 +28,7 @@ _COMPLETION_SOURCE_FILES = (
     'contact_wrench.py',
     'contact_observation.py',
     'finite_lock.py',
+    'finite_lock_chart.py',
     'assembly_enclosure.py',
     'assembly_observation.py',
     'deorbit_entry.py',

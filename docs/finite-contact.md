@@ -72,6 +72,28 @@ relative-motion momentum. The common spin obeys
  -\dot h_{\mathrm{internal}}-\Omega\times(I\Omega+h_{\mathrm{internal}})\}.
 \]
 
+The lock preserves each uncertain initial relative rotation \(A_{j0}\) as
+an immutable parameter and integrates an attitude increment \(D_j\), with
+\(A_j(t)=D_j(t)A_{j0}\) and \(D_j(0)=I\). The identity increment is a
+coordinate choice; the physical attitude remains uncertain. Positioner
+extension and its derivatives retain the same initial extension and speed
+graph instead of subtracting independent orbital-position boxes. In
+particular, for the initial reference-frame lever \(\ell_j\), relative spin
+\(\sigma_j\) and initial extension rate \(\dot x_{j0}\), the displacement
+profile derivative has the exact initial identity
+\(d_f(0)=A_{j0}\dot x_{j0}+\sigma_j\times\ell_j\).
+The incremental derivative subtracts this baseline before interval
+evaluation. Dropping either term would change the mechanism dynamics.
+The carried scalar pad gap intersects its same-event geometric cover;
+neither attitude, gap, extension nor twist is reacquired from truth.
+
+Acquired contact history must retain its complete last proof and chain
+identity, exact accepted duration, original physical clock origin and equal
+target/chaser/lock boundary clocks. A supplied initial-graph fixture requires
+an explicit marker and cannot claim an acquired chain. These local value
+checks accompany the independent full-history/source audit; they do not
+replace it.
+
 The complete lock is proved prospectively from its immutable initial state,
 resolved configuration and source before any lock motion. The executed
 integration must reproduce that same preflight. Newton–Euler reactions,

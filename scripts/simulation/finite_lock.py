@@ -26,6 +26,7 @@ import numpy as np
 from orbexa.control.reachability import IntervalBox, _ARB_LOCK, _ArbArithmetic, _ProofUnresolved
 from orbexa.core.reference_frame import fingerprint
 from orbexa.simulation.contact_enclosure import ContactStepEncloser
+from orbexa.simulation.finite_lock_chart import positioner_motion
 from orbexa.simulation.rigid_interval import (
     add, subtract, scale, cross, matvec, transpose, inverse3, square, norm_upper,
     normalized_quaternion, quaternion_rotation, quaternion_product, quaternion_conjugate,
@@ -63,7 +64,7 @@ def _source_manifest():
         'simulation/contact_strain.py', 'simulation/contact_rotation.py', 'simulation/contact_wrench.py',
         'simulation/contact_state.py', 'simulation/contact_contracts.py',
         'simulation/capture.py',
-        'simulation/rigid_interval.py', 'simulation/nonlinear_environment_enclosure.py',
+        'simulation/rigid_interval.py', 'simulation/finite_lock_chart.py', 'simulation/nonlinear_environment_enclosure.py',
         'simulation/nonlinear_completion_environment.py', 'control/reachability.py',
         'core/reference_frame.py', 'core/nonlinear_relative.py', 'core/spacecraft_geometry.py')
     return {name: hashlib.sha256((root/name).read_bytes()).hexdigest() for name in names}
@@ -92,6 +93,59 @@ def _pad_inventory(contact, count):
         constitutive_rule='Existing compliant internal strains are trapped unchanged as independent energy/strain inventory during the ideal active joint phase and subsequent rigid motion')
 
 
+def _contact_history_provenance(contact, started):
+    """Seal acquired clocks/history; synthetic graphs require explicit scope."""
+    continuous = contact.audit['continuous_enclosure']
+    last = continuous['step_records'][-1]
+    chain = continuous.get('proof_chain_sha256')
+    identity = lambda value: isinstance(value,str) and len(value)==64 and all(c in '0123456789abcdef' for c in value)
+    boundary = contact.final_target.time_s
+    if not np.isfinite(started) or started != boundary or any(
+            state.time_s != started for state in contact.final_chasers.values()):
+        raise ValueError('Finite lock start must equal every carried contact physical endpoint clock')
+    elapsed = Fraction(continuous['exact_accepted_duration_s'])
+    if elapsed < 0:
+        raise ValueError('A carried contact duration cannot be negative')
+    declared = dict(exact_accepted_duration_s=str(elapsed),
+        contact_proof_chain_sha256=chain,
+        last_contact_proof_sha256=last.get('proof_sha256'),
+        physical_boundary_time_s=boundary,
+        terminal_boundary_identity=continuous.get('boundary_transfer',{}).get('identity'),
+        physical_source_receipt=copy.deepcopy(continuous.get('full_evidence_reference')))
+    supplied = continuous.get('history_scope') == 'supplied_initial_graph_fixture'
+    if supplied:
+        if chain is not None:
+            raise ValueError('A supplied initial graph fixture cannot claim an acquired contact chain')
+        declared.update(scope='Explicit caller-supplied initial physical/auxiliary graph fixture; no acquired-contact history is claimed',
+            supplied_graph_identity=fingerprint(dict(initial=continuous['final_set'],
+                gaps=continuous.get('final_gap_sets'),strains=continuous.get('final_strain_sets'),
+                rests=continuous.get('final_rest_sets'),numerical=last['numerical_endpoint'])))
+    else:
+        if continuous.get('history_scope') not in (None, 'acquired_contact_history') or not identity(chain):
+            raise ValueError('Acquired contact history requires a valid complete chain identity; fixture scope must be explicit')
+        proof = last.get('proof')
+        if not isinstance(proof,dict) or not identity(last.get('proof_sha256')) or fingerprint(proof)!=last['proof_sha256']:
+            raise ValueError('Acquired contact history requires its exact last complete proof body/hash')
+        if (Fraction(last['exact_end_time_s']) != elapsed
+                or Fraction(proof['context']['time_s'])+Fraction(proof['context']['duration_s']) != elapsed):
+            raise ValueError('Acquired contact history has inconsistent exact endpoint clocks')
+        history = contact.history
+        if not history:
+            raise ValueError('Acquired contact history requires its original physical clock origin')
+        origin = history[0]['time_s']
+        expected = origin+float(elapsed)
+        if (not np.isfinite(origin) or expected != boundary or history[-1]['time_s'] != boundary
+                or any(row['target']['time_s'] != row['time_s'] for row in (history[0],history[-1]))
+                or contact.audit.get('elapsed_s',float(elapsed)) != float(elapsed)):
+            raise ValueError('Acquired contact physical clocks disagree with the original float-mapped exact duration')
+        declared.update(scope='Value seal of the original same-event contact history; independent full-chain/source verification remains a separate evidence obligation',
+            physical_contact_origin_time_s=origin,
+            physical_clock_rule='ContactFleet.snapshot: original float origin + float(exact accepted duration); exact binary-float equality required',
+            last_contact_source_files=copy.deepcopy(proof['source_files']))
+    declared['identity'] = fingerprint(declared)
+    return declared
+
+
 def _planned_outputs(audit):
     names = ('final_set', 'swept', 'rigid_state_set', 'rigid_parameter_sets',
         'integrated_absolute_interface_work_upper_j', 'internal_mechanical_work_j',
@@ -103,7 +157,7 @@ def _planned_outputs(audit):
 
 
 class _LockField:
-    def __init__(self, fleet, options, initial, environment, ar):
+    def __init__(self, fleet, options, initial, environment, ar, initial_gap_sets=None):
         self.fleet, self.o, self.ar = fleet, options, ar
         values = ar.vector(initial)
         n = fleet.body_count
@@ -146,6 +200,21 @@ class _LockField:
         self.tip_anchors = tuple(matvec(transpose(rotations[0]), subtract(add(self.positions[k+1],
             matvec(rotations[k+1], add(tuple(map(ar.scalar, fleet.mounts[k])), tips[k][:3]))), self.positions[0]))
             for k in range(n-1))
+        if initial_gap_sets is not None and len(initial_gap_sets) != fleet.chaser_count:
+            raise ValueError('Finite lock needs one carried scalar gap per member')
+        self.initial_gaps = []
+        for k, anchor in enumerate(self.tip_anchors):
+            normal = tuple(map(ar.scalar, fleet.normals[k]))
+            derived = ar.box((_dot(subtract(anchor, tuple(map(ar.scalar, fleet.anchors[k]))), normal),))
+            if initial_gap_sets is not None:
+                supplied = _box(initial_gap_sets[k])
+                if supplied.dimension != 1:
+                    raise ValueError('A carried finite-lock gap must be scalar')
+                lo, hi = max(derived.lower[0], supplied.lower[0]), min(derived.upper[0], supplied.upper[0])
+                if lo > hi:
+                    raise _ProofUnresolved('Carried contact gap contradicts complete lock geometry')
+                derived = IntervalBox((lo,), (hi,))
+            self.initial_gaps.append(ar.interval((derived.lower[0], derived.upper[0])))
         self.tip_anchor_velocity = []
         for k in range(n-1):
             j = k+1
@@ -157,7 +226,11 @@ class _LockField:
             tuple(sum(m*row[j] for m, row in zip(self.masses, body)) for j in range(3))))
         absolute_velocity = add(values[3:6], scale(1/self.mass,
             tuple(sum(m*row[j+3] for m, row in zip(self.masses, body)) for j in range(3))))
-        self.initial = absolute_center+absolute_velocity+q0+common+tuple(x for q in quaternions for x in q)+(ar.scalar(0), ar.scalar(0))
+        self.initial_relative_quaternions = quaternions
+        self.initial_relative_rotations = rotations
+        self.initial_positioners = tuple((tip[:3], tip[3:]) for tip in tips)
+        identity = (ar.scalar(0), ar.scalar(0), ar.scalar(0), ar.scalar(1))
+        self.initial = absolute_center+absolute_velocity+q0+common+identity*n+(ar.scalar(0), ar.scalar(0))
         self.environment = None
         if environment is not None:
             from orbexa.simulation.nonlinear_environment_enclosure import NonlinearEnvironmentEnclosure
@@ -186,8 +259,11 @@ class _LockField:
         offsets = tuple(add(x, scale(f, u)) for x, u in zip(self.initial_offsets, self.relative_velocity))
         velocities = tuple(scale(g, u) for u in self.relative_velocity)
         accelerations = tuple(scale(gd, u) for u in self.relative_velocity)
-        quaternions = tuple(values[13+4*k:17+4*k] for k in range(n))
-        rotations = tuple(quaternion_rotation(q) for q in quaternions)
+        increments = tuple(values[13+4*k:17+4*k] for k in range(n))
+        quaternions = tuple(quaternion_product(increment, initial) for increment, initial
+            in zip(increments, self.initial_relative_quaternions))
+        rotations = tuple(_matmul(quaternion_rotation(increment), initial) for increment, initial
+            in zip(increments, self.initial_relative_rotations))
         inertias = self.element_inertias(rotations)
         return f, g, gd, offsets, velocities, accelerations, quaternions, rotations, inertias
 
@@ -253,8 +329,8 @@ class _LockField:
             forces.append(reaction); couples.append(moment)
             power += _dot(reaction, rdot)+_dot(moment, scale(g, sigma))
         qdot = scale(ar.scalar(Fraction(1, 2)), quaternion_product(q, (*w, ar.scalar(0))))
-        relative_qdot = tuple(x for sigma, relq in zip(self.relative_spin, quaternions)
-            for x in scale(ar.scalar(Fraction(1, 2)), quaternion_product((*scale(g, sigma), ar.scalar(0)), relq)))
+        relative_qdot = tuple(x for k, sigma in enumerate(self.relative_spin)
+            for x in scale(ar.scalar(Fraction(1, 2)), quaternion_product((*scale(g, sigma), ar.scalar(0)), values[13+4*k:17+4*k])))
         external_power = sum(_dot(subtract(force, scale(mass, acceleration)), add(cross(w, offset), rdot))+
             _dot(couple, add(w, scale(g, sigma))) for force, mass, offset, rdot, couple, sigma in
             zip(external_forces, self.masses, offsets, rdots, external_couples, self.relative_spin))
@@ -285,10 +361,10 @@ class _LockField:
             inertia_per_kg_m2=tuple(ar.box(tuple(x for row in matrix for x in row)) for matrix in specifics),
             rotation_element_to_assembly=tuple(ar.box(tuple(x for row in matrix for x in row)) for matrix in local_rotations))
         anchors = [ar.box(tuple(ar.scalar(0) for _ in range(3)))]
-        for member, initial, velocity in zip(self.fleet.members, self.tip_anchors, self.tip_anchor_velocity):
+        for member, initial, velocity, initial_gap in zip(self.fleet.members, self.tip_anchors, self.tip_anchor_velocity, self.initial_gaps):
             tip = add(initial, scale(f, velocity))
             normal = tuple(map(ar.scalar, member.normal_body))
-            gap = _dot(subtract(tip, tuple(map(ar.scalar, member.surface_anchor_body_m))), normal)/_dot(normal, normal)
+            gap = (initial_gap+f*_dot(velocity, normal))/_dot(normal, normal)
             anchors.append(ar.box(subtract(tip, scale(gap, normal))))
         parameters['attachment_anchor_body_m'] = tuple(anchors)
         return ar.box(state), parameters
@@ -311,31 +387,20 @@ class _LockField:
             anchor_body = add(self.tip_anchors[k], scale(f, self.tip_anchor_velocity[k]))
             anchor = matvec(rotations[0], anchor_body)
             anchor_velocity = matvec(rotations[0], scale(diag['g'], self.tip_anchor_velocity[k]))
-            relative = subtract(add(offsets[0], anchor), offsets[j])
-            relative_dot = add(add(subtract(rdots[0], rdots[j]), cross(scale(diag['g'], self.relative_spin[0]), anchor)), anchor_velocity)
-            extension = subtract(matvec(transpose(rotations[j]), relative), tuple(map(ar.scalar, fleet.mounts[k])))
-            extension_velocity = matvec(transpose(rotations[j]), subtract(relative_dot,
-                cross(scale(diag['g'], self.relative_spin[j]), relative)))
-            sigma0, sigmaj = self.relative_spin[0], self.relative_spin[j]
-            relative_ddot = add(subtract(diag['rddots'][0], diag['rddots'][j]), add(cross(scale(diag['gd'], sigma0), anchor),
-                cross(scale(diag['g'], sigma0), cross(scale(diag['g'], sigma0), anchor))))
-            relative_ddot = add(relative_ddot, add(scale(ar.scalar(2), cross(scale(diag['g'], sigma0), anchor_velocity)),
-                matvec(rotations[0], scale(diag['gd'], self.tip_anchor_velocity[k]))))
-            extension_acceleration = matvec(transpose(rotations[j]), add(subtract(relative_ddot,
-                cross(scale(diag['gd'], sigmaj), relative)), add(scale(ar.scalar(-2), cross(scale(diag['g'], sigmaj), relative_dot)),
-                cross(scale(diag['g'], sigmaj), cross(scale(diag['g'], sigmaj), relative)))))
+            extension, extension_velocity, extension_acceleration = positioner_motion(self, time, values, diag, k)
             if norm_upper(extension_acceleration, ar) > Fraction(options.extension_acceleration_m_s2):
                 raise _ProofUnresolved(member.id+': finite lock positioner acceleration not proven')
             force = diag['forces'][j]
             normal = tuple(map(ar.scalar, member.normal_body))
-            gap = _dot(subtract(anchor_body, tuple(map(ar.scalar, member.surface_anchor_body_m))), normal)/_dot(normal, normal)
+            gap_coordinate = self.initial_gaps[k]+f*_dot(self.tip_anchor_velocity[k], normal)
+            gap = gap_coordinate/_dot(normal, normal)
             surface = matvec(rotations[0], subtract(anchor_body, scale(gap, normal)))
             arm = subtract(add(offsets[0], surface), offsets[j])
             couple = subtract(diag['couples'][j], cross(arm, force))
             tip_arm = subtract(add(offsets[0], anchor), offsets[j])
             tip_couple = subtract(diag['couples'][j], cross(tip_arm, force))
             force_target = matvec(transpose(rotations[0]), force)
-            gap = _dot(subtract(anchor_body, tuple(map(ar.scalar, member.surface_anchor_body_m))), normal)
+            gap = gap_coordinate
             bounds = ar.box((gap,))
             compression = ar.interval((max(Fraction(0), -bounds.upper[0]), max(Fraction(0), -bounds.lower[0])))
             power_upper = norm_upper(force, ar)*(norm_upper(extension_velocity, ar)+norm_upper(anchor_velocity, ar))+norm_upper(tip_couple, ar)*norm_upper(
@@ -374,7 +439,9 @@ class FiniteLockTransition:
     def run(self, *, fleet, options, geometry, contact, environment=None):
         def declaration():
             return dict(source_files=_source_manifest(),
+                contact_history_provenance=_contact_history_provenance(contact, fleet.started),
                 initial=contact.audit['continuous_enclosure']['final_set'],
+                initial_gap_sets=copy.deepcopy(contact.audit['continuous_enclosure'].get('final_gap_sets')),
                 numerical=contact.audit['continuous_enclosure']['step_records'][-1]['numerical_endpoint'],
                 trapped_pad_inventory=_pad_inventory(contact, fleet.chaser_count), started=fleet.started,
                 options=asdict(options), geometry_fingerprint=geometry.fingerprint,
@@ -504,14 +571,15 @@ class FiniteLockTransition:
             gravity_gradient=fleet.gravity_gradient,
             environment_contract=environment.as_dict() if callable(getattr(environment, 'as_dict', None)) else None,
             actuation='Active massless positioners follow finite braking profiles f(t)=t-t^2/(2T); bounded Newton-Euler pad reactions; exact internal servo is a declared mechanism assumption',
-            initial_graph='Complete uncertain input mapped through target-relative momentum decomposition; a0=s0=0, sum(m*r0)=sum(m*u)=0 and h0=0 are identities on that same physical graph. Initial target-relative quaternion is identity; subsequent relative motion remains dynamic.',
+            initial_graph='Complete uncertain physical attitudes are retained as immutable initial parameters. Dynamic quaternions encode relative-to-initial attitude increments, each initially identity. Carried redundant scalar gaps intersect their same-event geometric covers and evolve as g0+f*n.adot; no reacquisition or truth reset. Target-relative momentum and positioner kinematic identities retain the same full physical graph; no physical attitude, extension or twist reset.',
             gravity_factorization='Common central gravity at assembly COM cancels from internal reactions, torque and COM-frame work by sum(m*r)=0; COM/component singularity and typed environment domains remain checked.',
             scope='Declared finite rigid/positioner mechanism and supplied complete endpoint set; no material, servo hardware or flight qualification')
         try:
             import flint
             with _ARB_LOCK, flint.ctx.workprec(128):
                 ar = _ArbArithmetic(flint)
-                model = _LockField(fleet, options, initial, environment, ar)
+                model = _LockField(fleet, options, initial, environment, ar,
+                    initial_gap_sets=contact.audit['continuous_enclosure'].get('final_gap_sets'))
                 nominal_model = _LockField(fleet, options, IntervalBox.point(numerical), environment, ar)
                 current = ar.box(model.initial)
                 y = np.array([float((lo+hi)/2) for lo, hi in zip(ar.box(nominal_model.initial).lower,
