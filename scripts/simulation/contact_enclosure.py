@@ -452,17 +452,15 @@ class ContactStepEncloser:
                             swept = swept.hull(trial)
                             substeps.append(diag)
                             break
-                        # Do not repeatedly widen an already-contained orbital
-                        # coordinate while another coordinate converges. Such
-                        # widening feeds artificial gravity variation into the
-                        # local contact coordinates on every Picard iteration.
-                        joined = trial.hull(image)
-                        selected = [not (a < c and d < b) for a, b, c, d in
-                            zip(trial.lower, trial.upper, image.lower, image.upper)]
-                        trial = IntervalBox(tuple((lo+hi)/2-Fraction(3, 4)*(hi-lo)-Fraction(1, 10**22) if change else old
-                            for lo, hi, old, change in zip(joined.lower, joined.upper, trial.lower, selected)),
-                            tuple((lo+hi)/2+Fraction(3, 4)*(hi-lo)+Fraction(1, 10**22) if change else old
-                            for lo, hi, old, change in zip(joined.lower, joined.upper, trial.upper, selected)))
+                        # Grow only the uncovered image excess. Multiplying
+                        # the whole inherited uncertainty width by a factor
+                        # invents large trial excursions even for tiny motion.
+                        # Every prior point remains, and the same strict
+                        # Picard inclusion and swept guards still decide proof.
+                        trial = IntervalBox(tuple(lo-Fraction(3, 2)*max(Fraction(0), lo-c)-Fraction(1, 10**22)
+                            for lo, c in zip(trial.lower, image.lower)),
+                            tuple(hi+Fraction(3, 2)*max(Fraction(0), d-hi)+Fraction(1, 10**22)
+                            for hi, d in zip(trial.upper, image.upper)))
                     else:
                         raise _ProofUnresolved('contact Picard inclusion exceeded its finite budget')
                 # One guard evaluation on the complete swept hull is a
