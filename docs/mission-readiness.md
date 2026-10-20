@@ -13,8 +13,9 @@ keeps recorded outcomes separate from explanatory figures.
 | Independent feedback | A separate process prepares an extended finite backup; the executor owns the current sensing, clock, commands and fuel. Late/stale proposals refuse. | A closed sensed run executes 2,200 fleet holds over 66.09 s, crossing the original policy's expiry with an independently rebuilt extension. It still misses the physical 30 ms timing budget. |
 | Bounded navigation | Multiple exact position baselines constrain velocity using the admitted acceleration history; contradictions latch. | Analytic histories, eviction, cache mutation and unsupported-history cases pass. Physical sensor supports and timestamps remain unchanged. |
 | Near-target fallback | Held reference-acceleration cancellation reduces a valid error bound; actual near feedback uses the declared shorter hold. Optional longer stopping maneuvers follow the complete original search. | Complete staging/terminal backups and a declared near-target 0.5 m/s closing-speed case pass component, peer, input, entry and fuel gates. These are installations, not executed docking trajectories. |
+| Control cadence | Shorter backup holds use proportionally smaller certified nominal-transfer budgets. | Actual nominal flows pass quarter, half and irregular holds; the full-width transfer is unchanged. Invalid widths, negative decay rates, excess defects and excess tube peaks still refuse. This removes one deterministic performance refusal, not every progress obstruction. |
 | Mixed fleets | Any close member triggers whole-fleet pose-conditioned geometry, while far/high-speed tracking retains its own law. | A declared mixed case passes where the all-rotation envelope refused. All-far, staging and terminal plan/witness hashes remain unchanged. |
-| Contact and lock | Terminal sets enter a target-relative contact chart. Measured adhesive wrench and strain remain correlated through each held prediction. A finite lock carries residual motion before rigid attachment is counted. | Frame, momentum/work, interior-overload, wrench-state and finite-lock component checks pass. Two previously refused contact boundaries now prove with the same load limits. Complete attachment and the production handoff remain under investigation. |
+| Contact and lock | Terminal sets enter a target-relative contact chart. Measured adhesive wrench and strain remain correlated through each held prediction. Trial search preserves inherited uncertainty while enclosing new motion. A finite lock carries residual motion before rigid attachment is counted. | Frame, momentum/work, interior-overload, wrench-state, trial-containment and finite-lock component checks pass. Previously refused contact boundaries now prove with the same load limits. Complete attachment and the production handoff remain under investigation. |
 | Attached flight | State, geometry, inertia and load enclosures continue between holds. Chaser-carried sensors observe the assembly. | Controlled/coast continuation and whole-set rate/dwell fixtures pass under the declared mechanism and sensor model. |
 | Entry crossing | A descending whole-set above-to-below coast bracket is required. A numerical point root is insufficient. | A near-interface uncertain coast qualifies; a full mission's burn, coast and final event still need one closed record. |
 
@@ -58,7 +59,12 @@ Two distinct synthetic spacecraft with two and three chasers install initial
 nonlinear finite backups using their own mass, inertia and propulsion.
 Their complete missions remain unverified. [Mission configuration](configuration.md)
 describes the explicit geometry, hardware, sensing, deployment and completion
-inputs. Flexible appendages, physical adhesive/servo qualification and
+inputs. The near regime now covers the target's complete expanded geometry,
+finite chaser and attachment offset; a configurable minimum radius preserves
+the Envisat default. Large-target and long-gripper geometry fixtures qualify
+that selection, while existing complete Envisat backup certificates stay
+identical. They do not establish a different spacecraft's complete mission.
+Flexible appendages, physical adhesive/servo qualification and
 atmospheric demise are outside the maintained rigid/mechanism model.
 
 See [nonlinear mission theory](nonlinear-mission.md),

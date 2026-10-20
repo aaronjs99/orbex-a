@@ -62,6 +62,7 @@ class NonlinearStudyOptions:
     rendezvous_horizon_steps: int = 8
     docking_horizon_steps: int = 6
     near_feedback_subdivisions: int = 1
+    near_target_radius_m: float = 30.
     terminal_activation_distance_m: float = .3
     initial_target_orientation_error: float = .02
     target_rate_bound_rad_s: float = .08
@@ -82,7 +83,7 @@ class NonlinearStudyOptions:
                        'initial_orbit_conditioning','membership_policy','membership_window_holds',
                        'membership_max_nuisance_cells','membership_max_flow_evaluations_per_candidate',
                        'rendezvous_horizon_steps','docking_horizon_steps','controller_parameter_prior',
-                       'near_feedback_subdivisions',
+                       'near_feedback_subdivisions','near_target_radius_m',
                        'target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg','nominal_body_spin_rad_s','deployment',
                        'completion','far_contingency','carrier_transfer_duration_rad','near_refuge_extra_holds'):
                 continue
@@ -111,6 +112,10 @@ class NonlinearStudyOptions:
                 or not isinstance(self.near_feedback_subdivisions,int)
                 or self.near_feedback_subdivisions<1):
             raise ValueError('near_feedback_subdivisions must be a positive integer')
+        value=self.near_target_radius_m
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0:
+            raise ValueError('near_target_radius_m must be positive and finite')
+        object.__setattr__(self,'near_target_radius_m',float(value))
         for name in ('target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg'):
             pair=tuple(map(float,getattr(self,name)))
             if len(pair)!=2 or any(not np.isfinite(v) or v<0 for v in pair) or pair[0]>pair[1]:
@@ -180,6 +185,8 @@ class NonlinearStudyOptions:
             result.pop('carrier_transfer_duration_rad')
         if not self.near_refuge_extra_holds:
             result.pop('near_refuge_extra_holds')
+        if self.near_target_radius_m==30.:
+            result.pop('near_target_radius_m')
         # Old saved cohorts keep their exact declarations and identities.
         if self.membership_policy=='independent-holds-v1':
             for name in ('membership_policy','membership_window_holds','membership_max_nuisance_cells',

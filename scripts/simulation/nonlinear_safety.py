@@ -22,6 +22,8 @@ from orbexa.simulation.fleet_braking import coordinated_braking_references
 from orbexa.simulation.contingency_reference import (
     AccelerationContingencyOptions, acceleration_contingency_references)
 from orbexa.simulation.proof_provider import FixedProofProvider
+from orbexa.simulation.target_proximity import (
+    TargetProximityRegion,REFUGE_POSITION_COMPONENT_RADIUS_M)
 from orbexa.control.refuge import exact_record,fingerprint
 
 
@@ -234,6 +236,12 @@ class NonlinearSafetyPlanner:
         if acceleration_contingency is not None and not isinstance(acceleration_contingency,AccelerationContingencyOptions):
             raise TypeError('Declare typed acceleration-contingency proposal options')
         self.acceleration_contingency=acceleration_contingency
+        self.target_proximity=TargetProximityRegion.resolve(design.geometry,
+            requested_radius_m=getattr(study_options,'near_target_radius_m',30.),
+            body_radius_m=design.chaser.body_radius_m,
+            target_clearance_m=scenario.config.mission.target_barrier_clearance,
+            com_standoff_m=design.com_standoff_m,
+            position_component_radius_m=(exact(REFUGE_POSITION_COMPONENT_RADIUS_M),)*3)
         self.attitude_encloser=attitude_encloser or AttitudeFlowEncloser(encloser.config)
         self.propulsion=StudyPropulsionBounds(mass_upper_kg=design.chaser.mass_kg,
             installed_force_n=design.translation_force_n,specific_impulse_lower_s=design.specific_impulse_s,
@@ -477,12 +485,13 @@ class NonlinearSafetyPlanner:
             if type(fuel_budget) is not FleetFuelBudget:
                 raise TypeError('Finite continuation search needs an exact FleetFuelBudget')
             fuel_budget.check_context(points,q,self.propulsion.fingerprint)
-        near=bool(max(np.linalg.norm(v[:3]) for v in points.values())<30. if near_target is None else near_target)
+        near_radius=self.target_proximity.comparison_radius_m
+        near=bool(max(np.linalg.norm(v[:3]) for v in points.values())<near_radius if near_target is None else near_target)
         # One close member needs the observed-pose geometry for the whole
         # fleet, even while other members still need the far braking law.
         # Geometry selection must not switch the mixed fleet's tracking
         # gains, force bounds, reference policy or feedback hold.
-        pose_conditioned_geometry=near or any(np.linalg.norm(v[:3])<30. for v in points.values())
+        pose_conditioned_geometry=near or any(np.linalg.norm(v[:3])<near_radius for v in points.values())
         dense=exact(self.scenario.config.anom_step)/self.scenario.config.tube.feedback_substeps
         # All route and proof-window boundaries share the executed rational
         # clock. Decimal approximations can otherwise create microscopic
@@ -510,11 +519,11 @@ class NonlinearSafetyPlanner:
             relative_width=min(coordinated_width,max(window,rounded_width(3*relative_velocity/10000.)))
         hold_width=(96 if near else 320)*dense
         profiles=(
-            ('coordinated-50k-10k','.15',30.,60000.,Fraction(1)),
-            ('coordinated-retimed-9of10','.15',30.,60000.,Fraction(9,10)),
-            ('coordinated-retimed-4of5','.15',30.,60000.,Fraction(4,5)),
-            ('coordinated-retimed-2of3','.15',30.,60000.,Fraction(2,3)),
-            ('original-60k','.15',30.,60000.,None),
+            ('coordinated-50k-10k',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,Fraction(1)),
+            ('coordinated-retimed-9of10',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,Fraction(9,10)),
+            ('coordinated-retimed-4of5',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,Fraction(4,5)),
+            ('coordinated-retimed-2of3',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,Fraction(2,3)),
+            ('original-60k',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,None),
             ('medium-60k','.12',24.,60000.,None),
             ('medium-63k','.12',24.,63000.,None))
         prefix=(self.acceleration_contingency
@@ -522,7 +531,7 @@ class NonlinearSafetyPlanner:
         prefix_width=Fraction(0)
         if prefix is not None:
             prefix_width=(prefix.coast_holds+prefix.transition_holds)*dense
-            profiles=(('acceleration-prefix','.15',30.,60000.,Fraction(1)),*profiles)
+            profiles=(('acceleration-prefix',REFUGE_POSITION_COMPONENT_RADIUS_M,30.,60000.,Fraction(1)),*profiles)
         candidate_widths={}
         if not near:
             for label,_,_,reference_acceleration,retiming in profiles:
@@ -628,7 +637,7 @@ class NonlinearSafetyPlanner:
         # The far profile uses lambda*Omega == Phi exactly. A binary float
         # 0.15 is slightly smaller and would correctly fail the rational
         # inward inequality, so keep this declared boundary rational.
-        position=(exact('.05' if near else '.15'),)*3
+        position=(exact('.05' if near else REFUGE_POSITION_COMPONENT_RADIUS_M),)*3
         phi=np.full(3,25. if near else 30.)
         gain=500. if near else 200.
         if np.any(sensing[3:]+gain*sensing[:3]>=phi):
@@ -890,4 +899,7 @@ class NonlinearSafetyPlanner:
         if fuel_budget is not None:
             record['fuel_budget']=fuel_budget.as_dict()
             if witness is not None:witness['fuel_budget']=fuel_budget.as_dict()
+        if not self.target_proximity.legacy_default:
+            record['target_proximity']=self.target_proximity.as_dict()
+            if witness is not None:witness['target_proximity']=self.target_proximity.as_dict()
         return plan,record,witness

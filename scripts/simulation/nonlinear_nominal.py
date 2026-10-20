@@ -19,8 +19,24 @@ class NominalTubePropagator:
 
     def propagate(self,center,u,q,h,params,phi,omega,stage,lam,*,input_bounds,clock_domain,nominal_config,precision_bits):
         budget=stage.get('nominal_endpoint_error_abs')
-        if budget is not None and h!=stage['nominal_endpoint_budget_hold']:
-            raise ValueError('Executed hold differs from the prospective nominal-endpoint budget hold')
+        h=exact(h)
+        prospective_budget,prospective_hold=None,None
+        if budget is not None:
+            prospective_budget=tuple(map(exact,budget))
+            prospective_hold=exact(stage['nominal_endpoint_budget_hold'])
+            if not 0<h<=prospective_hold:
+                raise ValueError('Executed hold escapes the positive prospective nominal-endpoint budget domain')
+            if h<prospective_hold:
+                rates=tuple(tuple(map(exact,values)) for values in (stage['alpha'],lam))
+                if any(len(values)!=3 or any(value<0 for value in values) for values in rates):
+                    raise ValueError('Shortened nominal budgets require three finite nonnegative alpha and lambda rates')
+            # The planned reset forcing integrates to epsilon over H. For
+            # every nonnegative decay rate a, w_a(t)=(1-exp(-a*t))/a is
+            # concave with w_a(0)=0, so w_a(h)/w_a(H)>=h/H. Scaling all
+            # endpoint components by h/H therefore preserves BOTH position
+            # and sliding-error reset allowances at a shorter held cadence.
+            # The actual certified defect must still fit this smaller budget.
+            budget=tuple(value*h/prospective_hold for value in prospective_budget)
         model=OrbitalModelBounds(eccentricity=(params['eccentricity'],)*2,
             alpha=(params['alpha'],)*2,beta=(params['beta'],)*2,
             semi_major_axis=params['semi_major_axis'],mu=params['mu'],theta0=(params.get('theta0',0),)*2)
@@ -76,7 +92,13 @@ class NominalTubePropagator:
             exact_stage_id=stage['proof_record']['identity'],nominal_flow_id=certificate.fingerprint,
             nominal_endpoint_id=certificate.endpoint_certificate.fingerprint,
             nominal_endpoint_error_abs=None if budget is None else tuple(map(str,budget)),
-            nominal_endpoint_budget_hold=None if budget is None else str(stage['nominal_endpoint_budget_hold']),
+            nominal_endpoint_budget_hold=None if budget is None else str(h),
             precision_bits=precision_bits)
+        if budget is not None and h<prospective_hold:
+            transfer['nominal_endpoint_budget_origin']=dict(
+                method='exact-positive-comparison-short-hold-scaling-v1',
+                prospective_hold=str(prospective_hold),
+                prospective_error_abs=tuple(map(str,prospective_budget)),
+                scale=str(h/prospective_hold))
         transfer['identity']=fingerprint(transfer);stage['last_transfer']=transfer
         return chosen,next_phi,next_omega,certificate,defect

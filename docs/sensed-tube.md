@@ -63,3 +63,41 @@ sliding widths. Native local GEKKO solved both the original and sensed
 formulations and returned the corresponding version and forcing fields.
 Those numerical samples exercise the implementation; the inequalities above
 state the sufficient bound and its assumptions.
+
+## Shorter execution holds
+
+The planner reserves numerical error for transferring the nominal center
+after a hold of width \(H>0\). Let \(\epsilon_p\) and \(\epsilon_v\) be its
+componentwise position and velocity error budgets. They are numerical
+enclosure allowances, separate from physical disturbance and sensing bounds.
+An installed backup or a segment boundary can require an actual hold
+\(0<h\le H\). Reusing the full error budget at that faster cadence would
+understate accumulated reset error; requiring \(h=H\) would reject every
+otherwise admissible shortened hold.
+
+For a nonnegative decay rate \(a\), define its positive comparison weight
+
+\[
+w_a(t)=\begin{cases}(1-e^{-at})/a,&a>0,\\t,&a=0.\end{cases}
+\]
+
+The planned position and sliding-error reset forcing is respectively
+\(\epsilon_p/w_\lambda(H)\) and
+\((\epsilon_v+\lambda\epsilon_p)/w_\alpha(H)\), component by component.
+Concavity and \(w_a(0)=0\) give
+\(w_a(h)/w_a(H)\ge h/H\). The executor therefore requires its independently
+certified endpoint defects to satisfy the stricter rational budgets
+
+\[
+\delta_p\le\frac hH\epsilon_p,\qquad
+\delta_v\le\frac hH\epsilon_v.
+\]
+
+These imply both positive-comparison reset allowances at the actual hold,
+including the coupled sliding jump \(\delta_v+\lambda\delta_p\). The
+executor records the effective budget, the prospective budget and the exact
+scale. It refuses nonpositive or overlong holds and any excessive certified
+defect. At \(h=H\), the previous budget and transfer record are unchanged.
+Stage peaks, observation coverage, physical flow, geometry, continuation and
+resource admission are still independently required. This correction removes
+a deterministic cadence refusal; it does not establish mission convergence.

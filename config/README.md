@@ -24,6 +24,16 @@ specific impulse. The target mass remains 7827.867 kg. Route construction,
 finite-body separation, force/fuel, arm reach, contact load and disposal gates
 may refuse a run. A resource cap is not completion.
 
+`near_target_radius_m` optionally declares a positive minimum COM distance for
+near proposals (30 m by default). The planner raises it when necessary to cover
+every expanded target component, the larger of attachment COM standoff or finite
+bus radius plus clearance, and the largest refuge position box. All members must be inside that radius for
+near tracking; one member inside requests observed-pose geometry for the whole
+fleet. The default Envisat radius remains 30 m. This selects proposals; changing
+target geometry, mass, inertia or spin still requires every original dynamics,
+sensing, force, fuel, contact and whole-set collision check. It does not establish
+arrival for every target.
+
 The remaining prior/admission/arrival/deployment JSON files support separately
 identified analytical reproductions. Fresh nonlinear runs do not borrow their
 micrometre sensing assumptions or relabel their saved certificates. `default.yaml`
