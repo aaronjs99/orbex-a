@@ -12,6 +12,40 @@ All target and chaser translations, quaternions, body rates and remaining fuel a
 
 Each pad has an outward surface gap `g`, compression `d=max(-g,0)`, normal force `k_n*d+c_n*max(-g_dot,0)` while touching, and regularized dissipative friction opposing tangential slip. Adhesion is exactly zero before touch and preload dwell. A bond stores its actual engagement deformation/orientation reference, ramps over finite time, and contributes bounded translational and rotational springs/dampers. Tensile, shear, moment, compression, positioner reach/speed/acceleration/force/power, fuel and geometry violations refuse capture and retain the recorded prefix.
 
+For an engaged pad, the already declared bounded force and tip-couple
+measurements also constrain its carried strain through the spring/damper
+equations. This same-clock intersection preserves every state compatible
+with the prior and declared sensing errors; it introduces no more accurate sensor. Zero activation
+supplies no inverse strain information, and contradictory measurements refuse
+before motion. The principal rotation-log branch remains an explicit gate.
+
+The prediction also carries the adhesive wrench as a redundant state. Let
+\(\delta\) be displacement from the retained engagement rest pose,
+\(u=\dot\delta\) its target-frame rate, \(\theta=\log Q\) the relative
+rotation vector and \(\sigma\) the relative angular velocity. For the declared
+translation and rotation stiffness/damping coefficients, write
+
+\[
+B=k\delta+cu,\qquad M=k_r\theta+c_r\sigma,
+\qquad F_{\rm adhesive}=-\alpha B,\quad C_{\rm adhesive}=-\alpha M.
+\]
+
+Here \(\alpha\) is bond activation. Bounded measured force/couple supports
+intersect these same equations when activation is strictly positive. The
+held prediction carries their exact derivatives,
+
+\[
+\dot B=ku+c\dot u,\qquad
+\dot M=k_rJ_l^{-1}(\theta)\sigma+c_r\dot\sigma,
+\]
+
+where \(J_l^{-1}\) maps relative angular velocity to rotation-log rate on the
+admitted principal branch. This retains measured spring/damper correlation
+through the hold; independently rebuilding their sums from broad boxes loses
+that information. Strain, uncertain rest poses, energy and all strength gates
+remain active. A newly engaged stress-free spring still has damping wrench
+\(B=cu\), \(M=c_r\sigma\); it is not initialized to zero wrench.
+
 The deformation and damping use the rotating target frame. Action and reaction have consistent spatial moments, including the finite separation of compliant anchors. This prevents artificial angular momentum from tangential force. The ledger records external impulse/work, propellant momentum/energy flux, positioner work, engagement work, spring energy and compression/friction/bond dissipation. A translating nonrotating central-gravity reference keeps orbital-scale coordinates out of the short-range balance subtraction.
 
 Before adhesion, bounded thrusters provide physical stationkeeping and attitude control using the supplied observations and measured pad loads. Their commands, saturation and propellant use are recorded. Their free-flight commands fade to zero as the bond engages; they do not continually cancel the bond's damping. A finite search accommodates uncertainty in global hull pose, using local range and force channels to approach slowly and establish preload.
@@ -43,6 +77,12 @@ resolved configuration and source before any lock motion. The executed
 integration must reproduce that same preflight. Newton–Euler reactions,
 mechanical power, travel, geometry, fuel and physical load bounds gate every
 held interval. A later preflight refusal therefore starts no lock motion.
+The fixed-mass lock uses the exact COM identities \(\sum m_i r_i=0\) and
+\(\sum m_i u_i=0\) before interval evaluation. Subtracting one common central
+acceleration from every component preserves COM acceleration, reactions,
+torque and work; the position-dependent gravity difference and the original
+environment/domain checks remain. This avoids fictitious reaction bounds
+from independently evaluating a shared orbital acceleration.
 Remaining pad spring energy has a whole-set ledger, retaining the uncertain
 rest poses and carried strains. The final actual poses define the rigid assembly, with
 zero residual relative velocity at the modeled lock endpoint. No planned

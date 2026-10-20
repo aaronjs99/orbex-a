@@ -24,6 +24,8 @@ _COMPLETION_SOURCE_FILES = (
     'contact_boundary.py',
     'contact_rotation.py',
     'contact_strain.py',
+    'contact_strain_observation.py',
+    'contact_wrench.py',
     'contact_observation.py',
     'finite_lock.py',
     'assembly_enclosure.py',

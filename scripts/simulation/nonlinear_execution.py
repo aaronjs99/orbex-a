@@ -306,6 +306,9 @@ class NonlinearDenseExecutor:
         except Exception as error:
             record.update(status='REFUSED',error_type=type(error).__name__,reason=str(error),
                 acknowledged_witness_ids=tuple(acknowledged))
+            if getattr(error,'event',None) is not None:
+                from orbexa.control.refuge import exact_record
+                record['proof_refusal_event']=exact_record(error.event)
             raise ValueError('Prospective successor refused: '+type(error).__name__+': '+str(error)) from error
         finally:
             # A builder receives immutable data and never owns current runtime

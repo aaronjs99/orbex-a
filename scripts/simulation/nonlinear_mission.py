@@ -431,7 +431,11 @@ class NonlinearMissionRunner:
             except (ValueError,ArithmeticError) as error:
                 if self.executor.runtime is None:
                     messages.append(self._record_failure('INITIAL_REFUGE_REFUSED',error));valid=False;break
-                self.recorder.install_records.append(dict(exact_start=str(estimate.exact_event_q),status='REPLACEMENT_REFUSED',reason=str(error)))
+                refusal=dict(exact_start=str(estimate.exact_event_q),status='REPLACEMENT_REFUSED',reason=str(error))
+                if getattr(error,'event',None) is not None:
+                    from orbexa.control.refuge import exact_record
+                    refusal['proof_refusal_event']=exact_record(error.event)
+                self.recorder.install_records.append(refusal)
             planning=None;context_record={};failed=None
             try:
                 context,context_record=self._planning_context(estimate,phase)

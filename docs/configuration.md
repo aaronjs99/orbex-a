@@ -66,12 +66,26 @@ all chasers; heterogeneous vehicles require a per-agent design interface.
 ## Deployment, spin and uncertainty
 
 The short form keeps a common payload cluster: `options.release_distance_m`
-and `options.release_pitch_m`. For an off-axis carrier, selected patches or
+and `options.release_pitch_m`. Set `options.carrier_transfer_duration_rad` to
+change its approach timing while retaining the same deployment geometry.
+Omitting it preserves the 0.18 rad reference. Timing selects a reference;
+it does not relax the nonlinear, stopping-path, sensing or fuel checks.
+For an off-axis carrier, selected patches or
 different route timing, supply `options.deployment` using the named fields of
 `CompositeDeploymentOptions`. Its `carrier_center_lvlh_m` is required. When
 this object is present it controls deployment; the short-form distance and
-pitch are unused. Reference speed, acceleration and tube settings schedule a
+pitch are unused. If the short-form duration is also supplied, it must match
+the duration in that object. Reference speed, acceleration and tube settings schedule a
 route whose feasibility still requires the controller and admission checks.
+
+`options.near_refuge_extra_holds` can declare additional stopping durations,
+for example `[1536, 2048]`. Values are distinct increasing integers above
+1024, measured in the base feedback grid `anom_step / feedback_substeps`.
+The complete original near-refuge search and its shorter pose forecast run
+first. Only an exhausted search requests these extra durations. Every extra
+candidate still needs its full pose, nonlinear, input, geometry, entry and fuel
+proof; the declared clock must cover its entire stop and final hold. The
+default empty list preserves the original search.
 
 `options.nominal_body_spin_rad_s` accepts three body-axis components. Each
 physical case can supply `body_spin_rad_s`. If omitted, the original

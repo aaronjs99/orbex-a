@@ -71,6 +71,8 @@ class NonlinearStudyOptions:
     chaser_sigma_prior_m2_kg: tuple = (.018,.09)
     nominal_body_spin_rad_s: tuple | None = None
     deployment: CompositeDeploymentOptions | None = None
+    carrier_transfer_duration_rad: float | None = None
+    near_refuge_extra_holds: tuple = ()
     completion: MissionCompletionProfile | None = None
     far_contingency: AccelerationContingencyOptions | None = None
 
@@ -82,7 +84,7 @@ class NonlinearStudyOptions:
                        'rendezvous_horizon_steps','docking_horizon_steps','controller_parameter_prior',
                        'near_feedback_subdivisions',
                        'target_sigma_prior_m2_kg','chaser_sigma_prior_m2_kg','nominal_body_spin_rad_s','deployment',
-                       'completion','far_contingency'):
+                       'completion','far_contingency','carrier_transfer_duration_rad','near_refuge_extra_holds'):
                 continue
             if isinstance(value,bool) or not np.isfinite(value) or value <= 0:
                 raise ValueError(key+' must be positive and finite')
@@ -132,6 +134,15 @@ class NonlinearStudyOptions:
             if len(vector)!=3 or not all(np.isfinite(value) for value in vector):
                 raise ValueError('Nominal body spin must have three finite rad/s components')
             object.__setattr__(self,'nominal_body_spin_rad_s',vector)
+        duration=self.carrier_transfer_duration_rad
+        if duration is not None:
+            if isinstance(duration,bool) or not isinstance(duration,(int,float)) or not math.isfinite(duration) or duration<=0:
+                raise ValueError('carrier_transfer_duration_rad must be positive and finite')
+            object.__setattr__(self,'carrier_transfer_duration_rad',float(duration))
+        extra=tuple(self.near_refuge_extra_holds)
+        if any(type(value) is not int or value<=1024 for value in extra) or tuple(sorted(set(extra)))!=extra:
+            raise ValueError('Extra near-refuge holds must be distinct increasing integers above 1024')
+        object.__setattr__(self,'near_refuge_extra_holds',extra)
         if self.deployment is not None:
             declared=self.deployment
             if hasattr(declared,'items'):
@@ -140,6 +151,8 @@ class NonlinearStudyOptions:
                 raise TypeError('Deployment must declare CompositeDeploymentOptions or its named fields')
             if declared.carrier_center_lvlh_m is None:
                 raise ValueError('A nonlinear deployment requires an explicit carrier LVLH release centre')
+            if duration is not None and float(duration)!=declared.carrier_transfer_duration_rad:
+                raise ValueError('Carrier transfer duration conflicts with the explicit deployment')
             object.__setattr__(self,'deployment',declared)
         if self.completion is not None:
             object.__setattr__(self,'completion',MissionCompletionProfile.from_declaration(self.completion))
@@ -163,6 +176,10 @@ class NonlinearStudyOptions:
             result['completion']=self.completion.as_dict()
         if self.far_contingency is None:
             result.pop('far_contingency')
+        if self.carrier_transfer_duration_rad is None:
+            result.pop('carrier_transfer_duration_rad')
+        if not self.near_refuge_extra_holds:
+            result.pop('near_refuge_extra_holds')
         # Old saved cohorts keep their exact declarations and identities.
         if self.membership_policy=='independent-holds-v1':
             for name in ('membership_policy','membership_window_holds','membership_max_nuisance_cells',
@@ -264,7 +281,8 @@ def compose_deployment(config,design,preview,options):
     deployment=options.deployment
     if deployment is None:
         deployment=CompositeDeploymentOptions(carrier_center_lvlh_m=(0.,0.,options.release_distance_m),
-        carrier_transfer_duration_rad=.18,release_clearance_m=4.,separation_buffer_m=.1,
+        carrier_transfer_duration_rad=(.18 if options.carrier_transfer_duration_rad is None
+            else options.carrier_transfer_duration_rad),release_clearance_m=4.,separation_buffer_m=.1,
         staging_offset_m=2.,route_buffer_m=.08,reference_tube_radius_m=.025,
         reference_speed_m_per_rad=2000.,reference_acceleration_m_per_rad2=50000.,
         minimum_segment_duration_rad=.008,staging_position_tolerance_m=.2,

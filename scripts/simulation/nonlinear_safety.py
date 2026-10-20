@@ -470,7 +470,7 @@ class NonlinearSafetyPlanner:
         record.update(archived_witness_id=witness_id,full_witness_archived=True)
 
     def _build_plan(self,estimate,*,sensing_prior,near_target=None,make_witness=False,projection=None,fuel_budget=None,
-                    allow_acceleration_prefix=True):
+                    allow_acceleration_prefix=True,_extended_near=False):
         q=exact(estimate.exact_event_q)
         points={key:np.asarray(point,dtype=float) for key,point in estimate.point_relative_by_agent.items()}
         if fuel_budget is not None:
@@ -535,8 +535,9 @@ class NonlinearSafetyPlanner:
                 raise ValueError('No complete finite retreat and holding candidate fits the declared clock domain')
             forecast_width=max(eligible)
         else:
-            near_retreat_durations=tuple(width for width in (480*dense,642*dense,800*dense,1024*dense)
-                if q+width+hold_width<=self.clock.q_domain[1])
+            near_holds=(self.options.near_refuge_extra_holds if _extended_near else (480,642,800,1024))
+            near_retreat_durations=tuple(value*dense for value in near_holds
+                if q+value*dense+hold_width<=self.clock.q_domain[1])
             if not near_retreat_durations:
                 raise ValueError('No complete finite patch retreat and holding candidate fits the declared clock domain')
             retreat_width=forecast_width=max(near_retreat_durations)
@@ -676,10 +677,13 @@ class NonlinearSafetyPlanner:
                     retreat_durations=near_retreat_durations,
                     tangent_offsets=near_offsets,
                     maximum_candidates=len(near_offsets)*len(near_retreat_durations),
+                    early_target_refusal=True,early_target_window_budget=4,
                     beta=(beta,)*3,acceleration_bound=(acceleration,)*3,**candidate_tracking)
                 attempts.append(dict(profile=label,omega=omega,phi=sliding,
                     lambda_gain=near_gain,beta=beta,acceleration_bound=acceleration,
                     attempts=exact_record(search.attempts)))
+                if search.early_refusals:
+                    attempts[-1]['early_target_refusals']=exact_record(search.early_refusals)
                 if search.admissible:
                     plan=search.plan
                     retreat_width=search.attempts[-1].retreat_duration
@@ -689,6 +693,32 @@ class NonlinearSafetyPlanner:
                         maximum_hold_q=str(candidate_tracking['maximum_hold']))
                     break
             if plan is None:
+                if not _extended_near and self.options.near_refuge_extra_holds:
+                    # Preserve the complete original search and its shorter
+                    # pose forecast first. Only an exhausted valid search may
+                    # request extra maneuver time; no state or clock advances.
+                    prior=exact_record(attempts)
+                    try:
+                        extended_plan,extended_record,extended_witness=self._build_plan(estimate,
+                            sensing_prior=sensing_prior,near_target=near_target,make_witness=make_witness,
+                            projection=projection,fuel_budget=fuel_budget,
+                            allow_acceleration_prefix=allow_acceleration_prefix,_extended_near=True)
+                    except Exception as error:
+                        event=dict(kind='ADDITIONAL_NEAR_REFUGE_REFUSED',exact_q=str(q),
+                            initial_set_source_id=estimate.source_id,
+                            preceding_near_candidate_search=prior,
+                            additional_near_retreat_holds=self.options.near_refuge_extra_holds,
+                            error_type=type(error).__name__,reason=str(error),
+                            causal_event=getattr(error,'event',None))
+                        event=exact_record(event)
+                        error.event=dict(identity=fingerprint(event),**event)
+                        raise
+                    extended_record['preceding_near_candidate_search']=prior
+                    extended_record['additional_near_retreat_holds']=self.options.near_refuge_extra_holds
+                    if extended_witness is not None:
+                        extended_witness['preceding_near_candidate_search']=prior
+                        extended_witness['additional_near_retreat_holds']=self.options.near_refuge_extra_holds
+                    return extended_plan,extended_record,extended_witness
                 raise ValueError('All finite patch-refuge candidates refused: '+str(attempts[-1]['attempts'][-1]))
         else:
             # A finite prospective search changes only the declared reference
@@ -773,6 +803,7 @@ class NonlinearSafetyPlanner:
                     candidate_tracking=dict(tracking,omega=(exact(omega),)*3,phi=(sliding,)*3)
                     candidate=construct_refuge_plan(references=candidate_references,contexts=candidate_contexts,
                         drift_adapter=drift,geometry_oracle=oracle,propulsion=self.propulsion,beta=(22000.,)*3,
+                        early_target_refusal=True,early_target_window_budget=4,
                         acceleration_bound=(120000.,)*3,**candidate_tracking)
                     if not candidate.certificate.admissible:
                         raise ValueError('; '.join(dict.fromkeys(candidate.certificate.reasons)))
@@ -783,6 +814,8 @@ class NonlinearSafetyPlanner:
                 except ValueError as error:
                     attempts.append(dict(profile,status='REFUSED',exception_type=type(error).__name__,
                         reason=str(error),plan_id=None if candidate is None else candidate.certificate.fingerprint))
+                    if hasattr(error,'refusal_evidence'):
+                        attempts[-1]['early_target_refusal']=exact_record(error.refusal_evidence)
                     if fuel_budget is not None and candidate is not None:
                         attempts[-1].update(required_fuel=exact_record(candidate.remaining_fuel(q)),
                             fuel_budget=fuel_budget.as_dict())

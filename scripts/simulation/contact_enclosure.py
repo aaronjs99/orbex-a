@@ -19,6 +19,7 @@ from orbexa.control.reachability import IntervalBox, _ARB_LOCK, _ArbArithmetic, 
 from orbexa.core.reference_frame import fingerprint
 from orbexa.simulation.contact_rotation import auxiliary_initial, rotation_derivative
 from orbexa.simulation.contact_strain import initial_strain_boxes, potential_box
+from orbexa.simulation.contact_wrench import initial_wrench_boxes, wrench_derivatives
 from orbexa.simulation.rigid_interval import (
     add, cross, inverse3, matvec, norm, norm_upper, normalized_quaternion,
     quaternion_conjugate, quaternion_product, quaternion_rotation, rotation_vector,
@@ -27,7 +28,7 @@ from orbexa.simulation.rigid_interval import (
 
 
 _SOURCE = {name: hashlib.sha256((Path(__file__).parent/name).read_bytes()).hexdigest()
-    for name in ('contact_enclosure.py', 'rigid_interval.py', 'contact_rotation.py', 'contact_strain.py')}
+    for name in ('contact_enclosure.py', 'rigid_interval.py', 'contact_rotation.py', 'contact_strain.py', 'contact_wrench.py')}
 
 
 def _max_zero(value, ar):
@@ -56,6 +57,8 @@ class ContactStepCertificate:
     strain_endpoint: tuple = ()
     strain_swept: tuple = ()
     endpoint_potential: IntervalBox | None = None
+    wrench_endpoint: tuple = ()
+    wrench_swept: tuple = ()
 
     @property
     def passed(self):
@@ -75,6 +78,8 @@ class ContactStepCertificate:
             strain_endpoint=[box.as_dict() for box in self.strain_endpoint],
             strain_swept=[box.as_dict() for box in self.strain_swept],
             endpoint_potential=None if self.endpoint_potential is None else self.endpoint_potential.as_dict(),
+            wrench_endpoint=[box.as_dict() for box in self.wrench_endpoint],
+            wrench_swept=[box.as_dict() for box in self.wrench_swept],
             scope='Declared unit-quaternion rigid ODE, unilateral compliant pads and fixed held commands/bond parameters; conditional initial set, exact specified geometry and the maintained typed J2/drag environment when supplied')
 
 
@@ -151,8 +156,10 @@ class _ContactField:
         rotation_start = fleet.ledger_start
         gap_start = rotation_start+9*fleet.body_count
         strain_start = gap_start+fleet.chaser_count
-        augmented = len(values) in (strain_start, strain_start+7*fleet.chaser_count)
-        strained = len(values) == strain_start+7*fleet.chaser_count
+        wrench_start = strain_start+7*fleet.chaser_count
+        augmented = len(values) in (strain_start, wrench_start, wrench_start+6*fleet.chaser_count)
+        strained = len(values) in (wrench_start, wrench_start+6*fleet.chaser_count)
+        wrenched = len(values) == wrench_start+6*fleet.chaser_count
         rotations = (tuple(tuple(tuple(values[rotation_start+9*k+3*i:rotation_start+9*k+3*i+3])
             for i in range(3)) for k in range(fleet.body_count)) if augmented else
             tuple(quaternion_rotation(row[6:10]) for row in body))
@@ -228,6 +235,7 @@ class _ContactField:
             friction = tuple(ar.interval((max(-friction_limit, lo), min(friction_limit, hi)))
                 for lo, hi in zip(ar.box(friction_raw).lower, ar.box(friction_raw).upper))
             force_patch = add(scale(normal_force, normal), friction)
+            unbonded_force_patch = force_patch
             couple_patch = tuple(ar.scalar(0) for _ in range(3))
             activation = ar.scalar(0)
             bond_force = couple_unscaled = tuple(ar.scalar(0) for _ in range(3))
@@ -249,6 +257,10 @@ class _ContactField:
                     scale(ar.scalar(o.bond_damping_n_s_m), u)))
                 couple_unscaled = scale(-1, add(scale(ar.scalar(o.bond_rotational_stiffness_nm_rad), angle),
                     scale(ar.scalar(o.bond_rotational_damping_nm_s_rad), spin)))
+                if wrenched:
+                    begin = wrench_start+6*k
+                    bond_force = scale(-1, tuple(values[begin:begin+3]))
+                    couple_unscaled = scale(-1, tuple(values[begin+3:begin+6]))
                 force_patch = add(force_patch, scale(activation, bond_force))
                 couple_patch = scale(activation, couple_unscaled)
             force, couple = matvec(rt, force_patch), matvec(rt, couple_patch)
@@ -258,6 +270,7 @@ class _ContactField:
             power = -_dot(force, matvec(rj, tips[k][3:]))
             rows.append(dict(e=e, u=u, gap=gap, compression=compression, normal_force=normal_force,
                 force=force, force_patch=force_patch, couple=couple, spin=spin,
+                unbonded_force_patch=unbonded_force_patch,
                 activation=activation, bond_force_unscaled=bond_force, couple_unscaled=couple_unscaled,
                 deformation=deformation, strain_angle=angle,
                 power=power, tip=tip, tip_velocity=tip_velocity))
@@ -288,7 +301,10 @@ class _ContactField:
                     begin = strain_start+7*k
                     derivative[begin:begin+7] = (*row['u'], *scale(ar.scalar(Fraction(1, 2)),
                         quaternion_product((*row['spin'], ar.scalar(0)), values[begin+3:begin+7])))
-        return tuple(derivative), dict(body=body, tips=tips, rotations=rotations, spins=spins, masses=masses, rows=rows)
+        diag = dict(body=body, tips=tips, rotations=rotations, spins=spins, masses=masses, rows=rows)
+        if wrenched:
+            derivative[wrench_start:] = wrench_derivatives(self, diag, derivative)
+        return tuple(derivative), diag
 
 
 @dataclass(frozen=True)
@@ -368,7 +384,8 @@ class ContactStepEncloser:
             return result
 
     def bound(self, *, fleet, options, bonds, actuation, geometry, time_s, duration_s, initial, environment=None,
-              rest_enclosures=None, engagement_times=None, rotation_initial=None, gap_initial=None, strain_initial=None):
+              rest_enclosures=None, engagement_times=None, rotation_initial=None, gap_initial=None, strain_initial=None,
+              wrench_initial=None):
         time, h = Fraction(time_s), Fraction(duration_s)
         if h <= 0 or not isinstance(initial, IntervalBox) or initial.dimension != fleet.ledger_start:
             raise ValueError('Contact hold needs a positive duration and the exact packed start set')
@@ -408,10 +425,12 @@ class ContactStepEncloser:
                 model = _ContactField(fleet, options, bonds, actuation, ar, rest_enclosures, environment_model, engagement_times)
                 combined, rotations, gaps = auxiliary_initial(fleet, initial, ar, rotations=rotation_initial, gaps=gap_initial)
                 combined, strains = initial_strain_boxes(model, time, combined, ar, strain_initial)
+                combined, wrenches = initial_wrench_boxes(model, time, combined, ar, wrench_initial)
                 context['rotation_initial'] = [box.as_dict() for box in rotations]
                 context['gap_initial'] = [box.as_dict() for box in gaps]
                 context['strain_initial'] = [box.as_dict() for box in strains]
-                context['auxiliary_scope'] = 'Redundant coordinates on the same physical initial graph: Rdot=R[omega], gdot=n.u, displacement-strain dot=u and relative-strain quaternion dot=(spin,0)*Q/2; zero displacement/identity Q only at the actual digital engagement event, otherwise carried endpoints intersect the complete uncertain current/rest graph'
+                context['wrench_initial'] = [box.as_dict() for box in wrenches]
+                context['auxiliary_scope'] = 'Redundant coordinates on the same physical initial graph: Rdot=R[omega], gdot=n.u, displacement-strain dot=u, relative-strain quaternion dot=(spin,0)*Q/2, B=k*displacement+c*u and M=kr*log(Q)+cr*spin with their exact differentiated graph; zero displacement/identity Q only at actual digital engagement, whose damping wrench is generally nonzero. Later holds intersect carried endpoints and the complete uncertain current/rest graph, never reset strain or wrench.'
                 context['request_fingerprint'] = fingerprint({key: value for key, value in context.items()
                     if key != 'request_fingerprint'})
                 count = max(1, -(-h//Fraction(self.max_step_s)))
@@ -462,6 +481,7 @@ class ContactStepEncloser:
                 context.update(proved_substeps=count, picard_iterations=iterations, guard_partitions=len(checks))
                 _, final_diag = model.evaluate(ar.scalar(time+h), ar.vector(endpoint))
                 strain_start = fleet.ledger_start+9*fleet.body_count+fleet.chaser_count
+                wrench_start = strain_start+7*fleet.chaser_count
                 return ContactStepCertificate('PROVEN', 'whole_contact_hold_flow_and_guards_proven', context,
                     initial, endpoint.slice(0, fleet.ledger_start), swept.slice(0, fleet.ledger_start), dict(substeps=checks,
                         preload_supported=[all(item['preload_supported'][k] for item in checks) for k in range(fleet.chaser_count)],
@@ -473,7 +493,9 @@ class ContactStepEncloser:
                     gap_swept=tuple(swept.slice(fleet.ledger_start+9*fleet.body_count+k, fleet.ledger_start+9*fleet.body_count+k+1) for k in range(fleet.chaser_count)),
                     strain_endpoint=tuple(endpoint.slice(strain_start+7*k, strain_start+7*(k+1)) for k in range(fleet.chaser_count)),
                     strain_swept=tuple(swept.slice(strain_start+7*k, strain_start+7*(k+1)) for k in range(fleet.chaser_count)),
-                    endpoint_potential=potential_box(model, final_diag))
+                    endpoint_potential=potential_box(model, final_diag),
+                    wrench_endpoint=tuple(endpoint.slice(wrench_start+6*k, wrench_start+6*(k+1)) for k in range(fleet.chaser_count)),
+                    wrench_swept=tuple(swept.slice(wrench_start+6*k, wrench_start+6*(k+1)) for k in range(fleet.chaser_count)))
         except ImportError:
             return ContactStepCertificate('UNAVAILABLE', 'arb_backend_unavailable', context, initial)
         except (_ProofUnresolved, ArithmeticError, ValueError) as error:

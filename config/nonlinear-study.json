@@ -1,9 +1,11 @@
 {
   "schema": "orbexa.nonlinear-study.v1",
-  "study_id": "nonlinear-envisat-2026-10-19-v7",
+  "study_id": "nonlinear-envisat-2026-10-19-v10",
   "options": {
     "release_distance_m": 300.0,
     "release_pitch_m": 1.8,
+    "carrier_transfer_duration_rad": 0.54,
+    "near_refuge_extra_holds": [1536, 2048],
     "nominal_spin_deg_s": 2.4,
     "initial_position_radius_m": 0.005,
     "initial_velocity_radius_m_s": 0.005,
@@ -133,5 +135,5 @@
       "seed": 672091
     }
   ],
-  "description": "Central, lower and upper development cases; preserve failed, capped and interrupted outcomes. V6 links eight observed holds per agent using persistent bounded affine-actuator hypotheses, two covering cells and a 256-flow budget per physical candidate. Initial GNSS conditioning and the declared physical-time/channel noise field are shared across matched arms. The 50 ms bins, epoch zero and nearest 1 ns quantization do not enforce identical acquisition schedules or iid noise. Raw measured packets and delivery events are archived. Physical sensing, actuation, geometry and fuel bounds are unchanged. Earlier study cohorts remain separate evidence. These cases are not held out; no adaptive superiority or real-time guarantee is assumed. V7 explicitly subdivides the near-target held-feedback period by four; far feedback, sensing, physical force and fuel limits are unchanged. The performance sliding gain is explicitly 150 per radian, selected from the declared terminal position/velocity tradeoff; contact admission retains its independent complete gripper-speed gate."
+  "description": "Prospective 300 m payload deployment through finite attachment, detumbling and disposal. The carrier reference takes 0.54 rad; optional longer near-target stopping maneuvers are tried only after the original search fails. Physical sensing, actuator, collision, input, contact-load and fuel bounds remain unchanged. Linked observations retain persistent actuator hypotheses and source-bound measured packets. Central, lower and upper cases support development; preserve all failures and incomplete stages. These are not held-out comparisons, an adaptive-superiority result or a real-time guarantee."
 }

@@ -60,7 +60,7 @@ def _box(value):
 def _source_manifest():
     root = Path(__file__).parents[1]
     names = ('simulation/finite_lock.py', 'simulation/contact_enclosure.py',
-        'simulation/contact_strain.py', 'simulation/contact_rotation.py',
+        'simulation/contact_strain.py', 'simulation/contact_rotation.py', 'simulation/contact_wrench.py',
         'simulation/contact_state.py', 'simulation/contact_contracts.py',
         'simulation/capture.py',
         'simulation/rigid_interval.py', 'simulation/nonlinear_environment_enclosure.py',
@@ -113,25 +113,36 @@ class _LockField:
         self.masses = tuple(ar.scalar(dry)+fuel for dry, fuel in zip(fleet.dry, self.fuel))
         self.mass = sum(self.masses)
         self.specific = tuple(tuple(tuple(ar.scalar(x) for x in row) for row in matrix) for matrix in fleet.specific)
+        self.isotropic = tuple(all(matrix[i, j] == (matrix[0, 0] if i == j else 0)
+            for i in range(3) for j in range(3)) for matrix in fleet.specific)
         q0 = normalized_quaternion(body[0][6:10], ar)
         r0 = quaternion_rotation(q0)
         self.positions = tuple(matvec(transpose(r0), subtract(row[:3], body[0][:3])) for row in body)
-        local_velocity = tuple(matvec(transpose(r0), row[3:6]) for row in body)
         center = scale(1/self.mass, tuple(sum(m*p[j] for m, p in zip(self.masses, self.positions)) for j in range(3)))
-        velocity = scale(1/self.mass, tuple(sum(m*v[j] for m, v in zip(self.masses, local_velocity)) for j in range(3)))
         offsets = tuple(subtract(position, center) for position in self.positions)
-        quaternions = tuple(quaternion_product(quaternion_conjugate(q0), normalized_quaternion(row[6:10], ar)) for row in body)
+        # conj(q0)*q0 is exactly the identity on the physical unit graph.
+        # Subsequent target-relative motion is still propagated normally.
+        quaternions = ((ar.scalar(0), ar.scalar(0), ar.scalar(0), ar.scalar(1)),)+tuple(
+            quaternion_product(quaternion_conjugate(q0), normalized_quaternion(row[6:10], ar)) for row in body[1:])
         rotations = tuple(quaternion_rotation(q) for q in quaternions)
-        inertias = tuple(_matmul(_matmul(rotation, tuple(tuple(m*x for x in row) for row in specific)), transpose(rotation))
-                         for rotation, specific, m in zip(rotations, self.specific, self.masses))
+        inertias = self.element_inertias(rotations)
         inertia = self.inertia(offsets, inertias)
-        spins = tuple(matvec(rotation, row[10:13]) for rotation, row in zip(rotations, body))
-        angular = tuple(sum(matvec(local, spin)[j]+m*cross(offset, subtract(v, velocity))[j]
-            for local, spin, m, offset, v in zip(inertias, spins, self.masses, offsets, local_velocity)) for j in range(3))
-        common = matvec(inverse3(inertia), angular)
-        self.relative_velocity = tuple(subtract(subtract(v, velocity), cross(common, offset))
-            for v, offset in zip(local_velocity, offsets))
-        self.relative_spin = tuple(subtract(spin, common) for spin in spins)
+        base_spin = tuple(body[0][10:13])
+        relative_velocity = ((ar.scalar(0),)*3,)+tuple(subtract(matvec(transpose(r0), subtract(row[3:6], body[0][3:6])),
+            cross(base_spin, position)) for row, position in zip(body[1:], self.positions[1:]))
+        relative_spin = ((ar.scalar(0),)*3,)+tuple(subtract(matvec(rotation, row[10:13]), base_spin)
+            for rotation, row in zip(rotations[1:], body[1:]))
+        relative_average = scale(1/self.mass, tuple(sum(m*v[j] for m, v in zip(self.masses, relative_velocity))
+            for j in range(3)))
+        angular = tuple(sum(matvec(local, spin)[j]+m*cross(offset, v)[j]
+            for local, spin, m, offset, v in zip(inertias, relative_spin, self.masses, offsets, relative_velocity))
+            for j in range(3))
+        delta_spin = matvec(inverse3(inertia), angular)
+        common = add(base_spin, delta_spin)
+        self.relative_velocity = tuple(subtract(subtract(v, relative_average), cross(delta_spin, offset))
+            for v, offset in zip(relative_velocity, offsets))
+        self.relative_spin = tuple(subtract(spin, delta_spin) for spin in relative_spin)
+        self.initial_offsets, self.initial_inertias = offsets, inertias
         self.tip_anchors = tuple(matvec(transpose(rotations[0]), subtract(add(self.positions[k+1],
             matvec(rotations[k+1], add(tuple(map(ar.scalar, fleet.mounts[k])), tips[k][:3]))), self.positions[0]))
             for k in range(n-1))
@@ -139,9 +150,8 @@ class _LockField:
         for k in range(n-1):
             j = k+1
             lever = matvec(rotations[j], add(tuple(map(ar.scalar, fleet.mounts[k])), tips[k][:3]))
-            relative = add(subtract(self.positions[j], self.positions[0]), lever)
-            velocity = subtract(add(add(subtract(local_velocity[j], local_velocity[0]), cross(spins[j], lever)),
-                matvec(rotations[j], tips[k][3:])), cross(spins[0], relative))
+            velocity = add(add(relative_velocity[j], cross(relative_spin[j], lever)),
+                matvec(rotations[j], tips[k][3:]))
             self.tip_anchor_velocity.append(matvec(transpose(rotations[0]), velocity))
         absolute_center = add(values[:3], scale(1/self.mass,
             tuple(sum(m*row[j] for m, row in zip(self.masses, body)) for j in range(3))))
@@ -154,6 +164,12 @@ class _LockField:
             self.environment = NonlinearEnvironmentEnclosure.from_environment(environment)
         self.environment_parameters = None if self.environment is None else self.environment.force_parameters(ar)
 
+    def element_inertias(self, rotations):
+        # Exact isotropy is an SO(3) identity, not a numerical tolerance.
+        return tuple(tuple(tuple(m*x for x in row) for row in specific) if isotropic else
+            _matmul(_matmul(rotation, tuple(tuple(m*x for x in row) for row in specific)), transpose(rotation))
+            for rotation, specific, m, isotropic in zip(rotations, self.specific, self.masses, self.isotropic))
+
     def inertia(self, offsets, inertias):
         ar = self.ar
         return tuple(tuple(sum(local[i][j]+m*(sum(square(r[k], ar) for k in range(3) if k != i)
@@ -164,16 +180,15 @@ class _LockField:
         ar, n = self.ar, self.fleet.body_count
         duration = ar.scalar(self.o.lock_duration_s)
         f, g, gd = time-time*time/(2*duration), 1-time/duration, -1/duration
-        positions = tuple(add(x, scale(f, u)) for x, u in zip(self.positions, self.relative_velocity))
-        center = scale(1/self.mass, tuple(sum(m*p[j] for m, p in zip(self.masses, positions)) for j in range(3)))
-        average = scale(1/self.mass, tuple(sum(m*u[j] for m, u in zip(self.masses, self.relative_velocity)) for j in range(3)))
-        offsets = tuple(subtract(p, center) for p in positions)
-        velocities = tuple(scale(g, subtract(u, average)) for u in self.relative_velocity)
-        accelerations = tuple(scale(gd, subtract(u, average)) for u in self.relative_velocity)
+        # The initial momentum decomposition gives sum(m*r0)=sum(m*u)=0
+        # exactly on the retained physical graph. Reusing those identities
+        # avoids subtracting unrelated copies of an already-zero COM shift.
+        offsets = tuple(add(x, scale(f, u)) for x, u in zip(self.initial_offsets, self.relative_velocity))
+        velocities = tuple(scale(g, u) for u in self.relative_velocity)
+        accelerations = tuple(scale(gd, u) for u in self.relative_velocity)
         quaternions = tuple(values[13+4*k:17+4*k] for k in range(n))
         rotations = tuple(quaternion_rotation(q) for q in quaternions)
-        inertias = tuple(_matmul(_matmul(rotation, tuple(tuple(m*x for x in row) for row in specific)), transpose(rotation))
-                         for rotation, specific, m in zip(rotations, self.specific, self.masses))
+        inertias = self.element_inertias(rotations)
         return f, g, gd, offsets, velocities, accelerations, quaternions, rotations, inertias
 
     def evaluate(self, time, values):
@@ -182,17 +197,27 @@ class _LockField:
         _, g, gd, offsets, rdots, rddots, quaternions, rotations, inertias = self.shape(time, values)
         rotation = quaternion_rotation(q)
         inertias_dot = []
-        for local, sigma in zip(inertias, self.relative_spin):
+        for local, sigma, isotropic in zip(inertias, self.relative_spin, self.isotropic):
             skew = _skew(scale(g, sigma))
             left, right = _matmul(skew, local), _matmul(local, skew)
-            inertias_dot.append(tuple(tuple(a-b for a, b in zip(row, column)) for row, column in zip(left, right)))
+            inertias_dot.append(tuple(tuple(ar.scalar(0) if isotropic else a-b for a, b in zip(row, column))
+                for row, column in zip(left, right)))
         inertia = self.inertia(offsets, inertias)
         inertia_dot = tuple(tuple(sum(local[i][j]+m*((2*_dot(r, rd) if i == j else 0)-rd[i]*r[j]-r[i]*rd[j])
             for local, m, r, rd in zip(inertias_dot, self.masses, offsets, rdots)) for j in range(3)) for i in range(3))
-        internal_h = tuple(sum(m*cross(r, rd)[j]+matvec(local, scale(g, sigma))[j]
-            for m, r, rd, local, sigma in zip(self.masses, offsets, rdots, inertias, self.relative_spin)) for j in range(3))
-        internal_hdot = tuple(sum(m*cross(r, rdd)[j]+matvec(local_dot, scale(g, sigma))[j]+matvec(local, scale(gd, sigma))[j]
-            for m, r, rdd, local_dot, local, sigma in zip(self.masses, offsets, rddots, inertias_dot, inertias, self.relative_spin)) for j in range(3))
+        # h(0)=0 by the same exact initial angular-momentum solve, and
+        # r(t)=r0+f*u implies sum(m*r x rdot)=g*sum(m*r0 x u).
+        delta_inertias = tuple(tuple(tuple(a-b for a, b in zip(row, old)) for row, old in zip(local, initial))
+            for local, initial in zip(inertias, self.initial_inertias))
+        remainder = tuple(sum(matvec(delta, sigma)[j] for delta, sigma in zip(delta_inertias, self.relative_spin))
+            for j in range(3))
+        internal_h = scale(g, remainder)
+        internal_hdot = add(scale(gd, remainder), scale(g, tuple(sum(matvec(local, sigma)[j]
+            for local, sigma in zip(inertias_dot, self.relative_spin)) for j in range(3))))
+        reference_radius2 = sum(square(x, ar) for x in p)
+        if not reference_radius2 > 0:
+            raise _ProofUnresolved('finite lock COM set reaches the gravity singularity')
+        reference_gravity = scale(-ar.scalar(fleet.mu)/reference_radius2.sqrt()**3, p)
         external_forces, external_couples = [], []
         zero = tuple(ar.scalar(0) for _ in range(3))
         for k, (mass, offset, rdot, local) in enumerate(zip(self.masses, offsets, rdots, inertias)):
@@ -202,7 +227,7 @@ class _LockField:
             if not radius2 > 0:
                 raise _ProofUnresolved('finite lock component set reaches the gravity singularity')
             radius = radius2.sqrt()
-            acceleration = scale(-ar.scalar(fleet.mu)/radius**3, position)
+            acceleration = subtract(scale(-ar.scalar(fleet.mu)/radius**3, position), reference_gravity)
             if self.environment is not None:
                 name = 'target' if k == 0 else fleet.members[k-1].id
                 acceleration = add(acceleration, self.environment.evaluate(name, position, velocity,
@@ -233,7 +258,7 @@ class _LockField:
         external_power = sum(_dot(subtract(force, scale(mass, acceleration)), add(cross(w, offset), rdot))+
             _dot(couple, add(w, scale(g, sigma))) for force, mass, offset, rdot, couple, sigma in
             zip(external_forces, self.masses, offsets, rdots, external_couples, self.relative_spin))
-        derivative = v+matvec(rotation, acceleration)+qdot+angular+relative_qdot+(power, external_power)
+        derivative = v+add(reference_gravity, matvec(rotation, acceleration))+qdot+angular+relative_qdot+(power, external_power)
         diag = dict(offsets=offsets, rdots=rdots, rddots=rddots, quaternions=quaternions,
             rotations=rotations, forces=forces, couples=couples, angular_acceleration=angular,
             g=g, gd=gd, inertias=inertias, power=power)
@@ -479,6 +504,8 @@ class FiniteLockTransition:
             gravity_gradient=fleet.gravity_gradient,
             environment_contract=environment.as_dict() if callable(getattr(environment, 'as_dict', None)) else None,
             actuation='Active massless positioners follow finite braking profiles f(t)=t-t^2/(2T); bounded Newton-Euler pad reactions; exact internal servo is a declared mechanism assumption',
+            initial_graph='Complete uncertain input mapped through target-relative momentum decomposition; a0=s0=0, sum(m*r0)=sum(m*u)=0 and h0=0 are identities on that same physical graph. Initial target-relative quaternion is identity; subsequent relative motion remains dynamic.',
+            gravity_factorization='Common central gravity at assembly COM cancels from internal reactions, torque and COM-frame work by sum(m*r)=0; COM/component singularity and typed environment domains remain checked.',
             scope='Declared finite rigid/positioner mechanism and supplied complete endpoint set; no material, servo hardware or flight qualification')
         try:
             import flint

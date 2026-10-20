@@ -48,7 +48,9 @@ class ContactSetConditioner:
                   exact_elapsed_time_s=None):
         if not isinstance(support, ContactObservationBounds):
             raise ValueError('Contact conditioning requires explicit typed observation supports')
-        fleet.check_observation(observation, observation['target'].time_s)
+        expected_time = (observation['target'].time_s if exact_elapsed_time_s is None
+                         else fleet.started+float(exact_elapsed_time_s))
+        fleet.check_observation(observation, expected_time)
         lower, upper = list(initial.lower), list(initial.upper)
         def narrow(start, box):
             current = IntervalBox(lower[start:start+box.dimension], upper[start:start+box.dimension])

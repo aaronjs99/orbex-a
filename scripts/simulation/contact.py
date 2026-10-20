@@ -37,6 +37,8 @@ _CONTACT_SOURCE_FILES = (
     'contact_boundary.py', 'contact_observation.py', 'finite_lock.py',
     'contact_rotation.py',
     'contact_strain.py',
+    'contact_strain_observation.py',
+    'contact_wrench.py',
 )
 
 
@@ -96,6 +98,7 @@ class FiniteContactSimulator:
         rotation_enclosures = None
         gap_enclosures = [None for _ in fleet.members]
         strain_enclosures = [None for _ in fleet.members]
+        wrench_enclosures = [None for _ in fleet.members]
         proven_preload = [Fraction(0) for _ in fleet.members]
         recorder.continuous_enclosure = dict(method='arb-compliant-contact-held-flow-v1',
             initial_scope='caller_supplied_state_set' if initial_enclosure is not None
@@ -122,10 +125,12 @@ class FiniteContactSimulator:
                     return finish(False, reason, diag)
                 observation = controller.command(t, y, diag)
                 conditioning = None
+                strain_conditioning = None
                 if callable(getattr(feedback, 'observation_support', None)):
                     from orbexa.simulation.contact_observation import ContactSetConditioner
+                    observation_support = feedback.observation_support()
                     enclosure, conditioning = ContactSetConditioner().condition(fleet=fleet, options=o, bonds=bonds,
-                        initial=enclosure, observation=observation, support=feedback.observation_support(), representative=y,
+                        initial=enclosure, observation=observation, support=observation_support, representative=y,
                         exact_elapsed_time_s=proof_time)
                     from orbexa.simulation.contact_rotation import intersect
                     measured_rotations = tuple(IntervalBox(box['exact_lower'], box['exact_upper'])
@@ -160,10 +165,28 @@ class FiniteContactSimulator:
                             time_s=t, proved_preload_dwell_s=float(proven_preload[k]),
                             exact_event_time_s=str(proof_time), exact_proved_preload_dwell_s=str(proven_preload[k]),
                             rest={key: box.as_dict() for key, box in rest_enclosures[k].items()}))
+                if conditioning is not None and np.any(np.isfinite(bonds.engagement)):
+                    from orbexa.simulation.contact_strain_observation import ContactStrainConditioner
+                    strain_enclosures, strain_conditioning = ContactStrainConditioner().condition(
+                        fleet=fleet, options=o, bonds=bonds, actuation=actuation, time_s=proof_time,
+                        initial=enclosure, rotations=rotation_enclosures, gaps=gap_enclosures,
+                        strains=strain_enclosures, rest_enclosures=rest_enclosures, engagement_times=engagement_times,
+                        observation=observation, support=observation_support, representative_diag=diag,
+                        observation_identity=conditioning['identity'])
+                    recorder.continuous_enclosure['last_strain_conditioning'] = strain_conditioning
+                    by_member = {item['member_id']: item for item in strain_conditioning['members']}
+                    for k, member in enumerate(fleet.members):
+                        item = by_member.get(member.id)
+                        if item is not None and item.get('contracted'):
+                            raw = item['supported_unscaled_wrench']
+                            measured = IntervalBox(raw['exact_lower'], raw['exact_upper'])
+                            wrench_enclosures[k] = (measured if wrench_enclosures[k] is None else
+                                intersect(wrench_enclosures[k], measured))
                 certificate = encloser.refined_bound(fleet=fleet, options=o, bonds=bonds, actuation=actuation,
                     geometry=geometry, time_s=proof_time, duration_s=dt, initial=enclosure,
                     environment=environment, rest_enclosures=rest_enclosures, engagement_times=engagement_times,
-                    rotation_initial=rotation_enclosures, gap_initial=gap_enclosures, strain_initial=strain_enclosures)
+                    rotation_initial=rotation_enclosures, gap_initial=gap_enclosures, strain_initial=strain_enclosures,
+                    wrench_initial=wrench_enclosures)
                 if not certificate.passed:
                     recorder.continuous_enclosure['last_refusal'] = certificate.as_dict()
                     return finish(False, 'finite_contact_whole_step_not_proven: '+certificate.reason, diag)
@@ -248,6 +271,8 @@ class FiniteContactSimulator:
                     checks=certificate.checks))
                 if conditioning is not None:
                     recorder.continuous_enclosure['step_records'][-1]['observation_conditioning'] = conditioning
+                if strain_conditioning is not None:
+                    recorder.continuous_enclosure['step_records'][-1]['bond_strain_conditioning'] = strain_conditioning
                 proven_preload = [value+Fraction(dt) if supported else Fraction(0) for value, supported
                     in zip(proven_preload, certificate.checks['preload_supported'])]
                 _, diag = mechanics.evaluate(t, y)
@@ -261,9 +286,14 @@ class FiniteContactSimulator:
                         if relative[3] < 0:
                             relative = -relative
                         strain_enclosures[k] = endpoint.hull(IntervalBox.point(tuple(row['e']-bonds.bond_rest[k])+tuple(relative)))
+                        numerical_wrench = tuple(o.bond_stiffness_n_m*(row['e']-bonds.bond_rest[k])+
+                            o.bond_damping_n_s_m*row['u'])+tuple(o.bond_rotational_stiffness_nm_rad*row['angle']+
+                            o.bond_rotational_damping_nm_s_rad*row['spin'])
+                        wrench_enclosures[k] = certificate.wrench_endpoint[k].hull(IntervalBox.point(numerical_wrench))
                 recorder.continuous_enclosure['final_rotation_sets'] = [box.as_dict() for box in rotation_enclosures]
                 recorder.continuous_enclosure['final_gap_sets'] = [box.as_dict() for box in gap_enclosures]
                 recorder.continuous_enclosure['final_strain_sets'] = [None if box is None else box.as_dict() for box in strain_enclosures]
+                recorder.continuous_enclosure['final_wrench_sets'] = [None if box is None else box.as_dict() for box in wrench_enclosures]
                 recorder.continuous_enclosure['final_rest_sets'] = [None if rest is None else
                     {key: box.as_dict() for key, box in rest.items()} for rest in rest_enclosures]
                 recorder.continuous_enclosure['final_contact_potential_set_j'] = certificate.endpoint_potential.hull(
