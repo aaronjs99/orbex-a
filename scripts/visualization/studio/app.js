@@ -571,7 +571,8 @@ function showTheory() {
 $('theory-frame').addEventListener('load', () => {
   try {
     if (theoryKey({ href: $('theory-frame').contentWindow.location.href }) !== loadedTheory) return;
-    installImageViewer($('theory-frame').contentDocument);
+    // Each theory document installs its viewer in its own window, so its
+    // figure messages retain the iframe identity checked by the parent.
     $('theory-frame').contentWindow.scrollTo(0, theoryScroll.get(loadedTheory) || 0);
   } catch { /* Standalone external documents retain their own navigation. */ }
 });
