@@ -1,4 +1,5 @@
 /* Only format mathematics already present in this locally rendered document. */
+import('./image-viewer.js').then(({ installImageViewer }) => installImageViewer(document));
 document.addEventListener('DOMContentLoaded', () => {
   if (typeof renderMathInElement !== 'function') return;
   renderMathInElement(document.body, {

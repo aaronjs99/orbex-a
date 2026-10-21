@@ -6,6 +6,8 @@ import { missionTimeline, sampleAtTime, phaseTitle, releaseContextVisible } from
 import { TubeDetail } from './tube-detail.js';
 import { simulationControls } from './live-client.js';
 import { LifecycleScene } from './lifecycle-scene.js';
+import { StudioHistory, STUDIO_TABS, VIEW_FLAGS, theoryKey, isInteractiveTarget } from './ui-state.js';
+import { installImageViewer } from './image-viewer.js';
 
 const $ = id => document.getElementById(id);
 const state = { index: 0, selected: 0, playing: false, tab: 'mission', generation: 0 };
@@ -15,6 +17,9 @@ let catalog, dataset, currentEntry, scene, timeline, lifecycleData, lifecycleSce
 let exportAbort, recordingDataUrl;
 let lifecycleReady = false, waitingForLifecycle = false;
 let liveJobId = null, followLive = false, liveSnapshot, renderedLiveSignature;
+let studioHistory, loadedTheory = '';
+const theoryScroll = new Map();
+const imageViewer = installImageViewer(document, { onOpen() { stop(); studioHistory?.save(); } });
 const timeLabel = seconds => seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
 const currentSample = () => timeline?.samples[state.index];
 const approachIndex = () => currentSample()?.kind === 'approach' ? currentSample().index : dataset.q.length - 1;
@@ -70,7 +75,7 @@ function paintFooter() {
 }
 
 try {
-  scene = new MissionScene($('viewport'), selected => { state.selected = selected; $('chaser').value = String(selected); paint(); });
+  scene = new MissionScene($('viewport'), selected => { state.selected = selected; $('chaser').value = String(selected); paint(); studioHistory?.save(true); });
 } catch (error) {
   $('scene-error').hidden = false;
   $('scene-error').textContent = '3D rendering is unavailable in this browser. Measurements, videos and evidence remain available. ' + error.message;
@@ -96,10 +101,47 @@ function option(value, title) {
   return result;
 }
 
+function paintFrameNote(label, axes) {
+  const note = document.querySelector('.frame-note');
+  if (!note) return;
+  const title = $('frame-label');
+  title.textContent = label;
+  note.replaceChildren(title, document.createElement('br'), document.createTextNode(axes));
+  note.style.whiteSpace = 'pre-line';
+}
+
 function setLink(id, href) {
   $(id).hidden = !href;
   if (href) $(id).href = href;
   else $(id).removeAttribute('href');
+}
+
+function renderFigures(container, figures = []) {
+  const seen = new Set();
+  container.replaceChildren(...figures.filter(figure => {
+    if (typeof figure?.href !== 'string' || seen.has(figure.href)) return false;
+    seen.add(figure.href); return true;
+  }).map(figure => {
+    const title = figure.label || ({
+      'nonlinear_navigation.png': 'Navigation error',
+      'nonlinear_tubes_bandwidth.png': 'Tubes & bandwidth',
+      'nonlinear_physical_set_widths.png': 'Parameter bounds',
+      'nonlinear_execution_timeline.png': 'Control & timing',
+    })[figure.href.split('/').at(-1)] || figure.title || 'Figure';
+    const link = document.createElement('a'), image = document.createElement('img'), caption = document.createElement('span');
+    link.href = figure.href; link.setAttribute('aria-haspopup', 'dialog');
+    link.setAttribute('aria-label', `Enlarge ${title}`);
+    link.dataset.figureTitle = title;
+    image.src = figure.href; image.alt = figure.title || 'Figure'; image.loading = 'lazy'; image.decoding = 'async';
+    caption.className = 'figure-caption'; caption.textContent = title;
+    link.append(image, caption); return link;
+  }));
+}
+
+function renderComponentFigures() {
+  const figures = Array.isArray(catalog?.component_figures) ? catalog.component_figures : [];
+  renderFigures($('component-plot-gallery'), figures);
+  $('component-checks').hidden = !$('component-plot-gallery').children.length;
 }
 
 function stop() {
@@ -182,9 +224,9 @@ function paint() {
     $('elapsed-label').textContent = `${sample.time.toFixed(3)} s`;
   } else scene?.update(i, state.selected, options);
   ids.forEach((id, number) => { $(id).previousElementSibling.textContent = labels[number]; });
-  const frameNote = document.querySelector('.frame-note');
-  if (frameNote) { frameNote.style.whiteSpace = 'pre-line'; frameNote.textContent = physical ? 'Capture frame · target-relative meters\nFixed axes from the recorded capture epoch' :
-    (dataset.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : 'Physical LVLH · meters') + '\nX −transverse · Y radial · Z orbit normal'; }
+  paintFrameNote(physical ? 'Capture frame · target-relative meters' :
+    dataset.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : 'Physical LVLH · meters',
+    physical ? 'Fixed axes from the recorded capture epoch' : 'X −transverse · Y radial · Z orbit normal');
   document.querySelectorAll('.viewport-key > span').forEach((item, number) => {
     item.hidden = physical && number === 1;
     item.lastChild.textContent = physical ? number === 2 ? 'Pad tip' : 'Actual body poses' : ['Actual', 'Nominal', 'COM goal'][number];
@@ -204,6 +246,7 @@ function paint() {
   tubeDetail.update(track, i, $('tubes').checked && sample.kind === 'approach');
   showMissionPanel();
   syncLifecycle();
+  studioHistory?.schedule();
 }
 
 function showMissionPanel() {
@@ -221,16 +264,50 @@ function showMissionPanel() {
   if (enteringApproach) scene?.resize();
 }
 
-function showTab(name) {
+function showTab(name, { persist = true } = {}) {
   if (state.exporting) return;
-  state.tab = name;
+  if (persist) studioHistory?.save();
+  state.tab = STUDIO_TABS.includes(name) ? name : 'mission';
+  name = state.tab;
   if (name !== 'mission') stop();
   if (name !== 'plots') $('mission-video').pause();
   for (const section of ['plots', 'theory']) $(section).hidden = section !== name;
-  for (const section of ['mission','plots','theory']) $(`tab-${section}`).setAttribute('aria-selected',String(section===name));
+  for (const section of STUDIO_TABS) {
+    $(`tab-${section}`).setAttribute('aria-selected',String(section===name));
+    $(`tab-${section}`).tabIndex = section === name ? 0 : -1;
+  }
+  if (name === 'theory') showTheory();
   showMissionPanel();
   syncLifecycle();
   paintFooter();
+  if (persist) studioHistory?.save(true);
+}
+
+function viewLimits() {
+  return { mission: currentEntry?.key || catalog?.entries[0]?.key || '',
+    theories: catalog?.theory.map(theoryKey) || [], chasers: dataset?.tracks.map(track => track.id) || [],
+    start: timeline?.start ?? 0, end: timeline?.end ?? 0 };
+}
+
+function captureView() {
+  if (!catalog) return null;
+  return { tab: state.tab, theory: theoryKey(catalog.theory[Number($('theory-select').value)]),
+    chaser: dataset?.tracks[state.selected]?.id || '', camera: $('camera').value,
+    speed: $('speed').value, time: currentSample()?.time ?? 0,
+    ...Object.fromEntries(Object.keys(VIEW_FLAGS).map(id => [id, $(id).checked])) };
+}
+
+function restoreView(view) {
+  if (state.exporting) return;
+  stop(); imageViewer.close({ restoreFocus: false });
+  state.selected = Math.max(0, dataset?.tracks.findIndex(track => track.id === view.chaser) ?? 0);
+  if (timeline) state.index = sampleAtTime(timeline.samples, view.time);
+  $('chaser').value = String(state.selected);
+  $('camera').value = view.camera; $('speed').value = String(view.speed);
+  for (const id of Object.keys(VIEW_FLAGS)) $(id).checked = view[id];
+  $('theory-select').value = String(Math.max(0, catalog.theory.findIndex(doc => theoryKey(doc) === view.theory)));
+  showTab(view.tab, { persist: false });
+  if (dataset && timeline) { paint(); scene?.setCamera(view.camera); }
 }
 
 function paintPhases() {
@@ -269,10 +346,8 @@ async function loadScenario(key) {
     if (attachedData && attachedData.schema !== 'orbexa.lifecycle.studio.v1') throw new Error('Unsupported saved attached-flight record');
     const mission = missionTimeline(data, attachedData);
     dataset = data;
-    const frameNote=document.querySelector('.frame-note');
-    if(frameNote)frameNote.textContent=(data.state_frame==='reference-orbit-frame-v1'?
-      'Reference orbit frame · meters':'Physical LVLH · meters')+'\nX −transverse · Y radial · Z orbit normal';
-    if(frameNote)frameNote.style.whiteSpace='pre-line';
+    paintFrameNote(data.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : 'Physical LVLH · meters',
+      'X −transverse · Y radial · Z orbit normal');
     timeline = mission;
     lifecycleData = attachedData;
     currentEntry = entry;
@@ -300,11 +375,8 @@ async function loadScenario(key) {
     setLink('raw-evidence', entry.raw_href ?? (entry.data_kind === 'projection' ? null : entry.data_href));
     setLink('family-evidence', entry.evidence_href);
     setLink('video-download', entry.video_href);
-    $('plot-gallery').replaceChildren(...(entry.figures || []).map(figure=>{
-      const link=document.createElement('a'),image=document.createElement('img');
-      link.href=figure.href; image.src=figure.href;image.alt=figure.title;image.loading='lazy';
-      link.append(image);return link;
-    }));
+    renderFigures($('plot-gallery'), entry.figures || []);
+    renderComponentFigures();
     $('lifecycle-frame').dataset.source = entry.lifecycle_href ? `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&data=${encodeURIComponent(entry.lifecycle_href)}&controlled=1&session=${generation}` : '';
     if (entry.lifecycle_href && !attachedData?.finite_contact) $('lifecycle-frame').src = $('lifecycle-frame').dataset.source;
     else $('lifecycle-frame').removeAttribute('src');
@@ -333,6 +405,8 @@ async function loadScenario(key) {
     $('camera').value = 'mission';
     scene?.setCamera('mission');
     charts.forEach(chart => chart.load(data));
+    studioHistory?.restore();
+    studioHistory?.save();
     paint();
   } catch (error) {
     if (generation !== state.generation) return;
@@ -375,13 +449,14 @@ function clearMission() {
   $('provenance').replaceChildren();
   $('dataset-notes').replaceChildren();
   $('plot-gallery').replaceChildren();
+  renderComponentFigures();
   $('mission-subtitle').textContent = 'No recorded dataset selected';
   $('footer-outcome').textContent = 'No recorded dataset selected';
   $('footer-clock').textContent = 'No recorded node selected';
   for (const id of ['first', 'previous', 'next', 'last', 'play', 'export-scene', 'scrub', 'chaser']) $(id).disabled = true;
 }
 
-function resetLiveView() {
+function resetLiveView({ keepTab = false } = {}) {
   exportAbort?.abort();
   ++state.generation;
   clearMission();
@@ -394,7 +469,7 @@ function resetLiveView() {
   $('outcome').textContent = 'Ready';
   $('outcome').classList.remove('failed');
   $('error').hidden = true;
-  showTab('mission');
+  if (!keepTab) showTab('mission');
 }
 
 function applyLiveSnapshot(snapshot) {
@@ -431,9 +506,8 @@ function applyLiveSnapshot(snapshot) {
   liveJobId = snapshot.job_id;
   renderedLiveSignature = signature;
   dataset = data;
-  const frameNote=document.querySelector('.frame-note');
-  if(frameNote){frameNote.style.whiteSpace='pre-line';frameNote.textContent=(data.state_frame==='reference-orbit-frame-v1'?
-    'Reference orbit frame · meters':'Physical LVLH · meters')+'\nX −transverse · Y radial · Z orbit normal';}
+  paintFrameNote(data.state_frame === 'reference-orbit-frame-v1' ? 'Reference orbit frame · meters' : 'Physical LVLH · meters',
+    'X −transverse · Y radial · Z orbit normal');
   timeline = mission;
   const changedLifecycle = Boolean(attached) && (!lifecycleData || lifecycleData.time_s.length !== attached.time_s.length || lifecycleData.time_s.at(-1) !== attached.time_s.at(-1) || lifecycleData.finite_contact?.source_history_sha256 !== attached.finite_contact?.source_history_sha256);
   lifecycleData = attached;
@@ -477,34 +551,54 @@ function applyLiveSnapshot(snapshot) {
     else $('lifecycle-frame').src = `lifecycle.html?v=${encodeURIComponent(catalog.asset_version || '')}&source=parent&controlled=1&session=${state.generation}`;
   }
   paint();
+  if (newJob && !followLive) studioHistory?.restore();
   if (continueJourney) play();
 }
 
 function showTheory() {
-  const document = catalog.theory[Number($('theory-select').value)];
-  $('theory-frame').hidden = !document;
-  setLink('theory-open', document?.href);
-  if (document) $('theory-frame').src = document.href;
-  renderTheoryFigure($('theory-diagram'),document?.title || '');
+  const topic = catalog?.theory[Number($('theory-select').value)], frame = $('theory-frame');
+  frame.hidden = !topic;
+  setLink('theory-open', topic?.href);
+  if (!topic || state.tab !== 'theory') return;
+  const key = theoryKey(topic);
+  if (loadedTheory === key) return;
+  try { if (loadedTheory) theoryScroll.set(loadedTheory, frame.contentWindow.scrollY); } catch { /* Cross-origin documents retain browser scrolling. */ }
+  loadedTheory = key;
+  frame.src = topic.href;
+  renderTheoryFigure($('theory-diagram'), topic.title || '');
 }
 
+$('theory-frame').addEventListener('load', () => {
+  try {
+    if (theoryKey({ href: $('theory-frame').contentWindow.location.href }) !== loadedTheory) return;
+    installImageViewer($('theory-frame').contentDocument);
+    $('theory-frame').contentWindow.scrollTo(0, theoryScroll.get(loadedTheory) || 0);
+  } catch { /* Standalone external documents retain their own navigation. */ }
+});
+
 $('scenario').addEventListener('change', () => loadScenario($('scenario').value));
-$('chaser').addEventListener('change', () => { state.selected = Number($('chaser').value); paint(); });
-$('camera').addEventListener('change', () => scene?.setCamera($('camera').value));
-for (const id of ['paths', 'tubes', 'grid', 'envelope']) $(id).addEventListener('change', paint);
+$('chaser').addEventListener('change', () => { state.selected = Number($('chaser').value); paint(); studioHistory?.save(true); });
+$('camera').addEventListener('change', () => { scene?.setCamera($('camera').value); studioHistory?.save(true); });
+for (const id of Object.keys(VIEW_FLAGS)) $(id).addEventListener('change', () => { paint(); studioHistory?.save(true); });
 $('scrub').addEventListener('input', () => { if (timeline) seek(sampleAtTime(timeline.samples, Number($('scrub').value))); });
 $('play').addEventListener('click', play);
 $('first').addEventListener('click', () => seek(0));
 $('last').addEventListener('click', () => { if (timeline) seek(timeline.samples.length - 1); });
 $('previous').addEventListener('click', () => seek(state.index - 1));
 $('next').addEventListener('click', () => seek(state.index + 1));
-$('speed').addEventListener('change', () => { if (state.playing) { state.started = performance.now(); state.startClock = clockAt(state.index); } });
+$('speed').addEventListener('change', () => { if (state.playing) { state.started = performance.now(); state.startClock = clockAt(state.index); } studioHistory?.save(true); });
 $('fullscreen').addEventListener('click', async () => {
   try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('viewport').requestFullscreen(); }
   catch (error) { $('scene-help').textContent = 'Full screen is unavailable in this browser.'; }
 });
 for (const name of ['mission', 'plots', 'theory']) $(`tab-${name}`).addEventListener('click', () => showTab(name));
-$('theory-select').addEventListener('change', showTheory);
+$('theory-select').addEventListener('change', () => { showTheory(); studioHistory?.save(true); });
+document.querySelector('[role="tablist"]').addEventListener('keydown', event => {
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key) || !event.target.closest('[role="tab"]')) return;
+  const current = STUDIO_TABS.indexOf(state.tab);
+  const index = event.key === 'Home' ? 0 : event.key === 'End' ? STUDIO_TABS.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + STUDIO_TABS.length) % STUDIO_TABS.length;
+  event.preventDefault(); showTab(STUDIO_TABS[index]); $(`tab-${STUDIO_TABS[index]}`).focus();
+});
 $('export-scene').disabled = !scene || !SceneVideoExporter.supported();
 $('cancel-export').addEventListener('click', () => exportAbort?.abort());
 $('export-scene').addEventListener('click', async () => {
@@ -562,7 +656,7 @@ $('export-scene').addEventListener('click', async () => {
   }
 });
 document.addEventListener('keydown', event => {
-  if (state.tab !== 'mission' || ['INPUT', 'SELECT', 'BUTTON', 'TEXTAREA'].includes(event.target.tagName)) return;
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || imageViewer.isOpen() || state.tab !== 'mission' || isInteractiveTarget(event.target)) return;
   if (event.code === 'Space') { event.preventDefault(); play(); }
   if (event.code === 'ArrowLeft') { event.preventDefault(); seek(state.index - 1); }
   if (event.code === 'ArrowRight') { event.preventDefault(); seek(state.index + 1); }
@@ -593,14 +687,17 @@ requestAnimationFrame(tick);
 try {
   catalog = await readJSON('catalog.json');
   if (catalog.schema !== 'orbexa.mission.studio.catalog.v1' || !Array.isArray(catalog.entries) || !catalog.entries.length && catalog.live !== true) throw new Error('No recorded mission catalog is available');
+  catalog.entries = catalog.entries.slice(0, 1);
+  catalog.theory = Array.isArray(catalog.theory) ? catalog.theory : [];
   $('scenario').replaceChildren(...catalog.entries.map(entry => option(entry.key, entry.title)));
-  $('scenario').hidden = catalog.entries.length < 2;
+  $('scenario').hidden = true;
   $('theory-select').replaceChildren(...catalog.theory.map((document, index) => option(String(index), document.title)));
-  showTheory();
-  if (!catalog.entries.length) resetLiveView();
+  renderComponentFigures();
+  studioHistory = new StudioHistory({ window, limits: viewLimits, capture: captureView, apply: restoreView });
+  studioHistory.restore();
+  if (!catalog.entries.length) { resetLiveView({ keepTab: true }); studioHistory.restore(); }
   else {
-    const requested = new URLSearchParams(location.search).get('mission');
-    const key = catalog.entries.some(entry => entry.key === requested) ? requested : catalog.entries[0].key;
+    const key = catalog.entries[0].key;
     $('scenario').value = key;
     await loadScenario(key);
   }

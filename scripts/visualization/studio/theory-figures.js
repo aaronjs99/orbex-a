@@ -1,11 +1,13 @@
 /** Explanatory schematics. Dimensions are illustrative, not saved flight data. */
-const shell=(name,body,width=820,height=180)=>`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${name}"><title>${name}</title>${body}</svg>`;
-const label=(x,y,text,kind='')=>`<text x="${x}" y="${y}" class="${kind}">${text}</text>`;
+import { renderTubeExplainer } from './theory-tube.js';
+const escaped=value=>String(value).replace(/[&<>"']/g,character=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+const shell=(name,body,width=820,height=180)=>`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escaped(name)}"><title>${escaped(name)}</title>${body}</svg>`;
+const label=(x,y,text,kind='')=>`<text x="${x}" y="${y}" class="${kind}">${escaped(text)}</text>`;
 const figures=new WeakMap();
 
 export function renderTheoryFigure(container,title) {
   if (!figures.has(container)) {
-    const state={title};
+    const state={title,tube:{phi:.5,p:.3,s:0}};
     state.observer=new ResizeObserver(()=>drawTheoryFigure(container,state.title));
     figures.set(container,state);
     state.observer.observe(container);
@@ -15,28 +17,27 @@ export function renderTheoryFigure(container,title) {
 }
 
 function drawTheoryFigure(container,title) {
-  if(/sensed.*tube|tube.*sensing/i.test(title)){
-    const width=Math.max(280,container.clientWidth||820),small=width<620;
-    const plotWidth=small?width-68:Math.min(350,width*.48),left=48,top=15,plotHeight=190;
-    const x=v=>left+(v+1.2)/2.4*plotWidth,y=v=>top+(1.65-v)/3.3*plotHeight;
-    const vertices=[[-1,.5],[-1,1.5],[1,-.5],[1,-1.5]];
-    let body=`<path d="M${x(-1.2)} ${y(0)}H${x(1.2)} M${x(0)} ${y(-1.65)}V${y(1.65)}" class="surface"/>`;
-    body+=`<polygon points="${vertices.map(v=>`${x(v[0])},${y(v[1])}`).join(' ')}" class="band"/>`;
-    body+=`<path d="M${x(-1)} ${y(1)}L${x(1)} ${y(-1)}" class="data"/>`;
-    body+=`<rect x="${x(-.1)}" y="${y(.2)}" width="${x(.5)-x(-.1)}" height="${y(-.6)-y(.2)}" fill="none" class="threshold"/>`;
-    body+=`<circle cx="${x(.3)}" cy="${y(-.3)}" r="4" class="point"/>`;
-    body+=label(left,top+plotHeight+24,'Position error / Ω')+
-      `<text x="17" y="${top+plotHeight/2}" text-anchor="middle" transform="rotate(-90 17 ${top+plotHeight/2})">Velocity error / ΛΩ</text>`;
-    const tx=small?left:plotWidth+left+35,ty=small?255:60;
-    body+=label(tx,ty,'Relational tube · |eᵥ + Λeₚ| ≤ Φ')+
-      label(tx,ty+24,'Dashed: navigation rectangle')+label(tx,ty+48,'Corners may lie outside the tube')+
-      label(tx,ty+72,'The physical state belongs to both');
-    const height=small?350:250;
-    container.innerHTML=shell('Illustrative normalized position–velocity tube and navigation sets',body,width,height)
-      .replace('<svg ','<svg style="max-height:none" ');return;
+  if (/adtmpc|adt.mpc|sensed.*tube|tube.*sensing|control foundations/i.test(title)) {
+    renderTubeExplainer(container,figures.get(container).tube);
+    return;
   }
-  const pipeline=/nonlinear|navigation|sensing|coordinates/i.test(title);
-  const backup=/fallback|refuge|continuation/i.test(title);
+  delete container.dataset.figureKind;
+  if (/attached flight|rigid assembly|detumbl/i.test(title)) {
+    const width=Math.max(280,container.clientWidth||820),small=width<620;
+    const positions=small?[[70,80],[205,80],[137,170]]:[[200,70],[520,70],[360,155]];
+    const center=small?[137,110]:[360,100];
+    let body=label(18,23,'Common field · illustrative');
+    for (const [x,y] of positions) {
+      body+=`<path d="M${center[0]} ${center[1]}L${x} ${y}" class="surface"/><rect x="${x-14}" y="${y-10}" width="28" height="20" class="solid"/><path d="M${x+18} ${y}h42m-8-5 8 5-8 5" class="data"/>`;
+    }
+    body+=`<circle cx="${center[0]}" cy="${center[1]}" r="5" class="goal"/>`;
+    body+=label(18,small?222:207,'Σ mᵢrᵢ = 0  →  common acceleration has zero COM moment');
+    if (small) body=body.replace('Σ mᵢrᵢ = 0  →  common acceleration has zero COM moment','Σ mᵢrᵢ = 0  →  zero common-field moment');
+    container.innerHTML=shell('Physical mass-center identity cancels uniform environmental torque; schematic only',body,small?320:width,small?245:230);
+    return;
+  }
+  const pipeline=/nonlinear|dynamics|navigation|sensing|coordinates/i.test(title);
+  const backup=/fallback|refuge|continuation|safety/i.test(title);
   const contact=/contact|attachment|disposal/i.test(title);
   const comparison=/study|comparison|experiment/i.test(title);
   if(pipeline||backup||contact||comparison){
@@ -65,7 +66,7 @@ function drawTheoryFigure(container,title) {
   }
   const solver=/solver/i.test(title);
   const held=/continuous|terminal tracking|hold|handoff/i.test(title);
-  const geometry=/envisat|spacecraft|deployment|target/i.test(title);
+  const geometry=/envisat|spacecraft|deployment|target|configuration/i.test(title);
   let name,body;
   if(solver){
     name='One reconstructed chaser MPC subproblem: residual before and after bound repair';

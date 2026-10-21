@@ -148,7 +148,7 @@ class MissionStudio:
         for path in [studio / name for name in names if name.endswith('.js')] + list(studio.glob('*.html')):
             content = path.read_text(encoding='utf-8')
             if path.suffix == '.js':
-                content = re.sub(r"(\b(?:from|import)\s*['\"])(\./[^'\"?]+\.js)(['\"])",
+                content = re.sub(r"(\b(?:from|import)\s*(?:\(\s*)?['\"])(\./[^'\"?]+\.js)(['\"])",
                     lambda match: f"{match[1]}{match[2]}?v={asset_version}{match[3]}"
                     if match[2][2:] in names else match[0], content)
             else:
