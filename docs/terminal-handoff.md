@@ -8,8 +8,8 @@ belief updates or MPC dwell intervals.
 
 ```python
 from orbexa.simulation import PhysicalTerminalHandoff
-from orbexa.simulation.mission_result import MissionResultStore
-from orbexa.simulation.complete_mission import CompleteMissionOptions, CompleteMissionRunner
+from orbexa.simulation.approach.records.results import MissionResultStore
+from orbexa.simulation.completion.coordinator import CompleteMissionOptions, CompleteMissionRunner
 
 approach = MissionResultStore.load(approach_path)
 handoff = PhysicalTerminalHandoff.from_files(approach_path, terminal_result_path)

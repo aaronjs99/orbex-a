@@ -463,7 +463,7 @@ The current nonlinear path retains the actual runner or supplies the explicit
 typed model, clock, design and complete source-bound hold archive:
 
 ```python
-from orbexa.simulation.nonlinear_completion import complete_nonlinear_mission
+from orbexa.simulation.completion.nonlinear.coordinator import complete_nonlinear_mission
 
 result = complete_nonlinear_mission(approach, nonlinear_runner=runner,
                                     hold_records=closed_hold_archive)
@@ -477,9 +477,9 @@ The following is explicitly idealized analytical reproduction:
 
 ```python
 from functools import partial
-from orbexa.simulation.capture import CaptureModel, CaptureOptions
-from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleStore
-from orbexa.simulation.propulsion import ThrusterSystem
+from orbexa.simulation.contact.capture import CaptureModel, CaptureOptions
+from orbexa.simulation.completion.lifecycle import MissionLifecycle, MissionLifecycleStore
+from orbexa.simulation.attached.propulsion import ThrusterSystem
 
 engine = MissionLifecycle(
     capture=CaptureModel(options=CaptureOptions(assume_attitude_matched=True,

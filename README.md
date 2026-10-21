@@ -99,7 +99,7 @@ readable. An interrupted byte prefix is retained as an aborted run.
 
 ## Mission Studio
 
-[Open the published Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/).
+[Open the published Studio](https://orbex-a.aaronjs.me/studio/).
 Its saved record identifies its own source, model and completed stages. Publishing
 a viewer does not upgrade an older recording's dynamics or proof scope.
 

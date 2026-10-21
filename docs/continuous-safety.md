@@ -3,7 +3,7 @@
 ## Verdict
 
 **Pass with stated conditions for the continuous affine model and a supplied
-held candidate.** `control/reachability.py` provides a validated flow bridge,
+held candidate.** `control/certification/reachability.py` provides a validated flow bridge,
 including numerical rounding and the complete intersample motion. A successful
 flow certificate is independent of the executor's RK4 approximation. A
 successful collision certificate separates that whole flow from declared
@@ -132,7 +132,7 @@ f_a=\begin{bmatrix}\gamma r_o\\-\gamma r_o k\\0\end{bmatrix}+u+\eta.
 ```
 
 The top block is p'=v. These are the coefficients of
-`core/dynamics.py:orbital_ellp_drag` with an authoritative semi-major axis.
+`core/dynamics/orbital.py:orbital_ellp_drag` with an authoritative semi-major axis.
 No parameter-corner extremum assumption is used. Dependency overestimation
 can widen the enclosure or prevent a proof; it cannot justify discarding an
 interior parameter value.

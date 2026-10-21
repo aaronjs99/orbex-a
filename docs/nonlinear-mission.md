@@ -248,13 +248,13 @@ $\theta_{max}=0.01$ rad, the split position allowance is 0.042 m. The original
 40 mm whole-position gate still applies. Patch edges, other components, bus
 clearance and physical contact settling retain their separate required gates.
 
-![Contact speed budget across the forecast and sensing supports](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/contact-speed-budget.svg)
+![Contact speed budget across the forecast and sensing supports](https://orbex-a.aaronjs.me/theory/figures/contact-speed-budget.svg)
 
 The dotted line is the unchanged 10 mm/s capture limit. This saved-forecast
 algebraic screen illustrates the effect of preserving rigid-goal correlation;
 some forecast nodes still exceed the limit even with zero nominal tracking
 error. It is not a mission or optimizer result.
-[Figure data and provenance](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/contact-speed-budget-data.json).
+[Figure data and provenance](https://orbex-a.aaronjs.me/theory/figures/contact-speed-budget-data.json).
 
 The 0.85 m COM standoff, 0.8 m tip offset and 0.1 m mechanism reach leave a
 finite closing gap. The actual nine-body [contact simulation](finite-contact.md)
@@ -342,12 +342,12 @@ cases from a development terminal bound screen, including a prospective
 That local sufficient bound does not guarantee future navigation support or
 global feasibility: larger observed sets can still force a certified retreat.
 
-![Terminal velocity bound versus bandwidth, for three position sensing supports](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/terminal-budget.svg)
+![Terminal velocity bound versus bandwidth, for three position sensing supports](https://orbex-a.aaronjs.me/theory/figures/terminal-budget.svg)
 
 The recorded development screen includes target-goal prediction error and the
 same input limits. At 3.5 mm position support, none of the three screened
 bandwidths satisfies the velocity gate. These are local bound calculations,
-not mission outcomes. [Published figure data and provenance](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/terminal-budget-data.json).
+not mission outcomes. [Published figure data and provenance](https://orbex-a.aaronjs.me/theory/figures/terminal-budget-data.json).
 
 Completion, failures, tube widths, effort, retained membership, force/fuel and
 deadline misses all belong in the results. Offline proof/solve time is recorded;

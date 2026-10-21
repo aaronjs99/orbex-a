@@ -1,6 +1,6 @@
 # Analytical orbital holds and separate endpoint refinement
 
-`orbexa.control.orbital_hold` proves one held-input family for the maintained six-state analytical orbital model. It constructs a genuine continuous Picard proof, then a separate variation-of-constants (VoC) endpoint witness. It performs no mission execution, fleet admission, terminal handoff or fallback dispatch.
+`orbexa.control.certification.orbital` proves one held-input family for the maintained six-state analytical orbital model. It constructs a genuine continuous Picard proof, then a separate variation-of-constants (VoC) endpoint witness. It performs no mission execution, fleet admission, terminal handoff or fallback dispatch.
 
 Import the service directly. Arb remains optional and is imported only at the proof boundary. If it is unavailable, the result is unproved with status `UNAVAILABLE`. A failed enclosure has status `UNRESOLVED`; it never grants admission.
 
@@ -15,10 +15,8 @@ The constant input box must cover the actual held binary command and any permitt
 For existing exact boxes and declarations, the API is:
 
 ```python
-from orbexa.control.orbital_hold import (
-    OrbitalHoldContext, OrbitalHoldRequest, OrbitalHoldProofService,
-)
-from orbexa.control.reachability import ReachabilityConfig
+from orbexa.control.certification.orbital import OrbitalHoldContext, OrbitalHoldRequest, OrbitalHoldProofService
+from orbexa.control.certification.reachability import ReachabilityConfig
 
 context = OrbitalHoldContext(
     model=retained_prior,

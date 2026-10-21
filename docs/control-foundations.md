@@ -297,21 +297,17 @@ After $T_r$, the reference formation is fixed in the commanded frame while
 shared braking continues. Exact rational piecewise polynomials join with
 continuous position, velocity and acceleration; a finite constant-reference
 holding interval follows. The implementation is
-`simulation/fleet_braking.py`. This is a reference proposal, and the complete
+`simulation/nonlinear/safety/braking.py`. This is a reference proposal, and the complete
 nonlinear tracking, sensing, actuator, force, fuel, target-component and peer
 proofs still decide admission. The tube widths and safety distances remain
 unchanged. See [the finite-refuge formulation](fleet-fallback.md).
 
-![Common and relative braking on an archived-state replay](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/control-foundations-530e370/formation-braking.png)
+![Shared braking cancels from the pairwise reference separation](https://orbex-a.aaronjs.me/theory/figures/braking-reference.svg)
 
-The figure uses the archived fallback endpoint immediately after a recorded
-successor refusal. The refused performance projection itself was not retained.
-On this adjacent state, the independent candidates allow whole-box peer
-distances of 1.18–1.29 m against a strict 1.30 m requirement. The coordinated
-candidate proves all 28 pairs above 1.437 m with the original 0.15 m component
-position tubes, and passes the full finite nonlinear refuge constructor.
-This component replay does not establish a completed mission or real-time
-execution.
+Illustrative reference algebra: changing the shared braking duration leaves
+pair separation identical. These are exact polynomial references; physical
+dynamics and safety admission remain separate.
+[Figure data](https://orbex-a.aaronjs.me/theory/figures/braking-reference-data.json).
 
 ## 6. MPC, condensed QPs and nonconvex geometry
 
@@ -428,7 +424,7 @@ $$
 This bounds the *held ancillary input*, not just its value at an endpoint.
 The forcing $D$ also includes model and disturbance error, variation during
 the hold, sensing, integration/reset defects and declared padding.
-`sample_hold.py`, [the held-feedback derivation](theory.md) and
+`control/tubes/sample_hold.py`, [the held-feedback derivation](theory.md) and
 [the sensed-tube derivation](sensed-tube.md) define the complete expressions.
 The reserve displayed above alone is not the complete physical proof.
 
@@ -755,8 +751,8 @@ establish every stage.
 Supply a provider explicitly when constructing a controller:
 
 ```python
-from orbexa.control.mpc_controller import MPCController
-from orbexa.planning.trajectory_hints import TrackingHint
+from orbexa.control.mpc.controller import MPCController
+from orbexa.planning.proposals.trajectory import TrackingHint
 
 # Use the constructor's normal dynamics/configuration arguments, plus:
 # controller = MPCController(..., proposal_provider=TrackingHint(...))
@@ -766,9 +762,9 @@ from orbexa.planning.trajectory_hints import TrackingHint
 For direct solver use:
 
 ```python
-from orbexa.solvers.gekko_solver import GekkoSolver
+from orbexa.solvers.gekko.solver import GekkoSolver
 from orbexa.solvers.proposal_seed import ProposalSeededSolver
-from orbexa.planning.trajectory_hints import ConvexTrajectoryHint
+from orbexa.planning.proposals.trajectory import ConvexTrajectoryHint
 
 solver = ProposalSeededSolver(
     GekkoSolver({"remote": False}), ConvexTrajectoryHint(),
@@ -787,7 +783,7 @@ loop supplies no physical environment on its own.
 Generate a self-contained gallery in an ignored output directory:
 
 ```python
-from orbexa.visualization.control_figures import ControlFoundationsFigures
+from orbexa.visualization.plots.control import ControlFoundationsFigures
 ControlFoundationsFigures().export("data/control-foundations-figures")
 # Open data/control-foundations-figures/index.html.
 ```

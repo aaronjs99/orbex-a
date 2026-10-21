@@ -57,8 +57,8 @@ the truth/model and measurement assumptions; an inconsistent prior may fail.
 
 ```python
 from pathlib import Path
-from orbexa.core.config import SimulationConfig
-from orbexa.estimation.belief import ParameterBelief
+from orbexa.core.configuration.model import SimulationConfig
+from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.simulation import (
     ADTMPCMissionRunner, CompactArcDeployment, CompactDeploymentOptions,
     MissionResultStore,

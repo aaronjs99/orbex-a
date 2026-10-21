@@ -3,7 +3,7 @@
 One complete sensed nonlinear mission from the 300 m payload release through
 all attachments, detumbling and disposal is still under verification. A safe
 prefix, a local contact fixture or a successful coast does not complete it.
-The [Mission Studio](https://orbex-a-mission-studio.aaronjs99.chatgpt.site/studio/)
+The [Mission Studio](https://orbex-a.aaronjs.me/studio/)
 keeps recorded outcomes separate from explanatory figures.
 
 ## What now works, and what the evidence means

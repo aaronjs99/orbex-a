@@ -1,11 +1,12 @@
 # Finite nonlinear fleet feedback fallback
 
-`control/refuge.py` proves a sampled feedback tracking tube over a declared
-finite domain. `control/fleet_fallback.py` admits complete fleet routes ending
+`control/fallback/refuge.py` proves a sampled feedback tracking tube over a declared
+finite domain. `control/fallback/` admits complete fleet routes ending
 in a holding region and admits performance actions as one transaction.
-`simulation/nonlinear_refuge.py` constructs exact C2 polynomial routes, bounds
-the actual nonlinear drift with Arb, transforms complete component geometry,
-and propagates a bounded sensor blackout without a solver or flow service.
+`simulation/nonlinear/safety/` constructs exact C2 polynomial routes, bounds
+the actual nonlinear drift with Arb, and transforms complete component geometry.
+`simulation/nonlinear/execution/blackout.py` propagates a bounded sensor blackout
+without a solver or flow service.
 
 These modules provide a conditional finite safety contract. They do not make
 the old ordinary approach recursively feasible, replace a physical deadline
@@ -280,7 +281,7 @@ requires fresh preparation or the existing explicit assumption-failure path.
 
 The far constructor first proposes coordinated common/relative braking with
 lambda=200, omega=0.15 and phi=30. The reference generator
-`simulation/fleet_braking.py` separates each initial velocity into the fleet
+`simulation/nonlinear/safety/braking.py` separates each initial velocity into the fleet
 mean and its difference from that mean. Shared velocity is eased to zero over
 a common duration; velocity differences are eased to zero over a shorter
 duration. A shared 2 m outward displacement cancels in every peer difference.
@@ -375,8 +376,8 @@ drivers, source provenance, final capture, and the response to assumption failur
 
 ## Independent preparation and finite execution
 
-`simulation/online_worker.py` bounds one spawned preparation job and its
-serialized request/result. `simulation/online_execution.py` owns execution of
+`simulation/online/worker.py` bounds one spawned preparation job and its
+serialized request/result. `simulation/online/execution.py` owns execution of
 the installed feedback; it does not wait for that job. Late, stale, malformed
 or failed products cannot acquire command authority. Proof source, physical
 context, uncertainty supports, future segments and complete fuel reservation

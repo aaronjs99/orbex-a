@@ -146,7 +146,7 @@ the subsequent input or held-feedback inequalities; those can still refuse.
 from orbexa.control import RotatingCompositeBounds, CompositeTerminalGeometry
 from orbexa.control import CompositePhysicalTerminalBoundsBuilder
 from orbexa.control import bound_rigid_body_rotation, IntervalBox, OrbitalModelBounds
-from orbexa.core.spacecraft_geometry import SpacecraftGeometry
+from orbexa.core.geometry.composite import SpacecraftGeometry
 
 geometry = SpacecraftGeometry.from_json(geometry_path)
 clearance = CompositeTerminalGeometry(geometry).point_separation(body_point)

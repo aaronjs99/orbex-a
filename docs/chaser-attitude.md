@@ -1,6 +1,6 @@
 # Free-flying chaser attitude before capture
 
-`orbexa.simulation.chaser_attitude` propagates the attitude of each finite chaser bus over a saved approach in physical seconds. Translation alone supplies no bus orientation or spin. This module starts the buses from declared attitudes, applies bounded external nozzle couples, retains the complete numerical attitude and actuator histories, and exposes the final physical states to the capture model.
+`orbexa.simulation.approach.physical.attitude` propagates the attitude of each finite chaser bus over a saved approach in physical seconds. Translation alone supplies no bus orientation or spin. This module starts the buses from declared attitudes, applies bounded external nozzle couples, retains the complete numerical attitude and actuator histories, and exposes the final physical states to the capture model.
 
 The Envisat mission uses a representative 130 kg initial wet bus of radius 0.55 m, with 30 kg dry mass and 100 kg initial propellant. Its constant initial wet inertia is 15.73 kg m² about each axis. These are declared vehicle-concept properties. The bus starts with zero inertial angular velocity and a body-frame rotation-vector offset `[0.4, -0.3, 0.2]` rad from its assigned mounting attitude. That offset has magnitude 0.5385 rad; alignment is simulated.
 
@@ -72,8 +72,8 @@ Attitude and translation remain decoupled. The saved approach positions remain u
 The tracker returns success only when the entire supplied timeline was propagated and every final orientation and inertial spin error passes its configured limit. Defaults are 0.01 rad and 10⁻⁵ rad/s. The spin comparison rotates the actual body rate into ECI, so the returned rate stays in the actual chaser frame even when alignment is imperfect.
 
 ```python
-from orbexa.simulation.chaser_attitude import ChaserAttitudeTracker
-from orbexa.simulation.capture import CaptureModel, CaptureOptions
+from orbexa.simulation.approach.physical.attitude import ChaserAttitudeTracker
+from orbexa.simulation.contact.capture import CaptureModel, CaptureOptions
 
 # Supply this allowance from the chosen translation/propulsion study.
 attitudes = ChaserAttitudeTracker().track(

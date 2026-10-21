@@ -15,8 +15,8 @@ user-supplied sensor, reference, uncertainty or geometry bounds are true. A
 bound source and explicit assumptions. Sampled maxima are refused. A proof
 source string records provenance; it is not a verification of that source.
 
-The public modules are `orbexa.control.terminal_tracking` and
-`orbexa.control.continuation`. Continuous flow and occupied-set separation use
+The public modules are `orbexa.control.terminal.tracking` and
+`orbexa.control.fallback.continuation`. Continuous flow and occupied-set separation use
 [the validated reachability layer](continuous-safety.md). The approach NLP stays
 ADTMPC. These modules do not prove that its nonconvex optimization problem is
 recursively feasible from every initial condition.

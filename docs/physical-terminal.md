@@ -310,7 +310,7 @@ pair-distance proof.
 
 ### Executing the actual endpoint
 
-`orbexa.simulation.physical_terminal_execution.PhysicalTerminalRunner` owns
+`orbexa.simulation.approach.terminal.execution.PhysicalTerminalRunner` owns
 the offline runtime loop. Its constructor receives `builders`, the actual
 physical `target`, a point `truth` for numerical propagation, an explicit
 `observation_source`, and a declared `orientation_matrix_error`. Controller

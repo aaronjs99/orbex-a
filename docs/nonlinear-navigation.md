@@ -4,7 +4,7 @@ The nonlinear services define a finite synthetic plant and conditional continuou
 
 ## Coordinates, clock and forces
 
-`orbexa.core.reference_frame.ReferenceClockFrame` is immutable. Its reference rotation obeys `C'=C Z`, with `Z p=(-p_y,p_x,0)`. Its positive rate `nu_ref(q)` defines physical seconds through `dt/dq=1/nu_ref`. The reference ellipse parameters are fixed scheduling/coordinate declarations, independent of later adaptive coefficient estimates. These axes are called `reference-orbit-frame-v1`, not the perturbed target LVLH.
+`orbexa.core.dynamics.reference_frame.ReferenceClockFrame` is immutable. Its reference rotation obeys `C'=C Z`, with `Z p=(-p_y,p_x,0)`. Its positive rate `nu_ref(q)` defines physical seconds through `dt/dq=1/nu_ref`. The reference ellipse parameters are fixed scheduling/coordinate declarations, independent of later adaptive coefficient estimates. These axes are called `reference-orbit-frame-v1`, not the perturbed target LVLH.
 
 Let `p=C^T(r_c-r_t)` and `w=dp/dq`. Then
 
@@ -32,7 +32,7 @@ Public core operations are:
 
 ## Interval propagation and regional residuals
 
-`orbexa.control.nonlinear_flow.NonlinearFlowEncloser` accepts the existing finite `ReachabilityConfig`. It evaluates the explicitly supported nonlinear algebra with Arb, proves strict interval Picard self-inclusion on each segment, and retains rational state/derivative/Picard witnesses. It refuses domain escape, incompatible identity, failed inclusion, unavailable Arb, and exhausted budgets. It never substitutes a DOP853 result for a proof.
+`orbexa.control.certification.nonlinear.NonlinearFlowEncloser` accepts the existing finite `ReachabilityConfig`. It evaluates the explicitly supported nonlinear algebra with Arb, proves strict interval Picard self-inclusion on each segment, and retains rational state/derivative/Picard witnesses. It refuses domain escape, incompatible identity, failed inclusion, unavailable Arb, and exhausted budgets. It never substitutes a DOP853 result for a proof.
 
     target = encloser.enclose_target(
         initial_target_box, (q0,q0), (dq,dq), model, clock,
@@ -79,13 +79,13 @@ The pose point now advances with midpoint observed body rate and the prescribed 
 
 ## Nonlinear target truth, observed preview and occupied pose
 
-`orbexa.core.nonlinear_target.NonlinearTargetTruth(template,clock,point_model,initial_target_state,...)` propagates executed target ephemeris, physical seconds, scalar-last inertial quaternion and body rate together. `.advance(end_q)` extends executed coverage only. Queries beyond executed coverage refuse. The template contributes declared geometry, mass/inertia and initial body-to-reference quaternion/rate, not its analytical future trajectory. The inertial axes are the declared initial-reference basis; no GCRF or Earth-orientation epoch is inferred.
+`orbexa.core.targets.nonlinear.NonlinearTargetTruth(template,clock,point_model,initial_target_state,...)` propagates executed target ephemeris, physical seconds, scalar-last inertial quaternion and body rate together. `.advance(end_q)` extends executed coverage only. Queries beyond executed coverage refuse. The template contributes declared geometry, mass/inertia and initial body-to-reference quaternion/rate, not its analytical future trajectory. The inertial axes are the declared initial-reference basis; no GCRF or Earth-orientation epoch is inferred.
 
 `NonlinearTargetPreview(template,clock,model_bounds,initial_target_box,preview_width_q=...)` is the separate controller proxy. `.update_observation(navestimate,current_q=...,target_ephemeris_box=...,preview_end_q=...)` mutates that stable proxy in place from a same-model, same-clock observation. Its numerical future uses a declared midpoint physical realization. Past preview intervals remain estimates. This object never receives the physical truth target. It exposes the existing geometry, rotation, docking-state/acceleration and collision-parameter duck APIs with `reference_frame_id` and `reference_clock`.
 
 Both objects evaluate central spherical gravity-gradient torque using their actual or predicted Cartesian target position. J2 and atmosphere perturb translation; J2-specific, aerodynamic, magnetic, flexible-body and contact torque are not inferred. `recorded_kinematics` retains actual/predicted inertial target r/v and reference-rate histories with an explicit role in target metadata. Numerical preview success does not prove pose accuracy.
 
-`orbexa.control.attitude_flow.AttitudeFlowEncloser(config).enclose(initial_quaternion_box,initial_body_rate_box,target_flow,inertia,model,clock,gravity_gradient=True)` proves a finite quaternion/Euler inclusion driven by the certified nonlinear ephemeris. `enclose_observation(rotation_reference,operator_error,body_rate_box,...)` first lifts the bounded processed pose into quaternion space with a certified projection error. Initial physical unit norm is an explicit hypothesis; the exact ODE preserves it. A nonunit midpoint is not treated as a physical attitude.
+`orbexa.control.certification.attitude.AttitudeFlowEncloser(config).enclose(initial_quaternion_box,initial_body_rate_box,target_flow,inertia,model,clock,gravity_gradient=True)` proves a finite quaternion/Euler inclusion driven by the certified nonlinear ephemeris. `enclose_observation(rotation_reference,operator_error,body_rate_box,...)` first lifts the bounded processed pose into quaternion space with a certified projection error. Initial physical unit norm is an explicit hypothesis; the exact ODE preserves it. A nonunit midpoint is not treated as a physical attitude.
 
 The returned `AttitudeFlowCertificate` retains seven-state endpoints, full Picard witnesses, model/target/clock/source identities, a start rotation/operator-error bound, and a whole-hold relative angular-rate bound. `.occupied_bounds(geometry)` supplies `RotatingCompositeBounds` in the same reference frame, using the direct observed pose support and the proved rate. Refused or unresolved inclusions supply no occupied-pose certificate. This is a continuous interval construction, not a maximum over numerical attitude samples.
 
@@ -132,7 +132,7 @@ eviction removes unsupported baselines. A contradiction latches
 `INCONSISTENT`; subsequent measurements cannot silently restart prediction.
 No position support or acquisition timestamp is narrowed by this construction.
 
-`orbexa.simulation.nonlinear_execution.NonlinearDenseExecutor` takes a scenario, navigation filter, separate literal `NonlinearTargetTruth`, private relative truth states, fixed clock, global model bounds, point physical realization, sensor suite, and a pure bounded actuator realization. Its controller-facing `CoupledMissionState.states` contains estimates only. `AffineActuatorRealization` supports a fixed gain/axis matrix and coordinate-acceleration bias; the applied realization must remain inside each decision's declared input support.
+`orbexa.simulation.nonlinear.execution.coordinator.NonlinearDenseExecutor` takes a scenario, navigation filter, separate literal `NonlinearTargetTruth`, private relative truth states, fixed clock, global model bounds, point physical realization, sensor suite, and a pure bounded actuator realization. Its controller-facing `CoupledMissionState.states` contains estimates only. `AffineActuatorRealization` supports a fixed gain/axis matrix and coordinate-acceleration bias; the applied realization must remain inside each decision's declared input support.
 
 Install a complete `FleetAdmissionRuntime` before motion. `.flow_provider(agent,request)` caches the complete nonlinear certificate by exact request and current target identity. Each proposed performance hold checks the v2 sensed tube, measurement coverage, actual feedback reserve, command box, model/clock context, prospective regional inclusion, and a complete finite successor. Target enclosure starts from navigation, never literal truth. Every agent is selected together by the fallback runtime.
 
