@@ -4,7 +4,7 @@ from dataclasses import replace
 import time
 import numpy as np
 from orbexa.solvers.base import SolverBase
-from orbexa.planning.trajectory_hints import AffinePrediction, input_limits
+from orbexa.planning.proposals.trajectory import AffinePrediction, input_limits
 
 
 class ProposalSeededSolver(SolverBase):

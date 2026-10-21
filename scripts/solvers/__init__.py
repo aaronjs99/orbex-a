@@ -18,7 +18,7 @@ Supports GEKKO, CasADi, and SciPy.
 """
 
 from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
-from orbexa.solvers.gekko_solver import GekkoSolver
+from orbexa.solvers.gekko.solver import GekkoSolver
 from orbexa.solvers.scipy_solver import ScipySolver
 
 # Solver registry

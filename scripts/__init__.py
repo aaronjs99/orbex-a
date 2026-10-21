@@ -43,9 +43,9 @@ _SOLVER_EXPORTS = {
 }
 _CONTRACT_EXPORTS = {"MPCProblem", "SolverResult"}
 _MODEL_EXPORTS = {
-    "SimulationConfig": ".core.config",
-    "ADTMPCMissionRunner": ".simulation.adtmpc_mission",
-    "ADTMPCMissionResult": ".simulation.mission_result",
+    "SimulationConfig": 'orbexa.core.configuration.model',
+    "ADTMPCMissionRunner": 'orbexa.simulation.approach.api',
+    "ADTMPCMissionResult": 'orbexa.simulation.approach.records.results',
 }
 
 
@@ -90,15 +90,15 @@ def __getattr__(name):
         globals()[name] = module
         return module
     if name == "dynamics":
-        from orbexa.core import dynamics
+        from orbexa.core.dynamics import orbital as dynamics
 
         return dynamics
     elif name == "spacecraft":
-        from orbexa.core import spacecraft
+        from orbexa.core.spacecraft import base as spacecraft
 
         return spacecraft
     elif name in ("Spacecraft", "Target", "Chaser"):
-        return getattr(import_module(".core.spacecraft", __name__), name)
+        return getattr(import_module('orbexa.core.spacecraft.base', __name__), name)
     raise AttributeError(f"module 'orbexa' has no attribute '{name}'")
 
 

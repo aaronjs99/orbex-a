@@ -7,17 +7,16 @@ from functools import partial
 import json
 from pathlib import Path
 
-from orbexa.simulation.capture import CaptureModel, CaptureOptions, ChaserPhysicalProperties, TargetPhysicalProperties
-from orbexa.simulation.chaser_attitude import ChaserAttitudeActuators, ChaserAttitudeTracker
-from orbexa.simulation.complete_mission import (CompleteMissionOptions, CompleteMissionRunner, CompleteMissionStore,
-                                               bind_approach_body_geometry)
-from orbexa.simulation.deorbit import DeorbitOptions, DeorbitSimulator, ThrustPointingPolicy
-from orbexa.simulation.detumbling import DetumblingOptions, DetumblingSimulator, RateDampingPolicy
-from orbexa.simulation.lifecycle import MissionLifecycle, MissionLifecycleStore
-from orbexa.simulation.mission_result import MissionResultStore
-from orbexa.simulation.propulsion import ThrusterSystem
-from orbexa.simulation.burn_axis import AxialBurnPlanner
-from orbexa.simulation.finite_burn import FiniteBurnThrottlePlanner
+from orbexa.simulation.contact.capture import CaptureModel, CaptureOptions, ChaserPhysicalProperties, TargetPhysicalProperties
+from orbexa.simulation.approach.physical.attitude import ChaserAttitudeActuators, ChaserAttitudeTracker
+from orbexa.simulation.completion.coordinator import CompleteMissionOptions, CompleteMissionRunner, CompleteMissionStore, bind_approach_body_geometry
+from orbexa.simulation.attached.disposal.simulator import DeorbitOptions, DeorbitSimulator, ThrustPointingPolicy
+from orbexa.simulation.attached.detumbling import DetumblingOptions, DetumblingSimulator, RateDampingPolicy
+from orbexa.simulation.completion.lifecycle import MissionLifecycle, MissionLifecycleStore
+from orbexa.simulation.approach.records.results import MissionResultStore
+from orbexa.simulation.attached.propulsion import ThrusterSystem
+from orbexa.simulation.attached.disposal.axis import AxialBurnPlanner
+from orbexa.simulation.attached.disposal.preview import FiniteBurnThrottlePlanner
 
 
 def main(argv=None):
@@ -59,8 +58,8 @@ def main(argv=None):
             chaser_body_radius_m=.15,gripper_offset_m=.16,capture_reach_m=.01,
             translation_force_n=10.,attitude_force_n=.2,attitude_moment_arm_m=.1,specific_impulse_s=300.)
         if approach.target.get('shape')=='composite_spacecraft':
-            from orbexa.core.spacecraft_geometry import SpacecraftGeometry
-            from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
+            from orbexa.core.geometry.composite import SpacecraftGeometry
+            from orbexa.simulation.completion.configuration.design import SpacecraftMissionDesign
             record=approach.metadata.get('scenario',{}).get('vehicle_design')
             if not isinstance(record,dict):
                 raise ValueError('Composite completion requires its recorded vehicle_design; installed bus/fuel/nozzle properties cannot be inferred from appearance')
@@ -78,7 +77,7 @@ def main(argv=None):
                 raise ValueError(f'{key} conflicts with the installed vehicle design recorded during approach')
         handoff = None
         if args.terminal_execution is not None:
-            from orbexa.simulation.terminal_handoff import PhysicalTerminalHandoff
+            from orbexa.simulation.approach.terminal.handoff import PhysicalTerminalHandoff
             handoff = PhysicalTerminalHandoff.from_files(path, args.terminal_execution)
         # Use the physical target inertia already declared by its approach;
         # target mass is a separately supplied representative property.

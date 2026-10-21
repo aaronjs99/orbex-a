@@ -8,9 +8,9 @@ from fractions import Fraction
 from functools import cached_property
 import numpy as np
 
-from orbexa.core.reference_frame import exact, fingerprint
-from orbexa.control.reachability import IntervalBox
-from orbexa.control.attitude_flow import _sqrt_upper
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.control.certification.reachability import IntervalBox
+from orbexa.control.certification.attitude import _sqrt_upper
 
 _ACTUATION_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

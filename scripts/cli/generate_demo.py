@@ -56,7 +56,7 @@ def main(argv: Optional[Sequence[str]] = None, *, default_root: Optional[Path] =
     logger = logging.getLogger("orbexa")
     try:
         # Help and invalid arguments need only the Python standard library.
-        from orbexa.visualization.demo import DemoConfig, OrbexaDemo
+        from orbexa.visualization.workflow.demo import DemoConfig, OrbexaDemo
 
         manifests = OrbexaDemo(DemoConfig(
             output_dir=args.output, data_dir=args.data_output,

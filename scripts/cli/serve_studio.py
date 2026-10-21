@@ -11,7 +11,7 @@ import shutil
 import sys
 import threading
 
-from orbexa.simulation.live_service import LiveServiceSettings, LiveSimulationService, make_server, LIVE_SERVICE
+from orbexa.simulation.service.app import LiveServiceSettings, LiveSimulationService, make_server, LIVE_SERVICE
 
 
 THEORY_DOCUMENTS = (
@@ -27,7 +27,7 @@ THEORY_DOCUMENTS = (
 
 def _export_live_viewer(settings, root):
     """Export a fresh empty live catalog and available source theory docs."""
-    from orbexa.visualization.mission_studio import MissionStudio
+    from orbexa.visualization.publishing.studio import MissionStudio
     root = Path(root)
     docs = settings.config_path.parent.parent / 'docs'
     documents = {title: docs / name for title, name in THEORY_DOCUMENTS if (docs / name).is_file()}

@@ -1,0 +1,1 @@
+"""simulation.attached.assembly package."""

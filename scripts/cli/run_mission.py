@@ -8,13 +8,13 @@ import math
 from pathlib import Path
 import numpy as np
 
-from orbexa.core.config import SimulationConfig
-from orbexa.estimation.belief import ParameterBelief
-from orbexa.simulation.adtmpc_mission import ADTMPCMissionRunner
-from orbexa.simulation.complete_mission import CompleteMissionOptions, CompleteMissionRunner, CompleteMissionStore
-from orbexa.simulation.mission_checkpoint import MissionCheckpoint
-from orbexa.simulation.mission_result import MissionResultStore
-from orbexa.simulation.physical_approach import ContinuousAdmissionOptions, PhysicalApproachOptions, PhysicalApproachScenario
+from orbexa.core.configuration.model import SimulationConfig
+from orbexa.estimation.adaptation.belief import ParameterBelief
+from orbexa.simulation.approach.api import ADTMPCMissionRunner
+from orbexa.simulation.completion.coordinator import CompleteMissionOptions, CompleteMissionRunner, CompleteMissionStore
+from orbexa.simulation.approach.records.checkpoint import MissionCheckpoint
+from orbexa.simulation.approach.records.results import MissionResultStore
+from orbexa.simulation.approach.physical.scenario import ContinuousAdmissionOptions, PhysicalApproachOptions, PhysicalApproachScenario
 
 
 def main(argv=None):
@@ -62,7 +62,7 @@ def main(argv=None):
                 raise ValueError('Composite arrival requires an explicit --arrival-policy JSON with sourced reference errors/region; use --historical-terminal-policy only for an identified historical replay')
             arrival_path = candidate
         if arrival_path is not None:
-            from orbexa.simulation.arrival_policy import ArrivalPolicyConfig
+            from orbexa.simulation.approach.arrival.policy import ArrivalPolicyConfig
             arrival_policy = ArrivalPolicyConfig.from_dict(json.loads(arrival_path.read_text(encoding='utf-8')))
             if arrival_policy.required_terminal_region is None:
                 raise ValueError('The physical mission CLI requires an explicitly sourced required_terminal_region; a pose ball alone is insufficient for handoff')
@@ -71,8 +71,8 @@ def main(argv=None):
         input_bound = max(abs(float(bound[key])) for bound in config.mpc.input_bounds for key in ("lower", "upper"))
         design=None
         if args.target_model=='composite':
-            from orbexa.simulation.spacecraft_design import SpacecraftMissionDesign
-            from orbexa.simulation.capture import ChaserPhysicalProperties
+            from orbexa.simulation.completion.configuration.design import SpacecraftMissionDesign
+            from orbexa.simulation.contact.capture import ChaserPhysicalProperties
             geometry=args.spacecraft or args.config.parent/'spacecraft'/'envisat.json'
             radius=.55 if args.body_radius_m is None else args.body_radius_m
             standoff=.85 if args.com_standoff_m is None else args.com_standoff_m
@@ -124,10 +124,10 @@ def main(argv=None):
                 deployment_path=candidate
         if deployment_path is not None:
             if design is not None:
-                from orbexa.simulation.composite_deployment import CompositeDeploymentOptions
+                from orbexa.simulation.approach.deployment.component import CompositeDeploymentOptions
                 deployment=CompositeDeploymentOptions(**json.loads(deployment_path.read_text(encoding='utf-8')))
             else:
-                from orbexa.simulation.deployment import CompactDeploymentOptions
+                from orbexa.simulation.approach.deployment.arc import CompactDeploymentOptions
                 deployment=CompactDeploymentOptions(**json.loads(deployment_path.read_text(encoding='utf-8')))
         profile = PhysicalApproachScenario(config, initial_belief=prior, maximum_updates=steps,
             options=PhysicalApproachOptions(body_radius_m=radius, com_standoff_m=standoff,
@@ -139,7 +139,7 @@ def main(argv=None):
         if args.transition_arrival_policy:
             if arrival_policy is None:
                 raise ValueError('An explicit arrival transition requires --arrival-policy')
-            from orbexa.simulation.mission_transition import MissionPolicyTransition
+            from orbexa.simulation.approach.arrival.transition import MissionPolicyTransition
             source_profile = PhysicalApproachScenario(config, initial_belief=prior, maximum_updates=steps,
                 options=PhysicalApproachOptions(body_radius_m=radius, com_standoff_m=standoff,
                     initial_body_spin_rad_s=spin, gravity_gradient=not args.disable_gravity_gradient),
@@ -149,8 +149,8 @@ def main(argv=None):
                 source_scenario=source_profile.scenario, target_scenario=profile.scenario)
         elif checkpoint is not None:
             checkpoint.validate_scenario(profile.scenario, "single" if args.chasers == 1 else "multi")
-        from orbexa.simulation.capture import ChaserPhysicalProperties
-        from orbexa.simulation.chaser_attitude import ChaserAttitudeTracker
+        from orbexa.simulation.contact.capture import ChaserPhysicalProperties
+        from orbexa.simulation.approach.physical.attitude import ChaserAttitudeTracker
         tracker = (ChaserAttitudeTracker(default_chaser=ChaserPhysicalProperties(body_radius_m=radius))
                    if design is None else None)
         approach_runner = ADTMPCMissionRunner(scenario=profile.scenario)

@@ -17,6 +17,6 @@ This file exists for compatibility with pip install -e in older pip versions.
 Configuration is in pyproject.toml.
 """
 
-from setuptools import setup
+from setuptools import find_packages, setup
 
-setup()
+setup(packages=["orbexa", *("orbexa." + name for name in find_packages("scripts"))])

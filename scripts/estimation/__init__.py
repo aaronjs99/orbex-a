@@ -16,11 +16,11 @@ from importlib import import_module
 
 _EXPORTS = {
     "min_enclosing_ellipsoid": "orbexa.estimation.enclosures",
-    "SMIDAdaptor": "orbexa.estimation.smid",
-    "SMIDRecord": "orbexa.estimation.smid_records",
-    "gen_adaptor_data": "orbexa.estimation.batch_adaptation",
-    "run_adaptor_op": "orbexa.estimation.batch_adaptation",
-    "run_adaptation": "orbexa.estimation.batch_adaptation",
+    "SMIDAdaptor": 'orbexa.estimation.adaptation.smid',
+    "SMIDRecord": 'orbexa.estimation.adaptation.records',
+    "gen_adaptor_data": 'orbexa.estimation.adaptation.batch',
+    "run_adaptor_op": 'orbexa.estimation.adaptation.batch',
+    "run_adaptation": 'orbexa.estimation.adaptation.batch',
 }
 __all__ = list(_EXPORTS)
 

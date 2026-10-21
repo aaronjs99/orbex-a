@@ -58,64 +58,85 @@ The arrows show responsibility and data flow. In particular, truth reaches the
 controller through sensor packets and navigation; recorded truth and offline
 containment diagnostics are separate outputs.
 
+## Package boundaries
+
+The source hierarchy follows runtime responsibility. Package APIs expose public
+interfaces; internal callers import their canonical owner. Old flat file paths
+do not receive forwarding modules.
+
+| Area | Nested responsibilities |
+|---|---|
+| `core/` | Configuration, force/frame dynamics, geometry, spacecraft state and target motion |
+| `control/` | MPC, tube algebra, whole-step certification, fallback and terminal admission |
+| `estimation/` | Navigation, conservative membership, adaptation policy and numerical fitting |
+| `planning/` | Rendezvous, coordination, trajectory/policy proposals and optimization objectives |
+| `solvers/gekko/` | GEKKO formulation, geometry, fitting and native IPOPT iteration evidence |
+| `simulation/` | Approach, contact, attached flight, online execution, studies and recording |
+| `visualization/` | Saved data, plots, renderers, publishing and session workflow |
+
+The physical `scripts/` name and the five installed commands remain stable.
+Regular Python packages are discovered recursively; static Studio assets remain
+package data rather than incidental namespace packages. Exporters resolve the
+asset directory from the package root, independently of their own nesting depth.
+
 ## Maintained module ownership
 
 Paths in this table are relative to `scripts/`.
 
 | Module | Main interfaces and responsibility |
 |---|---|
-| `core/config_types.py`, `core/config_loader.py`, `core/config.py` | Structured scenario validation, YAML loading and configuration composition |
+| `core/configuration/types.py`, `core/configuration/loader.py`, `core/configuration/model.py` | Structured scenario validation, YAML loading and configuration composition |
 | `contracts.py`, `layout.py`, `sessions.py` | Solver problem/result records, relocated-checkout paths and explicit generated-session ownership |
-| `core/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
-| `core/nonlinear_relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
-| `core/nonlinear_target.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
-| `core/inertial_dynamics.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
-| `core/spacecraft_geometry.py`, `simulation/spacecraft_design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
-| `control/nonlinear_flow.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
-| `control/attitude_flow.py`, `simulation/nonlinear_target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
-| `estimation/navigation.py` | `SensorSuite`, `SensorPacket`, `BoundedNavigationFilter`, `NavigationEstimate`: truth-side sampling versus prior/prediction/observation intersections, delayed packets and finite-history velocity bounds |
-| `estimation/sensor_noise.py` | `PhysicalSlotNoise`: versioned bounded common random field keyed to physical-time bins and sensor channels; acquisition scheduling remains owned by `SensorSuite` |
-| `estimation/nonlinear_membership.py`, `estimation/nonlinear_adaptation.py`, `estimation/belief.py` | Nonlinear transition/observation membership, retained parameter sets and admissible nominal updates; unresolved parameter boxes are retained |
-| `simulation/nonlinear_profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
-| `simulation/nonlinear_planning.py`, `simulation/coupled_planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
-| `control/dynamic_tube_spec.py`, `control/sample_hold.py`, `solvers/gekko_dynamic_tube.py` | `DynamicTubeSpec`, sensed held-feedback bounds and `GekkoDynamicTube` nonlinear GEKKO/IPOPT formulation |
-| `solvers/native_iterations.py` | Native IPOPT final-summary iteration counts with log hashes and exit provenance; unavailable work remains unknown |
-| `control/fuel_budget.py` | `FleetFuelBudget`: exact same-event, same-hardware remaining-fuel budget for finite successor selection; admission independently rechecks the debit and complete reserve |
-| `control/reachability.py`, `control/orbital_hold.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
-| `control/refuge.py`, `control/fleet_fallback.py` | `RefugeController`, `FleetFallbackPlan`, `FleetAdmissionRuntime`: finite feedback authority, fleet/component geometry, successor admission and fuel accounting |
-| `simulation/nonlinear_refuge.py`, `simulation/nonlinear_safety.py` | Physical drift/occupied-pose adapters, exact polynomial retreat bounds, bounded blackout propagation, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
-| `control/actuation.py`, `control/sensed_tube.py` | Declared actuator support/realization, exact sensed sliding-tube algebra, stage checks, feedback evaluation and physical tube witnesses |
-| `simulation/nonlinear_execution.py`, `simulation/nonlinear_execution_contracts.py`, `simulation/coupled_state.py` | `NonlinearDenseExecutor`: admission, physical commit and failure ordering; explicit execution outcomes and controller estimate state |
-| `simulation/nonlinear_plant.py`, `simulation/nonlinear_sensing.py` | `NonlinearFleetPlant` proposes numerical motion; `MissionSensorDelivery` owns acquisition and delayed packet queues |
-| `simulation/nonlinear_stage_bindings.py`, `simulation/nonlinear_nominal.py` | `PerformanceStageBindings` checks planning sources; `NominalTubePropagator` owns certified nominal flow/cache and tube endpoint transfer |
-| `simulation/execution_journal.py` | `ExecutionJournal` publishes durable events and retains acknowledged completed holds; later recorder failures preserve that prefix |
-| `simulation/nonlinear_mission.py`, `simulation/nonlinear_recording.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
-| `simulation/nonlinear_archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
-| `simulation/nonlinear_study.py`, `simulation/study_request.py`, `simulation/study_source.py`, `cli/run_nonlinear.py` | Guarded study entry, prospective request/declaration and coherent source/input freezing |
-| `simulation/study_execution.py`, `simulation/study_records.py`, `simulation/study_metrics.py` | `StudyArmExecution`, `StudyTelemetry`, atomic records and outcome metrics; setup, approach, completion and failure retention remain separate stages |
-| `simulation/nonlinear_completion.py`, `simulation/nonlinear_completion_contracts.py` | Physical lifecycle composition, compatible imports and shared completion contracts/source identity |
-| `simulation/nonlinear_completion_boundary.py`, `simulation/nonlinear_completion_journal.py`, `simulation/nonlinear_completion_propellant.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
-| `simulation/nonlinear_completion_environment.py`, `simulation/nonlinear_completion_observers.py` | Physical environment and causal attitude/contact observations |
-| `simulation/chaser_attitude.py`, `simulation/contact.py`, `simulation/capture.py` | Controlled chaser-attitude replay, finite-contact coordination, reach/contact gates and accepted assembly construction |
-| `simulation/contact_contracts.py`, `simulation/contact_state.py`, `simulation/contact_control.py`, `simulation/contact_mechanics.py`, `simulation/contact_guards.py`, `simulation/contact_records.py` | Typed contact inputs/results, packed fleet state, observed control, physical wrench/RHS, geometric/load guards and balance/history recording |
-| `simulation/assembly.py`, `simulation/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
-| `simulation/burn_axis.py`, `simulation/finite_burn.py`, `simulation/detumbling.py`, `simulation/deorbit.py`, `simulation/lifecycle.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
-| `simulation/live_service.py` | Isolated service worker using the shared execution/completion pipeline; acknowledged progress and committed projections |
-| `visualization/studio_data.py`, `visualization/lifecycle_renderer.py`, `visualization/mission_studio.py`, `visualization/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
+| `core/dynamics/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
+| `core/dynamics/relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
+| `core/targets/nonlinear.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
+| `core/dynamics/inertial.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
+| `core/geometry/composite.py`, `simulation/completion/configuration/design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
+| `control/certification/nonlinear.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
+| `control/certification/attitude.py`, `simulation/nonlinear/safety/target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
+| `estimation/navigation/service.py` | `SensorSuite`, `SensorPacket`, `BoundedNavigationFilter`, `NavigationEstimate`: truth-side sampling versus prior/prediction/observation intersections, delayed packets and finite-history velocity bounds |
+| `estimation/navigation/noise.py` | `PhysicalSlotNoise`: versioned bounded common random field keyed to physical-time bins and sensor channels; acquisition scheduling remains owned by `SensorSuite` |
+| `estimation/membership/nonlinear.py`, `estimation/adaptation/nonlinear.py`, `estimation/adaptation/belief.py` | Nonlinear transition/observation membership, retained parameter sets and admissible nominal updates; unresolved parameter boxes are retained |
+| `simulation/nonlinear/profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
+| `simulation/nonlinear/planning.py`, `simulation/approach/planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
+| `control/tubes/specification.py`, `control/tubes/sample_hold.py`, `solvers/gekko/tube.py` | `DynamicTubeSpec`, sensed held-feedback bounds and `GekkoDynamicTube` nonlinear GEKKO/IPOPT formulation |
+| `solvers/gekko/iterations.py` | Native IPOPT final-summary iteration counts with log hashes and exit provenance; unavailable work remains unknown |
+| `control/fallback/fuel.py` | `FleetFuelBudget`: exact same-event, same-hardware remaining-fuel budget for finite successor selection; admission independently rechecks the debit and complete reserve |
+| `control/certification/reachability.py`, `control/certification/orbital.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
+| `control/fallback/refuge.py`, `control/fallback/fleet.py` | `RefugeController`, `FleetFallbackPlan`, `FleetAdmissionRuntime`: finite feedback authority, fleet/component geometry, successor admission and fuel accounting |
+| `simulation/nonlinear/safety/refuge.py`, `simulation/nonlinear/safety/planner.py` | Physical drift/occupied-pose adapters, exact polynomial retreat bounds, bounded blackout propagation, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
+| `control/actuation.py`, `control/tubes/sensed.py` | Declared actuator support/realization, exact sensed sliding-tube algebra, stage checks, feedback evaluation and physical tube witnesses |
+| `simulation/nonlinear/execution/coordinator.py`, `simulation/nonlinear/execution/contracts.py`, `simulation/approach/state.py` | `NonlinearDenseExecutor`: admission, physical commit and failure ordering; explicit execution outcomes and controller estimate state |
+| `simulation/nonlinear/execution/plant.py`, `simulation/nonlinear/execution/sensing.py` | `NonlinearFleetPlant` proposes numerical motion; `MissionSensorDelivery` owns acquisition and delayed packet queues |
+| `simulation/nonlinear/execution/bindings.py`, `simulation/nonlinear/execution/nominal.py` | `PerformanceStageBindings` checks planning sources; `NominalTubePropagator` owns certified nominal flow/cache and tube endpoint transfer |
+| `simulation/recording/journal.py` | `ExecutionJournal` publishes durable events and retains acknowledged completed holds; later recorder failures preserve that prefix |
+| `simulation/nonlinear/runner.py`, `simulation/nonlinear/records/recorder.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
+| `simulation/nonlinear/records/archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
+| `simulation/study/api.py`, `simulation/study/request.py`, `simulation/study/source.py`, `cli/run_nonlinear.py` | Guarded study entry, prospective request/declaration and coherent source/input freezing |
+| `simulation/study/execution.py`, `simulation/study/records.py`, `simulation/study/metrics.py` | `StudyArmExecution`, `StudyTelemetry`, atomic records and outcome metrics; setup, approach, completion and failure retention remain separate stages |
+| `simulation/completion/nonlinear/coordinator.py`, `simulation/completion/nonlinear/contracts.py` | Physical lifecycle composition, compatible imports and shared completion contracts/source identity |
+| `simulation/completion/nonlinear/boundary.py`, `simulation/completion/nonlinear/journal.py`, `simulation/completion/accounting/nonlinear.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
+| `simulation/completion/environment/point.py`, `simulation/completion/nonlinear/observers.py` | Physical environment and causal attitude/contact observations |
+| `simulation/approach/physical/attitude.py`, `simulation/contact/simulator.py`, `simulation/contact/capture.py` | Controlled chaser-attitude replay, finite-contact coordination, reach/contact gates and accepted assembly construction |
+| `simulation/contact/contracts.py`, `simulation/contact/dynamics/state.py`, `simulation/contact/control/controller.py`, `simulation/contact/dynamics/mechanics.py`, `simulation/contact/control/guards.py`, `simulation/contact/records.py` | Typed contact inputs/results, packed fleet state, observed control, physical wrench/RHS, geometric/load guards and balance/history recording |
+| `simulation/attached/assembly/model.py`, `simulation/attached/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
+| `simulation/attached/disposal/axis.py`, `simulation/attached/disposal/preview.py`, `simulation/attached/detumbling.py`, `simulation/attached/disposal/simulator.py`, `simulation/completion/lifecycle.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
+| `simulation/service/app.py` | Isolated service worker using the shared execution/completion pipeline; acknowledged progress and committed projections |
+| `visualization/data/studio.py`, `visualization/renderers/lifecycle.py`, `visualization/publishing/studio.py`, `visualization/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
 
 ## Changing one subsystem
 
 Change numerical integration in `nonlinear_plant.py`, sensor delivery in
-`nonlinear_sensing.py`, and tube equations in `control/sensed_tube.py`.
+`nonlinear_sensing.py`, and tube equations in `control/tubes/sensed.py`.
 Change contact forces in `contact_mechanics.py`, observed contact control in
 `contact_control.py`, and acceptance limits in `contact_guards.py`. Change
 arrival authentication, fuel arithmetic, and study reporting in their respective
 completion/study modules. The coordinators connect these parts and own stage
 ordering; they do not contain alternate implementations of their equations.
 
-Existing imports from `nonlinear_execution`, `nonlinear_completion`, `contact`
-and `nonlinear_study` remain available. The execution coordinator forwards its
-established packet, journal, sink and nominal-cache attributes to their owners,
+The public package interfaces expose the maintained mission services. Internal
+imports use the nested implementation owners. The execution coordinator forwards
+its established packet, journal, sink and nominal-cache attributes to their owners,
 so there is one queue/cache rather than copied state. Actuation and tube records
 bind the implementation file responsible for their mathematics; study manifests
 bind the complete Python source inventory. Contact and completion also expose
@@ -239,13 +260,13 @@ and completion interfaces; their names alone do not select the sensed model.
 
 | Module family | Retained scope |
 |---|---|
-| `simulation/adtmpc_mission.py`, `simulation/mission_scenario.py`, `simulation/coupled_execution.py`, `simulation/mission_recording.py` | Analytical runner/scenario, dense executor and recorder composition; existing Python/CLI APIs remain available |
-| `core/dynamics.py`, `core/orbital_parameters.py` | Analytical quadratic-drag relative coefficients and `OrbitalPlantTruth`; separate from nonlinear Cartesian/J2/vector-drag truth |
-| `core/target_geometry.py`, `core/rigid_body_target.py`, `core/attitude.py` | Prescribed or explicitly selected rigid target geometry/attitude, quaternion propagation and physical-time attitude conventions |
-| `estimation/interval_membership.py`, `estimation/prediction.py`, `estimation/smid.py`, `estimation/mission_adaptation.py` | Analytical-model interval contraction, numerical fitting and nominal-point policy |
-| `control/terminal_tracking.py`, `control/physical_terminal.py`, `control/rigid_body_terminal.py`, `control/componentwise_terminal.py`, `control/continuation.py` | Model-specific terminal/continuation derivations and stored admissible backups |
-| `simulation/arrival_policy.py`, `simulation/mission_transition.py`, `simulation/terminal_handoff.py`, `simulation/complete_mission.py` | Existing deadline/restart/terminal and physical-completion composition under its own contracts |
-| `planning/`, `core/target_spacecraft.py`, `core/chaser_spacecraft.py` | Supporting assignment/observation/deflection optimizers and standalone spacecraft APIs; time/frame conventions remain explicit |
+| `simulation/approach/api.py`, `simulation/approach/scenario.py`, `simulation/approach/execution.py`, `simulation/approach/records/recorder.py` | Analytical runner/scenario, dense executor and recorder composition; existing Python/CLI APIs remain available |
+| `core/dynamics/orbital.py`, `core/dynamics/parameters.py` | Analytical quadratic-drag relative coefficients and `OrbitalPlantTruth`; separate from nonlinear Cartesian/J2/vector-drag truth |
+| `core/targets/prescribed.py`, `core/targets/cylinder.py`, `core/dynamics/attitude.py` | Prescribed or explicitly selected rigid target geometry/attitude, quaternion propagation and physical-time attitude conventions |
+| `estimation/membership/interval.py`, `estimation/fitting/prediction.py`, `estimation/adaptation/smid.py`, `estimation/adaptation/mission.py` | Analytical-model interval contraction, numerical fitting and nominal-point policy |
+| `control/terminal/tracking.py`, `control/terminal/physical.py`, `control/terminal/body_jets.py`, `control/terminal/componentwise.py`, `control/fallback/continuation.py` | Model-specific terminal/continuation derivations and stored admissible backups |
+| `simulation/approach/arrival/policy.py`, `simulation/approach/arrival/transition.py`, `simulation/approach/terminal/handoff.py`, `simulation/completion/coordinator.py` | Existing deadline/restart/terminal and physical-completion composition under its own contracts |
+| `planning/`, `core/spacecraft/target.py`, `core/spacecraft/chaser.py` | Supporting assignment/observation/deflection optimizers and standalone spacecraft APIs; time/frame conventions remain explicit |
 
 `DynamicTubeSpec` and solver problem/result interfaces are shared where their
 model-version contracts permit. A checkpoint or migrated rendering record keeps

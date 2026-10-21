@@ -141,7 +141,9 @@ regulatory disposal approval are outside this simulation. Chaser attitude is a
 causal rotational replay; approach translation uses a declared force-servo
 error envelope. The model does not claim a coupled thruster-resolved flight test.
 
-Source lives in `scripts/`, installed as the `orbexa` package. Dynamics,
+Source lives in `scripts/`, installed as the `orbexa` package. Nested packages
+separate mission stages, physics, proof services, recording and presentation;
+the [architecture map](docs/architecture.md) identifies the owner of each part. Dynamics,
 estimation, control, solver backends, mission orchestration and rendering use
 separate interfaces. Generated evidence stays outside the checkout. Paper source
 and figures retain the user's layout in `paper/IEEE Aerospace Conference 2025/`;

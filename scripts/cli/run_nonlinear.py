@@ -25,7 +25,7 @@ def main(argv=None):
             if not path.is_dir():
                 raise ValueError('Missing explicit proof dependency directory')
             sys.path.insert(0, str(path))
-        from orbexa.simulation.nonlinear_study import StudyArmRequest, run_study_arm
+        from orbexa.simulation.study.api import StudyArmRequest, run_study_arm
         result = run_study_arm(StudyArmRequest(args.config, args.spacecraft, args.study, args.case,
             args.adaptation, args.bandwidth, args.output_dir, args.steps))
     except (OSError, ValueError, TypeError, RuntimeError) as error:

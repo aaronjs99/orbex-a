@@ -19,12 +19,12 @@ Mission planning, task allocation, and observation optimization.
 from importlib import import_module
 
 _EXPORTS = {
-    "TaskAllocationSystem": "orbexa.planning.task_allocation",
-    'CompositeAttachmentPlanner': 'orbexa.planning.attachment_routes',
-    'AttachmentRoute': 'orbexa.planning.attachment_routes',
-    'assign_composite_docking_targets': 'orbexa.planning.composite_assignment',
-    "target_deflect": "orbexa.planning.deflection",
-    "observe_optimizer": "orbexa.planning.observation",
+    "TaskAllocationSystem": 'orbexa.planning.coordination.allocation',
+    'CompositeAttachmentPlanner': 'orbexa.planning.rendezvous.routes',
+    'AttachmentRoute': 'orbexa.planning.rendezvous.routes',
+    'assign_composite_docking_targets': 'orbexa.planning.rendezvous.composite',
+    "target_deflect": 'orbexa.planning.objectives.deflection',
+    "observe_optimizer": 'orbexa.planning.objectives.observation',
 }
 __all__ = list(_EXPORTS)
 
