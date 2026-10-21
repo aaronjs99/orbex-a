@@ -34,6 +34,7 @@ LIVE_PROTOCOL_VERSION = 2
 ALLOWED_ORIGINS = frozenset((
     "http://localhost:8879", "http://127.0.0.1:8879",
     "http://localhost:8881", "http://127.0.0.1:8881",
+    "https://orbex-a.aaronjs.me",
     "https://orbex-a-mission-studio.aaronjs99.chatgpt.site",
 ))
 PARAMETER_LIMITS = dict(release_distance_m=(100., 1000.),

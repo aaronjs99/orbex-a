@@ -34,10 +34,11 @@ def _export_live_viewer(settings, root):
     index = MissionStudio(root).export([], live=True, theory_documents=documents)
     # Source Markdown links to published generated figures. Prefer local copies
     # when available, so a local export does not depend on the hosted release.
-    public = 'https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/'
+    public = 'https://orbex-a.aaronjs.me/theory/figures/'
+    previous_public = 'https://orbex-a-mission-studio.aaronjs99.chatgpt.site/theory/figures/'
     folder = (docs/'figures').resolve()
     for document in (root/'studio').glob('theory-*.html'):
-        text = document.read_text(encoding='utf-8')
+        text = document.read_text(encoding='utf-8').replace(previous_public, public)
         for name in set(re.findall(re.escape(public)+r'([A-Za-z0-9_.-]+\.(?:svg|png|json|jpg|webp))',text)):
             source = (folder/name).resolve()
             if source.is_file() and source.is_relative_to(folder):
