@@ -11,7 +11,7 @@
 # ***********************************************************/
 
 
-"""Original local Hungarian heuristic; its negative-cost behavior is retained."""
+"""Local Hungarian reassignment with Euclidean travel costs."""
 from __future__ import annotations
 
 import numpy as np
@@ -24,9 +24,7 @@ from orbexa.planning.coordination.allocation.contracts import AgentState, Networ
 @dataclass
 class LocalHungarianPolicy:
     """
-    Local neighbor-cluster Hungarian reassignment heuristic.
-
-    This mirrors your old "standard_auction_assignment" flavor, but as a policy.
+    Minimize total Euclidean travel within the current neighbor cluster.
     """
 
     def initialize(
@@ -39,7 +37,7 @@ class LocalHungarianPolicy:
         C = np.zeros((len(starts), len(goals)))
         for i, s in enumerate(starts):
             for j, g in enumerate(goals):
-                C[i, j] = -np.linalg.norm(np.asarray(s) - np.asarray(g))
+                C[i, j] = np.linalg.norm(np.asarray(s) - np.asarray(g))
         return C
 
     def step(
