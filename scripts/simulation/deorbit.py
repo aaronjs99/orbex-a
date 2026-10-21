@@ -19,6 +19,8 @@ from orbexa.core.attitude import finite_vector
 from orbexa.simulation.assembly import AttachedAssembly, AssemblyState, STANDARD_GRAVITY, positive
 from orbexa.simulation.propulsion import ThrusterSystem
 from orbexa.simulation.deorbit_entry import EntryInterfaceMonitor, radial_status
+from orbexa.simulation.burn_schedule import ApoapsisBurnWindow, supported_planning_state, bounded_hold_duration
+from orbexa.simulation.stage_recording import StageRecordRetainer
 
 
 def _rate_within(state, limit):
@@ -143,8 +145,10 @@ class DeorbitOptions:
     max_body_rate_rad_s: float = .1
     burn_force_n: Optional[float] = None
     coast_rtol: float = 1e-10
+    burn_window_half_angle_rad: Optional[float] = None
 
     def __post_init__(self):
+        ApoapsisBurnWindow(self.burn_window_half_angle_rad)
         for name, value in vars(self).items():
             if value is not None:
                 object.__setattr__(self, name, positive(value, name, allow_zero=name == "target_perigee_altitude_m"))
@@ -184,12 +188,12 @@ class DeorbitSimulator:
         return record
 
     def _coast(self, assembly, initial, duration, history, phase, *, stop_at_entry=True, propulsion=None, observer=None,
-               entry_monitor=None):
+               entry_monitor=None, record_retainer=None):
         if duration <= 1e-9:
             return initial, False, dict(relative_energy_drift=0., relative_angular_momentum_drift=0.)
         if initial.enclosure is not None:
             return self._carried_coast(assembly, initial, duration, history, phase,
-                stop_at_entry=stop_at_entry, propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
+                stop_at_entry=stop_at_entry, propulsion=propulsion, observer=observer, entry_monitor=entry_monitor, record_retainer=record_retainer)
         mass, _, inertia = assembly.mass_properties(initial.fuel_kg)
         values = np.r_[initial.position_eci_m, initial.velocity_eci_m_s, initial.quaternion_body_to_eci,
                        initial.angular_velocity_body_rad_s]
@@ -223,10 +227,11 @@ class DeorbitSimulator:
         return state, crossed, drift
 
     def _carried_coast(self, assembly, initial, duration, history, phase, *, stop_at_entry, propulsion, observer=None,
-                       entry_monitor=None):
+                       entry_monitor=None, record_retainer=None):
         """Zero-nozzle coasts retain the same admitted set and joint-load gates."""
         if propulsion is None:
             raise ValueError('A carried deorbit coast requires the actual installed propulsion declaration')
+        records = record_retainer or StageRecordRetainer()
         commands = np.zeros(len(propulsion.thrusters))
         zero, flow = np.zeros(3), np.zeros(len(assembly.elements))
         state, elapsed, crossed = initial, 0., False
@@ -261,20 +266,24 @@ class DeorbitSimulator:
             interface = monitor.interval(state, next_state, fuel_flow_kg_s=flow)
             crossed = bool(stop_at_entry and interface is not None)
             row = self._record(assembly, next_state, phase)
+            summary = dict(row)
             row['integration'] = integration
             row['whole_hold_attachment_loads'] = loads.as_dict()
             if measurement is not None:
                 row['observation_conditioning'] = measurement
             if interface is not None:
                 row['entry_interface_certificate'] = interface
-            history.append(row)
+            history.append(records.keep('coast_history', row, summary))
             state, elapsed = next_state, elapsed+hold
             if crossed:
                 break
         return conclude()
 
-    def run(self, assembly: AttachedAssembly, initial: AssemblyState, propulsion: ThrusterSystem, *, observer=None) -> DeorbitResult:
+    def run(self, assembly: AttachedAssembly, initial: AssemblyState, propulsion: ThrusterSystem, *, observer=None,
+            record_sink=None) -> DeorbitResult:
         options, state = self.options, initial
+        records = StageRecordRetainer(record_sink)
+        burn_window = ApoapsisBurnWindow(options.burn_window_half_angle_rad)
         observations = []
         feedback_state = state
         if initial.enclosure is not None:
@@ -297,6 +306,7 @@ class DeorbitSimulator:
                      environment=assembly_model['environment'],
                      environment_contract=assembly_model['environment_contract'],
                      initial_orbit=history[0]["orbit"])
+        audit['burn_window'] = burn_window.as_dict()
         thrust_delta_v, saturated_steps, max_balance = 0., 0, 0.
         force_residual, torque_residual, burn_time = 0., 0., 0.
 
@@ -313,7 +323,8 @@ class DeorbitSimulator:
                 integrated_thrust_delta_v_m_s=thrust_delta_v, saturated_steps=saturated_steps,
                 maximum_force_allocation_residual_n=force_residual, maximum_torque_allocation_residual_nm=torque_residual,
                 max_step_angular_balance_residual_kg_m2_s=max_balance, coast_invariant_audits=coasts)
-            audit.update(observer=None if observer is None else observer.as_dict(), observations=observations)
+            audit.update(observer=None if observer is None else observer.as_dict(), observations=observations,
+                accepted_record_storage=records.as_dict())
             return DeorbitResult(success, message, state, history, controls, audit)
 
         if not _rate_within(state, options.max_initial_rate_rad_s):
@@ -337,7 +348,7 @@ class DeorbitSimulator:
             period = 2 * np.pi * np.sqrt(initial_elements["semi_major_axis_m"]**3 / assembly.mu_m3_s2)
             audit["burn_cutoff_reason"] = "initial_orbit_intersects_entry_interface"
             state, crossed, drift = self._coast(assembly, state, options.max_coast_orbits * period,
-                history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
+                history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor, record_retainer=records)
             coasts.append(drift)
             if drift.get('refusal'):
                 return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])
@@ -368,13 +379,13 @@ class DeorbitSimulator:
         apo_time = state.time_s + time_to_apoapsis_s(feedback_state.position_eci_m, feedback_state.velocity_eci_m_s, assembly.mu_m3_s2)
         coast_duration = max(0., apo_time - state.time_s - options.alignment_lead_s)
         state, crossed, drift = self._coast(assembly, state, coast_duration, history, "coast_to_apoapsis",
-            propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
+            propulsion=propulsion, observer=observer, entry_monitor=entry_monitor, record_retainer=records)
         coasts.append(drift)
         if drift.get('refusal'):
             return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])
         if crossed:
             return finish(True, "descending_entry_interface_reached_during_coast")
-        alignment_start, burn_start = state.time_s, None
+        alignment_start, burn_start, burn_start_clock = state.time_s, None, None
         feedback_state = state
         if observer is not None:
             try:
@@ -384,6 +395,17 @@ class DeorbitSimulator:
                     exception_type=type(error).__name__, message=str(error))
                 return finish(False, 'deorbit_observation_refused: '+str(error))
             observations.append(measurement)
+        try:
+            planning_state = supported_planning_state(state, feedback_state)
+        except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
+            audit['refused_planning_support'] = dict(time_s=state.time_s, applied=False,
+                exception_type=type(error).__name__, message=str(error))
+            return finish(False, 'deorbit_planning_support_refused: '+str(error))
+        audit['burn_planning_support'] = dict(
+            method='sensed_center_with_unchanged_carried_physical_posterior',
+            physical_state_not_substituted=True, time_s=planning_state.time_s,
+            carried_state_enclosure=None if planning_state.enclosure is None else planning_state.enclosure.as_dict(),
+            observation_identity=None if not observations else observations[-1]['identity'])
         pointing_policy = self.pointing_policy
         axis = np.asarray(getattr(pointing_policy, 'thrust_axis_body', (1., 0., 0.)))
         plan = None
@@ -391,7 +413,7 @@ class DeorbitSimulator:
             if not callable(getattr(pointing_policy, 'with_thrust_axis', None)):
                 return finish(False, 'deorbit_pointing_policy_cannot_use_selected_axis')
             try:
-                plan = self.burn_axis_planner.select(assembly, feedback_state, propulsion, options.control_step_s)
+                plan = self.burn_axis_planner.select(assembly, planning_state, propulsion, options.control_step_s)
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit['refused_axis_plan'] = dict(time_s=state.time_s, applied=False,
                     exception_type=type(error).__name__, message=str(error))
@@ -408,7 +430,7 @@ class DeorbitSimulator:
             if plan is None or options.burn_force_n is not None:
                 return finish(False, 'deorbit_throttle_requires_coupled_axis_plan_without_force_override')
             try:
-                throttle = self.burn_throttle_planner.select(assembly, feedback_state, propulsion, plan, options)
+                throttle = self.burn_throttle_planner.select(assembly, planning_state, propulsion, plan, options)
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit['refused_throttle_plan'] = dict(time_s=state.time_s, applied=False,
                     exception_type=type(error).__name__, message=str(error))
@@ -432,6 +454,8 @@ class DeorbitSimulator:
                 observations.append(measurement)
             try:
                 torque, pointing, tracking_rate = pointing_policy.command(assembly, feedback_state)
+                window_request = burn_window.evaluate(feedback_state.position_eci_m,
+                    feedback_state.velocity_eci_m_s, assembly.mu_m3_s2)
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit['refused_control'] = dict(time_s=state.time_s, applied=False,
                     exception_type=type(error).__name__, message=str(error))
@@ -439,16 +463,27 @@ class DeorbitSimulator:
             aligned = pointing <= options.pointing_tolerance_rad and tracking_rate <= options.pointing_rate_tolerance_rad_s
             if burn_start is None and state.time_s >= apo_time and aligned:
                 burn_start = state.time_s
+                burn_start_clock = (state.enclosure.exact_time_s if state.enclosure is not None else Fraction(state.time_s))
                 audit["burn_start_time_s"] = burn_start
+                audit["burn_start_exact_time_s"] = str(burn_start_clock)
                 audit["burn_start_orbit"] = orbital_elements(state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2)
             if burn_start is None and state.time_s - alignment_start > options.max_alignment_s + max(0., apo_time - alignment_start):
                 return finish(False, "deorbit_pointing_alignment_timeout")
-            if burn_start is not None and state.time_s - burn_start > options.max_burn_s:
-                return finish(False, "deorbit_finite_burn_duration_limit")
             if not _rate_within(state, options.max_body_rate_rad_s):
                 return finish(False, "deorbit_body_rate_limit_exceeded")
             duration = options.control_step_s
-            fire = burn_start is not None and aligned
+            if burn_start_clock is not None:
+                current_clock = (state.enclosure.exact_time_s if state.enclosure is not None else Fraction(state.time_s))
+                remaining = Fraction(options.max_burn_s)-(current_clock-burn_start_clock)
+                duration = (bounded_hold_duration(duration, remaining) if state.enclosure is not None else
+                    bounded_hold_duration(duration, remaining, current_time_s=state.time_s,
+                        deadline_s=burn_start_clock+Fraction(options.max_burn_s)))
+                if duration <= 0:
+                    audit['burn_wall_budget'] = dict(exact_start_time_s=str(burn_start_clock),
+                        exact_current_time_s=str(current_clock), exact_remaining_s=str(remaining),
+                        proposed_hold_applied=False)
+                    return finish(False, 'deorbit_finite_burn_duration_limit')
+            fire = burn_start is not None and aligned and window_request['active']
             force = axis * (burn_force if fire else 0.)
             try:
                 allocation = propulsion.allocate(assembly, state, force, torque, duration)
@@ -547,10 +582,13 @@ class DeorbitSimulator:
             force_residual = max(force_residual, allocation.residual_force_n)
             torque_residual = max(torque_residual, allocation.residual_torque_nm)
             max_balance = max(max_balance, angular_audit["angular_momentum_balance_residual_kg_m2_s"])
-            controls.append(dict(time_s=state.time_s, duration_s=duration, phase="finite_burn" if fire else "thrust_alignment",
+            control_record = dict(time_s=state.time_s, duration_s=duration, phase="finite_burn" if fire else "thrust_alignment",
                 pointing_error_rad=pointing, pointing_rate_error_rad_s=tracking_rate,
+                burn_window=window_request, aligned=aligned,
                 requested_force_body_n=force.tolist(), requested_torque_body_nm=torque.tolist(),
-                allocation=allocation.to_dict(), integration=angular_audit))
+                allocation=allocation.to_dict(), integration=angular_audit)
+            control_summary = {key:control_record[key] for key in ('time_s','duration_s','phase')}
+            controls.append(control_record)
             state = next_state
             history.append(self._record(assembly, state, "finite_burn" if fire else "thrust_alignment"))
             if assembly.attachment_limits:
@@ -560,10 +598,13 @@ class DeorbitSimulator:
                     audit.setdefault('refused_holds', []).append(dict(time_s=state.time_s,
                         phase='accepted_endpoint_diagnostic', proposed_hold_applied=True,
                         exception_type=type(error).__name__, message=str(error)))
+                    controls[-1] = records.keep('controls', control_record, control_summary)
                     return finish(False, 'deorbit_endpoint_audit_refused: '+str(error))
                 angular_audit['attachment_load_endpoint'] = endpoint
                 if not endpoint['passed']:
+                    controls[-1] = records.keep('controls', control_record, control_summary)
                     return finish(False, 'deorbit_attachment_capacity_exceeded')
+            controls[-1] = records.keep('controls', control_record, control_summary)
             if (entry_reached and entry_monitor is None) or interface is not None:
                 audit["burn_cutoff_reason"] = "entry_interface_event_during_powered_phase"
                 audit["burn_cutoff_orbit"] = history[-1]["orbit"]
@@ -585,7 +626,7 @@ class DeorbitSimulator:
         axis = history[-1]["orbit"]["semi_major_axis_m"]
         period = 2 * np.pi * np.sqrt(axis**3 / assembly.mu_m3_s2)
         state, crossed, drift = self._coast(assembly, state, options.max_coast_orbits * period,
-            history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor)
+            history, "coast_to_entry_interface", propulsion=propulsion, observer=observer, entry_monitor=entry_monitor, record_retainer=records)
         coasts.append(drift)
         if drift.get('refusal'):
             return finish(False, 'deorbit_coast_not_proven: '+drift['refusal']['message'])

@@ -7,6 +7,7 @@ from scipy.integrate import solve_ivp
 
 from orbexa.simulation.assembly import positive
 from orbexa.simulation.deorbit import orbital_elements
+from orbexa.simulation.burn_schedule import ApoapsisBurnWindow
 from orbexa.core.attitude import finite_vector
 
 
@@ -44,11 +45,15 @@ class FiniteBurnThrottlePlanner:
         position = radius * radial
         velocity = orbit['specific_angular_momentum_m2_s'] / radius * np.cross(normal, radial)
         mass = assembly.mass_properties(state.fuel_kg)[0]
-        initial = np.r_[position, velocity, mass]
+        initial = np.r_[position, velocity, mass, 0.]
+        burn_window = ApoapsisBurnWindow(options.burn_window_half_angle_rad)
         direction = finite_vector(axis_plan.direction_body, 'Preview body axis', 3)
         if abs(np.linalg.norm(direction)-1.) > 1e-10:
             raise ValueError('Preview body axis must be a unit vector')
-        capacity = positive(axis_plan.capacity_n, 'Preview coupled force capacity')
+        installed_capacity = positive(axis_plan.capacity_n, 'Installed static coupled force capacity')
+        capacity = positive(axis_plan.commanded_force_n, 'Operational admitted burn force reference')
+        if capacity > installed_capacity:
+            raise ValueError('Operational burn reference exceeds the installed static capacity witness')
         target_radius = assembly.earth_radius_m + options.target_perigee_altitude_m
         entry_radius = assembly.earth_radius_m + options.entry_interface_altitude_m
         rows, accepted = [], []
@@ -73,7 +78,7 @@ class FiniteBurnThrottlePlanner:
             owner_times = [(1-self.fuel_reserve_fraction)*fuel/rate
                            for fuel, rate in zip(state.fuel_kg, flow) if rate > 0]
             fuel_duration = min(owner_times)
-            duration = min(options.max_burn_s, fuel_duration)
+            duration = options.max_burn_s
             row.update(owner_reserve_times_s=owner_times, maximum_preview_duration_s=duration)
             if duration <= 0:
                 continue
@@ -89,7 +94,9 @@ class FiniteBurnThrottlePlanner:
                 speed = np.linalg.norm(transverse)
                 if speed <= 0:
                     raise ValueError('Degenerate transverse direction in finite preview')
-                return np.r_[v, -assembly.mu_m3_s2*r/norm**3 - force/m*transverse/speed, -total_flow]
+                active = burn_window.evaluate(r,v,assembly.mu_m3_s2)['active']
+                return np.r_[v, -assembly.mu_m3_s2*r/norm**3 - (force/m*transverse/speed if active else np.zeros(3)),
+                    -total_flow if active else 0., 1. if active else 0.]
 
             def perigee_event(time, values):
                 return orbital_elements(values[:3],values[3:6],assembly.mu_m3_s2)['perigee_radius_m']-target_radius
@@ -97,14 +104,17 @@ class FiniteBurnThrottlePlanner:
             def entry_event(time, values):
                 return np.linalg.norm(values[:3])-entry_radius
 
+            def reserve_event(time, values):
+                return fuel_duration-values[7]
+            reserve_event.terminal, reserve_event.direction = True, -1
             perigee_event.terminal, perigee_event.direction = True, -1
             entry_event.terminal, entry_event.direction = True, -1
             try:
                 solution = solve_ivp(derivative, (0., duration), initial, method='DOP853',
-                    rtol=1e-9, atol=np.r_[np.full(3,1e-3),np.full(3,1e-6),1e-7],
-                    max_step=10., events=(perigee_event,entry_event))
+                    rtol=1e-9, atol=np.r_[np.full(3,1e-3),np.full(3,1e-6),1e-7,1e-7],
+                    max_step=10., events=(perigee_event,entry_event,reserve_event))
                 values = np.asarray(solution.y,dtype=float)
-                if (not solution.success or values.ndim != 2 or values.shape[0] != 7
+                if (not solution.success or values.ndim != 2 or values.shape[0] != 8
                         or values.shape[1] == 0 or not np.all(np.isfinite(values))):
                     row.update(status='PREVIEW_UNRESOLVED',reason=str(solution.message))
                     continue
@@ -114,19 +124,31 @@ class FiniteBurnThrottlePlanner:
                 row.update(status='PREVIEW_UNRESOLVED',error_type=type(error).__name__,reason=str(error))
                 continue
             elapsed = float(solution.t[-1])
+            active_time = float(final[7])
+            remaining = state.fuel_kg-flow*active_time
+            required_reserve = self.fuel_reserve_fraction*state.fuel_kg
+            if (not 0 <= active_time <= elapsed or active_time > fuel_duration
+                    or not np.all(np.isfinite(remaining)) or np.any(remaining < required_reserve)):
+                row.update(status='PREVIEW_UNRESOLVED',
+                    reason='Numerical active-time or owner-reserve postcondition not established',
+                    predicted_duration_s=elapsed, predicted_active_burn_s=active_time,
+                    predicted_remaining_owner_fuel_kg=remaining.tolist())
+                continue
             predicted_goal = len(solution.t_events[0]) > 0
             predicted_entry = len(solution.t_events[1]) > 0 and final_orbit['radial_velocity_m_s'] < 0
             row.update(status='PERIGEE_EVENT_PREDICTED' if predicted_goal else 'ENTRY_EVENT_PREDICTED' if predicted_entry else 'PREVIEW_FUEL_OR_CAP_BEFORE_GOAL',
-                predicted_duration_s=elapsed, predicted_fuel_used_kg=total_flow*elapsed,
-                predicted_remaining_owner_fuel_kg=(state.fuel_kg-flow*elapsed).tolist(),
+                predicted_duration_s=elapsed, predicted_active_burn_s=float(final[7]), predicted_fuel_used_kg=total_flow*float(final[7]),
+                predicted_remaining_owner_fuel_kg=(state.fuel_kg-flow*float(final[7])).tolist(),
                 predicted_final_orbit=final_orbit, predicted_final_state=final.tolist())
             if predicted_goal:
-                accepted.append((total_flow*elapsed, elapsed, len(rows)-1))
+                accepted.append((total_flow*float(final[7]), elapsed, len(rows)-1))
         index = min(accepted)[2] if accepted else None
-        return dict(status='FINITE_BURN_PREDICTED' if accepted else 'NO_ADMITTED_FINITE_BURN_PREVIEW',
+        return dict(burn_window=burn_window.as_dict(), installed_static_capacity_n=installed_capacity, operational_force_reference_n=capacity,
+                    fraction_reference='Each prospective throttle is a fraction of the operational requested wrench within the declared residual tolerance admitted at the planning state; installed LP capacity remains separate.',
+                    status='FINITE_BURN_PREDICTED' if accepted else 'NO_ADMITTED_FINITE_BURN_PREVIEW',
                     selected_candidate=index,
                     commanded_force_n=None if index is None else rows[index]['commanded_force_n'],
                     capacity_fraction=None if index is None else rows[index]['capacity_fraction'], candidates=rows,
                     prediction_start='Osculating apoapsis; this is a forecast, never an actual state reset',
                     predicted_initial_state=initial.tolist(),
-                    scope='Numerical two-body retrograde-transverse preview with changing total mass and static owner flows. Reserve is a planning margin, not a bound on omitted attitude, allocation or tank dynamics; actual mission gates decide success.')
+                    scope='Numerical two-body retrograde-transverse preview with an optional sensed-osculating-apogee request window, changing total mass and static owner flows. Reserve is a planning margin, not a bound on omitted attitude, allocation or tank dynamics; actual mission gates decide success.')

@@ -32,6 +32,8 @@ _COMPLETION_SOURCE_FILES = (
     'assembly_enclosure.py',
     'assembly_observation.py',
     'deorbit_entry.py',
+    'burn_schedule.py',
+    'stage_recording.py',
     'nonlinear_completion_contracts.py',
     'nonlinear_completion_environment.py',
     'nonlinear_environment_enclosure.py',

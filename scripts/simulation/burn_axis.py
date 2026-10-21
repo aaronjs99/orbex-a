@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Real
 import numpy as np
 from scipy.optimize import linprog
 
@@ -24,7 +25,7 @@ class AxialBurnPlan:
                     minimum_planned_fuel_flow_kg_s=self.minimum_planned_fuel_flow_kg_s,
                     capacity_commands_n=list(self.capacity_commands_n),
                     minimum_flow_commands_n=list(self.minimum_flow_commands_n), candidates=list(self.candidates),
-                    scope='Numerical static six-wrench capacity, minimum-flow and actual-allocator candidates at the recorded fuel load. Actual held allocation, fuel and orbital events remain authoritative.')
+                    scope='Installed static LP capacity retained separately from the operational requested wrench within the declared residual tolerance admitted by the allocator at the declared planning state. Finite force candidates and their full held proofs are recorded; later actual allocation, fuel and orbital events remain authoritative.')
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class AxialBurnPlanner:
     """
     command_fraction: float = .65
     residual_tolerance: float = 1e-7
+    force_backoff_scales: tuple[float, ...] = (1., .95, .9, .85, .8, .75, .5, .25, .125)
 
     def __post_init__(self):
         fraction = positive(self.command_fraction, 'Burn command fraction')
@@ -46,6 +48,14 @@ class AxialBurnPlanner:
             raise ValueError('Burn command fraction must leave actuator reserve')
         object.__setattr__(self, 'command_fraction', fraction)
         object.__setattr__(self, 'residual_tolerance', positive(self.residual_tolerance, 'Wrench witness residual tolerance'))
+        raw = tuple(self.force_backoff_scales)
+        if any(isinstance(value, (bool, np.bool_)) or not isinstance(value, Real) for value in raw):
+            raise ValueError('Burn force backoff scales must be finite real fractions')
+        scales = tuple(positive(value, 'Burn force backoff scale') for value in raw)
+        if (not 1 <= len(scales) <= 16 or scales[0] != 1.
+                or any(a <= b for a, b in zip(scales, scales[1:]))):
+            raise ValueError('Declare one to sixteen strictly decreasing positive burn force scales starting at one')
+        object.__setattr__(self, 'force_backoff_scales', scales)
 
     def select(self, assembly, state, propulsion, duration_s):
         duration = positive(duration_s, 'Planned allocation hold')
@@ -82,7 +92,29 @@ class AxialBurnPlanner:
                        capacity_commands_n=capacity.x[:-1].tolist())
             if force <= self.residual_tolerance or capacity_residual > self.residual_tolerance:
                 continue
-            commanded = self.command_fraction * force
+            # Installed nozzle authority is not a load-admitted burn request.
+            # Retain every finite proposal, then require the operational
+            # allocator to achieve one requested six-wrench within the declared residual tolerance while
+            # preserving its original whole-hold admission gates.
+            requested = self.command_fraction * force
+            attempts, allocation, commanded = [], None, None
+            for force_scale in self.force_backoff_scales:
+                proposed = requested*force_scale
+                candidate = propulsion.allocate(assembly, state, proposed*direction, np.zeros(3), duration)
+                attempts.append(dict(scale=force_scale, requested_force_n=proposed,
+                    allocation=candidate.to_dict(), physical_motion_committed=False))
+                actual = matrix@candidate.commands_n
+                residuals = (candidate.residual_force_n, candidate.residual_torque_nm,
+                    float(np.linalg.norm(actual[:3]-proposed*direction)), float(np.linalg.norm(actual[3:])))
+                if (not candidate.success or not np.all(np.isfinite(residuals))
+                        or min(residuals) < 0 or max(residuals) > self.residual_tolerance):
+                    continue
+                allocation, commanded = candidate, proposed
+                break
+            row.update(declared_force_backoff_scales=list(self.force_backoff_scales),
+                installed_fraction_requested_force_n=requested, force_candidates=attempts)
+            if allocation is None:
+                continue
             minimum = linprog(objective, A_ub=absolute_rows, b_ub=np.zeros(2*n),
                 A_eq=np.column_stack((matrix, np.zeros_like(matrix))), b_eq=commanded * wrench,
                 bounds=[*bounds, *((0., v) for v in limits)], method='highs')
@@ -99,12 +131,10 @@ class AxialBurnPlanner:
                        minimum_flow_commands_n=commands.tolist())
             if max(residual, command_excess, capacity_excess) > self.residual_tolerance or flow <= 0:
                 continue
-            allocation = propulsion.allocate(assembly, state, commanded * direction, np.zeros(3), duration)
             actual_flow = float(np.sum(allocation.fuel_flow_kg_s))
             row.update(actual_allocator=allocation.to_dict(), actual_fuel_flow_kg_s=actual_flow,
                        actual_flow_per_force_kg_s_n=actual_flow / commanded)
-            if (not allocation.success or not np.isfinite(actual_flow) or actual_flow <= 0
-                    or max(allocation.residual_force_n, allocation.residual_torque_nm) > self.residual_tolerance):
+            if not np.isfinite(actual_flow) or actual_flow <= 0:
                 continue
             row['accepted'] = True
             accepted.append((actual_flow / commanded, -force, len(candidates)-1, capacity.x[:-1], commands, flow))
@@ -113,5 +143,5 @@ class AxialBurnPlanner:
         _, negative_capacity, index, capacity_commands, minimum_commands, flow = min(accepted, key=lambda item:item[:3])
         row = candidates[index]
         return AxialBurnPlan(tuple(row['direction_body']), -negative_capacity,
-            self.command_fraction * -negative_capacity, flow,
+            row['commanded_force_n'], flow,
             tuple(map(float, capacity_commands)), tuple(map(float, minimum_commands)), tuple(candidates))
