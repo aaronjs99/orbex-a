@@ -14,11 +14,13 @@ from orbexa.core.dynamics.relative import NonlinearRelativeDynamics
 from orbexa.control.certification.reachability import IntervalBox, HeldInputRequest, ValidatedFlowEncloser
 from orbexa.control.certification.nonlinear import NonlinearFlowEncloser, FRAME
 from orbexa.control.tubes.model import boundary_layer_feedback
-from orbexa.control.fallback.fleet import FleetAdmissionRuntime, FleetFallbackPlan, PerformanceProposal, PerformanceAttempt
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
+from orbexa.control.fallback.plan import FleetFallbackPlan
+from orbexa.control.fallback.records import PerformanceProposal, PerformanceAttempt
 from orbexa.control.fallback.refuge import RefugeObservation
-from orbexa.estimation.navigation.service import midpoint, intersect
+from orbexa.estimation.navigation.boxes import midpoint, intersect
 from orbexa.estimation.membership.nonlinear import NonlinearTransitionObservation
-from orbexa.simulation.nonlinear.safety.refuge import BlackoutObservationPropagator
+from orbexa.simulation.nonlinear.execution.blackout import BlackoutObservationPropagator
 from orbexa.simulation.approach.safety import MissionSafety
 
 from orbexa.control.actuation import (CommandActuationSupport,CommandDependentActuationPrior,

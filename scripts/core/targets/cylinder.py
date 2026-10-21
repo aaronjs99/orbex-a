@@ -18,7 +18,7 @@ from orbexa.core.dynamics.attitude import body_rate_derivative, body_rates_to_eu
 from orbexa.core.targets.prescribed import TumblingCylinderTarget
 from orbexa.core.dynamics.rigid_motion import RigidBodyMotion
 from orbexa.core.dynamics.anomaly import orbital_radius_terms
-from orbexa.utils.math_utils import gen_skew_sym_mat
+from orbexa.utils.geometry.algebra import gen_skew_sym_mat
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig

@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize as opt
 
-from orbexa.utils import calc_global_occlusion_cost, calc_local_occlusion_cost
-from orbexa.planning.coordination.allocation import TaskAllocationSystem
+from orbexa.utils.geometry.occlusion import calc_global_occlusion_cost, calc_local_occlusion_cost
+from orbexa.planning.coordination.allocation.system import TaskAllocationSystem
 
 logger = logging.getLogger(__name__)
 

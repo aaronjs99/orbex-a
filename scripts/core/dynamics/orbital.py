@@ -29,7 +29,8 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Tuple, List, Dict, Any, Callable, Optional
 
-from orbexa.utils import discretize, gen_skew_sym_mat
+from orbexa.utils.discretization import discretize
+from orbexa.utils.geometry.algebra import gen_skew_sym_mat
 from orbexa.core.dynamics.anomaly import orbital_radius_terms
 
 

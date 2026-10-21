@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from types import SimpleNamespace
 import numpy as np
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
-from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
 
 
 def recorded_array(value) -> np.ndarray:

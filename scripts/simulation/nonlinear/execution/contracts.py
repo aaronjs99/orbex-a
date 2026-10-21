@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from orbexa.control.certification.reachability import IntervalBox
-from orbexa.estimation.navigation.service import midpoint
+from orbexa.estimation.navigation.boxes import midpoint
 from orbexa.simulation.approach.execution import ExecutionStep
 
 @dataclass(frozen=True)

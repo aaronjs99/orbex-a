@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from fractions import Fraction
 
-from orbexa.control.fallback.fleet import FleetAdmissionRuntime, FleetFallbackPlan, _same_plant, _require_policy_supports
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime, _require_policy_supports
+from orbexa.control.fallback.plan import FleetFallbackPlan
+from orbexa.control.fallback.common import _same_plant
 from orbexa.control.certification.reachability import IntervalBox, _exact
 from orbexa.control.fallback.refuge import fingerprint, exact_record
 
@@ -113,7 +115,7 @@ def prepare_fleet_replacement(runtime, candidate, *, hold_width):
     if any(runtime.remaining_fuel[key] < need for key, need in required):
         raise ValueError('Preparation snapshot cannot cover the complete replacement fuel reserve')
     # Freeze nested proof records into immutable tuples before publication.
-    from orbexa.control.fallback.fleet import _freeze
+    from orbexa.control.fallback.records import _freeze
     value = PreparedFleetReplacement(q, h, old.fingerprint, runtime.acceleration_disturbance,
         candidate, tuple((key, _freeze(record)) for key, record in entry), required, '')
     return replace(value, proof_identity=fingerprint(value._record()))

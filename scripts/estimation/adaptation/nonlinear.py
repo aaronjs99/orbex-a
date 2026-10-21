@@ -14,7 +14,8 @@ from orbexa.control.certification.reachability import IntervalBox, _ARB_LOCK
 from orbexa.control.certification.nonlinear import _Arithmetic
 from orbexa.core.dynamics.relative import dot
 from orbexa.core.dynamics.reference_frame import exact
-from orbexa.estimation.navigation.service import infer_target_ephemeris, intersect
+from orbexa.estimation.navigation.target_pose import infer_target_ephemeris
+from orbexa.estimation.navigation.boxes import intersect
 from orbexa.estimation.membership.nonlinear import NonlinearMembershipContractor
 
 

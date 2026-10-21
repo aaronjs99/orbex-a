@@ -26,7 +26,7 @@ from orbexa.utils.solver_options import gekko_memory_exponent
 logger = logging.getLogger(__name__)
 
 from gekko import GEKKO
-from orbexa.utils import thread_worker
+from orbexa.utils.runtime import thread_worker
 
 def gen_adaptor_data(
     range_params: Dict,

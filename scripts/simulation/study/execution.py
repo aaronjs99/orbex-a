@@ -49,9 +49,9 @@ class StudyArmExecution:
         import numpy as np
         from orbexa.control.certification.reachability import IntervalBox
         from orbexa.core.configuration.model import SimulationConfig
-        from orbexa.estimation.navigation.service import StudySensorProfile
+        from orbexa.estimation.navigation.records import StudySensorProfile
         from orbexa.simulation.completion.coordinator import CompleteMissionOptions, CompleteMissionStore
-        from orbexa.simulation.service.app import _native_controller
+        from orbexa.simulation.recording.native import native_controller as _native_controller
         from orbexa.simulation.approach.records.results import MissionResultStore
         from orbexa.simulation.nonlinear.records.archive import NonlinearProofArchive
         from orbexa.simulation.completion.nonlinear.coordinator import NonlinearTranslationAccountant, complete_nonlinear_mission

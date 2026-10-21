@@ -68,7 +68,7 @@ def get_solver_from_config(config_path=None) -> SolverBase:
     Returns:
         Configured solver instance
     """
-    from orbexa.utils import load_config
+    from orbexa.utils.io.configuration import load_config
 
     config = load_config(config_path)
     solver_config = config.get("solver", {})

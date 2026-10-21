@@ -11,7 +11,9 @@ import shutil
 import sys
 import threading
 
-from orbexa.simulation.service.app import LiveServiceSettings, LiveSimulationService, make_server, LIVE_SERVICE
+from orbexa.simulation.service.contracts import LiveServiceSettings, LIVE_SERVICE
+from orbexa.simulation.service.session import LiveSimulationService
+from orbexa.simulation.service.http import make_server
 
 
 THEORY_DOCUMENTS = (

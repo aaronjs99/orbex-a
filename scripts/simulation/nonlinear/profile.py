@@ -14,7 +14,7 @@ import numpy as np
 from orbexa.core.dynamics.reference_frame import ReferenceClockFrame, fingerprint
 from orbexa.core.dynamics.relative import NonlinearModelBounds, ExponentialAtmosphere
 from orbexa.estimation.adaptation.belief import ParameterBelief
-from orbexa.estimation.navigation.service import StudySensorProfile
+from orbexa.estimation.navigation.records import StudySensorProfile
 from orbexa.simulation.completion.configuration.design import SpacecraftMissionDesign
 from orbexa.simulation.approach.deployment.component import CompositeDeploymentOptions, CompositePatchDeployment
 from orbexa.simulation.approach.safety import MissionSafety

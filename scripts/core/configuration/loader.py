@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 import numpy as np
 from orbexa.layout import default_config_path
-from orbexa.utils.io_utils import load_config
+from orbexa.utils.io.configuration import load_config
 from orbexa.core.configuration.types import OrbitConfig, MPCConfig, TargetConfig, TubeMPCConfig, MissionPolicyConfig, AdaptationConfig, SolverConfig, _as_square_weight_matrix
 
 logger = logging.getLogger(__name__)

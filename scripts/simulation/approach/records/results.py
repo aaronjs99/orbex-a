@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from orbexa.contracts import MISSION_RESULT_SCHEMA
-from orbexa.utils.io_utils import load_data, save_data
+from orbexa.utils.io.data import load_data, save_data
 
 
 @dataclass

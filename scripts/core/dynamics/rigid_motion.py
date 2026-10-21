@@ -10,7 +10,7 @@ from scipy.integrate import solve_ivp
 from scipy.spatial.transform import Rotation
 from orbexa.core.dynamics.attitude import body_rate_derivative, body_rates_to_euler_rates, finite_vector, inertia_matrix, quaternion_to_euler
 from orbexa.core.dynamics.anomaly import orbital_radius_terms
-from orbexa.utils.math_utils import gen_skew_sym_mat
+from orbexa.utils.geometry.algebra import gen_skew_sym_mat
 
 
 class RigidBodyMotion:

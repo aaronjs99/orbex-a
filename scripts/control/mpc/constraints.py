@@ -20,7 +20,7 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
-from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
 
 
 @dataclass(frozen=True)

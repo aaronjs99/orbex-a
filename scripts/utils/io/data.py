@@ -10,92 +10,20 @@
 # *                                                         *
 # ***********************************************************/
 
+"""Atomic JSON persistence, data conversion and result-folder naming."""
+
 import os
-import sys
 import json
 import yaml
 import shutil
 import datetime
-import time
 import logging
 import tempfile
 from pathlib import Path
-from typing import Optional, Sequence, Union, Any, Tuple
-from queue import Queue
+from typing import Optional, Sequence, Union, Any
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
-# Try to import keyboard safely
-try:
-    import keyboard
-except ImportError:
-    keyboard = None
-
-
-def load_config(path=None):
-    """
-    Load a YAML configuration file.
-
-    Args:
-        path (str, optional): YAML path, or the relocated checkout's default scenario.
-
-    Returns:
-        dict: Parsed configuration dictionary.
-    """
-    if path is None:
-        from orbexa.layout import default_config_path
-        path = default_config_path()
-    with open(Path(path), "r", encoding="utf-8") as file:
-        return yaml.safe_load(file)
-
-
-def is_key_pressed(key: str) -> bool:
-    """
-    Check if a specific keyboard key is currently pressed.
-    Safe to use even if keyboard module is missing or headless.
-
-    Args:
-        key (str): Key name (e.g., 'q', 'space').
-
-    Returns:
-        bool: True if the key is pressed, False otherwise.
-    """
-    if keyboard is None:
-        return False
-    try:
-        return keyboard.is_pressed(key)
-    except Exception:
-        return False
-
-
-def thread_worker(result_queue: Queue, func, *args, **kwargs):
-    """
-    Run a function in a thread and store the result in a queue.
-    Catches exceptions and returns (success_bool, result_or_error).
-
-    Args:
-        result_queue (Queue): A queue to store the result.
-        func (callable): Function to execute.
-        *args: Positional arguments to pass to the function.
-        **kwargs: Keyword arguments to pass to the function.
-    """
-    try:
-        result = func(*args, **kwargs)
-        result_queue.put((True, result))
-    except Exception as e:
-        result_queue.put((False, e))
-
-
-def stream_printer(text):
-    """
-    Write text to stdout immediately.
-
-    Args:
-        text (str): Text to print.
-    """
-    sys.stdout.write(text)
-    sys.stdout.flush()
+logger = logging.getLogger("orbexa.utils.io_utils")
 
 
 def get_next_test_folder(base_dir="./results/tests") -> Path:
@@ -114,7 +42,6 @@ def get_next_test_folder(base_dir="./results/tests") -> Path:
     numbers = sorted(int(d[1:]) for d in existing if d[1:].isdigit())
     next_id = (numbers[-1] + 1) if numbers else 1
     return base / f"t{next_id:02d}"
-
 
 def save_test_result(
     properties: dict, files_to_copy=None, base_dir="./results/tests"
@@ -144,7 +71,6 @@ def save_test_result(
 
     logger.info(f"[✓] Saved test result to: {target_folder}")
     return str(target_folder)
-
 
 def save_data(filename: Union[str, Path], data: Any) -> bool:
     """
@@ -184,8 +110,6 @@ def save_data(filename: Union[str, Path], data: Any) -> bool:
             except OSError:
                 logger.warning("Could not remove incomplete save %s", temporary)
 
-
-
 def load_data(filename: Union[str, Path]) -> Any:
     """
     Load data from a JSON file.
@@ -198,7 +122,6 @@ def load_data(filename: Union[str, Path]) -> Any:
     """
     with open(filename, "r", encoding="utf-8") as f:
         return json.load(f)
-
 
 def latest_data_file(
     folder: Union[str, Path], suffixes: Optional[Sequence[str]] = None
@@ -231,7 +154,6 @@ def latest_data_file(
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     return str(latest)
 
-
 def convert_numpy_to_list(obj: Any) -> Any:
     """
     Recursively convert numpy arrays/scalars in data to native Python types.
@@ -251,7 +173,6 @@ def convert_numpy_to_list(obj: Any) -> Any:
     if isinstance(obj, np.generic):
         return obj.item()
     return obj
-
 
 def create_filename(folder: Union[str, Path], suffix: str) -> str:
     """

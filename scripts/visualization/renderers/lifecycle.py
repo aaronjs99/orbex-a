@@ -7,7 +7,7 @@ import hashlib
 import json
 import numpy as np
 
-from orbexa.utils.io_utils import convert_numpy_to_list
+from orbexa.utils.io.data import convert_numpy_to_list
 
 
 def _rotation(quaternion):

@@ -16,7 +16,7 @@ from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
 from orbexa.control.certification.reachability import HeldInputRequest, IntervalBox
 from orbexa.core.dynamics.relative import NonlinearModelBounds
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.estimation.navigation.service import intersect
+from orbexa.estimation.navigation.boxes import intersect
 from orbexa.estimation.membership.nonlinear import NonlinearMembershipContractor, NonlinearMembershipResult, NonlinearTransitionObservation
 
 METHOD = 'linked-affine-window-v1'

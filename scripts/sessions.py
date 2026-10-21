@@ -133,7 +133,7 @@ class MissionSession:
         self.data_dir.mkdir(parents=True, exist_ok=False)
 
     def publish(self) -> None:
-        from orbexa.utils.io_utils import save_data
+        from orbexa.utils.io.data import save_data
 
         for root in (self.output_root, self.data_root):
             self._check_reference(root)

@@ -10,7 +10,7 @@ from orbexa.core.dynamics.reference_frame import exact, fingerprint
 from orbexa.control.certification.reachability import IntervalBox, OrbitalModelBounds
 from orbexa.control.certification.orbital import OrbitalHoldContext, OrbitalHoldRequest, OrbitalHoldProofService
 from orbexa.control.tubes.sensed import _upper, _outward_tube_endpoint, measurement_radius
-from orbexa.estimation.navigation.service import midpoint
+from orbexa.estimation.navigation.boxes import midpoint
 
 
 class NominalTubePropagator:

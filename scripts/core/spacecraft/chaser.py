@@ -215,7 +215,7 @@ class Chaser(Spacecraft):
 
     def calculate_goals(self):
         from scipy import optimize as opt
-        from orbexa.utils.math_utils import calc_global_occlusion_cost
+        from orbexa.utils.geometry.occlusion import calc_global_occlusion_cost
 
         if self.goal_bounds is None:
             raise ValueError("Standalone goal allocation requires explicit mpc.goal_bounds; docking missions use target geometry")

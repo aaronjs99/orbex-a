@@ -11,7 +11,7 @@ from orbexa.contracts import PHYSICAL_MODEL_ID, COUPLED_CONTROLLER_ID
 from orbexa.layout import PACKAGE_ROOT, project_root
 from orbexa.sessions import MissionSession
 from orbexa.simulation.approach.records.results import load_adtmpc_mission_result
-from orbexa.utils.io_utils import save_data
+from orbexa.utils.io.data import save_data
 from orbexa.visualization.workflow.config import DemoConfig
 from orbexa.visualization.data.manifest import ADTMPCMissionManifest
 from orbexa.visualization.publishing.catalog import MissionCatalog, require_current_result

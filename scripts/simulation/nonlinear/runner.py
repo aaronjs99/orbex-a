@@ -15,13 +15,14 @@ import numpy as np
 from orbexa.control.certification.attitude import AttitudeFlowEncloser
 from orbexa.control.tubes.specification import ProspectiveContactConstraint
 from orbexa.control.terminal.contact import ContactReferenceKinematics, ContactReachPolicy, contact_goal_speed_bound
-from orbexa.control.fallback.fleet import PerformanceAttempt
+from orbexa.control.fallback.records import PerformanceAttempt
 from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
 from orbexa.control.certification.reachability import IntervalBox, ReachabilityConfig
 from orbexa.control.fallback.refuge import fingerprint as source_fingerprint
 from orbexa.core.targets.nonlinear import NonlinearTargetPreview, NonlinearTargetTruth
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.estimation.navigation.service import BoundedNavigationFilter, SensorSuite
+from orbexa.estimation.navigation.filter import BoundedNavigationFilter
+from orbexa.estimation.navigation.sensors import SensorSuite
 from orbexa.estimation.adaptation.nonlinear import NonlinearMissionAdaptation
 from orbexa.simulation.approach.planning import PlanningStep
 from orbexa.simulation.approach.state import CoupledMissionState

@@ -16,7 +16,8 @@ import json
 import weakref
 
 from orbexa.control.fallback import refuge
-from orbexa.control.fallback.fleet import FleetAdmissionRuntime, HeldFleetDecision
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
+from orbexa.control.fallback.records import HeldFleetDecision
 from orbexa.control.certification.reachability import IntervalBox
 
 _EXACT_RECORD = refuge.exact_record

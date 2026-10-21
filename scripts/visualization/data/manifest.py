@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
-from orbexa.utils.io_utils import save_data
+from orbexa.utils.io.data import save_data
 
 _CORE_ARTIFACTS = (
     "trajectory.html", "diagnostics.html", "tube_trajectory.html",

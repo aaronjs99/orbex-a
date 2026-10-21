@@ -10,7 +10,7 @@ from orbexa.simulation.contact.capture import CaptureModel, CaptureResult
 from orbexa.simulation.attached.detumbling import DetumblingResult, DetumblingSimulator
 from orbexa.simulation.attached.disposal.simulator import DeorbitResult, DeorbitSimulator
 from orbexa.simulation.attached.propulsion import ThrusterSystem
-from orbexa.utils.io_utils import load_data, save_data
+from orbexa.utils.io.data import load_data, save_data
 
 LIFECYCLE_SCHEMA = "orbexa.physical-mission-lifecycle.v1"
 

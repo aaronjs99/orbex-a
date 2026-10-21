@@ -28,25 +28,25 @@ from orbexa.simulation.contact.dynamics.state import ContactActuation, ContactBo
 
 
 _CONTACT_SOURCE_FILES = (
-                            'simulation/contact/simulator.py',
-                            'simulation/contact/contracts.py',
-                            'simulation/contact/control/controller.py',
-                            'simulation/contact/control/guards.py',
-                            'simulation/contact/dynamics/mechanics.py',
-                            'simulation/contact/records.py',
-                            'simulation/contact/dynamics/state.py',
-                            'simulation/contact/enclosure.py',
-                            'simulation/numerics/rigid_interval.py',
-                            'simulation/contact/boundary.py',
-                            'simulation/contact/sensing/observation.py',
-                            'simulation/contact/lock/transition.py',
-                            'simulation/contact/lock/chart.py',
-                            'simulation/contact/dynamics/rotation.py',
-                            'simulation/contact/dynamics/strain.py',
-                            'simulation/contact/sensing/strain_observation.py',
-                            'simulation/contact/dynamics/wrench.py',
-                            'layout.py',
-                        )
+    'simulation/contact/simulator.py',
+    'simulation/contact/contracts.py',
+    'simulation/contact/control/controller.py',
+    'simulation/contact/control/guards.py',
+    'simulation/contact/dynamics/mechanics.py',
+    'simulation/contact/records.py',
+    'simulation/contact/dynamics/state.py',
+    'simulation/contact/enclosure.py',
+    'simulation/numerics/rigid_interval.py',
+    'simulation/contact/boundary.py',
+    'simulation/contact/sensing/observation.py',
+    'simulation/contact/lock/transition.py',
+    'simulation/contact/lock/chart.py',
+    'simulation/contact/dynamics/rotation.py',
+    'simulation/contact/dynamics/strain.py',
+    'simulation/contact/sensing/strain_observation.py',
+    'simulation/contact/dynamics/wrench.py',
+    'layout.py',
+)
 
 
 def finite_contact_source_identity():

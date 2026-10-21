@@ -24,10 +24,10 @@ from orbexa.simulation.numerics.rigid_interval import cross as _cross, add as _a
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _SOURCE_FILES = {name: hashlib.sha256((PACKAGE_ROOT/name).read_bytes()).hexdigest()
     for name in (
-                    'simulation/attached/loads.py',
-                    'simulation/numerics/rigid_interval.py',
-                    'layout.py',
-                )}
+        'simulation/attached/loads.py',
+        'simulation/numerics/rigid_interval.py',
+        'layout.py',
+    )}
 
 
 @dataclass(frozen=True)

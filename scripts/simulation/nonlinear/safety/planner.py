@@ -7,13 +7,25 @@ from types import MappingProxyType
 import numpy as np
 
 from orbexa.control.certification.attitude import AttitudeFlowEncloser, _SOURCE_SHA256 as ATTITUDE_SOURCE_SHA256
-from orbexa.control.fallback.fleet import FleetGeometryOracle, FleetAdmissionRuntime
+from orbexa.control.fallback.geometry import FleetGeometryOracle
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 from orbexa.control.fallback.fuel import FleetFuelBudget
 from orbexa.control.fallback.refuge import ControlContext, RefugeObservation
 from orbexa.control.certification.reachability import IntervalBox, HeldInputRequest, FlowCertificate, SweptCollisionGuard, EnclosureStatus
 from orbexa.control.certification.nonlinear import TargetEphemerisCertificate, _SOURCE_SHA256 as TARGET_SOURCE_SHA256
 from orbexa.core.dynamics.reference_frame import exact
-from orbexa.simulation.nonlinear.safety.refuge import C2RefugeReference, NonlinearZeroDriftBounds, StudyPropulsionBounds, CompositeOccupiedBoundsProvider, AnyProperTargetPose, AttitudePoseBoundsProvider, construct_refuge_plan, construct_patch_refuge_candidates, ZERO_NOMINAL_ID
+from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference
+from orbexa.simulation.nonlinear.safety.drift import NonlinearZeroDriftBounds, ZERO_NOMINAL_ID
+from orbexa.simulation.nonlinear.safety.resources import StudyPropulsionBounds
+from orbexa.simulation.nonlinear.safety.geometry import (
+    CompositeOccupiedBoundsProvider,
+    AnyProperTargetPose,
+    AttitudePoseBoundsProvider,
+)
+from orbexa.simulation.nonlinear.safety.candidates import (
+    construct_refuge_plan,
+    construct_patch_refuge_candidates,
+)
 from orbexa.simulation.nonlinear.safety.braking import coordinated_braking_references
 from orbexa.simulation.nonlinear.safety.contingency import AccelerationContingencyOptions, acceleration_contingency_references
 from orbexa.simulation.nonlinear.safety.providers import FixedProofProvider
@@ -375,7 +387,7 @@ class NonlinearSafetyPlanner:
                     archived_witness_id=identity if certificate_sink is not None else None)
 
     def _check_sensing_prior(self,estimate):
-        from orbexa.estimation.navigation.service import NavigationEstimate
+        from orbexa.estimation.navigation.records import NavigationEstimate
         if (not isinstance(estimate,NavigationEstimate) or estimate.status!='VALID'
                 or estimate.model_fingerprint!=self.model.fingerprint
                 or estimate.clock_fingerprint!=self.clock.fingerprint

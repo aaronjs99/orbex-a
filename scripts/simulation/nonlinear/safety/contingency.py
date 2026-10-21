@@ -12,7 +12,7 @@ from typing import Mapping, Sequence
 from orbexa.control.certification.reachability import _exact
 from orbexa.control.fallback.refuge import _vec
 from orbexa.simulation.nonlinear.safety.braking import coordinated_braking_references
-from orbexa.simulation.nonlinear.safety.refuge import C2RefugeReference, PolynomialReferencePiece
+from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference, PolynomialReferencePiece
 
 
 @dataclass(frozen=True)

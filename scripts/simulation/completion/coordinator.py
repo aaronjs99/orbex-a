@@ -22,7 +22,7 @@ from orbexa.simulation.approach.physical.attitude import ChaserAttitudeResult, C
 from orbexa.simulation.completion.lifecycle import MissionLifecycle, MissionLifecycleResult, MissionLifecycleStore
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult, MissionResultStore
 from orbexa.simulation.attached.propulsion import ThrusterSystem
-from orbexa.utils.io_utils import save_data
+from orbexa.utils.io.data import save_data
 
 if TYPE_CHECKING:
     from orbexa.simulation.approach.terminal.handoff import PhysicalTerminalHandoff

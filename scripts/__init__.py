@@ -54,14 +54,14 @@ _MODEL_EXPORTS = {
 # =============================================================================
 def load_config(path=None):
     """Load configuration from YAML file."""
-    from orbexa.utils import load_config as _load_config
+    from orbexa.utils.io.configuration import load_config as _load_config
 
     return _load_config(path)
 
 
 def discretize(A, B, dt):
     """Discretize continuous-time system."""
-    from orbexa.utils import discretize as _discretize
+    from orbexa.utils.discretization import discretize as _discretize
 
     return _discretize(A, B, dt)
 

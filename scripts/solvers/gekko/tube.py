@@ -22,7 +22,7 @@ from orbexa.control.terminal.region import TerminalRegion
 from orbexa.control.tubes.specification import ProspectiveContactConstraint
 from orbexa.control.terminal.contact import _norm_upper, _outward
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.utils.math_utils import tait_bryan_to_rotation_matrix
+from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
 from orbexa.utils.solver_options import gekko_memory_exponent, composite_geometry_mode
 
 
