@@ -1,4 +1,4 @@
-data/
+/data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -78,7 +78,7 @@ logs/
 *.log
 
 # Generated records and results
-results/
+/results/
 *.npz
 *.json
 !config/nonlinear-study.json
