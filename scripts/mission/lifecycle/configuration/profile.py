@@ -1,8 +1,10 @@
-"""Explicit contact, detumbling and disposal settings for any target design.
+"""profile.py: Explicit contact, detumbling and disposal settings for any target design.
 
 Vehicle mass, geometry and propulsion remain in ``SpacecraftMissionDesign``.
 This profile configures stage timing, contact mechanics and disposal goals.
 The existing stage constructors validate their own physical relationships.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

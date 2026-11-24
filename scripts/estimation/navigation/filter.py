@@ -1,4 +1,7 @@
-"""Bounded navigation consuming declared priors, proved flow and packets."""
+"""filter.py: Bounded navigation consuming declared priors, proved flow and packets.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

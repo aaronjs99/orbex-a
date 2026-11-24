@@ -1,4 +1,7 @@
-"""Freeze coherent study source, explicit inputs, and runtime identities."""
+"""source.py: Freeze coherent study source, explicit inputs, and runtime identities.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

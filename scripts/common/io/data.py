@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Atomic JSON persistence, data conversion and result-folder naming."""
+"""data.py: Atomic JSON persistence, data conversion and result-folder naming.
+
+Copyright: Aaron John Sabu
+"""
 
 import json
 import logging

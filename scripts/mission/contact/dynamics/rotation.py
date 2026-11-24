@@ -1,8 +1,10 @@
-"""Measured SO(3) supports retained alongside contact quaternion coordinates.
+"""rotation.py: Measured SO(3) supports retained alongside contact quaternion coordinates.
 
 The matrix entries are redundant interval states with Rdot=R[omega]. They
 preserve the exact physical orientation and its sensor support without
 repeatedly losing that support through independent quaternion components.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

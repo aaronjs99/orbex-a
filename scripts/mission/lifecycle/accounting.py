@@ -1,4 +1,7 @@
-"""Conservative physical resource accounting from authenticated nonlinear holds."""
+"""accounting.py: Conservative physical resource accounting from authenticated nonlinear holds.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

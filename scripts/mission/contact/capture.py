@@ -1,9 +1,11 @@
-"""Qualified approach admission followed by finite compliant physical capture.
+"""capture.py: Qualified approach admission followed by finite compliant physical capture.
 
 Approach translation alone does not validate chaser attitude or finite bus
 geometry. Both missing pieces require explicit caller assumptions. The
 reference-point offset relocates a *declared reference*, never an existing
 center of mass; using it with a COM trajectory would be invalid.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

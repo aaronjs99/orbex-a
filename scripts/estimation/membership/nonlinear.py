@@ -1,7 +1,9 @@
-"""Conservative candidate-box membership for the declared nonlinear model.
+"""nonlinear.py: Conservative candidate-box membership for the declared nonlinear model.
 
 Only proven transition/observation disjointness removes a candidate physical
 parameter box. Failed inclusions and exhausted budgets retain unknown boxes.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

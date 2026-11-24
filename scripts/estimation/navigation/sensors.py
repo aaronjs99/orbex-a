@@ -1,4 +1,7 @@
-"""Truth-side bounded sensor sampling with versioned draw ordering."""
+"""sensors.py: Truth-side bounded sensor sampling with versioned draw ordering.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Mission history and diagnostic recording, separate from solver execution."""
+"""arrays.py: Mission history and diagnostic recording, separate from solver execution.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

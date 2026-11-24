@@ -1,9 +1,11 @@
-"""Apoapsis finite-burn deorbit, terminating at a declared entry interface.
+"""simulator.py: Apoapsis finite-burn deorbit, terminating at a declared entry interface.
 
 This propagates central-gravity ECI motion, the assembly's configured extra
 environment, and the same fueled rigid body used for detumbling.
 Entry-interface crossing is a handoff to an atmospheric entry model;
 breakup, demise, thermal protection and ground impact are outside this model.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

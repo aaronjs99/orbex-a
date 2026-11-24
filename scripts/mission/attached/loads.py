@@ -1,9 +1,11 @@
-"""Whole-held-step Newton--Euler bounds for a declared rigid attached assembly.
+"""loads.py: Whole-held-step Newton--Euler bounds for a declared rigid attached assembly.
 
 The enclosure concerns the exact underlying rigid-body ODE and its specified
 fuel-depletion/COM-coordinate jumps. It does not validate an RK4 trajectory or
 turn an approximate previous endpoint into a certified initial set. Extra
 environment callbacks require their own interval model and are refused here.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

@@ -10,11 +10,12 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-ORBEX-A Solvers Module
+"""solvers/__init__.py: ORBEX-A Solvers Module
 
 Modular MPC solver backends with unified interface.
 Supports GEKKO, CasADi, and SciPy.
+
+Copyright: Aaron John Sabu
 """
 
 from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult

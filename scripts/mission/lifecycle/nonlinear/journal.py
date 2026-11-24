@@ -1,7 +1,9 @@
-"""Bind and authenticate the complete saved nonlinear hold journal.
+"""journal.py: Bind and authenticate the complete saved nonlinear hold journal.
 
 Authentication yields one hold at a time so resource checks remain interleaved
 with journal checks in their original execution order.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

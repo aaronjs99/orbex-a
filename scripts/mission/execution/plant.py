@@ -1,7 +1,9 @@
-"""Numerical truth propagation, separate from admission and navigation.
+"""plant.py: Numerical truth propagation, separate from admission and navigation.
 
 A proposal has no committed time/state effects. The executor commits only after
 all admitted numerical trajectories have been computed. Clearance is diagnostic.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

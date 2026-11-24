@@ -1,4 +1,7 @@
-"""Complete occupied geometry from declared target pose enclosures."""
+"""geometry.py: Complete occupied geometry from declared target pose enclosures.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

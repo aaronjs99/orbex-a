@@ -1,4 +1,7 @@
-"""Study propulsion envelopes for finite refuge commands."""
+"""resources.py: Study propulsion envelopes for finite refuge commands.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

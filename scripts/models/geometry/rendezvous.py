@@ -1,4 +1,7 @@
-"""Explicit bus-patch matching; finite-body route policies live separately."""
+"""rendezvous.py: Explicit bus-patch matching; finite-body route policies live separately.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

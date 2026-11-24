@@ -10,8 +10,9 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-SciPy solver backend for MPC optimization.
+"""scipy_solver.py: SciPy solver backend for MPC optimization.
+
+Copyright: Aaron John Sabu
 """
 
 import time

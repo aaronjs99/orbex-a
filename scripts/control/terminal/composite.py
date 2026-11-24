@@ -1,8 +1,10 @@
-"""Physical terminal bounds for an explicitly declared spacecraft part union.
+"""composite.py: Physical terminal bounds for an explicitly declared spacecraft part union.
 
 Orbital, rigid-body spin and held-feedback inequalities retain the existing
 analytical derivation.  Geometry is separately proved against every occupied
 component; the cylinder service is never called for a composite target.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Serializable mission records and standalone result I/O."""
+"""results.py: Serializable mission records and standalone result I/O.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

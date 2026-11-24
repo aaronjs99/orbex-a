@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Coupled planning of all chasers with the existing dynamic-tube backend."""
+"""planning.py: Coupled planning of all chasers with the existing dynamic-tube backend.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

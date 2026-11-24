@@ -1,6 +1,8 @@
-"""Sensed sliding-tube algebra, plan checks and certified endpoint transfer.
+"""sensed.py: Sensed sliding-tube algebra, plan checks and certified endpoint transfer.
 
 These operations take declared model/measurement bounds. They never sample truth.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

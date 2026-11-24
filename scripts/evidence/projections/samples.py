@@ -1,4 +1,7 @@
-"""Shared recorded-sample alignment and saved target kinematics."""
+"""samples.py: Shared recorded-sample alignment and saved target kinematics.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

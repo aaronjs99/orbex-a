@@ -1,4 +1,4 @@
-"""One bounded, spawned planning process; polling never waits for its work.
+"""worker.py: One bounded, spawned planning process; polling never waits for its work.
 
 Requests contain immutable bytes and explicit activation/context identities.
 The child receives no executor, actuator or authoritative runtime reference.
@@ -7,6 +7,8 @@ Only one job and one bounded result buffer exist at a time. Process isolation
 does not establish a hard real-time schedule on a general-purpose OS.
 The worker hash covers its handler module only. Complete package/configuration
 provenance requires the caller's context identity and immutable source snapshot.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

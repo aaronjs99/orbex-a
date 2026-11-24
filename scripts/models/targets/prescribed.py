@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Prescribed cylindrical target geometry and anomaly-domain kinematics."""
+"""prescribed.py: Prescribed cylindrical target geometry and anomaly-domain kinematics.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

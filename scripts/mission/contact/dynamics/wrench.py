@@ -1,8 +1,10 @@
-"""Redundant adhesive-wrench graph with measured same-event initialization.
+"""wrench.py: Redundant adhesive-wrench graph with measured same-event initialization.
 
 B=k*displacement+c*relative_velocity and M=kr*log(Q)+cr*relative_spin
 remain part of the same physical strain graph. Carrying their derivatives
 retains measured wrench information through each held interval.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

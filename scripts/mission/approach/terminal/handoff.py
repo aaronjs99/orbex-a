@@ -1,8 +1,10 @@
-"""Verify a separate physical terminal record before using its actual endpoint.
+"""handoff.py: Verify a separate physical terminal record before using its actual endpoint.
 
 The original MPC record remains untouched.  The combined trajectory is only a
 numerical attitude/accounting view: it contains actual states and commands, not
 invented MPC solutions, nominal plans, measurements, or adaptation histories.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

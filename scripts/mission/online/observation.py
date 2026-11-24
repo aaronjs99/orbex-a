@@ -1,4 +1,4 @@
-"""Bounded delayed sensing using the installed feedback proof only.
+"""observation.py: Bounded delayed sensing using the installed feedback proof only.
 
 This observer belongs to the independent executor.  It never calls the
 nonlinear integrator or the planner.  A held input and the installed proof's
@@ -11,6 +11,8 @@ The packet producer is a trusted sensing boundary.  Its declared deterministic
 support and anomaly/physical-time stamps must enclose the physical measurement.
 No image processing, packet authentication or physical timing qualification is
 inferred by accepting these processed products.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

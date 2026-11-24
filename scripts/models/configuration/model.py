@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Simulation configuration composition and stable public model exports."""
+"""model.py: Simulation configuration composition and stable public model exports.
+
+Copyright: Aaron John Sabu
+"""
 
 from dataclasses import dataclass, field
 

@@ -10,8 +10,9 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-Abstract base classes and data structures for MPC solvers.
+"""base.py: Abstract base classes and data structures for MPC solvers.
+
+Copyright: Aaron John Sabu
 """
 
 import logging

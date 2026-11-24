@@ -1,4 +1,7 @@
-"""Serve the local Studio at127.0.0.1:8881/studio/ and real API at127.0.0.1:8882."""
+"""serve_studio.py: Serve the local Studio at127.0.0.1:8881/studio/ and real API at127.0.0.1:8882.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 
@@ -87,7 +90,9 @@ def _viewer_server(root, *, port=8881):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Serve the local Studio at127.0.0.1:8881/studio/ and real API at127.0.0.1:8882."
+    )
     parser.add_argument(
         "--config", type=Path, required=True, help="Explicit Envisat scenario YAML"
     )

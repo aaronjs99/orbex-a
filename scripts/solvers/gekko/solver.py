@@ -10,8 +10,9 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-GEKKO solver backend for MPC optimization.
+"""solver.py: GEKKO solver backend for MPC optimization.
+
+Copyright: Aaron John Sabu
 """
 
 import logging

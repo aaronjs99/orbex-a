@@ -1,4 +1,7 @@
-"""Continuation adapter for the declared Cartesian J2/vector-drag environment."""
+"""point.py: Continuation adapter for the declared Cartesian J2/vector-drag environment.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

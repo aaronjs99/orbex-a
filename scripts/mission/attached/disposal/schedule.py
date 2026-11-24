@@ -1,4 +1,7 @@
-"""A numerical sensed-state request schedule; safety admission stays separate."""
+"""schedule.py: A numerical sensed-state request schedule; safety admission stays separate.
+
+Copyright: Aaron John Sabu
+"""
 
 import math
 from dataclasses import dataclass, replace

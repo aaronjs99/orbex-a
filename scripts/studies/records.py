@@ -1,4 +1,7 @@
-"""Atomic study records and acknowledged execution progress."""
+"""records.py: Atomic study records and acknowledged execution progress.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

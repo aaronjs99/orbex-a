@@ -1,4 +1,7 @@
-"""Spawned frozen-source bootstrap and isolated solver descendant lifetime."""
+"""process.py: Spawned frozen-source bootstrap and isolated solver descendant lifetime.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
-"""Global physical spin and body-to-LVLH rotation bounds on a finite orbit.
+"""rotation_bounds.py: Global physical spin and body-to-LVLH rotation bounds on a finite orbit.
 
 The initial spin enclosure, fixed inertia and environmental torque model are
 explicit inputs. Orbital radius/clock and initial energy are bounded by Arb;
 the energy comparison is analytic and never uses dense-trajectory samples.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Coherent Python and explicit-input snapshots before worker execution."""
+"""snapshot.py: Coherent Python and explicit-input snapshots before worker execution.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

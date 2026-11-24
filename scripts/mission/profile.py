@@ -1,7 +1,9 @@
-"""Explicit prospective cases for sensed, nonlinear multi-spacecraft missions.
+"""profile.py: Explicit prospective cases for sensed, nonlinear multi-spacecraft missions.
 
 These are simulated hardware/environment declarations, not Envisat telemetry
 or a sensor specification. Case construction has no access to future truth.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

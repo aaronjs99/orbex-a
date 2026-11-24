@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Start the current Envisat Studio service from this movable checkout."""
+"""serve.py: Start the current Envisat Studio service from this movable checkout.
+
+Copyright: Aaron John Sabu
+"""
 
 import sys
 from importlib.util import module_from_spec, spec_from_file_location

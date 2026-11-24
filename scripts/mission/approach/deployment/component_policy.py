@@ -1,4 +1,7 @@
-"""Readiness gates and reference previews for explicit spacecraft components."""
+"""component_policy.py: Readiness gates and reference previews for explicit spacecraft components.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

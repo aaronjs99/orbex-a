@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Continuous-to-discrete linear state-space conversion."""
+"""discretization.py: Continuous-to-discrete linear state-space conversion.
+
+Copyright: Aaron John Sabu
+"""
 
 import numpy as np
 from scipy import signal

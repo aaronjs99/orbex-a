@@ -1,9 +1,11 @@
-"""Continuous exclusion and reference clearance for a declared convex union.
+"""geometry.py: Continuous exclusion and reference clearance for a declared convex union.
 
 Every occupied spacecraft component is checked separately.  Expanded exact
 vertices already contain the geometry model's dimension/placement uncertainty;
 that uncertainty is not added twice.  Numerical closest points select candidate
 planes only.  Admission uses exact supports and outward Arb norm bounds.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

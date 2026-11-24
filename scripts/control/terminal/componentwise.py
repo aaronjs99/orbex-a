@@ -1,8 +1,10 @@
-"""Full-inertia componentwise terminal bounds for midpoint feedforward.
+"""componentwise.py: Full-inertia componentwise terminal bounds for midpoint feedforward.
 
 This is a distinct implemented held policy, not a reinterpretation of an old
 start-feedforward certificate. Complete-component geometry and the original
 orbital/error contracts are composed with exact expanded rigid-body port jets.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

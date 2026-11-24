@@ -1,4 +1,7 @@
-"""Saved lifecycle projection and scientific plots, without mission execution."""
+"""lifecycle.py: Saved lifecycle projection and scientific plots, without mission execution.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

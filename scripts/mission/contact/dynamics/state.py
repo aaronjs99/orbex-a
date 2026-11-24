@@ -1,8 +1,10 @@
-"""Packed physical coordinates and explicit mutable contact/actuator state.
+"""state.py: Packed physical coordinates and explicit mutable contact/actuator state.
 
 The six leading values track the actual target COM in nonrotating ECI axes.
 Each body then stores local position/velocity, quaternion, body spin and fuel;
 each tip stores extension/velocity. The final 19 values are balance ledgers.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

@@ -1,6 +1,8 @@
-"""Shared exact-value contracts and implementation identity for completion.
+"""contracts.py: Shared exact-value contracts and implementation identity for completion.
 
 These helpers do not import the lifecycle, journal, or physical adapters.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

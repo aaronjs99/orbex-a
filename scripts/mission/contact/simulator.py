@@ -1,4 +1,4 @@
-"""Finite compliant capture of a rigid target by independently moving buses.
+"""simulator.py: Finite compliant capture of a rigid target by independently moving buses.
 
 This is a declared representative adhesive-pad study model. The finite-bandwidth
 positioner has negligible moving mass; its reaction work is explicitly counted.
@@ -6,6 +6,8 @@ It is not a manufactured gripper specification or a flexible spacecraft model.
 The six-DOF vehicle/contact-wrench formulation follows the modeling scope of
 NASA-CR-179147: https://ntrs.nasa.gov/citations/19870016368 . Adhesion strengths,
 pad properties and actuator parameters below are independent study assumptions.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

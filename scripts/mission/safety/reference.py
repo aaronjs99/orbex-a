@@ -1,4 +1,7 @@
-"""Exact C2 polynomial routes and Bernstein reference enclosures."""
+"""reference.py: Exact C2 polynomial routes and Bernstein reference enclosures.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Controller feasible sets and point estimates with reproducible priors."""
+"""belief.py: Controller feasible sets and point estimates with reproducible priors.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

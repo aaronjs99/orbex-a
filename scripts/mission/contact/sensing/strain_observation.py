@@ -1,10 +1,12 @@
-"""Intersect carried bond strain with bounded same-event pad wrench data.
+"""strain_observation.py: Intersect carried bond strain with bounded same-event pad wrench data.
 
 For positive engagement a, the declared law is
 F = F_unbonded - a*(k*d + c*u), M = -a*(kr*log(Q) + cr*spin).
 Inverting these equations retains displacement/rotation information which
 independent pose boxes lose. This never restarts a previously engaged bond.
 The measured couple is the pad's free couple, not its bus lever-arm moment.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

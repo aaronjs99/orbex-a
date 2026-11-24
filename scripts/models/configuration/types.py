@@ -1,4 +1,7 @@
-"""Structured numeric and policy configuration contracts."""
+"""types.py: Structured numeric and policy configuration contracts.
+
+Copyright: Aaron John Sabu
+"""
 
 from dataclasses import dataclass, field
 from typing import Any

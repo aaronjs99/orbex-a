@@ -1,4 +1,7 @@
-"""Coupled rigid-body derivatives, compliant pad laws and balance ledgers."""
+"""mechanics.py: Coupled rigid-body derivatives, compliant pad laws and balance ledgers.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,7 +1,9 @@
-"""Sensed dense execution with separate nonlinear truth and finite fallback.
+"""coordinator.py: Sensed dense execution with separate nonlinear truth and finite fallback.
 
 Planning/feedback sees navigation only. Truth is used by the numerical plant,
 sensor generator and explicitly labeled post-command containment diagnostics.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

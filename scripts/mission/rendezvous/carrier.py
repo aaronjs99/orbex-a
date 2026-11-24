@@ -1,4 +1,7 @@
-"""A parallel carrier-centred transfer into rotating proximity references."""
+"""carrier.py: A parallel carrier-centred transfer into rotating proximity references.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

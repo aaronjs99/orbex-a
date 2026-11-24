@@ -1,8 +1,10 @@
-"""Finite post-release arc deployment in the supported free-flight model.
+"""arc.py: Finite post-release arc deployment in the supported free-flight model.
 
 Geometry and timing live here; the phase/readiness policy lives in
 ``deployment_policy``. No carrier, release impulse, contact or actuator model
 is introduced. All trajectory derivatives use true anomaly, not seconds.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

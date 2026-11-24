@@ -1,4 +1,7 @@
-"""Authenticate arrival evidence and recover the retained Cartesian boundary."""
+"""boundary.py: Authenticate arrival evidence and recover the retained Cartesian boundary.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

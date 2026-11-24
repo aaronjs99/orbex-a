@@ -1,8 +1,10 @@
-"""Freeze and execute one explicit prospective nonlinear study arm.
+"""api.py: Freeze and execute one explicit prospective nonlinear study arm.
 
 This lightweight entry point preserves the established public and private
 imports. Request declarations, source freezing, records, metrics, and execution
 live in focused study modules; numerical dependencies load only at execution.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

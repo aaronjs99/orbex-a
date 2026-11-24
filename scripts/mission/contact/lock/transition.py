@@ -1,4 +1,4 @@
-"""Finite, load-bounded closure of the settled fleet's residual relative twist.
+"""transition.py: Finite, load-bounded closure of the settled fleet's residual relative twist.
 
 The declared active positioners brake relative material coordinates over a
 positive duration. Newton--Euler reactions and their work are integrated;
@@ -11,6 +11,8 @@ spring law; it does not pretend that a spring's energy stays constant while
 its original deformation changes. The trapped energy is retained as a separate
 constant inventory through the rigid stages. Clamp strength, servo tracking,
 flexure and material realization remain mechanism assumptions.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

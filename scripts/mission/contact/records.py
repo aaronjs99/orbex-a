@@ -1,7 +1,9 @@
-"""Contact history and conservation audit serialization.
+"""records.py: Contact history and conservation audit serialization.
 
 These records describe the physical plant independently of estimated feedback.
 Their keys and field meanings are the finite-contact v1 persisted contract.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

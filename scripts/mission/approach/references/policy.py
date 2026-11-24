@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Configurable phase and tracking policy for the qualified mission model."""
+"""policy.py: Configurable phase and tracking policy for the qualified mission model.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

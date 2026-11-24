@@ -1,8 +1,10 @@
-"""Conditional quaternion/Euler inclusions driven by nonlinear ephemeris.
+"""attitude.py: Conditional quaternion/Euler inclusions driven by nonlinear ephemeris.
 
 The initial quaternion box must contain a unit physical quaternion. Unit norm
 is preserved by the exact ODE; ambient interval candidates need not be unit.
 Only central spherical gravity-gradient torque (or zero torque) is declared.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

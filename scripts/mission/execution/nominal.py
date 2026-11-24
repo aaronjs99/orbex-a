@@ -1,7 +1,9 @@
-"""Certified CH nominal propagation and physical tube endpoint transfer.
+"""nominal.py: Certified CH nominal propagation and physical tube endpoint transfer.
 
 The nominal surrogate is distinct from the numerical nonlinear plant. Its cache
 is keyed by the declared nominal model and enclosure configuration.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

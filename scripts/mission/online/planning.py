@@ -1,10 +1,12 @@
-"""Detached finite-backup renewal with complete new nonlinear proofs.
+"""planning.py: Detached finite-backup renewal with complete new nonlinear proofs.
 
 The supplied task contains a genuine declared navigation target/time prior and
 mathematical policy data only.  It contains no actuator, random generator,
 truth state, or owning execution runtime.  Holding extension preserves the
 original route, then proves a longer final hold.  It is a fallback renewal,
 not a performance/arrival planner or an infinite-safety construction.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

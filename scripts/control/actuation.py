@@ -1,4 +1,7 @@
-"""Declared command support and independent numerical actuator realizations."""
+"""actuation.py: Declared command support and independent numerical actuator realizations.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

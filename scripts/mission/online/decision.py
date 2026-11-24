@@ -1,10 +1,12 @@
-"""Prepared evidence for an already admitted command; no proof gate is skipped.
+"""decision.py: Prepared evidence for an already admitted command; no proof gate is skipped.
 
 The canonical decision hash/evidence is expensive because it includes the full
 geometry proof. This optional view prepares it once and checks the complete
 live data graph before reuse. Exact rational scalars are copied as integers;
 container links and dataclass field schemas are checked. Mutation rebuilds the
 original record. Unknown data/code semantics use the original uncached path.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

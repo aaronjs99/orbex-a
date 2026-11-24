@@ -1,8 +1,10 @@
-"""Exact positioner motion in a relative-to-initial attitude chart.
+"""chart.py: Exact positioner motion in a relative-to-initial attitude chart.
 
 The immutable initial rotations and positioner pose/twist retain their complete
 input uncertainty. Unit initial increments describe a coordinate identity, not
 a reset or restriction of the initial physical attitudes.
+
+Copyright: Aaron John Sabu
 """
 
 from orbexa.proofs.numerics.rigid_interval import (

@@ -1,9 +1,11 @@
-"""Nonlinear support-plane exclusion of every declared spacecraft component.
+"""geometry.py: Nonlinear support-plane exclusion of every declared spacecraft component.
 
 For each OBB and prediction node a free unit normal separates the complete
 position box plus spherical bus from that component. The normals are decision
 variables, so the union exclusion remains nonconvex and uses the IPOPT path.
 No enclosing cylinder/sphere, binary variable or complementarity max is used.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

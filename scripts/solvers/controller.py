@@ -10,8 +10,7 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-ORBEX-A MPC Controller Module.
+"""controller.py: ORBEX-A MPC Controller Module.
 
 This module implements the Model Predictive Control (MPC) logic for spacecraft
 rendezvous and docking, with optional parameter-estimate adaptation.
@@ -21,6 +20,8 @@ Key Design Principles:
 - Solver-agnostic: Uses the orbexa.solvers abstraction layer
 - No direct solver imports (GEKKO, CasADi, etc.)
 - Clean separation between problem formulation and solving
+
+Copyright: Aaron John Sabu
 """
 
 import logging

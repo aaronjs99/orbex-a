@@ -1,7 +1,9 @@
-"""Static diagnostics from aligned, saved nonlinear mission observations.
+"""nonlinear.py: Static diagnostics from aligned, saved nonlinear mission observations.
 
 Plots are numerical readouts of the retained records. They do not replay a
 controller, create contact/lifecycle states, or establish a new certificate.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

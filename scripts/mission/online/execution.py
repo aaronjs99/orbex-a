@@ -1,4 +1,4 @@
-"""Executor-owned finite feedback while a separate planning process runs.
+"""execution.py: Executor-owned finite feedback while a separate planning process runs.
 
 This optional driver accepts only products already proved for their declared
 future activation clock. It never calls a nonlinear or geometry proof service
@@ -6,6 +6,8 @@ on the command path. A device/plant adapter owns literal actuation, sensing and
 the physical clock; the maintained nonlinear mission runner remains offline.
 Dispatch/acknowledgment overruns are reported as assumption violations, not
 repaired by pausing physical time or by emitting an unproved zero command.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

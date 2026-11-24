@@ -1,4 +1,7 @@
-"""Lightweight, consistent identity and plot styles; no Matplotlib setup."""
+"""style.py: Lightweight, consistent identity and plot styles; no Matplotlib setup.
+
+Copyright: Aaron John Sabu
+"""
 
 import colorsys
 

@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Optional allocation figures and explicit demonstration."""
+"""demo.py: Optional allocation figures and explicit demonstration.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

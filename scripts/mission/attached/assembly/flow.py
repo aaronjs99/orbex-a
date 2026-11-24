@@ -1,8 +1,10 @@
-"""Carried whole-state inclusion for the maintained postcapture rigid model.
+"""flow.py: Carried whole-state inclusion for the maintained postcapture rigid model.
 
 Every held propagation starts from the previous endpoint set. Fuel-coordinate
 jumps follow the same split law as ``AttachedAssembly.advance_with_audit``.
 An unresolved inclusion refuses propagation instead of restarting at a point.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

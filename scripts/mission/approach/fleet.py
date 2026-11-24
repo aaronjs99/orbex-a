@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Fleet initialization, separate from mission policy and numerical execution."""
+"""fleet.py: Fleet initialization, separate from mission policy and numerical execution.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

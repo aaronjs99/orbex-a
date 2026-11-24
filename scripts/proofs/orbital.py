@@ -1,9 +1,11 @@
-"""Authenticated analytical orbital holds with separate VoC endpoints.
+"""orbital.py: Authenticated analytical orbital holds with separate VoC endpoints.
 
 This service owns its Picard proof dependency. Saved flags or caller-supplied
 flows never grant admission: rebuild recomputes the entire supported proof.
 The original Picard flow remains the swept witness, with its old fingerprint.
 No mission, fleet supervisor or physical execution is performed here.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

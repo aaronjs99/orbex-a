@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Cylindrical side-point assignment from each chaser approach direction."""
+"""docking.py: Cylindrical side-point assignment from each chaser approach direction.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

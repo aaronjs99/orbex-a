@@ -1,4 +1,7 @@
-"""Numerical coupled-wrench planning for a fixed installed thrust direction."""
+"""axis.py: Numerical coupled-wrench planning for a fixed installed thrust direction.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

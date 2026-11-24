@@ -1,4 +1,7 @@
-"""Immutable performance attempts, proposals, decisions and resource evidence."""
+"""records.py: Immutable performance attempts, proposals, decisions and resource evidence.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

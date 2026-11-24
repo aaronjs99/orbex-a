@@ -1,4 +1,7 @@
-"""Target-size-aware proposal regimes; collision proofs remain authoritative."""
+"""proximity.py: Target-size-aware proposal regimes; collision proofs remain authoritative.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

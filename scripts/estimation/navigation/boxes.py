@@ -1,4 +1,7 @@
-"""Exact navigation box intersection and numerical representatives."""
+"""boxes.py: Exact navigation box intersection and numerical representatives.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

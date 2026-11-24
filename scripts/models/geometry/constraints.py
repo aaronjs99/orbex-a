@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Paper-level rendezvous and docking constraint helpers."""
+"""constraints.py: Paper-level rendezvous and docking constraint helpers.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

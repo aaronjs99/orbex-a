@@ -6,12 +6,14 @@
 # * Contact: {aaronjs, btlopez}@ucla.edu                    *
 # ***********************************************************/
 
-"""Solver-independent boundary-layer feedback and dynamic tube arithmetic.
+"""model.py: Solver-independent boundary-layer feedback and dynamic tube arithmetic.
 
 Phi bounds the sliding error ``e_v + Lambda e_p``; Omega bounds position error.
 The nominal model and its parameter-uncertainty envelope must refer to the same
 physical LVLH dynamics. Coupled planning includes the derived held-input forcing
 from sample_hold; numerical integration error still requires a separate bound.
+
+Copyright: Aaron John Sabu
 """
 
 from dataclasses import dataclass

@@ -1,4 +1,7 @@
-"""Atomic worker records and streamed source-file identities."""
+"""artifacts.py: Atomic worker records and streamed source-file identities.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

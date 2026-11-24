@@ -1,4 +1,7 @@
-"""Causal navigation prediction and declared synthetic contact observations."""
+"""observers.py: Causal navigation prediction and declared synthetic contact observations.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

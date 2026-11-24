@@ -1,9 +1,11 @@
-"""Coupled nominal and dynamic-tube multiple shooting for GEKKO/IPOPT.
+"""tube.py: Coupled nominal and dynamic-tube multiple shooting for GEKKO/IPOPT.
 
 The independent variable is the declared anomaly or reference-clock coordinate. Controls and bandwidths are held
 over each interval; nominal motion uses RK4 and positive tube comparison
 systems use exponential updates. No complementarity abs/max operators are
 used. The caller supplies interval-valid coefficient and disturbance bounds.
+
+Copyright: Aaron John Sabu
 """
 
 import time

@@ -1,4 +1,7 @@
-"""Headless figures without selecting a process-wide Matplotlib backend."""
+"""canvas.py: Headless figures without selecting a process-wide Matplotlib backend.
+
+Copyright: Aaron John Sabu
+"""
 
 
 def artifact_figure(*, figsize):

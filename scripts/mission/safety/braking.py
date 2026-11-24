@@ -1,8 +1,10 @@
-"""Exact fleet reference proposals with separate common and relative braking.
+"""braking.py: Exact fleet reference proposals with separate common and relative braking.
 
 These curves propose a finite refuge. They do not certify tracking, force,
 fuel, obstacle clearance or entry from an uncertain state. The existing
 nonlinear fleet plan constructor must prove all of those before admission.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

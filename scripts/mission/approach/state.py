@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Persistent nominal centers and tube envelopes on the shared fleet clock."""
+"""state.py: Persistent nominal centers and tube envelopes on the shared fleet clock.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Measured physical safety and matched-tube planning margins."""
+"""safety.py: Measured physical safety and matched-tube planning margins.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Incremental auction policy with caller-owned stepping order."""
+"""auction.py: Incremental auction policy with caller-owned stepping order.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

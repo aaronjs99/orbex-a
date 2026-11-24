@@ -1,7 +1,9 @@
-"""Declared Cartesian forces and exact motion in commanded orbit coordinates.
+"""relative.py: Declared Cartesian forces and exact motion in commanded orbit coordinates.
 
 The algebra functions are shared by numerical truth and the separate Arb
 inclusion service. Only the latter supplies validated continuous enclosures.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

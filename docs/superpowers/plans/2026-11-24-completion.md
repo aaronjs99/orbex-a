@@ -188,7 +188,8 @@ Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` 
 - [x] Behavior-neutral manual fixes: a duplicate method, dead locals, `in dict.keys()`, tuple `startswith`, implicit concatenation, shebangs. 199 findings remain.
 - [ ] Review the rest by hand. 25 `B023` closures are called within their own loop iteration; bind their loop values explicitly. 58 `TRY004`, 44 `BLE001`, 3 `E722`, 3 `S110` and 3 `DTZ005` change exception types, error handling or timestamps, so each needs its own behavior decision. In `attached/disposal/simulator.py`, `next_orbit` is computed and never used, and in `data/comparison.py` the `status` local is unused. Check both against their intended logic before removing them.
 - [ ] Classes and callables: convert module-level behavior to classes or callable objects package by package. Keep math helpers as functions.
-- [ ] Headers and docstrings: add the file header ending in `Copyright: Aaron John Sabu` and factual docstrings, package by package.
+- [x] File headers: every source file, including `run.py` and `serve.py`, starts with `<file>: <responsibility>` and ends with `Copyright: Aaron John Sabu`. The VECTR Lab comment blocks that the initializer rewrite had dropped are restored.
+- [ ] Factual class, function and method docstrings, with `Inputs:` and `Outputs:` where the signature does not say enough, one layer per pull request.
 - [ ] Folder READMEs with File Structure tables. Restructure the root README into the standard sections.
 
 ## W8 Release-candidate studies (L10–L12)

@@ -1,4 +1,7 @@
-"""Optional append-only storage of complete accepted stage evidence."""
+"""stages.py: Optional append-only storage of complete accepted stage evidence.
+
+Copyright: Aaron John Sabu
+"""
 
 from orbexa.models.dynamics.reference_frame import fingerprint
 

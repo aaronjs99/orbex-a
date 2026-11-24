@@ -1,4 +1,7 @@
-"""Immutable processed sensor declarations, packets and navigation products."""
+"""records.py: Immutable processed sensor declarations, packets and navigation products.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

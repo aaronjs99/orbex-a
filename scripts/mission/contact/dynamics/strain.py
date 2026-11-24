@@ -1,4 +1,7 @@
-"""Stress-free digital bond formation with carried uncertain rest geometry."""
+"""strain.py: Stress-free digital bond formation with carried uncertain rest geometry.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,9 +1,11 @@
-"""Explicit process-comparable wall-clock domains for online receipts.
+"""clock.py: Explicit process-comparable wall-clock domains for online receipts.
 
 Windows Python 3.11's monotonic clock uses GetTickCount64 and can have a
 15.625 ms resolution.  Its performance counter uses the monotonic, system-wide
 QueryPerformanceCounter instead.  Selecting that domain does not establish
 timely execution; all requests, deadlines and acknowledgments must use it.
+
+Copyright: Aaron John Sabu
 """
 
 import time

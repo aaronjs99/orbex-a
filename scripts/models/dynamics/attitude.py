@@ -1,9 +1,11 @@
-"""Standalone rigid-body attitude dynamics, separate from prescribed mission motion.
+"""attitude.py: Standalone rigid-body attitude dynamics, separate from prescribed mission motion.
 
 Orientations use the existing body-to-inertial rotation ``Rx(roll) Ry(pitch) Rz(yaw)``.
 Body angular velocity and torque are in rad/s and body-frame units respectively.
 Quaternions are scalar-last ``[x, y, z, w]`` and remain the propagation state;
 reported Euler angles are a canonical chart and may jump at chart boundaries.
+
+Copyright: Aaron John Sabu
 """
 
 import warnings

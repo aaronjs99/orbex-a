@@ -1,4 +1,7 @@
-"""Export a professional, fully local recorded-mission replay workspace."""
+"""studio.py: Export a professional, fully local recorded-mission replay workspace.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

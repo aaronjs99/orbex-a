@@ -1,4 +1,7 @@
-"""Exact occupied-set supports when a body's attitude is any proper rotation."""
+"""rotation.py: Exact occupied-set supports when a body's attitude is any proper rotation.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

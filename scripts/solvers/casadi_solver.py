@@ -10,10 +10,11 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-CasADi solver backend for MPC optimization.
+"""casadi_solver.py: CasADi solver backend for MPC optimization.
 
 Note: Requires casadi package. Install with: pip install casadi
+
+Copyright: Aaron John Sabu
 """
 
 import time

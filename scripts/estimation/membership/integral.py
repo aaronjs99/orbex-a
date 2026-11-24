@@ -1,4 +1,4 @@
-"""Bounded-error identification from three positions and fixed actuator cells.
+"""integral.py: Bounded-error identification from three positions and fixed actuator cells.
 
 For position p in the declared anomaly clock, write the exact relative model as
 
@@ -17,6 +17,8 @@ the model, clock, sensing, source, and fixed parameter/actuator epoch. Source
 identifiers record provenance; they do not certify those physical obligations.
 No stochastic independence, parameter excitation, or useful contraction is
 assumed. A feasible outer relaxation does not prove a physical trajectory.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations
