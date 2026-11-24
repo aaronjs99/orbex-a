@@ -39,3 +39,17 @@ python serve.py
 Open the printed Studio URL. Jobs go to `data/live-jobs/` and viewers to
 `results/studio/`. If the default ports are taken, run
 `python serve.py --ui-port 8893 --api-port 8894`.
+
+## Figures
+
+```bash
+orbexa-figures mission data/nonlinear/central/adaptive-dynamic/<run id>
+```
+
+This writes plots for one recorded run to
+`results/missions/central/adaptive-dynamic/<run id>/plots/`. When the run
+recorded a completed lifecycle, lifecycle plots and replay data go to
+`lifecycle/` beside them. `orbexa-figures comparison NAME ARM...` renders a
+matched comparison of study arms into `results/comparisons/NAME/`. It refuses
+arms whose sources, declarations or grid do not match. Figures are always
+regenerated from recorded data and never committed.
