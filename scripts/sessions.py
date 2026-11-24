@@ -1,12 +1,11 @@
 """Portable, non-overwriting paths and latest references for mission sessions."""
 
-from dataclasses import dataclass
-from datetime import datetime
 import json
 import logging
-from pathlib import Path
 import re
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 LATEST_SCHEMA = "orbexa.session.latest.v1"
@@ -58,7 +57,7 @@ class MissionSession:
         output_root: Path,
         data_root: Path,
         *,
-        session_id: Optional[str],
+        session_id: str | None,
         from_data: bool,
         mission: str,
         solver: str,

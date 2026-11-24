@@ -7,34 +7,33 @@ is an offline simulation; recorded wall time does not claim a flight deadline.
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from fractions import Fraction
-import math
-import time
-import numpy as np
 
+import numpy as np
 from orbexa.control.certification.attitude import AttitudeFlowEncloser
-from orbexa.control.tubes.specification import ProspectiveContactConstraint
-from orbexa.control.terminal.contact import (
-    ContactReferenceKinematics,
-    ContactReachPolicy,
-    contact_goal_speed_bound,
-)
-from orbexa.control.fallback.records import PerformanceAttempt
 from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
 from orbexa.control.certification.reachability import IntervalBox, ReachabilityConfig
+from orbexa.control.fallback.records import PerformanceAttempt
 from orbexa.control.fallback.refuge import fingerprint as source_fingerprint
-from orbexa.core.targets.nonlinear import NonlinearTargetPreview, NonlinearTargetTruth
+from orbexa.control.terminal.contact import (
+    ContactReachPolicy,
+    ContactReferenceKinematics,
+    contact_goal_speed_bound,
+)
+from orbexa.control.tubes.specification import ProspectiveContactConstraint
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.core.targets.nonlinear import NonlinearTargetPreview, NonlinearTargetTruth
+from orbexa.estimation.adaptation.nonlinear import NonlinearMissionAdaptation
 from orbexa.estimation.navigation.filter import BoundedNavigationFilter
 from orbexa.estimation.navigation.sensors import SensorSuite
-from orbexa.estimation.adaptation.nonlinear import NonlinearMissionAdaptation
 from orbexa.simulation.approach.planning import PlanningStep
 from orbexa.simulation.approach.state import CoupledMissionState
 from orbexa.simulation.nonlinear.execution.coordinator import (
-    NonlinearDenseExecutor,
     AffineActuatorRealization,
     CommandDependentActuationPrior,
+    NonlinearDenseExecutor,
 )
 from orbexa.simulation.nonlinear.planning import (
     NonlinearMissionPlanner,
@@ -42,20 +41,20 @@ from orbexa.simulation.nonlinear.planning import (
     outward_upper,
 )
 from orbexa.simulation.nonlinear.profile import (
-    NonlinearStudyOptions,
     IndependentTruthCase,
-    reference_environment,
-    reference_clock,
-    initial_target_state,
+    NonlinearStudyOptions,
     compose_deployment,
     controller_prior,
+    initial_target_state,
+    reference_clock,
+    reference_environment,
 )
 from orbexa.simulation.nonlinear.records.recorder import NonlinearMissionRecorder
 from orbexa.simulation.nonlinear.safety.planner import NonlinearSafetyPlanner, radius
 from orbexa.simulation.nonlinear.safety.target_bounds import (
-    preview_error_bounds,
-    observed_point_goal_bounds,
     exact_norm_upper,
+    observed_point_goal_bounds,
+    preview_error_bounds,
 )
 
 
@@ -792,7 +791,7 @@ class NonlinearMissionRunner:
         goal_record = exact_record(goal_bounds)
         eligible = phase.operation == "docking" and deadline is not None
         if eligible:
-            from orbexa.simulation.completion.nonlinear.coordinator import (
+            from orbexa.simulation.completion.nonlinear.boundary import (
                 terminal_contact_speed_record,
             )
 

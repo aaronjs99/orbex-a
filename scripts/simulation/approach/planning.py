@@ -14,24 +14,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import time
-from typing import Any, Dict, List, Sequence, TYPE_CHECKING
-import numpy as np
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from orbexa.contracts import SolverResult
-from orbexa.control.tubes.model import TubeProfile
-from orbexa.control.tubes.specification import DynamicTubeSpec
-from orbexa.control.tubes.sample_hold import TUBE_MODEL_VERSION, TUBE_ASSUMPTIONS
 from orbexa.control.mpc.cost import local_terminal_cost
-from orbexa.control.tubes.uncertainty import uncertainty_envelope, coefficient_intervals
+from orbexa.control.tubes.model import TubeProfile
+from orbexa.control.tubes.sample_hold import TUBE_ASSUMPTIONS, TUBE_MODEL_VERSION
+from orbexa.control.tubes.specification import DynamicTubeSpec
+from orbexa.control.tubes.uncertainty import coefficient_intervals, uncertainty_envelope
 from orbexa.core.dynamics.orbital import orbital_ellp_drag
 
 if TYPE_CHECKING:
     from orbexa.estimation.adaptation.belief import ParameterBelief
-    from orbexa.simulation.approach.state import CoupledMissionState
     from orbexa.simulation.approach.models import ChaserConfig, MissionPhase
     from orbexa.simulation.approach.scenario import CoupledController, MissionScenario
+    from orbexa.simulation.approach.state import CoupledMissionState
 
 
 @dataclass
@@ -39,18 +40,18 @@ class ChaserPlan:
     result: SolverResult
     profile: TubeProfile
     spec: DynamicTubeSpec
-    tube: Dict[str, Any]
-    arrival_context: Dict[str, Any] | None = None
+    tube: dict[str, Any]
+    arrival_context: dict[str, Any] | None = None
 
 
 @dataclass
 class PlanningStep:
     matrices: tuple
-    parameters: Dict[str, float]
-    plans: Dict[str, ChaserPlan] = field(default_factory=dict)
-    attempts: Dict[str, SolverResult] = field(default_factory=dict)
+    parameters: dict[str, float]
+    plans: dict[str, ChaserPlan] = field(default_factory=dict)
+    attempts: dict[str, SolverResult] = field(default_factory=dict)
     success: bool = True
-    messages: List[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
 
 
 class CoupledMissionPlanner:
@@ -64,7 +65,7 @@ class CoupledMissionPlanner:
     def tube_spec(
         self,
         belief: ParameterBelief,
-        params: Dict[str, float],
+        params: dict[str, float],
         anomaly: float,
         count: int,
         phi: np.ndarray,
@@ -149,7 +150,7 @@ class CoupledMissionPlanner:
         belief: ParameterBelief,
         phase: MissionPhase,
         chasers: Sequence[ChaserConfig],
-        previous_plans: Dict[str, ChaserPlan],
+        previous_plans: dict[str, ChaserPlan],
         *,
         arrival_step=None,
     ) -> PlanningStep:

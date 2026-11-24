@@ -10,8 +10,9 @@
 # *                                                         *
 # ***********************************************************/
 
+from typing import Any
+
 import numpy as np
-from typing import Any, Optional, Tuple
 
 # Constants
 TWO_PI = 2.0 * np.pi
@@ -23,12 +24,12 @@ def orbital_radius_terms(
     eccentricity=0.0,
     alpha=0.0,
     mu: float = 3.986004418e14,
-    semi_major_axis: Optional[float] = None,
+    semi_major_axis: float | None = None,
     mean_motion: float = 0.001,
     specific_angular_momentum=None,
     theta0: float = 0.0,
     solver=None,
-) -> Tuple[Any, Any, Any]:
+) -> tuple[Any, Any, Any]:
     """Return ``(R, dR/dq, h)`` for the inverse-radius quadratic-drag orbit.
 
     ``q`` is unwrapped orbital angle in radians, ``R`` is meters, and ``h``
@@ -92,7 +93,7 @@ def orbital_anomaly_rate(
     eccentricity=0.0,
     alpha=0.0,
     mu: float = 3.986004418e14,
-    semi_major_axis: Optional[float] = None,
+    semi_major_axis: float | None = None,
     mean_motion: float = 0.001,
     specific_angular_momentum=None,
     theta0: float = 0.0,

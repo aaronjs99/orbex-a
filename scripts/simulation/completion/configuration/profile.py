@@ -10,10 +10,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 
-from orbexa.simulation.contact.contracts import FiniteContactOptions
 from orbexa.simulation.attached.detumbling import DetumblingOptions
 from orbexa.simulation.attached.disposal.simulator import DeorbitOptions
-
+from orbexa.simulation.contact.contracts import FiniteContactOptions
 
 _CONTACT_HARDWARE = frozenset(
     (

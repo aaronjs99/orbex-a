@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from numbers import Real
-import numpy as np
-from scipy.optimize import linprog
 
+import numpy as np
 from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY, positive
+from scipy.optimize import linprog
 
 
 @dataclass(frozen=True)

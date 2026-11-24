@@ -4,26 +4,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction
+
 from orbexa.control.certification.reachability import IntervalBox, _exact
+from orbexa.control.fallback.fuel import FleetFuelBudget
+from orbexa.control.fallback.geometry import FleetGeometryOracle
+from orbexa.control.fallback.plan import FleetFallbackPlan, FleetFeedbackSegment
 from orbexa.control.fallback.refuge import (
     ControlContext,
     ReferenceBounds,
-    RefugeTrackingSpec,
     RefugeBoundsBuilder,
     RefugeController,
+    RefugeTrackingSpec,
     _vec,
     exact_record,
     fingerprint,
 )
-from orbexa.control.fallback.plan import FleetFallbackPlan, FleetFeedbackSegment
-from orbexa.control.fallback.geometry import FleetGeometryOracle
-from orbexa.control.fallback.fuel import FleetFuelBudget
-
-from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference
 from orbexa.simulation.nonlinear.safety.drift import (
     ZERO_NOMINAL_ID,
     NonlinearZeroDriftBounds,
 )
+from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference
 from orbexa.simulation.nonlinear.safety.resources import StudyPropulsionBounds
 
 

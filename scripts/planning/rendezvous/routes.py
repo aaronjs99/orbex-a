@@ -7,9 +7,9 @@ the nonlinear controller and swept-flow admission retain those boundaries.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import heapq
 import itertools
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment

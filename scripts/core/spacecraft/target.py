@@ -19,7 +19,6 @@ from itertools import count
 from typing import TYPE_CHECKING
 
 import numpy as np
-from orbexa.core.spacecraft.base import Spacecraft
 from orbexa.core.dynamics.attitude import (
     RigidBodyAttitude,
     euler_rates_to_body_rates,
@@ -28,6 +27,7 @@ from orbexa.core.dynamics.attitude import (
     finite_vector,
     quaternion_to_euler,
 )
+from orbexa.core.spacecraft.base import Spacecraft
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig
@@ -49,7 +49,7 @@ class Target(Spacecraft):
 
     _tids = count(0)
 
-    def __init__(self, config: "SimulationConfig", **kwargs):
+    def __init__(self, config: SimulationConfig, **kwargs):
         from orbexa.core.dynamics.anomaly import orbital_anomaly_rate
 
         orbit = config.orbit

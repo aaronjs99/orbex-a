@@ -5,12 +5,12 @@ validation do not load numerical or solver dependencies.
 """
 
 from __future__ import annotations
-from orbexa.layout import ProjectLayout
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
+from orbexa.layout import ProjectLayout
 
 STUDY_SCHEMA = "orbexa.nonlinear-study.v1"
 

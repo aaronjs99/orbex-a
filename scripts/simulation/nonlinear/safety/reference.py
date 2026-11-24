@@ -6,20 +6,21 @@ from dataclasses import dataclass
 from fractions import Fraction
 from math import comb, factorial, gcd, perm
 from typing import Any
+
 from orbexa.control.certification.reachability import IntervalBox, _exact
-from orbexa.control.fallback.refuge import (
-    ReferenceJet,
-    ReferenceBounds,
-    _vec,
-    _absbox,
-    _identity,
-    _scope,
-    exact_record,
-    fingerprint,
-)
 from orbexa.control.fallback.polynomial import (
     PolynomialReferenceSource,
     PolynomialReferenceSpan,
+)
+from orbexa.control.fallback.refuge import (
+    ReferenceBounds,
+    ReferenceJet,
+    _absbox,
+    _identity,
+    _scope,
+    _vec,
+    exact_record,
+    fingerprint,
 )
 
 

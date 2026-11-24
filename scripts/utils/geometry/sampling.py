@@ -78,7 +78,7 @@ def gen_shape_data(shape, shapeParams, numPoints=100):
 
 def gen_fib_lattice(sphere_params, num_points, **kwargs):
     sphere_center, sphere_radius = sphere_params
-    if "theta_0" not in kwargs.keys() and "phi_0" not in kwargs.keys():
+    if "theta_0" not in kwargs and "phi_0" not in kwargs:
         theta_0, phi_0 = np.random.uniform(0, 2 * np.pi), np.random.uniform(0, np.pi)
     else:
         theta_0, phi_0 = kwargs["theta_0"], kwargs["phi_0"]

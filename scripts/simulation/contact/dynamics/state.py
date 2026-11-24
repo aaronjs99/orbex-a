@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-import numpy as np
-from scipy.spatial.transform import Rotation
 
+import numpy as np
 from orbexa.simulation.attached.assembly.model import physical_inertia, positive
 from orbexa.simulation.contact.contracts import ContactBodyState
+from scipy.spatial.transform import Rotation
 
 
 @dataclass(frozen=True)

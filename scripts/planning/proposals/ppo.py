@@ -6,9 +6,14 @@ use a tanh-transformed Gaussian with matching likelihoods, not clipped normals.
 """
 
 from __future__ import annotations
+
+import hashlib
+import json
+import math
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
-import hashlib, json, math, os
+
 import numpy as np
 
 
@@ -391,8 +396,8 @@ class PPOInitialGuess:
         from orbexa.planning.proposals.trajectory import (
             AffinePrediction,
             TrajectoryHint,
-            input_limits,
             hint_identity,
+            input_limits,
         )
 
         if (

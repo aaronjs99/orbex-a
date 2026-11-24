@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
-from typing import List, Sequence, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
+
 import numpy as np
 from orbexa.simulation.approach.models import ChaserConfig
 
@@ -30,25 +32,25 @@ class FleetInitializer:
         self.config = config
         self.target = target
 
-    def chasers(self, mission: str) -> List[ChaserConfig]:
+    def chasers(self, mission: str) -> list[ChaserConfig]:
         if mission == "single":
             return self.single_chaser()
         if mission == "multi":
             return self.multi_chasers()
         raise ValueError(f"Unknown ADTMPC mission: {mission}")
 
-    def single_chaser(self) -> List[ChaserConfig]:
+    def single_chaser(self) -> list[ChaserConfig]:
         initial_states = [
             np.asarray(self.config.orbit.initial_conditions, dtype=float),
         ]
         return self.build_chaser_configs(initial_states)
 
-    def multi_chasers(self) -> List[ChaserConfig]:
+    def multi_chasers(self) -> list[ChaserConfig]:
         return self.build_chaser_configs(
             self.multi_initial_states(int(self.config.num_chasers))
         )
 
-    def multi_initial_states(self, count: int) -> List[np.ndarray]:
+    def multi_initial_states(self, count: int) -> list[np.ndarray]:
         """Create deterministic far-field starts for a configurable chaser fleet."""
         if (
             isinstance(count, bool)
@@ -64,7 +66,7 @@ class FleetInitializer:
         inward_speed = max(float(np.linalg.norm(base_state[3:5])), 0.018)
         axial_speed = max(abs(float(base_state[5])), 0.004)
 
-        states: List[np.ndarray] = []
+        states: list[np.ndarray] = []
         golden_offset = np.pi * (3.0 - np.sqrt(5.0))
         for idx in range(count):
             angle = base_angle + 2.0 * np.pi * idx / count
@@ -98,7 +100,7 @@ class FleetInitializer:
 
     def build_chaser_configs(
         self, initial_states: Sequence[np.ndarray]
-    ) -> List[ChaserConfig]:
+    ) -> list[ChaserConfig]:
         initial_states = [np.asarray(value, dtype=float) for value in initial_states]
         if not initial_states or any(
             value.shape != (6,) or not np.all(np.isfinite(value))

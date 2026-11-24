@@ -15,19 +15,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, TYPE_CHECKING
-import numpy as np
+from typing import TYPE_CHECKING
 
+import numpy as np
 from orbexa.control.tubes.model import advance_tube, boundary_layer_feedback
-from orbexa.control.tubes.sample_hold import sample_hold_bounds, TUBE_MODEL_VERSION
+from orbexa.control.tubes.sample_hold import TUBE_MODEL_VERSION, sample_hold_bounds
 from orbexa.simulation.numerics.integration import rk4_step
 
 if TYPE_CHECKING:
     from orbexa.estimation.adaptation.mission import MissionAdaptation
-    from orbexa.simulation.approach.planning import ChaserPlan, PlanningStep
-    from orbexa.simulation.approach.state import CoupledMissionState
     from orbexa.simulation.approach.models import MissionPhase
+    from orbexa.simulation.approach.planning import PlanningStep
     from orbexa.simulation.approach.scenario import MissionScenario
+    from orbexa.simulation.approach.state import CoupledMissionState
 
 
 @dataclass
@@ -35,16 +35,16 @@ class ExecutionStep:
     start_anomaly: float
     end_anomaly: float
     success: bool = True
-    messages: List[str] = field(default_factory=list)
-    reserve_ratios: Dict[str, float] = field(default_factory=dict)
-    applied: Dict[str, List[np.ndarray]] = field(default_factory=dict)
-    ancillary: Dict[str, List[np.ndarray]] = field(default_factory=dict)
-    containment: Dict[str, float] = field(default_factory=dict)
-    clearance: Dict[str, float] = field(default_factory=dict)
+    messages: list[str] = field(default_factory=list)
+    reserve_ratios: dict[str, float] = field(default_factory=dict)
+    applied: dict[str, list[np.ndarray]] = field(default_factory=dict)
+    ancillary: dict[str, list[np.ndarray]] = field(default_factory=dict)
+    containment: dict[str, float] = field(default_factory=dict)
+    clearance: dict[str, float] = field(default_factory=dict)
     min_spacing: float = np.inf
     sampled_tube_contained: bool = True
     max_nominal_discretization_residual: float = 0.0
-    nominal_center_defect: Dict[str, np.ndarray] = field(default_factory=dict)
+    nominal_center_defect: dict[str, np.ndarray] = field(default_factory=dict)
 
     @property
     def committed(self) -> bool:

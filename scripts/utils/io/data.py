@@ -12,16 +12,18 @@
 
 """Atomic JSON persistence, data conversion and result-folder naming."""
 
-import os
-import json
-import yaml
-import shutil
 import datetime
+import json
 import logging
+import os
+import shutil
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence, Union, Any
+from typing import Any
+
 import numpy as np
+import yaml
 
 logger = logging.getLogger("orbexa.utils.io_utils")
 
@@ -74,7 +76,7 @@ def save_test_result(
     return str(target_folder)
 
 
-def save_data(filename: Union[str, Path], data: Any) -> bool:
+def save_data(filename: str | Path, data: Any) -> bool:
     """
     Save data to a JSON file. Handles conversion and path creation.
 
@@ -117,7 +119,7 @@ def save_data(filename: Union[str, Path], data: Any) -> bool:
                 logger.warning("Could not remove incomplete save %s", temporary)
 
 
-def load_data(filename: Union[str, Path]) -> Any:
+def load_data(filename: str | Path) -> Any:
     """
     Load data from a JSON file.
 
@@ -131,9 +133,7 @@ def load_data(filename: Union[str, Path]) -> Any:
         return json.load(f)
 
 
-def latest_data_file(
-    folder: Union[str, Path], suffixes: Optional[Sequence[str]] = None
-) -> str:
+def latest_data_file(folder: str | Path, suffixes: Sequence[str] | None = None) -> str:
     """
     Get the most recent file in a folder (by modification time).
 
@@ -184,7 +184,7 @@ def convert_numpy_to_list(obj: Any) -> Any:
     return obj
 
 
-def create_filename(folder: Union[str, Path], suffix: str) -> str:
+def create_filename(folder: str | Path, suffix: str) -> str:
     """
     Generate a timestamped filename.
 

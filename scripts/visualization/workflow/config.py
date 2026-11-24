@@ -1,9 +1,10 @@
 """Validated configuration for fresh mission runs or saved-data rendering."""
 
 from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+
 from orbexa.sessions import validate_session_id
 
 
@@ -13,8 +14,8 @@ class DemoConfig:
 
     output_dir: Path = Path("results")
     data_dir: Path = Path("data")
-    session_id: Optional[str] = None
-    config_path: Optional[Path] = None
+    session_id: str | None = None
+    config_path: Path | None = None
     steps: int = 450
     """Maximum number of receding-horizon MPC updates."""
     mission: str = "all"

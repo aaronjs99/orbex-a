@@ -6,24 +6,21 @@ The unilateral dashpot's contact discontinuity is covered by a branch hull.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
+import copy
+import hashlib
 from dataclasses import asdict, dataclass, replace
 from fractions import Fraction
-import hashlib
-import copy
-from pathlib import Path
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
     _ProofUnresolved,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.contact.dynamics.rotation import (
     auxiliary_initial,
     rotation_derivative,
@@ -53,7 +50,7 @@ from orbexa.simulation.numerics.rigid_interval import (
     subtract,
     transpose,
 )
-
+from scipy.spatial.transform import Rotation
 
 _SOURCE = {
     name: hashlib.sha256((PACKAGE_ROOT / name).read_bytes()).hexdigest()

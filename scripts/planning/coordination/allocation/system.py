@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
+
+import numpy as np
 from orbexa.planning.coordination.allocation.contracts import (
     AgentState,
     Network,
@@ -33,8 +34,8 @@ class TaskAllocationSystem:
     External code calls step_all() or step_agent() as desired.
     """
 
-    agents: List[AgentState]
-    tasks: List[Vec]
+    agents: list[AgentState]
+    tasks: list[Vec]
     network: Network
     policy: Policy
 
@@ -44,7 +45,7 @@ class TaskAllocationSystem:
     def step_agent(self, agent_id: int) -> int:
         return self.policy.step(self.agents, self.tasks, self.network, agent_id)
 
-    def step_all(self, order: Optional[Sequence[int]] = None) -> int:
+    def step_all(self, order: Sequence[int] | None = None) -> int:
         if order is None:
             order = list(range(len(self.agents)))
         total = 0
@@ -55,17 +56,17 @@ class TaskAllocationSystem:
     def has_converged(self) -> bool:
         return self.policy.has_converged(self.agents, self.tasks, self.network)
 
-    def current_goals(self) -> List[Vec]:
+    def current_goals(self) -> list[Vec]:
         return [a.goal_pos for a in self.agents]
 
 
 def make_agents(
     start_positions: Sequence[Sequence[float]], initial_goals: Sequence[Sequence[float]]
-) -> List[AgentState]:
+) -> list[AgentState]:
     if len(start_positions) != len(initial_goals):
         raise ValueError("start_positions and initial_goals must have same length")
 
-    agents: List[AgentState] = []
+    agents: list[AgentState] = []
     for i, (s, g) in enumerate(zip(start_positions, initial_goals)):
         agents.append(
             AgentState(

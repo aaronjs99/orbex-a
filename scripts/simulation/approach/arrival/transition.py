@@ -8,8 +8,8 @@ same physical guard once. It grants planning eligibility, not motion or backup.
 from __future__ import annotations
 
 import copy
-from pathlib import Path
 import json
+from pathlib import Path
 
 from orbexa.simulation.approach.arrival.policy import ArrivalPolicyConfig
 from orbexa.simulation.approach.records.checkpoint import (

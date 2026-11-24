@@ -8,12 +8,11 @@ required explicitly. Quaternions are body-to-ECI, scalar last (xyzw).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping, Optional
+from typing import Any
 
 import numpy as np
-from scipy.spatial.transform import Rotation, Slerp
-
 from orbexa.core.dynamics.attitude import body_rate_derivative, finite_vector
 from orbexa.simulation.attached.assembly.model import (
     STANDARD_GRAVITY,
@@ -21,6 +20,7 @@ from orbexa.simulation.attached.assembly.model import (
     positive,
 )
 from orbexa.simulation.contact.capture import ChaserPhysicalProperties
+from scipy.spatial.transform import Rotation, Slerp
 
 
 def _rotation(quaternion):
@@ -375,10 +375,10 @@ class ChaserAttitudeTracker:
     def __init__(
         self,
         *,
-        options: Optional[ChaserAttitudeOptions] = None,
-        actuators: Optional[ChaserAttitudeActuators] = None,
-        chasers: Optional[Mapping[str, ChaserPhysicalProperties]] = None,
-        default_chaser: Optional[ChaserPhysicalProperties] = None,
+        options: ChaserAttitudeOptions | None = None,
+        actuators: ChaserAttitudeActuators | None = None,
+        chasers: Mapping[str, ChaserPhysicalProperties] | None = None,
+        default_chaser: ChaserPhysicalProperties | None = None,
     ):
         self.options = options or ChaserAttitudeOptions()
         self.actuators = actuators or ChaserAttitudeActuators()
@@ -444,7 +444,7 @@ class ChaserAttitudeTracker:
         approach,
         *,
         translation_fuel_debit_kg: Mapping[str, float],
-        initial_states: Optional[Mapping[str, ChaserAttitudeInitialState]] = None,
+        initial_states: Mapping[str, ChaserAttitudeInitialState] | None = None,
         observation_callback=None,
     ) -> ChaserAttitudeResult:
         """Track mounting frames over the complete saved approach timeline.

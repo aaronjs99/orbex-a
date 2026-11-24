@@ -1,25 +1,25 @@
 """YAML decoding into structured configuration, loaded on demand."""
 
 import logging
-from typing import Optional
+
 import numpy as np
-from orbexa.layout import default_config_path
-from orbexa.utils.io.configuration import load_config
 from orbexa.core.configuration.types import (
-    OrbitConfig,
+    AdaptationConfig,
+    MissionPolicyConfig,
     MPCConfig,
+    OrbitConfig,
+    SolverConfig,
     TargetConfig,
     TubeMPCConfig,
-    MissionPolicyConfig,
-    AdaptationConfig,
-    SolverConfig,
     _as_square_weight_matrix,
 )
+from orbexa.layout import default_config_path
+from orbexa.utils.io.configuration import load_config
 
 logger = logging.getLogger(__name__)
 
 
-def load_simulation_config(path: Optional[str] = None, *, config_type=None):
+def load_simulation_config(path: str | None = None, *, config_type=None):
     """Decode a scenario into the supplied simulation configuration class."""
     from orbexa.core.configuration.model import SimulationConfig
 

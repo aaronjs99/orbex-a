@@ -15,10 +15,10 @@ Abstract base classes and data structures for MPC solvers.
 """
 
 import logging
-import numpy as np
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple, Callable
+from typing import Any
+
+import numpy as np
 from orbexa.contracts import MPCProblem, SolverResult
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class SolverBase(ABC):
     the setup() and solve() methods.
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         """
         Initialize solver with configuration.
 
@@ -40,7 +40,7 @@ class SolverBase(ABC):
             config: Solver-specific configuration dictionary
         """
         self.config = config or {}
-        self._problem: Optional[MPCProblem] = None
+        self._problem: MPCProblem | None = None
         self._is_setup = False
 
     @property
@@ -56,7 +56,6 @@ class SolverBase(ABC):
         Args:
             problem: MPC problem definition
         """
-        pass
 
     @abstractmethod
     def solve(self) -> SolverResult:
@@ -66,7 +65,6 @@ class SolverBase(ABC):
         Returns:
             SolverResult with trajectory and status
         """
-        pass
 
     def cleanup(self) -> None:
         """Clean up solver resources. Override if needed."""
@@ -94,7 +92,7 @@ class SolverBase(ABC):
 
     def _discretize(
         self, A: np.ndarray, B: np.ndarray, anom_step: float
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Discretize continuous-time system using matrix exponential.
 
@@ -126,5 +124,3 @@ class SolverBase(ABC):
 
 class SolverError(Exception):
     """Exception raised by solvers."""
-
-    pass

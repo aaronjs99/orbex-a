@@ -15,8 +15,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence
+
 from orbexa.planning.coordination.allocation.contracts import AgentState, Network, Vec
 from orbexa.utils.geometry.algebra import calc_distance
 
@@ -31,18 +32,18 @@ class GreedySwapPolicy:
     """
 
     def initialize(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
         return
 
     @staticmethod
     def _intersections_for(
-        agent_w: AgentState, agents: List[AgentState], neighbors: Iterable[int]
-    ) -> List[int]:
+        agent_w: AgentState, agents: list[AgentState], neighbors: Iterable[int]
+    ) -> list[int]:
         w0 = agent_w.start_pos
         wT = agent_w.goal_pos
 
-        intersecting: List[int] = []
+        intersecting: list[int] = []
         for i in neighbors:
             ai = agents[i]
             i0 = ai.start_pos
@@ -56,7 +57,7 @@ class GreedySwapPolicy:
 
     def step(
         self,
-        agents: List[AgentState],
+        agents: list[AgentState],
         tasks: Sequence[Vec],
         network: Network,
         agent_id: int,
@@ -81,7 +82,7 @@ class GreedySwapPolicy:
         return interactions
 
     def has_converged(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
         for w in range(len(agents)):
             if self._intersections_for(agents[w], agents, network.neighbors(w)):

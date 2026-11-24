@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
+
 from orbexa.control.fallback.refuge import ControlContext
 
 

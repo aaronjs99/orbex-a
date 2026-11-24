@@ -7,12 +7,12 @@ a reset or restriction of the initial physical attitudes.
 
 from orbexa.simulation.numerics.rigid_interval import (
     add,
-    subtract,
-    scale,
     cross,
     matvec,
-    transpose,
     quaternion_rotation,
+    scale,
+    subtract,
+    transpose,
 )
 
 

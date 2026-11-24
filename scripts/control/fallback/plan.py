@@ -2,22 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
-from typing import Any, Sequence
+from typing import Any
+
 from orbexa.control.certification.reachability import _exact
-from orbexa.control.fallback.refuge import RefugeController, exact_record, fingerprint
 from orbexa.control.fallback.common import _pairs, _same_plant
-from orbexa.control.fallback.polynomial import (
-    PolynomialReferenceSource,
-    _reference_methods,
-)
 from orbexa.control.fallback.geometry import (
     FleetGeometryCertificate,
     FleetGeometryOracle,
 )
-
+from orbexa.control.fallback.polynomial import (
+    PolynomialReferenceSource,
+    _reference_methods,
+)
+from orbexa.control.fallback.refuge import RefugeController, exact_record, fingerprint
 
 FLEET_FALLBACK_METHOD = "exact-finite-fleet-feedback-fallback-v1"
 

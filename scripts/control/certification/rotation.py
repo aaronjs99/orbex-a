@@ -8,7 +8,6 @@ from itertools import product
 from orbexa.control.certification.attitude import _sqrt_upper
 from orbexa.control.certification.reachability import IntervalBox, _exact
 
-
 _DIRECTIONS = tuple(
     tuple(map(Fraction, row))
     for row in product((-1, 0, 1), repeat=3)

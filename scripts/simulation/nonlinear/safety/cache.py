@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import fields, is_dataclass
 from collections import OrderedDict
 from collections.abc import Mapping
+from dataclasses import fields, is_dataclass
+
 from orbexa.control.fallback.refuge import fingerprint
 
 

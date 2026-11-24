@@ -15,7 +15,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
+
 import numpy as np
 
 
@@ -59,7 +60,7 @@ class ChaserConfig:
                 "Attachment assignments require both patch and component IDs"
             )
 
-    def assignment_metadata(self) -> Dict[str, Any]:
+    def assignment_metadata(self) -> dict[str, Any]:
         result = {
             "chaser_id": self.chaser_id,
             "initial_state": self.initial_state.tolist(),

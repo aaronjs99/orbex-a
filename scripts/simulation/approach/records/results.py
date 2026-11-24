@@ -17,7 +17,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from orbexa.contracts import MISSION_RESULT_SCHEMA
 from orbexa.utils.io.data import load_data, save_data
@@ -32,46 +32,46 @@ class ADTMPCMissionResult:
     solver_backend: str
     success: bool
     message: str
-    anom_history: List[float]
-    phase_history: List[str]
-    sample_phase_history: List[str]
-    actual_trajectories: Dict[str, List[List[float]]]
-    nominal_trajectories: Dict[str, List[List[List[float]]]]
-    controls: Dict[str, List[List[float]]]
-    solve_stats: Dict[str, List[Dict[str, Any]]]
-    solver_costs: Dict[str, List[Optional[float]]]
-    truth: Dict[str, float]
-    target: Dict[str, Any]
-    target_attitude_history: List[List[float]]
-    target_angular_velocity_history: List[List[float]]
-    docking_points: Dict[str, List[float]]
-    initial_belief: Dict[str, Dict[str, Any]]
-    final_belief: Dict[str, Dict[str, Any]]
-    feasible_set_history: List[Dict[str, List[float]]]
-    parameter_estimate_history: List[Dict[str, float]]
-    smid_records: List[Dict[str, Any]]
-    tube_profiles: Dict[str, List[Dict[str, Any]]]
-    tube_radius_history: List[float]
-    rendezvous_margins: Dict[str, List[float]]
-    docking_cylinder_margins: Dict[str, List[float]]
-    active_target_margins: Dict[str, List[float]]
-    pairwise_spacing: List[Dict[str, float]]
-    physical_rendezvous_margins: Dict[str, List[float]] = field(default_factory=dict)
-    physical_docking_cylinder_margins: Dict[str, List[float]] = field(
+    anom_history: list[float]
+    phase_history: list[str]
+    sample_phase_history: list[str]
+    actual_trajectories: dict[str, list[list[float]]]
+    nominal_trajectories: dict[str, list[list[list[float]]]]
+    controls: dict[str, list[list[float]]]
+    solve_stats: dict[str, list[dict[str, Any]]]
+    solver_costs: dict[str, list[float | None]]
+    truth: dict[str, float]
+    target: dict[str, Any]
+    target_attitude_history: list[list[float]]
+    target_angular_velocity_history: list[list[float]]
+    docking_points: dict[str, list[float]]
+    initial_belief: dict[str, dict[str, Any]]
+    final_belief: dict[str, dict[str, Any]]
+    feasible_set_history: list[dict[str, list[float]]]
+    parameter_estimate_history: list[dict[str, float]]
+    smid_records: list[dict[str, Any]]
+    tube_profiles: dict[str, list[dict[str, Any]]]
+    tube_radius_history: list[float]
+    rendezvous_margins: dict[str, list[float]]
+    docking_cylinder_margins: dict[str, list[float]]
+    active_target_margins: dict[str, list[float]]
+    pairwise_spacing: list[dict[str, float]]
+    physical_rendezvous_margins: dict[str, list[float]] = field(default_factory=dict)
+    physical_docking_cylinder_margins: dict[str, list[float]] = field(
         default_factory=dict
     )
-    tightened_rendezvous_margins: Dict[str, List[float]] = field(default_factory=dict)
-    tightened_docking_cylinder_margins: Dict[str, List[float]] = field(
+    tightened_rendezvous_margins: dict[str, list[float]] = field(default_factory=dict)
+    tightened_docking_cylinder_margins: dict[str, list[float]] = field(
         default_factory=dict
     )
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tube_diagnostics: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tube_diagnostics: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return copy.deepcopy(self.__dict__)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ADTMPCMissionResult":
+    def from_dict(cls, data: dict[str, Any]) -> ADTMPCMissionResult:
         payload = copy.deepcopy(data)
         # Partial and older recorded runs can omit optional diagnostic histories.
         # No trajectory, physical context, or current-model identity is invented.
@@ -150,5 +150,5 @@ def load_adtmpc_mission_result(output_dir: Path) -> ADTMPCMissionResult:
     return MissionResultStore.load(Path(output_dir) / MissionResultStore.filename)
 
 
-def result_chaser_ids(result: ADTMPCMissionResult) -> List[str]:
+def result_chaser_ids(result: ADTMPCMissionResult) -> list[str]:
     return list(result.actual_trajectories.keys())

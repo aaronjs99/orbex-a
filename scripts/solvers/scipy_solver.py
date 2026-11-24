@@ -15,11 +15,11 @@ SciPy solver backend for MPC optimization.
 """
 
 import time
-import numpy as np
-from typing import Dict, Any
-from scipy import optimize as opt
+from typing import Any
 
-from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
+import numpy as np
+from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult
+from scipy import optimize as opt
 
 
 class ScipySolver(SolverBase):
@@ -34,7 +34,7 @@ class ScipySolver(SolverBase):
         disp (bool): Display output. Default: False
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.method = self.config.get("method", "SLSQP")
         self.max_iter = self.config.get("max_iter", 1000)
@@ -264,7 +264,7 @@ class ScipySolver(SolverBase):
             return SolverResult(
                 success=False,
                 solve_time=solve_time,
-                message=f"SciPy solver error: {str(e)}",
+                message=f"SciPy solver error: {e!s}",
             )
 
     def cleanup(self) -> None:

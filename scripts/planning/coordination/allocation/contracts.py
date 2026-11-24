@@ -15,10 +15,11 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol, Sequence
+from typing import Protocol
 
+import numpy as np
 
 Vec = np.ndarray  # shape (d,)
 
@@ -32,31 +33,31 @@ class AgentState:
     goal_pos: Vec
 
     # Greedy memory
-    intersecting_neighbors: List[int] = field(default_factory=list)
+    intersecting_neighbors: list[int] = field(default_factory=list)
 
     # Distributed auction memory
     assignment_idx: int = 0
-    prices: Optional[np.ndarray] = None  # shape (N_tasks,)
-    winners: Optional[np.ndarray] = None  # shape (N_tasks,) int agent ids
+    prices: np.ndarray | None = None  # shape (N_tasks,)
+    winners: np.ndarray | None = None  # shape (N_tasks,) int agent ids
 
     def copy_goal(self) -> Vec:
         return np.array(self.goal_pos, copy=True)
 
 
 class Network(Protocol):
-    def neighbors(self, agent_id: int) -> List[int]: ...
+    def neighbors(self, agent_id: int) -> list[int]: ...
 
     def is_connected(self) -> bool: ...
 
 
 class Policy(Protocol):
     def initialize(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None: ...
 
     def step(
         self,
-        agents: List[AgentState],
+        agents: list[AgentState],
         tasks: Sequence[Vec],
         network: Network,
         agent_id: int,
@@ -65,5 +66,5 @@ class Policy(Protocol):
         ...
 
     def has_converged(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool: ...

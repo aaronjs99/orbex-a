@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, Tuple, TYPE_CHECKING
-import numpy as np
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from orbexa.control.mpc.references import sample_tracking_reference
 from orbexa.simulation.approach.models import ChaserConfig, MissionPhase
 from orbexa.simulation.approach.references.policy import MissionReferencePolicy
 
 if TYPE_CHECKING:
-    from orbexa.simulation.approach.state import CoupledMissionState
     from orbexa.simulation.approach.deployment.arc import CompactArcDeployment
+    from orbexa.simulation.approach.state import CoupledMissionState
 
 
 class CompactDeploymentPolicy(MissionReferencePolicy):
     """Fan out, contract to a rotating shell, and arm only ready side corridors."""
 
     def __init__(
-        self, deployment: CompactArcDeployment, horizon_steps: Optional[int] = None
+        self, deployment: CompactArcDeployment, horizon_steps: int | None = None
     ):
         super().__init__(deployment.config, deployment.target, horizon_steps)
         self.deployment = deployment
@@ -42,7 +43,7 @@ class CompactDeploymentPolicy(MissionReferencePolicy):
 
     def staging_margins(
         self, state: CoupledMissionState, chasers: Sequence[ChaserConfig]
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Nonnegative margins certify this gate only, not the next nonlinear plan.
 
         Corridor support uses the solver's Euclidean tube inflation, which also
@@ -159,9 +160,9 @@ class CompactDeploymentPolicy(MissionReferencePolicy):
         current_reference: np.ndarray,
         anom: float,
         horizon_steps: int,
-        matrices: Tuple,
+        matrices: tuple,
         time_periapsis: float,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         if phase.operation == "docking":
             return super().phase_reference_preview(
                 phase,
@@ -182,5 +183,5 @@ class CompactDeploymentPolicy(MissionReferencePolicy):
             lambda q: matrices[4](q, time_periapsis),
         )
 
-    def scenario_metadata(self) -> Dict[str, Any]:
+    def scenario_metadata(self) -> dict[str, Any]:
         return self.deployment.scenario_metadata()

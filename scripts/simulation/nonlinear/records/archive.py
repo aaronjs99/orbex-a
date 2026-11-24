@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
-from fractions import Fraction
 import gzip
 import hashlib
 import io
 import json
 import os
+from dataclasses import asdict, is_dataclass
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
-
 
 SCHEMA = "orbexa.nonlinear-proof-archive.v1"
 HOLD_INDEX_SCHEMA = "orbexa.nonlinear-held-index.v1"

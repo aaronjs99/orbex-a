@@ -6,10 +6,10 @@ does not schedule observations or change their actual acquisition timestamps.
 
 from __future__ import annotations
 
-from fractions import Fraction
 import hashlib
 import json
 import math
+from fractions import Fraction
 
 import numpy as np
 

@@ -4,20 +4,18 @@ These helpers do not import the lifecycle, journal, or physical adapters.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
 import copy
-from fractions import Fraction
 import hashlib
 import json
-from math import isqrt
-from pathlib import Path
 import re
+from fractions import Fraction
+from math import isqrt
 
 from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.fallback.refuge import fingerprint as exact_fingerprint
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.approach.records.checkpoint import digest
-
 
 _COMPLETION_SOURCE_FILES = (
     "simulation/completion/nonlinear/coordinator.py",

@@ -11,13 +11,13 @@ sloshing, elastic-contact or resolved plume model.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from numbers import Real
-from typing import Sequence
-import numpy as np
-from scipy.spatial.transform import Rotation
 
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector, inertia_matrix
+from scipy.spatial.transform import Rotation
 
 STANDARD_GRAVITY = 9.80665
 
@@ -160,11 +160,11 @@ class AssemblyState:
         fuel.setflags(write=False)
         object.__setattr__(self, "fuel_kg", fuel)
         if self.enclosure is not None:
+            from orbexa.control.certification.reachability import IntervalBox
             from orbexa.simulation.attached.assembly.flow import (
                 AssemblyStateEnclosure,
                 packed_state,
             )
-            from orbexa.control.certification.reachability import IntervalBox
 
             if not isinstance(
                 self.enclosure, AssemblyStateEnclosure

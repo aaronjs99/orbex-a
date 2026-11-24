@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
-from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 import numpy as np
-
+from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 from orbexa.visualization.data.geometry import MissionGeometry
 from orbexa.visualization.data.samples import MissionSamples
+from orbexa.visualization.plots.canvas import artifact_figure
 from orbexa.visualization.style import chaser_color
 
 logger = logging.getLogger(__name__)

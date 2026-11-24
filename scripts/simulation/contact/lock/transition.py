@@ -14,40 +14,39 @@ flexure and material realization remain mechanism assumptions.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
-from dataclasses import dataclass, asdict, replace
 import copy
-from fractions import Fraction
-from types import SimpleNamespace
 import hashlib
+from dataclasses import asdict, dataclass, replace
+from fractions import Fraction
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
     _ProofUnresolved,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.contact.enclosure import ContactStepEncloser
 from orbexa.simulation.contact.lock.chart import positioner_motion
 from orbexa.simulation.numerics.rigid_interval import (
     add,
-    subtract,
-    scale,
     cross,
-    matvec,
-    transpose,
     inverse3,
-    square,
+    matvec,
     norm_upper,
     normalized_quaternion,
-    quaternion_rotation,
-    quaternion_product,
     quaternion_conjugate,
+    quaternion_product,
+    quaternion_rotation,
+    scale,
+    square,
+    subtract,
+    transpose,
 )
 
 

@@ -18,11 +18,10 @@ ellipsoids for a set of 3D points using GEKKO optimizations.
 """
 
 import numpy as np
-from typing import List, Tuple
 from gekko import GEKKO
 
 
-def min_enclosing_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
+def min_enclosing_ellipsoid(points: np.ndarray) -> tuple[np.ndarray, float]:
     """
     Calculate the Minimum Enclosing Ellipsoid (MEE) of a set of points.
 
@@ -56,7 +55,7 @@ def min_enclosing_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
     return radii, volume
 
 
-def max_inscribed_ellipsoid(points: np.ndarray) -> Tuple[np.ndarray, float]:
+def max_inscribed_ellipsoid(points: np.ndarray) -> tuple[np.ndarray, float]:
     """
     Calculate the Maximum Inscribed Ellipsoid (MIE) within a set of points.
 

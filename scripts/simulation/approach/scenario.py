@@ -14,11 +14,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, Protocol
 import copy
 import json
-import numpy as np
+from collections.abc import Callable
+from typing import Any, Protocol
 
+import numpy as np
 from orbexa.core.configuration.model import SimulationConfig
 from orbexa.core.dynamics.parameters import OrbitalPlantTruth
 from orbexa.core.targets.prescribed import TargetGeometry, TumblingCylinderTarget
@@ -37,12 +38,12 @@ class CoupledController(Protocol):
 
 class ControllerFactory(Protocol):
     def __call__(
-        self, *, solver_backend: str, solver_config: Dict[str, Any]
+        self, *, solver_backend: str, solver_config: dict[str, Any]
     ) -> CoupledController: ...
 
 
 def default_controller_factory(
-    *, solver_backend: str, solver_config: Dict[str, Any]
+    *, solver_backend: str, solver_config: dict[str, Any]
 ) -> CoupledController:
     from orbexa.control.mpc.controller import MPCController
 
@@ -61,22 +62,22 @@ class MissionScenario:
     def __init__(
         self,
         *,
-        config: Optional[SimulationConfig] = None,
-        truth: Optional[OrbitalPlantTruth] = None,
-        target: Optional[TargetGeometry] = None,
-        fleet: Optional[FleetInitializer] = None,
-        reference: Optional[MissionReferencePolicy] = None,
-        safety: Optional[MissionSafety] = None,
-        point_estimator: Optional[PointEstimator] = None,
-        controller_factory: Optional[ControllerFactory] = None,
-        initial_belief: Optional[ParameterBelief] = None,
+        config: SimulationConfig | None = None,
+        truth: OrbitalPlantTruth | None = None,
+        target: TargetGeometry | None = None,
+        fleet: FleetInitializer | None = None,
+        reference: MissionReferencePolicy | None = None,
+        safety: MissionSafety | None = None,
+        point_estimator: PointEstimator | None = None,
+        controller_factory: ControllerFactory | None = None,
+        initial_belief: ParameterBelief | None = None,
         execution_guard=None,
         arrival_policy=None,
-        progress_sink: Optional[Callable[[Dict[str, Any]], None]] = None,
-        vehicle_design: Optional[Dict[str, Any]] = None,
+        progress_sink: Callable[[dict[str, Any]], None] | None = None,
+        vehicle_design: dict[str, Any] | None = None,
         adaptation_mode: str = "adaptive",
-        horizon_steps: Optional[int] = None,
-        actuation_steps: Optional[int] = None,
+        horizon_steps: int | None = None,
+        actuation_steps: int | None = None,
         approximation: str = "nonlinear",
         solver_backend: str = "gekko",
     ):
@@ -181,7 +182,7 @@ class MissionScenario:
         self.approximation = approximation
         self.solver_backend = solver_backend
 
-    def scenario_metadata(self) -> Dict[str, Any]:
+    def scenario_metadata(self) -> dict[str, Any]:
         """Record optional scenario policy without coupling the recorder to it."""
         metadata = {
             **self.reference.scenario_metadata(),

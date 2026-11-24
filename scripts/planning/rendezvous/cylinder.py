@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Tuple, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
 
 def assign_docking_targets(
     target: TumblingCylinderTarget, initial_states: Sequence[np.ndarray]
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     count = len(initial_states)
     if count == 0:
         return []
@@ -40,8 +42,8 @@ def assign_docking_targets(
         assignment = [(0, 0)]
     else:
         best_cost = np.inf
-        best_angles: List[float] = []
-        best_assignment: List[Tuple[int, int]] = []
+        best_angles: list[float] = []
+        best_assignment: list[tuple[int, int]] = []
         start_options = [0.0]
         start_options.extend(
             angle - 2.0 * np.pi * offset / count
@@ -82,7 +84,7 @@ def assign_docking_targets(
         ]
         assignment = best_assignment
 
-    assigned: List[Dict[str, Any]] = []
+    assigned: list[dict[str, Any]] = []
     for state_idx, point_idx in assignment:
         _, normal = candidate_geometry[point_idx]
         point, normal = target.side_docking_geometry(

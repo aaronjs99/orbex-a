@@ -9,15 +9,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from fractions import Fraction
-import numpy as np
 
-from orbexa.control.certification.reachability import IntervalBox, _ARB_LOCK
 from orbexa.control.certification.nonlinear import _Arithmetic
-from orbexa.core.dynamics.relative import dot
+from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox
 from orbexa.core.dynamics.reference_frame import exact
-from orbexa.estimation.navigation.target_pose import infer_target_ephemeris
-from orbexa.estimation.navigation.boxes import intersect
+from orbexa.core.dynamics.relative import dot
 from orbexa.estimation.membership.nonlinear import NonlinearMembershipContractor
+from orbexa.estimation.navigation.boxes import intersect
+from orbexa.estimation.navigation.target_pose import infer_target_ephemeris
 
 
 def initial_eccentricity_box(inertial_box, mu, *, precision_bits=128):
@@ -98,8 +97,8 @@ class NonlinearMissionAdaptation:
         self.observation_window = None
         if membership_policy == "linked-affine-window-v1":
             from orbexa.estimation.membership.linked import (
-                LinkedObservationWindow,
                 LinkedNonlinearMembershipContractor,
+                LinkedObservationWindow,
             )
 
             self.observation_window = LinkedObservationWindow(

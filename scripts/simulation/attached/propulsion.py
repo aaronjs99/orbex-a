@@ -9,15 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from numbers import Integral
-import numpy as np
-from scipy.optimize import lsq_linear
 
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.simulation.attached.assembly.model import (
-    AttachedAssembly,
     STANDARD_GRAVITY,
+    AttachedAssembly,
     positive,
 )
+from scipy.optimize import lsq_linear
 
 
 @dataclass(frozen=True)

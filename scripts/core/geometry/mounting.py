@@ -1,6 +1,7 @@
 """Common right-handed mounting frames for arbitrary structural surface normals."""
 
 from __future__ import annotations
+
 import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
 

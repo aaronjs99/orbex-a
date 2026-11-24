@@ -6,9 +6,9 @@ whole-fleet geometry, force, fuel and uncertain-entry checks still apply.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 
 from orbexa.control.certification.reachability import _exact
 from orbexa.control.fallback.refuge import _vec

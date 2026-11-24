@@ -17,8 +17,9 @@ Note: Requires casadi package. Install with: pip install casadi
 """
 
 import time
+from typing import Any
+
 import numpy as np
-from typing import Dict, Any
 
 try:
     import casadi
@@ -28,7 +29,7 @@ except ImportError:
     CASADI_AVAILABLE = False
     casadi = None
 
-from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem, SolverError
+from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult
 
 
 class CasadiSolver(SolverBase):
@@ -45,7 +46,7 @@ class CasadiSolver(SolverBase):
         warm_start (bool): Use warm start. Default: False
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         if not CASADI_AVAILABLE:
             raise ImportError("CasADi not installed. Run: pip install casadi")
 
@@ -226,7 +227,7 @@ class CasadiSolver(SolverBase):
             return SolverResult(
                 success=False,
                 solve_time=solve_time,
-                message=f"CasADi solver failed: {str(e)}",
+                message=f"CasADi solver failed: {e!s}",
             )
 
     def cleanup(self) -> None:

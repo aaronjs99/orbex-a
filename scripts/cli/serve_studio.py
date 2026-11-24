@@ -3,21 +3,19 @@
 from __future__ import annotations
 
 import argparse
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
-from pathlib import Path
 import re
 import shutil
 import sys
 import threading
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from orbexa.layout import ProjectLayout
-
-from orbexa.simulation.service.contracts import LiveServiceSettings, LIVE_SERVICE
-from orbexa.simulation.service.session import LiveSimulationService
+from orbexa.simulation.service.contracts import LIVE_SERVICE, LiveServiceSettings
 from orbexa.simulation.service.http import make_server
-
+from orbexa.simulation.service.session import LiveSimulationService
 
 THEORY_DOCUMENTS = (
     ("Nonlinear mission formulation", "nonlinear-mission.md"),

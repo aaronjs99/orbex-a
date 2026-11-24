@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 import copy
-import numpy as np
 
-from orbexa.control.tubes.sample_hold import SENSED_TUBE_MODEL_VERSION
+import numpy as np
 from orbexa.control.fallback.refuge import fingerprint
+from orbexa.control.tubes.sample_hold import SENSED_TUBE_MODEL_VERSION
+from orbexa.core.dynamics.reference_frame import exact
 from orbexa.simulation.approach.records.recorder import MissionRecorder
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
-from orbexa.simulation.approach.state import CoupledMissionState
-from orbexa.core.dynamics.reference_frame import exact
 
 
 class NonlinearMissionRecorder:

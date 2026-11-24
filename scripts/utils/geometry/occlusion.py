@@ -12,7 +12,6 @@
 
 """Numerical local and fleet visibility objectives."""
 
-from typing import Optional
 import numpy as np
 
 
@@ -21,7 +20,7 @@ def calc_local_occlusion_cost(
     w: np.ndarray,
     v: float,
     states_list: np.ndarray,
-    limits: Optional[dict] = None,
+    limits: dict | None = None,
 ) -> float:
     """
     Estimate occlusion cost (to be minimized).

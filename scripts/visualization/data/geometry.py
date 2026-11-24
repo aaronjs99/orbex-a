@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
 import numpy as np
-
 from orbexa.visualization.data.samples import MissionSamples
 
 
@@ -68,7 +66,7 @@ class MissionGeometry:
         body = np.stack((radius * np.cos(theta), radius * np.sin(theta), height))
         return (self.samples.rotations[index] @ body.reshape(3, -1)).reshape(body.shape)
 
-    def rendezvous_radius(self) -> Optional[float]:
+    def rendezvous_radius(self) -> float | None:
         target = self.samples.target
         try:
             value = float(

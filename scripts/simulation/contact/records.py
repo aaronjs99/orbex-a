@@ -7,8 +7,8 @@ Their keys and field meanings are the finite-contact v1 persisted contract.
 from __future__ import annotations
 
 from dataclasses import asdict
-import numpy as np
 
+import numpy as np
 from orbexa.simulation.contact.contracts import FiniteContactResult
 
 

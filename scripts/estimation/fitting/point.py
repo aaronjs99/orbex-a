@@ -148,12 +148,12 @@ def gen_y_stream(
     if not isinstance(remote, bool) or not isinstance(disp, bool):
         raise ValueError("remote and disp must be booleans")
     times = _time_stream(t_stream)
-    from scipy.spatial.transform import Rotation
     from orbexa.core.dynamics.attitude import (
         RigidBodyAttitude,
         euler_to_quaternion,
         finite_vector,
     )
+    from scipy.spatial.transform import Rotation
 
     point = finite_vector(y_0, "Body-frame point", 3)
     quaternion = euler_to_quaternion(phi_0)

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-import numpy as np
 
+import numpy as np
+from orbexa.planning.rendezvous.carrier import CarrierTransferReference
 from orbexa.planning.rendezvous.routes import (
     CompositeAttachmentPlanner,
     _point,
     _positive,
 )
-from orbexa.planning.rendezvous.carrier import CarrierTransferReference
 from orbexa.simulation.approach.deployment.arc import _quintic
 from orbexa.simulation.approach.fleet import FleetInitializer
 from orbexa.simulation.approach.models import ChaserConfig

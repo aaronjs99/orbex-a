@@ -18,13 +18,15 @@ Without optional declarations, conversion preserves the existing
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
 import json
-from typing import Any, Dict, Mapping, Tuple
+from collections.abc import Mapping
+from dataclasses import dataclass, fields
 from numbers import Real
+from typing import Any
+
 import numpy as np
-from orbexa.control.terminal.region import TerminalRegion
 from orbexa.control.terminal.contact import ContactGoalSpeedBound
+from orbexa.control.terminal.region import TerminalRegion
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
 
 
@@ -233,7 +235,7 @@ class DynamicTubeSpec:
     omega_initial: np.ndarray
     lambda_gain: np.ndarray
     alpha_initial: np.ndarray
-    alpha_bounds: Tuple[float, float]
+    alpha_bounds: tuple[float, float]
     alpha_rate_limit: float
     delta_A: np.ndarray
     delta_d: np.ndarray
@@ -414,7 +416,7 @@ class DynamicTubeSpec:
     def horizon_steps(self) -> int:
         return len(self.delta_A) + 1
 
-    def to_extra_params(self) -> Dict[str, Any]:
+    def to_extra_params(self) -> dict[str, Any]:
         """Return the current backend's dynamic-tube mapping without reformulation."""
         result = {
             item.name: getattr(self, item.name)
@@ -454,5 +456,5 @@ class DynamicTubeSpec:
         return result
 
     @classmethod
-    def from_extra_params(cls, parameters: Mapping[str, Any]) -> "DynamicTubeSpec":
+    def from_extra_params(cls, parameters: Mapping[str, Any]) -> DynamicTubeSpec:
         return cls(**dict(parameters))

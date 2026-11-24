@@ -9,17 +9,17 @@ original record. Unknown data/code semantics use the original uncached path.
 
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import fields, is_dataclass
-from fractions import Fraction
 import hashlib
 import json
 import weakref
+from copy import deepcopy
+from dataclasses import fields, is_dataclass
+from fractions import Fraction
 
-from orbexa.control.fallback import refuge
-from orbexa.control.fallback.runtime import FleetAdmissionRuntime
-from orbexa.control.fallback.records import HeldFleetDecision
 from orbexa.control.certification.reachability import IntervalBox
+from orbexa.control.fallback import refuge
+from orbexa.control.fallback.records import HeldFleetDecision
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 
 _EXACT_RECORD = refuge.exact_record
 _FINGERPRINT = refuge.fingerprint

@@ -13,14 +13,9 @@
 """SMID update policy; conservative mission membership is a separate service."""
 
 import logging
-import time
+from typing import Any
+
 import numpy as np
-import queue
-import threading
-from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Any, Optional, Union
-from scipy.optimize import least_squares
-from orbexa.core.dynamics.orbital import orbital_ellp_drag
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +38,15 @@ class SMIDAdaptor:
     def __init__(
         self,
         *,
-        parameter_keys: Tuple[str, ...] = ("eccentricity", "alpha", "beta"),
+        parameter_keys: tuple[str, ...] = ("eccentricity", "alpha", "beta"),
         error_bound: float = 0.08,
-        prediction_error_threshold: Optional[float] = None,
+        prediction_error_threshold: float | None = None,
         remote: bool = False,
         disp: bool = False,
         max_iter: int = 120,
         time_series_prior_weight: float = 0.15,
         time_series_update_gain: float = 1.0,
-        minimum_widths: Optional[Dict[str, float]] = None,
+        minimum_widths: dict[str, float] | None = None,
         observability_relative_threshold: float = 0.02,
         observability_unique_threshold: float = 0.08,
         observability_absolute_threshold: float = 1.0e-8,
@@ -74,19 +69,19 @@ class SMIDAdaptor:
         self.observability_relative_threshold = float(observability_relative_threshold)
         self.observability_unique_threshold = float(observability_unique_threshold)
         self.observability_absolute_threshold = float(observability_absolute_threshold)
-        self.records: List[SMIDRecord] = []
+        self.records: list[SMIDRecord] = []
 
     def update(
         self,
         *,
-        feasible_sets: Dict[str, Tuple[float, float]],
-        estimates: Dict[str, float],
+        feasible_sets: dict[str, tuple[float, float]],
+        estimates: dict[str, float],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, float], SMIDRecord]:
+        dynamics_context: dict[str, Any],
+    ) -> tuple[dict[str, tuple[float, float]], dict[str, float], SMIDRecord]:
         states = np.asarray(states, dtype=float)
         controls = self._normalize_controls(
             np.asarray(controls, dtype=float), len(states)
@@ -185,8 +180,8 @@ class SMIDAdaptor:
             )
             return feasible_sets, estimates_after, record
 
-        candidate: Dict[str, Tuple[float, float]] = {}
-        solve_status: Dict[str, str] = {
+        candidate: dict[str, tuple[float, float]] = {}
+        solve_status: dict[str, str] = {
             "observability_held": ",".join(sorted(held_keys)) or "none"
         }
         for key in self.parameter_keys:
@@ -297,9 +292,9 @@ class SMIDAdaptor:
 
     def _apply_minimum_widths(
         self,
-        candidate: Dict[str, Tuple[float, float]],
-        previous: Dict[str, Tuple[float, float]],
-    ) -> Dict[str, Tuple[float, float]]:
+        candidate: dict[str, tuple[float, float]],
+        previous: dict[str, tuple[float, float]],
+    ) -> dict[str, tuple[float, float]]:
         adjusted = self._copy_ranges(candidate)
         for key, min_width in self.minimum_widths.items():
             if key not in adjusted or min_width <= 0.0:
@@ -362,20 +357,20 @@ class SMIDAdaptor:
         states: np.ndarray,
         accepted: bool,
         reason: str,
-        fss_before: Dict[str, Tuple[float, float]],
-        fss_candidate: Dict[str, Tuple[float, float]],
-        fss_after: Dict[str, Tuple[float, float]],
-        estimates_before: Dict[str, float],
-        estimates_after: Dict[str, float],
+        fss_before: dict[str, tuple[float, float]],
+        fss_candidate: dict[str, tuple[float, float]],
+        fss_after: dict[str, tuple[float, float]],
+        estimates_before: dict[str, float],
+        estimates_after: dict[str, float],
         prediction_error: float,
-        verification_error: Optional[float],
-        solve_status: Dict[str, str],
-        point_prediction_error: Optional[float] = None,
-        point_fit_error: Optional[float] = None,
+        verification_error: float | None,
+        solve_status: dict[str, str],
+        point_prediction_error: float | None = None,
+        point_fit_error: float | None = None,
     ) -> SMIDRecord:
         record = SMIDRecord(
             start_anom=float(start_anom),
-            window_size=int(len(states)),
+            window_size=len(states),
             accepted=accepted,
             reason=reason,
             fss_before=self._ranges_to_lists(fss_before),

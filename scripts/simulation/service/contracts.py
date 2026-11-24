@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from orbexa.layout import ProjectLayout
 
+from orbexa.layout import ProjectLayout
 
 LIVE_SERVICE = "orbexa-live-v2"
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run one declared sensed nonlinear mission from a movable source checkout."""
 
-from pathlib import Path
-from importlib.util import module_from_spec, spec_from_file_location
 import sys
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 package_root = ROOT / "scripts"
@@ -19,7 +19,6 @@ sys.modules["orbexa"] = package
 package_spec.loader.exec_module(package)
 
 from orbexa.cli.run_nonlinear import main
-
 
 if __name__ == "__main__":
     defaults = []

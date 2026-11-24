@@ -7,10 +7,10 @@ from fractions import Fraction
 from orbexa.control.certification.reachability import IntervalBox
 from orbexa.simulation.contact.dynamics.rotation import intersect
 from orbexa.simulation.numerics.rigid_interval import (
-    quaternion_product,
     quaternion_conjugate,
-    subtract,
+    quaternion_product,
     square,
+    subtract,
 )
 
 

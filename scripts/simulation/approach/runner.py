@@ -19,19 +19,16 @@ checks remain conditional model evidence, not a continuous-time certificate.
 
 from __future__ import annotations
 
-from typing import Optional
 import numpy as np
-
 from orbexa.core.dynamics.orbital import orbital_ellp_drag
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.estimation.adaptation.mission import MissionAdaptation, PointEstimator
 from orbexa.simulation.approach.execution import DenseFeedbackExecutor
 from orbexa.simulation.approach.planning import CoupledMissionPlanner
-from orbexa.simulation.approach.state import CoupledMissionState
-from orbexa.simulation.numerics.integration import rk4_step  # Compatibility import.
 from orbexa.simulation.approach.records.recorder import MissionRecorder
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
 from orbexa.simulation.approach.scenario import ControllerFactory, MissionScenario
+from orbexa.simulation.approach.state import CoupledMissionState
 
 
 class CoupledTubeMission:
@@ -43,8 +40,8 @@ class CoupledTubeMission:
         *,
         config=None,
         target=None,
-        point_estimator: Optional[PointEstimator] = None,
-        controller_factory: Optional[ControllerFactory] = None,
+        point_estimator: PointEstimator | None = None,
+        controller_factory: ControllerFactory | None = None,
     ):
         if scenario is not None and not isinstance(scenario, MissionScenario):
             # Compatibility adaptation does not retain or call the facade.

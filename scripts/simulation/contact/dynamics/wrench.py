@@ -13,10 +13,10 @@ from orbexa.control.certification.reachability import IntervalBox
 from orbexa.simulation.contact.dynamics.rotation import intersect
 from orbexa.simulation.numerics.rigid_interval import (
     add,
-    subtract,
-    scale,
     cross,
     matvec,
+    scale,
+    subtract,
     transpose,
 )
 

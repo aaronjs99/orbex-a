@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Protocol, Tuple, TYPE_CHECKING
-import numpy as np
+from typing import TYPE_CHECKING, Any, Protocol
 
+import numpy as np
 from orbexa.estimation.adaptation.belief import ParameterBelief
 
 if TYPE_CHECKING:
@@ -32,14 +32,14 @@ class PointEstimator(Protocol):
     def update(
         self,
         *,
-        feasible_sets: Dict[str, Tuple[float, float]],
-        estimates: Dict[str, float],
+        feasible_sets: dict[str, tuple[float, float]],
+        estimates: dict[str, float],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[Any, Dict[str, float], Any]: ...
+        dynamics_context: dict[str, Any],
+    ) -> tuple[Any, dict[str, float], Any]: ...
 
 
 def default_point_estimator(config: SimulationConfig) -> PointEstimator:
@@ -57,7 +57,7 @@ def default_point_estimator(config: SimulationConfig) -> PointEstimator:
 @dataclass
 class AdaptationOutcome:
     consistent: bool = True
-    messages: List[str] = field(default_factory=list)
+    messages: list[str] = field(default_factory=list)
 
 
 class MissionAdaptation:
@@ -88,10 +88,10 @@ class MissionAdaptation:
         self.anomalies = deque(
             [float(initial_anomaly)], maxlen=self.window_intervals + 1
         )
-        self.smid_records: List[Dict[str, Any]] = []
-        self.membership_records: List[Dict[str, Any]] = []
+        self.smid_records: list[dict[str, Any]] = []
+        self.membership_records: list[dict[str, Any]] = []
 
-    def dynamics_context(self) -> Dict[str, float]:
+    def dynamics_context(self) -> dict[str, float]:
         return {
             "mean_motion": self.truth.mean_motion,
             "mu": self.truth.mu,

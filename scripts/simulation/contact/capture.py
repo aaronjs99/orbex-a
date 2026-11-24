@@ -8,29 +8,30 @@ center of mass; using it with a COM trajectory would be invalid.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from typing import Any, Mapping, Optional, TYPE_CHECKING
-import numpy as np
-from scipy.spatial.transform import Rotation
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
+from orbexa.core.dynamics.anomaly import orbital_radius_terms
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.core.geometry.mounting import mounting_frame
 from orbexa.simulation.attached.assembly.model import (
-    AttachedAssembly,
     AssemblyState,
+    AttachedAssembly,
     MassElement,
     finite_scalar,
     physical_inertia,
     positive,
 )
+from orbexa.simulation.contact.contracts import ContactMember
 from orbexa.simulation.contact.simulator import (
     ContactBodyState,
-    ContactMember,
     FiniteContactOptions,
     FiniteContactSimulator,
 )
-from orbexa.core.dynamics.anomaly import orbital_radius_terms
+from scipy.spatial.transform import Rotation
 
 if TYPE_CHECKING:
     from orbexa.simulation.approach.terminal.handoff import PhysicalTerminalHandoff
@@ -100,7 +101,7 @@ class CaptureOptions:
     assume_approach_point_is_capture_reference: bool = False
     minimum_bus_clearance_m: float = 0.001
     earth_radius_m: float = 6378137.0
-    gravity_gradient: Optional[bool] = None
+    gravity_gradient: bool | None = None
     max_integration_step_s: float = 1.0
     idealized_instantaneous: bool = False
 
@@ -189,8 +190,8 @@ class CaptureResult:
     gates: dict
     audit: dict
     assumptions: tuple[str, ...]
-    assembly: Optional[AttachedAssembly] = None
-    state: Optional[AssemblyState] = None
+    assembly: AttachedAssembly | None = None
+    state: AssemblyState | None = None
 
     def to_dict(self):
         return dict(
@@ -210,11 +211,11 @@ class CaptureModel:
     def __init__(
         self,
         *,
-        target: Optional[TargetPhysicalProperties] = None,
-        chasers: Optional[Mapping[str, ChaserPhysicalProperties]] = None,
-        default_chaser: Optional[ChaserPhysicalProperties] = None,
-        options: Optional[CaptureOptions] = None,
-        contact_options: Optional[FiniteContactOptions] = None,
+        target: TargetPhysicalProperties | None = None,
+        chasers: Mapping[str, ChaserPhysicalProperties] | None = None,
+        default_chaser: ChaserPhysicalProperties | None = None,
+        options: CaptureOptions | None = None,
+        contact_options: FiniteContactOptions | None = None,
         contact_environment=None,
     ):
         self.target = target or TargetPhysicalProperties()
@@ -307,9 +308,9 @@ class CaptureModel:
         self,
         approach,
         *,
-        truth: Optional[CaptureTruth] = None,
-        chaser_attitudes: Optional[Mapping[str, tuple[Any, Any]]] = None,
-        terminal_handoff: Optional[PhysicalTerminalHandoff] = None,
+        truth: CaptureTruth | None = None,
+        chaser_attitudes: Mapping[str, tuple[Any, Any]] | None = None,
+        terminal_handoff: PhysicalTerminalHandoff | None = None,
         contact_feedback=None,
         contact_environment=None,
         contact_initial_enclosure=None,
@@ -1046,13 +1047,13 @@ class CaptureModel:
     ):
         """Brake relative motion over finite time, then change coordinates only."""
         from orbexa.control.certification.reachability import IntervalBox
-        from orbexa.simulation.contact.dynamics.state import ContactFleet
-        from orbexa.simulation.contact.lock.transition import FiniteLockTransition
         from orbexa.simulation.attached.assembly.flow import (
             AssemblyStateEnclosure,
             assembly_parameter_fingerprint,
             packed_state,
         )
+        from orbexa.simulation.contact.dynamics.state import ContactFleet
+        from orbexa.simulation.contact.lock.transition import FiniteLockTransition
 
         current_members = tuple(
             replace(member, initial_state=contact.final_chasers[member.id])

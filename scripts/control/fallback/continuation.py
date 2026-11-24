@@ -10,9 +10,10 @@ not a universal feasibility claim.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from fractions import Fraction
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from orbexa.control.certification.reachability import (
     CollisionCertificate,
@@ -24,13 +25,12 @@ from orbexa.control.certification.reachability import (
 )
 from orbexa.control.terminal.tracking import (
     TerminalCertificate,
-    TerminalReferenceSample,
     TerminalFeedforwardPolicy,
+    TerminalReferenceSample,
     TerminalTrackingController,
     _q,
     certify_terminal_tracking,
 )
-
 
 CONTINUATION_METHOD = "validated-backup-successor-admission-v1"
 

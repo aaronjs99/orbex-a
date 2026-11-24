@@ -1,11 +1,12 @@
 """Qualification and migration of current-model mission gallery families."""
 
 from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Dict, Optional
+
+from orbexa.contracts import COUPLED_CONTROLLER_ID, PHYSICAL_MODEL_ID
 from orbexa.sessions import MissionSession
-from orbexa.contracts import PHYSICAL_MODEL_ID, COUPLED_CONTROLLER_ID
 from orbexa.simulation.approach.records.results import (
     ADTMPCMissionResult,
     load_adtmpc_mission_result,
@@ -34,8 +35,8 @@ class MissionCatalog:
     @staticmethod
     def read(
         output_session_dir: Path,
-        data_session_dir: Optional[Path] = None,
-    ) -> Dict[str, Dict]:
+        data_session_dir: Path | None = None,
+    ) -> dict[str, dict]:
         path = output_session_dir / "gallery.json"
         entries = []
         if path.exists():
@@ -165,7 +166,7 @@ class MissionCatalog:
         return catalog
 
     @staticmethod
-    def entry(manifest: ADTMPCMissionManifest, root: Path) -> Dict:
+    def entry(manifest: ADTMPCMissionManifest, root: Path) -> dict:
         artifacts = [
             {
                 "path": path.relative_to(root).as_posix(),

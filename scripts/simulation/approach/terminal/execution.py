@@ -8,17 +8,16 @@ swept geometry certificate. This simulator does not provide a hardware scheduler
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from fractions import Fraction
 import hashlib
 import json
-from typing import Any, Callable, Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from fractions import Fraction
+from typing import Any
 
-from orbexa.control.terminal.physical import (
-    PhysicalTerminalBoundsBuilder,
-    PhysicalTerminalFleet,
-    _encode,
-    _vector,
+from orbexa.control.certification.geometry import (
+    CompositeSweptCollisionGuard,
+    RotatingCompositeBounds,
 )
 from orbexa.control.certification.reachability import (
     HeldInputRequest,
@@ -30,16 +29,17 @@ from orbexa.control.certification.reachability import (
     ValidatedFlowEncloser,
     _exact,
 )
+from orbexa.control.terminal.physical import (
+    PhysicalTerminalBoundsBuilder,
+    PhysicalTerminalFleet,
+    _encode,
+    _vector,
+)
 from orbexa.control.terminal.tracking import (
     TerminalFeedforwardPolicy,
     TerminalHoldReferences,
     TerminalReferenceSample,
 )
-from orbexa.control.certification.geometry import (
-    CompositeSweptCollisionGuard,
-    RotatingCompositeBounds,
-)
-
 
 EXECUTION_METHOD = "physical-terminal-held-execution-v1"
 MIDPOINT_EXECUTION_METHOD = "physical-terminal-midpoint-execution-v1"

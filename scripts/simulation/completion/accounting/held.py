@@ -7,38 +7,36 @@ disturbances are external forcing, not an unrecorded propellant allowance.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from fractions import Fraction
 import gzip
 import hashlib
 import importlib
 import json
-from math import isqrt
-from pathlib import Path
 import re
 import zlib
+from dataclasses import dataclass, field
+from fractions import Fraction
+from math import isqrt
+from pathlib import Path
 
 import numpy as np
-
 from orbexa.control.certification import reachability
 from orbexa.control.certification.reachability import (
     HeldInputRequest,
     IntervalBox,
     OrbitalModelBounds,
     ReachabilityConfig,
-    ValidatedFlowEncloser,
     RotatingCylinderBounds,
     SweptCollisionGuard,
+    ValidatedFlowEncloser,
 )
 from orbexa.control.terminal.physical import bound_orbital_clock
+from orbexa.simulation.approach.records.checkpoint import digest, plain
+from orbexa.simulation.approach.records.results import ADTMPCMissionResult
 from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY
 from orbexa.simulation.completion.coordinator import (
     ApproachPropellantBudget,
     _outward_float,
 )
-from orbexa.simulation.approach.records.checkpoint import digest, plain
-from orbexa.simulation.approach.records.results import ADTMPCMissionResult
-
 
 HELD_PROPELLANT_METHOD = "source-bound-admitted-held-input-propellant-v1"
 _PROOF_SOURCE = Path(reachability.__file__).resolve()
@@ -120,8 +118,8 @@ def _target(value, rotation_cache):
     _require(isinstance(value, dict), "complete occupied target bounds are required")
     if value.get("shape") == "composite_spacecraft":
         from orbexa.control.certification.geometry import (
-            RotatingCompositeBounds,
             CompositeSweptCollisionGuard,
+            RotatingCompositeBounds,
         )
         from orbexa.core.geometry.composite import SpacecraftGeometry
 

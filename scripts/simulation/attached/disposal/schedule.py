@@ -1,8 +1,9 @@
 """A numerical sensed-state request schedule; safety admission stays separate."""
 
-from dataclasses import dataclass, replace
 import math
+from dataclasses import dataclass, replace
 from numbers import Real
+
 import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
 

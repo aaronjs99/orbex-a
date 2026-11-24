@@ -9,14 +9,14 @@ All admission decisions use exact rational arithmetic.  See
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from fractions import Fraction
 from numbers import Integral
-from typing import Any, Sequence
+from typing import Any
 
 from orbexa.control.certification.reachability import FRAME, IntervalBox
-
 
 TERMINAL_METHOD = "exact-held-reference-terminal-v1"
 MIDPOINT_TERMINAL_METHOD = "exact-held-midpoint-reference-terminal-v1"

@@ -15,20 +15,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
-from orbexa.core.dynamics.parameters import OrbitalPlantTruth, specific_angular_momentum
-from orbexa.core.dynamics.parameters import ADTMPC_PARAMETER_KEYS
+from orbexa.core.dynamics.parameters import (
+    ADTMPC_PARAMETER_KEYS,
+    OrbitalPlantTruth,
+    specific_angular_momentum,
+)
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig
 
 
-def serial_ranges(ranges: Dict[str, Tuple[float, float]]) -> Dict[str, List[float]]:
+def serial_ranges(ranges: dict[str, tuple[float, float]]) -> dict[str, list[float]]:
     return {key: [float(value[0]), float(value[1])] for key, value in ranges.items()}
 
 
-def serial_estimates(estimates: Dict[str, float]) -> Dict[str, float]:
+def serial_estimates(estimates: dict[str, float]) -> dict[str, float]:
     return {key: float(value) for key, value in estimates.items()}
 
 
@@ -36,8 +40,8 @@ def serial_estimates(estimates: Dict[str, float]) -> Dict[str, float]:
 class ParameterBelief:
     """Controller-side feasible sets and point estimates used by MPC/SMID."""
 
-    feasible_sets: Dict[str, Tuple[float, float]]
-    estimates: Dict[str, float]
+    feasible_sets: dict[str, tuple[float, float]]
+    estimates: dict[str, float]
 
     def __post_init__(self) -> None:
         if set(self.feasible_sets) != set(ADTMPC_PARAMETER_KEYS) or set(
@@ -63,8 +67,8 @@ class ParameterBelief:
 
     @classmethod
     def from_config_prior(
-        cls, config: Optional[SimulationConfig] = None
-    ) -> "ParameterBelief":
+        cls, config: SimulationConfig | None = None
+    ) -> ParameterBelief:
         """Build the initial adaptive belief from broad or config-centered priors."""
         if config is None:
             ranges = {
@@ -109,7 +113,7 @@ class ParameterBelief:
             }
         return cls(feasible_sets=ranges, estimates=estimates)
 
-    def copy(self) -> "ParameterBelief":
+    def copy(self) -> ParameterBelief:
         return ParameterBelief(
             feasible_sets={
                 key: (float(value[0]), float(value[1]))
@@ -118,7 +122,7 @@ class ParameterBelief:
             estimates=dict(self.estimates),
         )
 
-    def dynamics_params(self, truth_context: OrbitalPlantTruth) -> Dict[str, float]:
+    def dynamics_params(self, truth_context: OrbitalPlantTruth) -> dict[str, float]:
         return {
             "mean_motion": truth_context.mean_motion,
             "eccentricity": float(self.estimates["eccentricity"]),
@@ -134,7 +138,7 @@ class ParameterBelief:
             "time_periapsis": truth_context.time_periapsis,
         }
 
-    def as_metadata(self) -> Dict[str, Dict[str, Any]]:
+    def as_metadata(self) -> dict[str, dict[str, Any]]:
         return {
             "feasible_sets": serial_ranges(self.feasible_sets),
             "estimates": serial_estimates(self.estimates),

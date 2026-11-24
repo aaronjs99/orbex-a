@@ -7,22 +7,22 @@ maximum or a substitute for admission of the actual executed nonlinear hold.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from fractions import Fraction
-from concurrent.futures import ThreadPoolExecutor
 from types import MappingProxyType
-from typing import Mapping
-import numpy as np
 
+import numpy as np
+from orbexa.contracts import SolverResult
+from orbexa.control.certification.nonlinear import bound_nominal_coefficients
+from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.tubes.specification import (
     DynamicTubeSpec,
     ProspectiveContactConstraint,
 )
-from orbexa.control.certification.reachability import IntervalBox
-from orbexa.control.certification.nonlinear import bound_nominal_coefficients
 from orbexa.core.dynamics.reference_frame import exact
 from orbexa.simulation.approach.planning import CoupledMissionPlanner, PlanningStep
-from orbexa.contracts import SolverResult
 
 
 def outward_upper(value):

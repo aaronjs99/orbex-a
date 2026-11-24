@@ -1,35 +1,36 @@
 """Injectable vehicle sizing for composite-target mission studies."""
 
 from __future__ import annotations
-from dataclasses import dataclass, field, fields
-from collections.abc import Mapping
-import json
-from pathlib import Path
-import numpy as np
 
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass, field, fields
+from pathlib import Path
+
+import numpy as np
 from orbexa.core.geometry.composite import SpacecraftGeometry
 from orbexa.core.targets.spacecraft import RigidBodySpacecraftTarget
-from orbexa.simulation.contact.capture import (
-    CaptureOptions,
-    ChaserPhysicalProperties,
-    TargetPhysicalProperties,
-)
 from orbexa.simulation.approach.physical.attitude import (
     ChaserAttitudeActuators,
     ChaserAttitudeTracker,
+)
+from orbexa.simulation.attached.assembly.model import positive
+from orbexa.simulation.attached.detumbling import DetumblingSimulator, RateDampingPolicy
+from orbexa.simulation.attached.disposal.axis import AxialBurnPlanner
+from orbexa.simulation.attached.disposal.preview import FiniteBurnThrottlePlanner
+from orbexa.simulation.attached.disposal.simulator import (
+    DeorbitSimulator,
+    ThrustPointingPolicy,
 )
 from orbexa.simulation.completion.coordinator import (
     CompleteMissionOptions,
     CompleteMissionRunner,
 )
-from orbexa.simulation.attached.disposal.simulator import (
-    DeorbitSimulator,
-    ThrustPointingPolicy,
+from orbexa.simulation.contact.capture import (
+    CaptureOptions,
+    ChaserPhysicalProperties,
+    TargetPhysicalProperties,
 )
-from orbexa.simulation.attached.detumbling import DetumblingSimulator, RateDampingPolicy
-from orbexa.simulation.attached.disposal.axis import AxialBurnPlanner
-from orbexa.simulation.attached.disposal.preview import FiniteBurnThrottlePlanner
-from orbexa.simulation.attached.assembly.model import positive
 
 
 @dataclass(frozen=True)

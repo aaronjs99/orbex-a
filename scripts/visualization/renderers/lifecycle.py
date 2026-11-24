@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from pathlib import Path
 import hashlib
 import json
-import numpy as np
+from collections.abc import Mapping
+from pathlib import Path
 
+import numpy as np
 from orbexa.utils.io.data import convert_numpy_to_list
 
 
@@ -611,7 +611,7 @@ class LifecycleRenderer:
 
     def _animation(self, data, fps):
         import matplotlib.pyplot as plt
-        from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
+        from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 
         if isinstance(fps, bool) or not isinstance(fps, int) or fps < 1:
             raise ValueError("fps must be a positive integer")
@@ -684,6 +684,7 @@ class LifecycleRenderer:
             try:
                 import shutil
                 import tempfile
+
                 import matplotlib
 
                 encoder = shutil.which("ffmpeg")

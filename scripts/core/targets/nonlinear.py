@@ -8,19 +8,19 @@ torque are propagated with the declared nonlinear model/reference clock.
 from __future__ import annotations
 
 import copy
-import numpy as np
 from dataclasses import dataclass
-from scipy.integrate import solve_ivp
-from scipy.spatial.transform import Rotation
 
+import numpy as np
 from orbexa.core.dynamics.attitude import (
-    inertia_matrix,
     body_rate_derivative,
+    inertia_matrix,
     quaternion_to_euler,
 )
-from orbexa.core.dynamics.rigid_motion import RigidBodyMotion
-from orbexa.core.dynamics.relative import NonlinearRelativeDynamics
 from orbexa.core.dynamics.reference_frame import exact
+from orbexa.core.dynamics.relative import NonlinearRelativeDynamics
+from orbexa.core.dynamics.rigid_motion import RigidBodyMotion
+from scipy.integrate import solve_ivp
+from scipy.spatial.transform import Rotation
 
 
 @dataclass(frozen=True)

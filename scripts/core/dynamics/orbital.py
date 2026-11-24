@@ -24,14 +24,14 @@ This module is strictly functional and stateless; all parameters must be passed
 as arguments.
 """
 
-import numpy as np
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Tuple, List, Dict, Any, Callable, Optional
+from typing import Any
 
-from orbexa.utils.discretization import discretize
-from orbexa.utils.geometry.algebra import gen_skew_sym_mat
+import numpy as np
 from orbexa.core.dynamics.anomaly import orbital_radius_terms
+from orbexa.utils.discretization import discretize
 
 
 @dataclass(frozen=True)
@@ -43,18 +43,18 @@ class DynamicsModel:
     Q: np.ndarray
     R: np.ndarray
     d: Callable
-    state_bounds: Optional[List[Dict[str, Any]]] = None
-    input_bounds: Optional[List[Dict[str, float]]] = None
+    state_bounds: list[dict[str, Any]] | None = None
+    input_bounds: list[dict[str, float]] | None = None
     independent_variable: str = "true_anomaly"
 
-    def as_tuple(self) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+    def as_tuple(self) -> tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
         return self.A, self.B, self.Q, self.R, self.d
 
     def legacy_return(self):
         return self.as_tuple(), (None, None), (self.state_bounds, self.input_bounds)
 
 
-def _backend(kwargs: Dict[str, Any]):
+def _backend(kwargs: dict[str, Any]):
     return kwargs.get("solver", kwargs.get("m", np))
 
 
@@ -155,14 +155,14 @@ def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNam
 def cwh_equations(
     anom_step: float,
     mean_motion: float,
-    state_bounds: Optional[List[Dict[str, Any]]] = None,
-    input_bounds: Optional[List[Dict[str, float]]] = None,
+    state_bounds: list[dict[str, Any]] | None = None,
+    input_bounds: list[dict[str, float]] | None = None,
     discretize_model: bool = True,
     **kwargs,
-) -> Tuple[
-    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-    Tuple[Optional[np.ndarray], Optional[np.ndarray]],
-    Tuple[Optional[List[Dict]], Optional[List[Dict]]],
+) -> tuple[
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    tuple[np.ndarray | None, np.ndarray | None],
+    tuple[list[dict] | None, list[dict] | None],
 ]:
     """
     Clohessy-Wiltshire-Hill (CWH) equations for relative orbital motion.
@@ -230,16 +230,16 @@ def cwh_equations(
 
 
 def orbital_ellp_drag(
-    anom_step: Optional[float] = None,
+    anom_step: float | None = None,
     mean_motion: float = 0.001,
     eccentricity: float = 0.0,
-    state_bounds: Optional[List[Dict[str, Any]]] = None,
-    input_bounds: Optional[List[Dict[str, float]]] = None,
+    state_bounds: list[dict[str, Any]] | None = None,
+    input_bounds: list[dict[str, float]] | None = None,
     alpha: float = 0.0,
     beta: float = 0.0,
     mu: float = 3.986004418e14,
-    semi_major_axis: Optional[float] = None,
-    specific_angular_momentum: Optional[float] = None,
+    semi_major_axis: float | None = None,
+    specific_angular_momentum: float | None = None,
     theta0: float = 0.0,
     *args,
     **kwargs,
@@ -324,14 +324,14 @@ def orbital_ellp_drag(
 
 
 def orbital_ellp_undrag(
-    anom_step: Optional[float] = None,
+    anom_step: float | None = None,
     mean_motion: float = 0.001,
     eccentricity: float = 0.0,
-    state_bounds: Optional[List[Dict[str, Any]]] = None,
-    input_bounds: Optional[List[Dict[str, float]]] = None,
+    state_bounds: list[dict[str, Any]] | None = None,
+    input_bounds: list[dict[str, float]] | None = None,
     *args,
     **kwargs,
-) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+) -> tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
     """Physical ``[p, dp/dq]`` LVLH dynamics with both drag constants zero.
 
     Uses the same axes and m/rad^2 input convention as ``orbital_ellp_drag``.
@@ -358,11 +358,11 @@ def orbital_ellp_undrag(
 # =============================================================================
 def orbital_circ_undrag(
     mean_motion: float,
-    state_bounds: Optional[List[Dict[str, Any]]] = None,
-    input_bounds: Optional[List[Dict[str, float]]] = None,
+    state_bounds: list[dict[str, Any]] | None = None,
+    input_bounds: list[dict[str, float]] | None = None,
     *args,
     **kwargs,
-) -> Tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+) -> tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
     """
     Dynamics model for circular orbits without drag.
 
@@ -407,10 +407,10 @@ def orbital_circ_undrag(
 # =============================================================================
 def triple_integrator(
     anom_step: float, discretize_model: bool = True, **kwargs
-) -> Tuple[
-    Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-    Tuple[Optional[np.ndarray], Optional[np.ndarray]],
-    Tuple[None, None],
+) -> tuple[
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    tuple[np.ndarray | None, np.ndarray | None],
+    tuple[None, None],
 ]:
     """
     Simple triple integrator dynamics (snapshot model).

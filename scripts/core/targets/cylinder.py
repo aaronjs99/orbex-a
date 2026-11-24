@@ -7,26 +7,18 @@ Quaternions are scalar-last; Euler angles are only a compatibility chart.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Sequence, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.spatial.transform import Rotation
-
 from orbexa.control.mpc.constraints import CylinderConstraint
 from orbexa.core.dynamics.attitude import (
-    body_rate_derivative,
-    body_rates_to_euler_rates,
     euler_to_quaternion,
-    finite_vector,
-    inertia_matrix,
     quaternion_to_euler,
 )
-from orbexa.core.targets.prescribed import TumblingCylinderTarget
 from orbexa.core.dynamics.rigid_motion import RigidBodyMotion
-from orbexa.core.dynamics.anomaly import orbital_radius_terms
-from orbexa.utils.geometry.algebra import gen_skew_sym_mat
+from orbexa.core.targets.prescribed import TumblingCylinderTarget
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig
@@ -60,7 +52,7 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
     alpha: float
     mu: float
     semi_major_axis: float
-    anomaly_domain: Tuple[float, float] = (0.0, 2.0 * np.pi)
+    anomaly_domain: tuple[float, float] = (0.0, 2.0 * np.pi)
     tolerance: float = 0.0
     docking_standoff: float = 0.12
     integration_rtol: float = 1.0e-11
@@ -95,7 +87,7 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
         anomaly_domain=None,
         gravity_gradient: bool = False,
         **integration_options,
-    ) -> "RigidBodyCylinderTarget":
+    ) -> RigidBodyCylinderTarget:
         """Use configured geometry/clock and an explicitly supplied rad/s spin.
 
         The default domain includes every configured update plus its longest
@@ -157,20 +149,20 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
 
     def side_docking_geometry(
         self, azimuth: float, axial: float = 0.0
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         return self._geometry.side_docking_geometry(azimuth, axial)
 
     def docking_points_body(
         self, count: int, start_azimuth: float = 0.0
-    ) -> List[np.ndarray]:
+    ) -> list[np.ndarray]:
         return self._geometry.docking_points_body(count, start_azimuth)
 
     def assign_docking_targets(
         self, initial_states: Sequence[np.ndarray]
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return self._geometry.assign_docking_targets(initial_states)
 
-    def collision_params(self, operation: str, anom: float) -> Dict[str, Any]:
+    def collision_params(self, operation: str, anom: float) -> dict[str, Any]:
         values = self._geometry.collision_params(operation, 0.0)
         values.pop("angular_velocity")
         values.update(
@@ -190,7 +182,7 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
             tube_radius=tube_radius,
         )
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         values = self._geometry.as_dict()
         values.pop("angular_velocity")
         values.update(

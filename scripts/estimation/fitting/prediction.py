@@ -13,21 +13,19 @@
 """Recorded-window prediction, observable point fitting and fit metrics."""
 
 import logging
-import time
+from dataclasses import dataclass
+from typing import Any
+
 import numpy as np
-import queue
-import threading
-from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Any, Optional, Union
-from scipy.optimize import least_squares
 from orbexa.core.dynamics.orbital import orbital_ellp_drag
+from scipy.optimize import least_squares
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class ParameterPredictor:
-    parameter_keys: Tuple[str, ...]
+    parameter_keys: tuple[str, ...]
     error_bound: float
     time_series_prior_weight: float
     observability_absolute_threshold: float
@@ -36,11 +34,11 @@ class ParameterPredictor:
 
     def _blend_estimates(
         self,
-        previous: Dict[str, float],
-        refined: Dict[str, float],
-        feasible_sets: Dict[str, Tuple[float, float]],
+        previous: dict[str, float],
+        refined: dict[str, float],
+        feasible_sets: dict[str, tuple[float, float]],
         gain: float,
-    ) -> Optional[Dict[str, float]]:
+    ) -> dict[str, float] | None:
         """Scale one update direction to the box without changing its nullspace."""
         lower_step, upper_step = 0.0, float(np.clip(gain, 0.0, 1.0))
         for key in self.parameter_keys:
@@ -106,8 +104,8 @@ class ParameterPredictor:
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        parameters: Dict[str, float],
-        dynamics_context: Dict[str, Any],
+        parameters: dict[str, float],
+        dynamics_context: dict[str, Any],
     ) -> np.ndarray:
         """Weighted physical one-step residuals, excluding the regularizing prior."""
         params = dict(dynamics_context)
@@ -131,13 +129,13 @@ class ParameterPredictor:
     def _point_metrics(
         self,
         *,
-        parameters: Dict[str, float],
+        parameters: dict[str, float],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[bool, float, float]:
+        dynamics_context: dict[str, Any],
+    ) -> tuple[bool, float, float]:
         """Verify the actual point returned to MPC, independently of a set witness."""
         point_prediction_error = self.prediction_error(
             parameters=parameters,
@@ -171,8 +169,8 @@ class ParameterPredictor:
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        parameters: Dict[str, float],
-        dynamics_context: Dict[str, Any],
+        parameters: dict[str, float],
+        dynamics_context: dict[str, Any],
     ) -> float:
         predicted = np.asarray(states[0], dtype=float).copy()
         params = dict(dynamics_context)
@@ -193,14 +191,14 @@ class ParameterPredictor:
     def _time_series_estimate(
         self,
         *,
-        feasible_sets: Dict[str, Tuple[float, float]],
-        estimates: Dict[str, float],
+        feasible_sets: dict[str, tuple[float, float]],
+        estimates: dict[str, float],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[Dict[str, float], Optional[float], str]:
+        dynamics_context: dict[str, Any],
+    ) -> tuple[dict[str, float], float | None, str]:
         """Fit a point belief from the measured time series when data supports it.
 
         The residual includes a small prior term for numerical regularization, but
@@ -333,7 +331,7 @@ class ParameterPredictor:
 
     def _observable_parameter_mask(
         self, jacobian: np.ndarray
-    ) -> Tuple[np.ndarray, Dict[str, Dict[str, float]]]:
+    ) -> tuple[np.ndarray, dict[str, dict[str, float]]]:
         """Return which parameters have usable sensitivity in the data window."""
         jacobian = np.asarray(jacobian, dtype=float)
         if jacobian.size == 0:
@@ -352,7 +350,7 @@ class ParameterPredictor:
             self.observability_relative_threshold * max_norm,
         )
         observable = np.zeros(len(self.parameter_keys), dtype=bool)
-        diagnostics: Dict[str, Dict[str, float]] = {}
+        diagnostics: dict[str, dict[str, float]] = {}
 
         for idx, key in enumerate(self.parameter_keys):
             column = jacobian[:, idx]
@@ -416,16 +414,16 @@ class ParameterPredictor:
         return controls.copy()
 
     def _copy_ranges(
-        self, ranges: Dict[str, Tuple[float, float]]
-    ) -> Dict[str, Tuple[float, float]]:
+        self, ranges: dict[str, tuple[float, float]]
+    ) -> dict[str, tuple[float, float]]:
         return {
             key: (float(ranges[key][0]), float(ranges[key][1]))
             for key in self.parameter_keys
         }
 
     def _ranges_to_lists(
-        self, ranges: Dict[str, Tuple[float, float]]
-    ) -> Dict[str, List[float]]:
+        self, ranges: dict[str, tuple[float, float]]
+    ) -> dict[str, list[float]]:
         return {
             key: [float(ranges[key][0]), float(ranges[key][1])]
             for key in self.parameter_keys

@@ -1,7 +1,8 @@
 """Backend-neutral optimization records and maintained mission identities."""
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
+
 import numpy as np
 
 PHYSICAL_MODEL_ID = "physical-lvlh-v1"
@@ -39,13 +40,13 @@ class MPCProblem:
     final_state: np.ndarray
     num_steps: int
     anom_step: float
-    state_bounds: Optional[List[Dict[str, float]]] = None
-    input_bounds: Optional[List[Dict[str, float]]] = None
+    state_bounds: list[dict[str, float]] | None = None
+    input_bounds: list[dict[str, float]] | None = None
     dynamics_type: str = "continuous"
-    extra_params: Dict[str, Any] = field(default_factory=dict)
-    terminal_cost_matrix: Optional[np.ndarray] = None
-    state_reference: Optional[np.ndarray] = None
-    input_reference: Optional[np.ndarray] = None
+    extra_params: dict[str, Any] = field(default_factory=dict)
+    terminal_cost_matrix: np.ndarray | None = None
+    state_reference: np.ndarray | None = None
+    input_reference: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if self.num_steps < 2:
@@ -115,9 +116,9 @@ class SolverResult:
     """
 
     success: bool
-    state_trajectory: Optional[np.ndarray] = None
-    control_trajectory: Optional[np.ndarray] = None
-    cost: Optional[float] = None
+    state_trajectory: np.ndarray | None = None
+    control_trajectory: np.ndarray | None = None
+    cost: float | None = None
     solve_time: float = 0.0
     message: str = ""
-    solver_info: Dict[str, Any] = field(default_factory=dict)
+    solver_info: dict[str, Any] = field(default_factory=dict)

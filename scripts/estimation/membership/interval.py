@@ -8,12 +8,10 @@ fits; exclusion alone is certified by an empty observation intersection.
 """
 
 from collections import deque
-from typing import Mapping
+from collections.abc import Mapping
 
 import numpy as np
-
 from orbexa.control.tubes.uncertainty import coefficient_intervals
-
 
 _PARAMETERS = ("eccentricity", "alpha", "beta")
 

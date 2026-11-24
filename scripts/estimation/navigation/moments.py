@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from bisect import bisect_left
 from collections import deque
 from fractions import Fraction
-import math
 
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     FlowCertificate,
+    IntervalBox,
     SweptSegment,
 )
 

@@ -7,8 +7,10 @@ Inspired by the MIT Swarm CLF-CBF Playground; see THIRD_PARTY_NOTICES.md.
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Sequence
+
 import numpy as np
 
 

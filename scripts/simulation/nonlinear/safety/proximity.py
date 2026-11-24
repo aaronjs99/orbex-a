@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
-from math import isfinite, isqrt, nextafter, inf
+from math import inf, isfinite, isqrt, nextafter
 from numbers import Real
 
 from orbexa.core.geometry.composite import SpacecraftGeometry
-
 
 # Largest componentwise position box among the existing refuge proposals.
 # The geometry selector must account for this complete three-dimensional box.

@@ -13,7 +13,7 @@
 """Serializable point-fit and candidate-set update records."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -24,19 +24,19 @@ class SMIDRecord:
     window_size: int
     accepted: bool
     reason: str
-    fss_before: Dict[str, List[float]]
-    fss_candidate: Dict[str, List[float]]
-    fss_after: Dict[str, List[float]]
-    estimates_before: Dict[str, float]
-    estimates_after: Dict[str, float]
+    fss_before: dict[str, list[float]]
+    fss_candidate: dict[str, list[float]]
+    fss_after: dict[str, list[float]]
+    estimates_before: dict[str, float]
+    estimates_after: dict[str, float]
     prediction_error: float
     # Terminal error of the candidate-set witness, not the returned point belief.
-    verification_error: Optional[float]
-    solve_status: Dict[str, str] = field(default_factory=dict)
-    point_prediction_error: Optional[float] = None
-    point_fit_error: Optional[float] = None
+    verification_error: float | None
+    solve_status: dict[str, str] = field(default_factory=dict)
+    point_prediction_error: float | None = None
+    point_fit_error: float | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "start_anom": float(self.start_anom),
             "window_size": int(self.window_size),

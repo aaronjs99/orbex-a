@@ -15,10 +15,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from itertools import count
-import logging
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from orbexa.core.spacecraft.base import Spacecraft
@@ -42,7 +42,7 @@ class Chaser(Spacecraft):
 
     _cids = count(0)
 
-    def __init__(self, config: "SimulationConfig", repeat: bool = False, **kwargs):
+    def __init__(self, config: SimulationConfig, repeat: bool = False, **kwargs):
         if not repeat:
             self.cid = next(self._cids) + 1
             super().__init__(config, **kwargs)
@@ -93,7 +93,7 @@ class Chaser(Spacecraft):
         self.__init__(self.config, repeat=True)
         return self.goal_state
 
-    def update_neighbors(self, operation: str, agent_list: List):
+    def update_neighbors(self, operation: str, agent_list: list):
         if operation == "set":
             self.neighbors = agent_list.copy()
         elif operation == "append":
@@ -229,8 +229,8 @@ class Chaser(Spacecraft):
         return (self.t_state, self.t_ang_vel)
 
     def calculate_goals(self):
-        from scipy import optimize as opt
         from orbexa.utils.geometry.occlusion import calc_global_occlusion_cost
+        from scipy import optimize as opt
 
         if self.goal_bounds is None:
             raise ValueError(
@@ -325,8 +325,8 @@ class Chaser(Spacecraft):
 
     def determine_inputs(self, num_steps: int):
         """Plan num_steps control intervals using num_steps + 1 state samples."""
-        from orbexa.core.dynamics.orbital import cwh_equations
         from orbexa.control.mpc.problem import build_from_dynamics
+        from orbexa.core.dynamics.orbital import cwh_equations
 
         if (
             isinstance(num_steps, bool)
