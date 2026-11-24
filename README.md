@@ -54,7 +54,7 @@ Python 3.10 or later:
 
 ```bash
 python -m pip install -e ".[certification,studio,video]"
-python run.py --case central --adaptation adaptive --bandwidth dynamic --output-dir ../orbexa-output/central-adaptive-dynamic
+python run.py --case central --adaptation adaptive --bandwidth dynamic
 ```
 
 The movable checkout launcher supplies `config/envisat.yaml`,
@@ -63,8 +63,14 @@ paths explicitly when needed. `python -S run.py --help` needs no scientific
 packages. Installed use is equivalent:
 
 ```bash
-orbexa-run-nonlinear --config config/envisat.yaml --spacecraft config/spacecraft/envisat.json --study config/nonlinear-study.json --case central --adaptation adaptive --bandwidth dynamic --output-dir ../orbexa-output/central-adaptive-dynamic
+orbexa-run-nonlinear --config config/envisat.yaml --spacecraft config/spacecraft/envisat.json --study config/nonlinear-study.json --case central --adaptation adaptive --bandwidth dynamic
 ```
+
+Each run writes its raw records to a new
+`data/nonlinear/<case>/<adaptation>-<bandwidth>/<UTC run id>/` directory. Rendered
+plots, videos and Studio viewers go under `results/`. Both folders are gitignored.
+The `ORBEXA_DATA` and `ORBEXA_RESULTS` environment variables move those roots,
+and `--output-dir` chooses one run's directory.
 
 Each invocation selects one declared case and arm. Run all four adaptive/frozen
 belief × dynamic/fixed bandwidth arms for each case to form a matched study.
@@ -145,7 +151,8 @@ Source lives in `scripts/`, installed as the `orbexa` package. Nested packages
 separate mission stages, physics, proof services, recording and presentation;
 the [architecture map](docs/architecture.md) identifies the owner of each part. Dynamics,
 estimation, control, solver backends, mission orchestration and rendering use
-separate interfaces. Generated evidence stays outside the checkout. Paper source
+separate interfaces. Generated evidence stays in the gitignored `data/` and
+`results/` folders and is never committed. Paper source
 and figures retain the user's layout in `paper/IEEE Aerospace Conference 2025/`;
 analytical reproduction APIs remain available separately from the current run
 entry. See [architecture](docs/architecture.md) and [scenario inputs](config/README.md).

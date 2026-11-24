@@ -311,8 +311,9 @@ identities and qualification scope. Current study runs, full-mission completion
 and published galleries must be assessed from their own closed evidence.
 
 Setuptools maps the checkout's `scripts/` to `orbexa`; wheels contain `orbexa/`.
-Generated sessions and qualification outputs stay outside the maintained
-checkout. Source paper figures remain publication assets. Repository policy
+Generated sessions and qualification outputs go to the gitignored `data/` and
+`results/` folders, resolved by `ProjectLayout` in `layout.py`; source, configuration
+and paper folders refuse them. Source paper figures remain publication assets. Repository policy
 retains no test/validation infrastructure. Mathematical claims remain
 conditional on the finite declared domains and admission contracts in
 [the nonlinear formulation](nonlinear-mission.md); this architecture makes no flight, device,

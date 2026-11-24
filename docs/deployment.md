@@ -56,8 +56,8 @@ recenters or enlarges it from the plant. Membership consistency still depends on
 the truth/model and measurement assumptions; an inconsistent prior may fail.
 
 ```python
-from pathlib import Path
 from orbexa.core.configuration.model import SimulationConfig
+from orbexa.layout import ProjectLayout
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.simulation import (
     ADTMPCMissionRunner, CompactArcDeployment, CompactDeploymentOptions,
@@ -81,7 +81,7 @@ deployment = CompactArcDeployment(config, options=CompactDeploymentOptions(
 ))
 scenario = deployment.create_scenario(initial_belief=prior)
 result = ADTMPCMissionRunner(scenario=scenario).run(mission="multi", steps=500)
-MissionResultStore.save(result, Path.home() / "orbexa-output" / "compact-eight")
+MissionResultStore.save(result, ProjectLayout.current().run_directory("compact-eight"))
 print(result.success, result.message)
 ```
 

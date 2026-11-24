@@ -9,6 +9,8 @@ import math
 from pathlib import Path
 import numpy as np
 
+from orbexa.layout import ProjectLayout
+
 from orbexa.core.configuration.model import SimulationConfig
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.simulation.approach.api import ADTMPCMissionRunner
@@ -46,8 +48,7 @@ def main(argv=None):
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
-        help="A new directory; stage records survive subsequent failures",
+        help="A new directory; stage records survive subsequent failures; defaults to data/mission/<UTC run id>",
     )
     parser.add_argument(
         "--steps",
@@ -107,6 +108,8 @@ def main(argv=None):
     )
     parser.add_argument("--disable-gravity-gradient", action="store_true")
     args = parser.parse_args(argv)
+    if args.output_dir is None:
+        args.output_dir = ProjectLayout.current().run_directory("mission")
     if args.source_context is not None and args.resume is None:
         parser.error("--source-context requires --resume")
     if args.arrival_policy is not None and args.historical_terminal_policy:

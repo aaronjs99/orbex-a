@@ -12,6 +12,8 @@ import shutil
 import sys
 import threading
 
+from orbexa.layout import ProjectLayout
+
 from orbexa.simulation.service.contracts import LiveServiceSettings, LIVE_SERVICE
 from orbexa.simulation.service.session import LiveSimulationService
 from orbexa.simulation.service.http import make_server
@@ -118,8 +120,7 @@ def main(argv=None):
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
-        help="Retained jobs outside the checkout; each UI port gets a distinct sibling viewer directory",
+        help="Retained jobs; defaults to data/live-jobs. Viewers go to results/studio, one per UI port",
     )
     parser.add_argument(
         "--max-updates",
@@ -171,6 +172,10 @@ def main(argv=None):
             if not dependency.is_dir():
                 raise ValueError("Missing explicit proof dependency directory")
             sys.path.insert(0, str(dependency))
+        layout = ProjectLayout.current()
+        if args.output_dir is None:
+            args.output_dir = layout.data_root / "live-jobs"
+        viewer_root = layout.results_root / "studio"
         settings = LiveServiceSettings(
             output_dir=args.output_dir,
             config_path=args.config,
@@ -185,11 +190,10 @@ def main(argv=None):
         # Reserve the UI before constructing/binding the API. A failed UI bind
         # must not leave a hidden API service or replace an unowned listener.
         ui_server = _viewer_server(
-            settings.output_dir.parent / "unpublished-studio", port=args.ui_port
+            viewer_root / "unpublished-studio", port=args.ui_port
         )
         ui_root = (
-            settings.output_dir.parent
-            / f"{settings.output_dir.name}-studio-{ui_server.server_port}"
+            viewer_root / f"{settings.output_dir.name}-studio-{ui_server.server_port}"
         )
         ui_server.RequestHandlerClass = partial(
             SimpleHTTPRequestHandler, directory=str(ui_root)

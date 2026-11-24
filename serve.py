@@ -28,7 +28,6 @@ if __name__ == "__main__":
         ("--admission", ROOT / "config/envisat-admission.json"),
         ("--deployment", ROOT / "config/envisat-deployment.json"),
         ("--spacecraft", ROOT / "config/spacecraft/envisat.json"),
-        ("--output-dir", ROOT.parent / "orbexa-output/live-jobs"),
     ):
         defaults.extend((option, str(path)))
     raise SystemExit(main([*defaults, *sys.argv[1:]]))
