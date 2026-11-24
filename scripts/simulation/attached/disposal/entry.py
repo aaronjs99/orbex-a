@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from fractions import Fraction
 import copy
+from fractions import Fraction
 
 from orbexa.core.dynamics.reference_frame import fingerprint
 

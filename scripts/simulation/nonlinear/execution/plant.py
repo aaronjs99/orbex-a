@@ -7,8 +7,8 @@ all admitted numerical trajectories have been computed. Clearance is diagnostic.
 from __future__ import annotations
 
 import numpy as np
-from scipy.integrate import solve_ivp
 from orbexa.control.certification.reachability import IntervalBox
+from scipy.integrate import solve_ivp
 
 
 class NonlinearFleetPlant:

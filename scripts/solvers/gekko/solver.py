@@ -14,14 +14,14 @@
 GEKKO solver backend for MPC optimization.
 """
 
-import time
-import numpy as np
 import logging
-from typing import Dict, Any
+import time
+from typing import Any
 
+import numpy as np
 from gekko import GEKKO
-from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
 from orbexa.core.dynamics.anomaly import dt_dq
+from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult
 from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
 from orbexa.utils.solver_options import gekko_memory_exponent
 
@@ -40,7 +40,7 @@ class GekkoSolver(SolverBase):
         disp (bool): Display solver output. Default: False
     """
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         super().__init__(config)
         self.remote = self.config.get("remote", False)
         self.max_iter = self.config.get("max_iter", 3000)
@@ -440,7 +440,7 @@ class GekkoSolver(SolverBase):
             return SolverResult(
                 success=False,
                 solve_time=solve_time,
-                message=f"GEKKO solver failed: {str(e)}",
+                message=f"GEKKO solver failed: {e!s}",
             )
 
     def cleanup(self) -> None:

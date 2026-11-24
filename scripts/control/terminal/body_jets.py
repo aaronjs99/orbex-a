@@ -12,19 +12,18 @@ from dataclasses import dataclass
 from fractions import Fraction
 from numbers import Integral
 
+from orbexa.control.certification.reachability import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _exact,
+)
 from orbexa.control.terminal.physical import (
     _encode,
     _inertia_bounds,
     _sqrt_upper,
     _vector,
 )
-from orbexa.control.certification.reachability import (
-    IntervalBox,
-    _ARB_LOCK,
-    _ArbArithmetic,
-    _exact,
-)
-
 
 RIGID_BODY_TERMINAL_METHOD = "arb-componentwise-euler-port-jets-v1"
 _ZERO_POWER = (0,) * 9

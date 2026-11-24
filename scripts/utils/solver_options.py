@@ -2,7 +2,6 @@
 
 from numbers import Integral
 
-
 DEFAULT_GEKKO_MAX_MEMORY = 4
 
 

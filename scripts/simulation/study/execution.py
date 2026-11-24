@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from functools import partial
-from pathlib import Path
 import time
 import traceback
+from functools import partial
+from pathlib import Path
 
 from orbexa.simulation.study.metrics import collect_study_metrics
 from orbexa.simulation.study.records import StudyTelemetry, write_record
@@ -57,33 +57,23 @@ class StudyArmExecution:
         # Load the complete execution dependency set before any physical motion.
         # Later stage-local imports make each stage's dependencies explicit and
         # resolve from this same, already loaded frozen package.
-        from dataclasses import replace
         import numpy as np
         from orbexa.control.certification.reachability import IntervalBox
         from orbexa.core.configuration.model import SimulationConfig
         from orbexa.estimation.navigation.records import StudySensorProfile
+        from orbexa.simulation.completion.configuration.design import (
+            SpacecraftMissionDesign,
+        )
         from orbexa.simulation.completion.coordinator import (
-            CompleteMissionOptions,
             CompleteMissionStore,
+        )
+        from orbexa.simulation.nonlinear.profile import (
+            IndependentTruthCase,
+            NonlinearStudyOptions,
         )
         from orbexa.simulation.recording.native import (
             native_controller as _native_controller,
         )
-        from orbexa.simulation.approach.records.results import MissionResultStore
-        from orbexa.simulation.nonlinear.records.archive import NonlinearProofArchive
-        from orbexa.simulation.completion.nonlinear.coordinator import (
-            NonlinearTranslationAccountant,
-            complete_nonlinear_mission,
-        )
-        from orbexa.simulation.nonlinear.runner import NonlinearMissionRunner
-        from orbexa.simulation.nonlinear.profile import (
-            NonlinearStudyOptions,
-            IndependentTruthCase,
-        )
-        from orbexa.simulation.completion.configuration.design import (
-            SpacecraftMissionDesign,
-        )
-        from orbexa.simulation.approach.physical.attitude import ChaserAttitudeTracker
 
         self.declaration = load_declaration(self.study_path, self.case)
         options_record = dict(self.declaration["options"])
@@ -198,6 +188,7 @@ class StudyArmExecution:
 
     def _complete(self):
         from dataclasses import replace
+
         from orbexa.simulation.approach.physical.attitude import ChaserAttitudeTracker
         from orbexa.simulation.completion.coordinator import CompleteMissionOptions
         from orbexa.simulation.completion.nonlinear.coordinator import (

@@ -7,10 +7,10 @@ or lifecycle admission.  No physical truth or solver status is an input.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
 import hashlib
 import math
+from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 from orbexa.control.certification.reachability import IntervalBox

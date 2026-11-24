@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import copy
-import numpy as np
+from dataclasses import dataclass
 
+import numpy as np
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.simulation.approach.deployment.arc import (
     CompactArcDeployment,

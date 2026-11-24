@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Protocol
-import numpy as np
+from typing import Protocol
 
+import numpy as np
 from orbexa.simulation.attached.assembly.model import (
-    AttachedAssembly,
     AssemblyState,
+    AttachedAssembly,
     positive,
 )
 from orbexa.simulation.attached.propulsion import ThrusterSystem
@@ -79,8 +79,8 @@ class DetumblingSimulator:
     def __init__(
         self,
         *,
-        options: Optional[DetumblingOptions] = None,
-        policy: Optional[DetumblingPolicy] = None,
+        options: DetumblingOptions | None = None,
+        policy: DetumblingPolicy | None = None,
     ):
         self.options = options or DetumblingOptions()
         self.policy = policy or RateDampingPolicy()

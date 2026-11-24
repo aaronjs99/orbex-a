@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict
+
 from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.recording.artifacts import _sha, _write_json
 from orbexa.simulation.recording.native import native_controller as _native_controller
@@ -12,23 +13,24 @@ from orbexa.simulation.recording.native import native_controller as _native_cont
 def _execute_nonlinear_job(settings, parameters, directory, messages, run_event):
     """Fresh observed nonlinear run, durable proofs and ordinary finite capture."""
     from dataclasses import replace
+
     import numpy as np
     from orbexa.control.certification.reachability import IntervalBox
     from orbexa.core.configuration.model import SimulationConfig
-    from orbexa.simulation.completion.coordinator import CompleteMissionStore
     from orbexa.simulation.approach.records.results import MissionResultStore
-    from orbexa.simulation.nonlinear.records.archive import NonlinearProofArchive
-    from orbexa.simulation.completion.nonlinear.coordinator import (
-        complete_nonlinear_mission,
-    )
-    from orbexa.simulation.nonlinear.runner import NonlinearMissionRunner
-    from orbexa.simulation.nonlinear.profile import (
-        NonlinearStudyOptions,
-        IndependentTruthCase,
-    )
     from orbexa.simulation.completion.configuration.design import (
         SpacecraftMissionDesign,
     )
+    from orbexa.simulation.completion.coordinator import CompleteMissionStore
+    from orbexa.simulation.completion.nonlinear.coordinator import (
+        complete_nonlinear_mission,
+    )
+    from orbexa.simulation.nonlinear.profile import (
+        IndependentTruthCase,
+        NonlinearStudyOptions,
+    )
+    from orbexa.simulation.nonlinear.records.archive import NonlinearProofArchive
+    from orbexa.simulation.nonlinear.runner import NonlinearMissionRunner
     from orbexa.visualization.data.studio import StudioDataset
 
     cfg = SimulationConfig.load(str(settings.config_path))

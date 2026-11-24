@@ -6,9 +6,11 @@ MIT source attribution: THIRD_PARTY_NOTICES.md.
 """
 
 from __future__ import annotations
+
+import json
 from dataclasses import dataclass
 from hashlib import sha256
-import json
+
 import numpy as np
 
 

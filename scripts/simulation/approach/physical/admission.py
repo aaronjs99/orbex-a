@@ -2,23 +2,24 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from fractions import Fraction
-import json
-from typing import Callable, Mapping, Any
-import numpy as np
+from typing import Any
 
-from orbexa.control.certification.reachability import (
-    IntervalBox,
-    OrbitalModelBounds,
-    HeldInputRequest,
-    ValidatedFlowEncloser,
-    SweptCollisionGuard,
-    RotatingCylinderBounds,
-)
+import numpy as np
 from orbexa.control.certification.geometry import (
     CompositeSweptCollisionGuard,
     RotatingCompositeBounds,
+)
+from orbexa.control.certification.reachability import (
+    HeldInputRequest,
+    IntervalBox,
+    OrbitalModelBounds,
+    RotatingCylinderBounds,
+    SweptCollisionGuard,
+    ValidatedFlowEncloser,
 )
 
 

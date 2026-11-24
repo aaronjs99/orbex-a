@@ -6,17 +6,16 @@ or a sensor specification. Case construction has no access to future truth.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
-from fractions import Fraction
 import copy
 import math
-import numpy as np
+from dataclasses import asdict, dataclass, replace
+from fractions import Fraction
 
+import numpy as np
 from orbexa.core.dynamics.reference_frame import ReferenceClockFrame, fingerprint
-from orbexa.core.dynamics.relative import NonlinearModelBounds, ExponentialAtmosphere
+from orbexa.core.dynamics.relative import ExponentialAtmosphere, NonlinearModelBounds
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.estimation.navigation.records import StudySensorProfile
-from orbexa.simulation.completion.configuration.design import SpacecraftMissionDesign
 from orbexa.simulation.approach.deployment.component import (
     CompositeDeploymentOptions,
     CompositePatchDeployment,

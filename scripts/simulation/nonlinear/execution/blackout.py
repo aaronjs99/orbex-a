@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from orbexa.control.certification.reachability import IntervalBox, _exact
 from orbexa.control.fallback.refuge import RefugeObservation
-
 from orbexa.simulation.nonlinear.safety.drift import ZERO_NOMINAL_ID
 
 

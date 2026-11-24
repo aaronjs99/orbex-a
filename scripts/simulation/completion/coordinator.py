@@ -8,15 +8,29 @@ starting capture with full tanks. Stage failures retain the preceding record.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import partial
 from pathlib import Path
-from typing import Callable, Mapping, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import numpy as np
-
+from orbexa.simulation.approach.physical.attitude import (
+    ChaserAttitudeResult,
+    ChaserAttitudeTracker,
+)
+from orbexa.simulation.approach.records.results import (
+    ADTMPCMissionResult,
+    MissionResultStore,
+)
 from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY, positive
+from orbexa.simulation.attached.propulsion import ThrusterSystem
+from orbexa.simulation.completion.lifecycle import (
+    MissionLifecycle,
+    MissionLifecycleResult,
+    MissionLifecycleStore,
+)
 from orbexa.simulation.contact.capture import (
     CaptureModel,
     CaptureOptions,
@@ -24,20 +38,6 @@ from orbexa.simulation.contact.capture import (
     TargetPhysicalProperties,
 )
 from orbexa.simulation.contact.simulator import FiniteContactOptions
-from orbexa.simulation.approach.physical.attitude import (
-    ChaserAttitudeResult,
-    ChaserAttitudeTracker,
-)
-from orbexa.simulation.completion.lifecycle import (
-    MissionLifecycle,
-    MissionLifecycleResult,
-    MissionLifecycleStore,
-)
-from orbexa.simulation.approach.records.results import (
-    ADTMPCMissionResult,
-    MissionResultStore,
-)
-from orbexa.simulation.attached.propulsion import ThrusterSystem
 from orbexa.utils.io.data import save_data
 
 if TYPE_CHECKING:
@@ -204,9 +204,9 @@ class CompleteMissionResult:
     success: bool
     message: str
     approach: ADTMPCMissionResult
-    translation_budget: Optional[ApproachPropellantBudget] = None
-    attitude: Optional[ChaserAttitudeResult] = None
-    lifecycle: Optional[MissionLifecycleResult] = None
+    translation_budget: ApproachPropellantBudget | None = None
+    attitude: ChaserAttitudeResult | None = None
+    lifecycle: MissionLifecycleResult | None = None
     assumptions: tuple[str, ...] = field(
         default_factory=lambda: (
             "Approach translation, free-bus attitude replay and post-latch assembly dynamics use their separately declared models.",
@@ -214,9 +214,9 @@ class CompleteMissionResult:
             "Finite compliant capture uses declared pad properties and explicit contact feedback; mechanism material strength and atmospheric demise are not qualified.",
         )
     )
-    geometry_binding: Optional[dict] = None
-    terminal_handoff: Optional[PhysicalTerminalHandoff] = None
-    completion_audit: Optional[dict] = None
+    geometry_binding: dict | None = None
+    terminal_handoff: PhysicalTerminalHandoff | None = None
+    completion_audit: dict | None = None
 
     def to_dict(self):
         failed_stage = (
@@ -283,12 +283,12 @@ class CompleteMissionRunner:
         *,
         options: CompleteMissionOptions,
         approach_runner=None,
-        attitude_tracker: Optional[ChaserAttitudeTracker] = None,
-        capture_options: Optional[CaptureOptions] = None,
+        attitude_tracker: ChaserAttitudeTracker | None = None,
+        capture_options: CaptureOptions | None = None,
         detumbling=None,
         deorbit=None,
-        propulsion_factory: Optional[Callable] = None,
-        stage_sink: Optional[Callable[[str, object], None]] = None,
+        propulsion_factory: Callable | None = None,
+        stage_sink: Callable[[str, object], None] | None = None,
         translation_accountant=None,
     ):
         self.options = options
@@ -335,8 +335,8 @@ class CompleteMissionRunner:
         if terminal_handoff is not None:
             terminal_handoff.verify_approach(approach)
             approach = terminal_handoff.trajectory
-        from orbexa.control.terminal.physical import bound_orbital_clock
         from orbexa.control.certification.reachability import OrbitalModelBounds
+        from orbexa.control.terminal.physical import bound_orbital_clock
 
         anomalies = np.asarray(approach.anom_history, dtype=float)
         if (
@@ -479,7 +479,7 @@ class CompleteMissionRunner:
         self,
         approach: ADTMPCMissionResult,
         *,
-        terminal_handoff: Optional[PhysicalTerminalHandoff] = None,
+        terminal_handoff: PhysicalTerminalHandoff | None = None,
         capture_truth=None,
         contact_feedback=None,
         contact_environment=None,

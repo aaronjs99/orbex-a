@@ -10,10 +10,11 @@ import threading
 import time
 import uuid
 from pathlib import Path
+
 from orbexa.simulation.recording.artifacts import _write_json
 from orbexa.simulation.service.contracts import LiveParameters, LiveServiceSettings
 from orbexa.simulation.service.jobs.resume import _resume_source
-from orbexa.simulation.service.process import _WorkerTree, _run_job
+from orbexa.simulation.service.process import _run_job, _WorkerTree
 from orbexa.simulation.service.snapshot import _freeze_job
 
 

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from fractions import Fraction
-import numpy as np
-from scipy.spatial.transform import Rotation
 
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
+from scipy.spatial.transform import Rotation
 
 
 def _limit(vector, maximum):

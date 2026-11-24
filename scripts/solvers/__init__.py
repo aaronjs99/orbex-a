@@ -17,7 +17,7 @@ Modular MPC solver backends with unified interface.
 Supports GEKKO, CasADi, and SciPy.
 """
 
-from orbexa.solvers.base import SolverBase, SolverResult, MPCProblem
+from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult
 from orbexa.solvers.gekko.solver import GekkoSolver
 from orbexa.solvers.scipy_solver import ScipySolver
 
@@ -99,15 +99,15 @@ def register_solver(name: str, solver_class: type) -> None:
 
 
 __all__ = [
+    "CASADI_AVAILABLE",
+    "SOLVER_REGISTRY",
+    "CasadiSolver",
+    "GekkoSolver",
+    "MPCProblem",
+    "ScipySolver",
     "SolverBase",
     "SolverResult",
-    "MPCProblem",
-    "GekkoSolver",
-    "ScipySolver",
-    "CasadiSolver",
     "get_solver",
     "get_solver_from_config",
     "register_solver",
-    "SOLVER_REGISTRY",
-    "CASADI_AVAILABLE",
 ]

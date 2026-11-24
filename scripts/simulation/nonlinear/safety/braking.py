@@ -7,9 +7,9 @@ nonlinear fleet plan constructor must prove all of those before admission.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from math import comb
-from typing import Mapping, Sequence
 
 from orbexa.control.certification.reachability import _exact
 from orbexa.control.fallback.refuge import _identity, _vec

@@ -9,9 +9,10 @@ explicit caller declarations. No real atmosphere or spacecraft is inferred.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from numbers import Integral, Real
-from typing import Callable, Sequence
+
 import numpy as np
 
 
@@ -403,8 +404,8 @@ class InertialDynamics:
         an unscheduled final accepted point may be appended to preserve the
         numerical prefix. No error enclosure or physical safety proof follows.
         """
-        from scipy.integrate import DOP853
         import scipy
+        from scipy.integrate import DOP853
 
         states, times = (
             _states(initial_states),

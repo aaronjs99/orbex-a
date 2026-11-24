@@ -7,11 +7,18 @@ from fractions import Fraction
 from functools import cached_property
 from itertools import combinations
 from typing import Any
+
 from orbexa.control.certification.reachability import (
     FlowCertificate,
     IntervalBox,
     SweptCollisionGuard,
     _exact,
+)
+from orbexa.control.fallback.common import _pairs
+from orbexa.control.fallback.polynomial import (
+    POLYNOMIAL_PEER_METHOD,
+    PolynomialPeerBounds,
+    PolynomialReferenceSource,
 )
 from orbexa.control.fallback.refuge import (
     _identity,
@@ -20,13 +27,6 @@ from orbexa.control.fallback.refuge import (
     exact_record,
     fingerprint,
 )
-from orbexa.control.fallback.common import _pairs
-from orbexa.control.fallback.polynomial import (
-    POLYNOMIAL_PEER_METHOD,
-    PolynomialReferenceSource,
-    PolynomialPeerBounds,
-)
-
 
 FLEET_SWEEP_METHOD = "exact-component-box-fleet-sweep-v1"
 

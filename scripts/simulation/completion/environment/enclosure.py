@@ -7,19 +7,17 @@ co-rotating atmosphere, wind, density, drag semantics and physical ECI frame.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
-from dataclasses import dataclass
-from fractions import Fraction
 import copy
 import hashlib
-from pathlib import Path
+from dataclasses import dataclass
+from fractions import Fraction
 
 from orbexa.control.certification.reachability import _ProofUnresolved
-from orbexa.core.dynamics.relative import parameters, radial, drag
 from orbexa.core.dynamics.reference_frame import FloatArithmetic, fingerprint
+from orbexa.core.dynamics.relative import drag, parameters, radial
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.numerics.rigid_interval import norm_upper, square
-
 
 _SOURCE = {
     name: hashlib.sha256((PACKAGE_ROOT / name).read_bytes()).hexdigest()

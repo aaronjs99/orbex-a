@@ -12,17 +12,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
-import time
 
-from orbexa.control.fallback.runtime import FleetAdmissionRuntime
+from orbexa.control.certification.reachability import _exact
 from orbexa.control.fallback.records import PerformanceAttempt
+from orbexa.control.fallback.refuge import fingerprint
 from orbexa.control.fallback.replacement import (
-    PreparedFleetReplacement,
     AdmissionContextChanged,
+    PreparedFleetReplacement,
     activate_fleet_replacement,
 )
-from orbexa.control.certification.reachability import _exact
-from orbexa.control.fallback.refuge import fingerprint
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 from orbexa.simulation.online.clock import MONOTONIC_CLOCK, wall_time_ns
 
 

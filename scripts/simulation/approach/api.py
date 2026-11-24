@@ -20,19 +20,14 @@ helpers. Historical model and saved-result imports remain available here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from orbexa.core.configuration.model import SimulationConfig
 from orbexa.core.dynamics.parameters import (
-    ADTMPC_PARAMETER_KEYS,
     OrbitalPlantTruth,
-    specific_angular_momentum as _specific_angular_momentum,
 )
 from orbexa.core.targets.prescribed import TargetGeometry, TumblingCylinderTarget
 from orbexa.estimation.adaptation.belief import (
     ParameterBelief,
-    serial_estimates as _serial_estimates,
-    serial_ranges as _serial_ranges,
 )
 from orbexa.estimation.adaptation.mission import PointEstimator
 from orbexa.simulation.approach.models import ChaserConfig, MissionPhase
@@ -53,13 +48,13 @@ class ADTMPCMissionRunner:
         *,
         solver_backend: str = "gekko",
         approximation: str = "nonlinear",
-        config: Optional[SimulationConfig] = None,
-        horizon_steps: Optional[int] = None,
-        actuation_steps: Optional[int] = None,
-        scenario: Optional[MissionScenario] = None,
-        target: Optional[TargetGeometry] = None,
-        point_estimator: Optional[PointEstimator] = None,
-        controller_factory: Optional[ControllerFactory] = None,
+        config: SimulationConfig | None = None,
+        horizon_steps: int | None = None,
+        actuation_steps: int | None = None,
+        scenario: MissionScenario | None = None,
+        target: TargetGeometry | None = None,
+        point_estimator: PointEstimator | None = None,
+        controller_factory: ControllerFactory | None = None,
         arrival_policy=None,
     ):
         if scenario is not None:
@@ -215,11 +210,11 @@ class ADTMPCMissionRunner:
 
 
 __all__ = [
-    "ADTMPCMissionRunner",
     "ADTMPCMissionResult",
-    "MissionScenario",
+    "ADTMPCMissionRunner",
     "ChaserConfig",
     "MissionPhase",
+    "MissionScenario",
     "OrbitalPlantTruth",
     "ParameterBelief",
     "TumblingCylinderTarget",

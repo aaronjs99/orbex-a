@@ -12,18 +12,11 @@ from fractions import Fraction
 from itertools import combinations, zip_longest
 
 import numpy as np
-
 from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.fallback.refuge import fingerprint as exact_fingerprint
-from orbexa.core.dynamics.relative import NonlinearModelBounds
 from orbexa.core.dynamics.reference_frame import ReferenceClockFrame, exact
+from orbexa.core.dynamics.relative import NonlinearModelBounds
 from orbexa.simulation.approach.records.checkpoint import digest, plain
-from orbexa.simulation.nonlinear.records.archive import (
-    HOLD_INDEX_SCHEMA,
-    NonlinearHoldArchive,
-    hold_index,
-    semantic_sha256,
-)
 from orbexa.simulation.completion.nonlinear.boundary import capture_truth_from_nonlinear
 from orbexa.simulation.completion.nonlinear.contracts import (
     _box,
@@ -31,6 +24,12 @@ from orbexa.simulation.completion.nonlinear.contracts import (
     _identity,
     _pairs,
     _require,
+)
+from orbexa.simulation.nonlinear.records.archive import (
+    HOLD_INDEX_SCHEMA,
+    NonlinearHoldArchive,
+    hold_index,
+    semantic_sha256,
 )
 
 

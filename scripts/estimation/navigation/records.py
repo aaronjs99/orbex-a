@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from types import MappingProxyType
-import math
 
-from orbexa.core.dynamics.reference_frame import exact, bounds, fingerprint
-from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.certification.nonlinear import FRAME
-from orbexa.estimation.navigation.noise import PhysicalSlotNoise
+from orbexa.control.certification.reachability import IntervalBox
+from orbexa.core.dynamics.reference_frame import bounds, exact, fingerprint
 from orbexa.estimation.navigation.boxes import midpoint
+from orbexa.estimation.navigation.noise import PhysicalSlotNoise
 
 
 @dataclass(frozen=True)

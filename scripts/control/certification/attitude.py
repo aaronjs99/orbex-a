@@ -7,27 +7,27 @@ Only central spherical gravity-gradient torque (or zero torque) is declared.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
 import hashlib
 import math
+from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.core.dynamics.relative import cross, matvec, transpose, radial
-from orbexa.control.certification.reachability import (
-    IntervalBox,
-    EnclosureStatus,
-    ReachabilityConfig,
-    _ARB_LOCK,
-    _ProofUnresolved,
-)
 from orbexa.control.certification.nonlinear import (
+    FRAME,
+    TargetEphemerisCertificate,
     _Arithmetic,
     _target_box,
-    TargetEphemerisCertificate,
-    FRAME,
 )
+from orbexa.control.certification.reachability import (
+    _ARB_LOCK,
+    EnclosureStatus,
+    IntervalBox,
+    ReachabilityConfig,
+    _ProofUnresolved,
+)
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.core.dynamics.relative import cross, matvec, radial, transpose
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

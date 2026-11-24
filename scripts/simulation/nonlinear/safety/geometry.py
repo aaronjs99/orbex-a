@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections import OrderedDict
+from dataclasses import dataclass
 from fractions import Fraction
 from math import gcd
 from typing import Any
-from orbexa.control.certification.reachability import IntervalBox, _exact, _ARB_LOCK
-from orbexa.control.fallback.refuge import _identity, _scope, fingerprint
-from orbexa.control.fallback.geometry import OccupiedGeometryBounds, OccupiedProjection
-from orbexa.control.certification.rotation import all_rotation_component_bounds
-from orbexa.control.certification.nonlinear import _Arithmetic
 
+from orbexa.control.certification.nonlinear import _Arithmetic
+from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox, _exact
+from orbexa.control.certification.rotation import all_rotation_component_bounds
+from orbexa.control.fallback.geometry import OccupiedGeometryBounds, OccupiedProjection
+from orbexa.control.fallback.refuge import _identity, _scope, fingerprint
 from orbexa.simulation.nonlinear.safety.cache import _FrozenProofIdentityCache
 
 
@@ -328,10 +328,12 @@ class AttitudePoseBoundsProvider:
 
     def __call__(self, start, end):
         from orbexa.control.certification.attitude import (
+            _SOURCE_SHA256 as attitude_source,
+        )
+        from orbexa.control.certification.attitude import (
             AttitudeFlowCertificate,
             AttitudeSegment,
             _matrix,
-            _SOURCE_SHA256 as attitude_source,
         )
 
         value = self.attitude_provider(start, end)

@@ -6,8 +6,10 @@ Derived from the MIT Swarm CLF-CBF Playground; see THIRD_PARTY_NOTICES.md.
 """
 
 from __future__ import annotations
+
 from collections import deque
 from dataclasses import dataclass
+
 import numpy as np
 from scipy.linalg import cho_factor, cho_solve, solve_triangular
 

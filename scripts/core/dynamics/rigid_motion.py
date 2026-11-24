@@ -5,10 +5,11 @@ Collision geometry never enters these equations.
 """
 
 from __future__ import annotations
-from typing import Dict, Sequence, Tuple
+
+from collections.abc import Sequence
+
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.spatial.transform import Rotation
+from orbexa.core.dynamics.anomaly import orbital_radius_terms
 from orbexa.core.dynamics.attitude import (
     body_rate_derivative,
     body_rates_to_euler_rates,
@@ -16,8 +17,9 @@ from orbexa.core.dynamics.attitude import (
     inertia_matrix,
     quaternion_to_euler,
 )
-from orbexa.core.dynamics.anomaly import orbital_radius_terms
 from orbexa.utils.geometry.algebra import gen_skew_sym_mat
+from scipy.integrate import solve_ivp
+from scipy.spatial.transform import Rotation
 
 
 class RigidBodyMotion:
@@ -124,7 +126,7 @@ class RigidBodyMotion:
             )
         return float(value)
 
-    def anomaly_clock(self, anom: float) -> Tuple[float, float]:
+    def anomaly_clock(self, anom: float) -> tuple[float, float]:
         """Return ``(dq/dt, d(dq/dt)/dq)`` for the analytical drag orbit."""
         q = self._query(anom)
         radius, radius_prime, h = orbital_radius_terms(
@@ -142,7 +144,7 @@ class RigidBodyMotion:
             )
         return float(rate), float(rate_prime)
 
-    def _state_at(self, anom: float) -> Tuple[float, np.ndarray, np.ndarray]:
+    def _state_at(self, anom: float) -> tuple[float, np.ndarray, np.ndarray]:
         values = self._solution(self._query(anom))
         quaternion, omega = values[1:5].copy(), values[5:8].copy()
         norm = np.linalg.norm(quaternion)
@@ -234,7 +236,7 @@ class RigidBodyMotion:
 
     def rotation_matrices(
         self, anom: float
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return exact ``(R, R', R'')`` mapping body to LVLH; primes are per q.
 
         Derivatives use the propagated physical body rate and Euler's equation,
@@ -286,7 +288,7 @@ class RigidBodyMotion:
         point = finite_vector(docking_point_body, "Body-fixed docking point", 3)
         return self.rotation_matrices(anom)[2] @ point
 
-    def recorded_kinematics(self, anomalies: Sequence[float]) -> Dict[str, np.ndarray]:
+    def recorded_kinematics(self, anomalies: Sequence[float]) -> dict[str, np.ndarray]:
         """Sample the same dense target used by controller/reference queries.
 
         Samples preserve caller order. Returned arrays are independent copies;

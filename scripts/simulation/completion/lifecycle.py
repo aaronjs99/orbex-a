@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
-from typing import Callable, Optional
-import copy
 
-from orbexa.simulation.contact.capture import CaptureModel, CaptureResult
 from orbexa.simulation.attached.detumbling import DetumblingResult, DetumblingSimulator
 from orbexa.simulation.attached.disposal.simulator import (
     DeorbitResult,
     DeorbitSimulator,
 )
 from orbexa.simulation.attached.propulsion import ThrusterSystem
+from orbexa.simulation.contact.capture import CaptureModel, CaptureResult
 from orbexa.utils.io.data import load_data, save_data
 
 LIFECYCLE_SCHEMA = "orbexa.physical-mission-lifecycle.v1"
@@ -25,9 +25,9 @@ class MissionLifecycleResult:
     message: str
     approach: dict
     capture: CaptureResult
-    detumbling: Optional[DetumblingResult] = None
-    deorbit: Optional[DeorbitResult] = None
-    propulsion: Optional[ThrusterSystem] = None
+    detumbling: DetumblingResult | None = None
+    deorbit: DeorbitResult | None = None
+    propulsion: ThrusterSystem | None = None
     configuration: dict = field(default_factory=dict)
     failure: dict = field(default_factory=dict)
 
@@ -80,10 +80,10 @@ class MissionLifecycle:
     def __init__(
         self,
         *,
-        capture: Optional[CaptureModel] = None,
-        detumbling: Optional[DetumblingSimulator] = None,
-        deorbit: Optional[DeorbitSimulator] = None,
-        propulsion_factory: Optional[Callable] = None,
+        capture: CaptureModel | None = None,
+        detumbling: DetumblingSimulator | None = None,
+        deorbit: DeorbitSimulator | None = None,
+        propulsion_factory: Callable | None = None,
     ):
         self.capture = capture or CaptureModel()
         self.detumbling = detumbling or DetumblingSimulator()

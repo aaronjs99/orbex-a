@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Tuple
+from collections.abc import Callable
 
 import numpy as np
 
@@ -14,7 +14,7 @@ def sample_tracking_reference(
     dynamics_at: Callable[[float], np.ndarray],
     input_matrix: np.ndarray,
     disturbance_at: Callable[[float], np.ndarray],
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Return state samples and one feedforward input per prediction interval.
 
     The derivative uses the same independent variable as the dynamics (true

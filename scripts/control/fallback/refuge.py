@@ -8,12 +8,13 @@ argument, finite fuel scope and executable provider contracts.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from fractions import Fraction
 from functools import cached_property
-import hashlib
-import json
-from typing import Any, Callable, Protocol, Sequence
+from typing import Any, Protocol
 
 from orbexa.control.certification.reachability import IntervalBox, _exact
 

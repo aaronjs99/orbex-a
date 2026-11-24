@@ -9,34 +9,31 @@ pad properties and actuator parameters below are independent study assumptions.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
 import hashlib
 import json
+from collections.abc import Callable
 from fractions import Fraction
-from pathlib import Path
-from typing import Callable, Optional
+
 import numpy as np
 from orbexa.control.certification.reachability import IntervalBox, _ProofUnresolved
-
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.contact.contracts import (
     ContactBodyState,
-    ContactMember,
     FiniteContactOptions,
     FiniteContactResult,
 )
-from orbexa.simulation.contact.control.controller import ContactController, _limit
+from orbexa.simulation.contact.control.controller import ContactController
 from orbexa.simulation.contact.control.guards import ContactGuards
 from orbexa.simulation.contact.dynamics.mechanics import ContactMechanics
-from orbexa.simulation.contact.enclosure import ContactStepEncloser
-from orbexa.simulation.contact.records import ContactRecorder
 from orbexa.simulation.contact.dynamics.state import (
     ContactActuation,
     ContactBondState,
     ContactFleet,
     rk4_contact_step,
 )
-
+from orbexa.simulation.contact.enclosure import ContactStepEncloser
+from orbexa.simulation.contact.records import ContactRecorder
 
 _CONTACT_SOURCE_FILES = (
     "simulation/contact/simulator.py",
@@ -92,7 +89,7 @@ class FiniteContactSimulator:
     gravity and configured gravity-gradient torque, in the supplied ECI basis.
     """
 
-    def __init__(self, options: Optional[FiniteContactOptions] = None):
+    def __init__(self, options: FiniteContactOptions | None = None):
         self.options = options or FiniteContactOptions()
 
     def run(
@@ -104,10 +101,10 @@ class FiniteContactSimulator:
         geometry,
         mu_m3_s2,
         gravity_gradient=False,
-        feedback: Optional[Callable] = None,
-        environment: Optional[Callable] = None,
+        feedback: Callable | None = None,
+        environment: Callable | None = None,
         initial_enclosure=None,
-        certificate_sink: Optional[Callable] = None,
+        certificate_sink: Callable | None = None,
     ) -> FiniteContactResult:
         o = self.options
         fleet = ContactFleet.create(

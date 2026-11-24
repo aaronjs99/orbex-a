@@ -8,23 +8,17 @@ invented MPC solutions, nominal plans, measurements, or adaptation histories.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
-from fractions import Fraction
 import gzip
 import hashlib
 import json
+import zlib
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
-from typing import Mapping
-import zlib
 
 import numpy as np
-
-from orbexa.control.terminal.physical import (
-    PhysicalTerminalBoundsBuilder,
-    PhysicalTerminalErrorBounds,
-)
-from orbexa.control.terminal.tracking import TerminalFeedforwardPolicy
 from orbexa.control.certification.reachability import (
     HeldInputRequest,
     IntervalBox,
@@ -33,16 +27,16 @@ from orbexa.control.certification.reachability import (
     _exact,
     _float_outward,
 )
-from orbexa.simulation.contact.capture import (
-    CaptureModel,
-    CaptureTruth,
-    TargetPhysicalProperties,
+from orbexa.control.terminal.physical import (
+    PhysicalTerminalBoundsBuilder,
+    PhysicalTerminalErrorBounds,
 )
+from orbexa.control.terminal.tracking import TerminalFeedforwardPolicy
 from orbexa.simulation.approach.records.checkpoint import (
-    digest,
-    plain,
     _target_signature,
+    digest,
     physical_target_from_snapshot,
+    plain,
 )
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
 from orbexa.simulation.approach.terminal.execution import (
@@ -52,7 +46,11 @@ from orbexa.simulation.approach.terminal.execution import (
     terminal_hold_linkage,
     terminal_source_lineage,
 )
-
+from orbexa.simulation.contact.capture import (
+    CaptureModel,
+    CaptureTruth,
+    TargetPhysicalProperties,
+)
 
 HANDOFF_METHOD = "verified-physical-terminal-handoff-v1"
 MIDPOINT_HANDOFF_METHOD = "verified-physical-midpoint-terminal-handoff-v1"
@@ -123,10 +121,10 @@ def _builder(value, *, method, certificate):
         arguments[name] = _box(arguments[name])
     arguments["errors"] = PhysicalTerminalErrorBounds(**arguments["errors"])
     if "target_geometry" in arguments:
-        from orbexa.core.geometry.composite import SpacecraftGeometry
         from orbexa.control.terminal.composite import (
             CompositePhysicalTerminalBoundsBuilder,
         )
+        from orbexa.core.geometry.composite import SpacecraftGeometry
 
         arguments["target_geometry"] = SpacecraftGeometry.from_dict(
             arguments["target_geometry"]

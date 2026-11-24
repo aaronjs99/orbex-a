@@ -7,26 +7,25 @@ of that common ephemeris. No uncertainty is replaced by executed point truth.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from fractions import Fraction
-import copy
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
-from orbexa.control.certification.reachability import IntervalBox, _ARB_LOCK
 from orbexa.control.certification.nonlinear import _Arithmetic
+from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
 from orbexa.simulation.numerics.rigid_interval import (
     add,
     cross,
     matvec,
+    norm_upper,
     normalized_quaternion,
     quaternion_rotation,
     scale,
     transpose,
-    norm_upper,
 )
+from scipy.spatial.transform import Rotation
 
 
 def _saved_box(value, dimension):

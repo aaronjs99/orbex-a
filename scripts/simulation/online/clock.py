@@ -8,7 +8,6 @@ timely execution; all requests, deadlines and acknowledgments must use it.
 
 import time
 
-
 MONOTONIC_CLOCK = "monotonic-ns-v1"
 PERFORMANCE_CLOCK = "perf-counter-ns-v1"
 

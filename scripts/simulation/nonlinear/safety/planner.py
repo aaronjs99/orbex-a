@@ -5,54 +5,62 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from types import MappingProxyType
-import numpy as np
 
+import numpy as np
 from orbexa.control.certification.attitude import (
-    AttitudeFlowEncloser,
     _SOURCE_SHA256 as ATTITUDE_SOURCE_SHA256,
 )
-from orbexa.control.fallback.geometry import FleetGeometryOracle
-from orbexa.control.fallback.runtime import FleetAdmissionRuntime
-from orbexa.control.fallback.fuel import FleetFuelBudget
-from orbexa.control.fallback.refuge import ControlContext, RefugeObservation
-from orbexa.control.certification.reachability import (
-    IntervalBox,
-    HeldInputRequest,
-    FlowCertificate,
-    SweptCollisionGuard,
-    EnclosureStatus,
+from orbexa.control.certification.attitude import (
+    AttitudeFlowEncloser,
+)
+from orbexa.control.certification.nonlinear import (
+    _SOURCE_SHA256 as TARGET_SOURCE_SHA256,
 )
 from orbexa.control.certification.nonlinear import (
     TargetEphemerisCertificate,
-    _SOURCE_SHA256 as TARGET_SOURCE_SHA256,
 )
+from orbexa.control.certification.reachability import (
+    EnclosureStatus,
+    FlowCertificate,
+    HeldInputRequest,
+    IntervalBox,
+    SweptCollisionGuard,
+)
+from orbexa.control.fallback.fuel import FleetFuelBudget
+from orbexa.control.fallback.geometry import FleetGeometryOracle
+from orbexa.control.fallback.refuge import (
+    ControlContext,
+    RefugeObservation,
+    exact_record,
+    fingerprint,
+)
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 from orbexa.core.dynamics.reference_frame import exact
-from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference
-from orbexa.simulation.nonlinear.safety.drift import (
-    NonlinearZeroDriftBounds,
-    ZERO_NOMINAL_ID,
-)
-from orbexa.simulation.nonlinear.safety.resources import StudyPropulsionBounds
-from orbexa.simulation.nonlinear.safety.geometry import (
-    CompositeOccupiedBoundsProvider,
-    AnyProperTargetPose,
-    AttitudePoseBoundsProvider,
-)
-from orbexa.simulation.nonlinear.safety.candidates import (
-    construct_refuge_plan,
-    construct_patch_refuge_candidates,
-)
 from orbexa.simulation.nonlinear.safety.braking import coordinated_braking_references
+from orbexa.simulation.nonlinear.safety.candidates import (
+    construct_patch_refuge_candidates,
+    construct_refuge_plan,
+)
 from orbexa.simulation.nonlinear.safety.contingency import (
     AccelerationContingencyOptions,
     acceleration_contingency_references,
 )
+from orbexa.simulation.nonlinear.safety.drift import (
+    ZERO_NOMINAL_ID,
+    NonlinearZeroDriftBounds,
+)
+from orbexa.simulation.nonlinear.safety.geometry import (
+    AnyProperTargetPose,
+    AttitudePoseBoundsProvider,
+    CompositeOccupiedBoundsProvider,
+)
 from orbexa.simulation.nonlinear.safety.providers import FixedProofProvider
 from orbexa.simulation.nonlinear.safety.proximity import (
-    TargetProximityRegion,
     REFUGE_POSITION_COMPONENT_RADIUS_M,
+    TargetProximityRegion,
 )
-from orbexa.control.fallback.refuge import exact_record, fingerprint
+from orbexa.simulation.nonlinear.safety.reference import C2RefugeReference
+from orbexa.simulation.nonlinear.safety.resources import StudyPropulsionBounds
 
 
 class _ForecastEnclosureRefusal(ValueError):

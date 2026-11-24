@@ -7,17 +7,15 @@ controls. A small norm error alone does not establish componentwise containment.
 
 from __future__ import annotations
 
-from pathlib import Path
-from collections.abc import Mapping
 import re
+from collections.abc import Mapping
+from pathlib import Path
 
 import matplotlib.pyplot as plt
-from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
 import numpy as np
-
 from orbexa.visualization.data.samples import MissionSamples
-from orbexa.visualization.style import _INK, chaser_color
-
+from orbexa.visualization.plots.canvas import artifact_subplots
+from orbexa.visualization.style import _INK
 
 _BLUE = "#2467A3"
 _TEAL = "#008B81"

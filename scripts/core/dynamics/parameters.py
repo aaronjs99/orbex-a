@@ -15,7 +15,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 if TYPE_CHECKING:
@@ -60,7 +61,7 @@ class OrbitalPlantTruth:
             self.mu, self.semi_major_axis, self.eccentricity
         )
 
-    def dynamics_params(self) -> Dict[str, float]:
+    def dynamics_params(self) -> dict[str, float]:
         return {
             "mean_motion": self.mean_motion,
             "eccentricity": self.eccentricity,
@@ -72,7 +73,7 @@ class OrbitalPlantTruth:
             "time_periapsis": self.time_periapsis,
         }
 
-    def as_dict(self) -> Dict[str, float]:
+    def as_dict(self) -> dict[str, float]:
         return {
             "eccentricity": float(self.eccentricity),
             "alpha": float(self.alpha),
@@ -85,7 +86,7 @@ class OrbitalPlantTruth:
         }
 
     @classmethod
-    def from_config(cls, config: SimulationConfig) -> "OrbitalPlantTruth":
+    def from_config(cls, config: SimulationConfig) -> OrbitalPlantTruth:
         return cls(
             eccentricity=float(config.orbit.eccentricity),
             alpha=float(config.orbit.target_drag),

@@ -12,8 +12,8 @@ import hashlib
 import json
 import math
 from numbers import Integral
-import numpy as np
 
+import numpy as np
 from orbexa.core.geometry.composite import OBBComponent
 
 _OBB_NOMINAL_VERTICES = OBBComponent.nominal_vertices_body_m

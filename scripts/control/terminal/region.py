@@ -7,14 +7,15 @@ physical controller and its actual endpoint admission remain necessary.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
-from fractions import Fraction
 import hashlib
 import json
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 from numbers import Integral, Real
-from typing import Any, Sequence
+from typing import Any
 
 
 def exact_scalar(value: Any) -> Fraction:

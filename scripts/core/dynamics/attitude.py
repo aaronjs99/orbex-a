@@ -6,9 +6,9 @@ Quaternions are scalar-last ``[x, y, z, w]`` and remain the propagation state;
 reported Euler angles are a canonical chart and may jump at chart boundaries.
 """
 
-from dataclasses import dataclass
-from typing import Callable
 import warnings
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.integrate import solve_ivp

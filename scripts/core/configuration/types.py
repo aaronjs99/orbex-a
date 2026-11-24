@@ -1,12 +1,13 @@
 """Structured numeric and policy configuration contracts."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 import numpy as np
 from orbexa.utils.solver_options import (
     DEFAULT_GEKKO_MAX_MEMORY,
-    gekko_memory_exponent,
     composite_geometry_mode,
+    gekko_memory_exponent,
 )
 
 
@@ -26,7 +27,7 @@ def _finite_vector(value: Any, name: str, size: int) -> np.ndarray:
     return array
 
 
-def _bounds_list(bounds: List[Dict[str, Any]], name: str, size: int) -> None:
+def _bounds_list(bounds: list[dict[str, Any]], name: str, size: int) -> None:
     if not isinstance(bounds, (list, tuple)) or len(bounds) != size:
         raise ValueError(f"{name} must contain {size} bounds")
     for index, bound in enumerate(bounds):
@@ -121,7 +122,7 @@ class OrbitConfig:
             np.sqrt(self.mu * self.semi_major_axis * (1.0 - self.eccentricity**2))
         )
 
-    def dynamics_params(self) -> Dict[str, float]:
+    def dynamics_params(self) -> dict[str, float]:
         """Runtime parameters for the paper's relative dynamics model."""
         return {
             "mean_motion": self.mean_motion,
@@ -139,12 +140,12 @@ class OrbitConfig:
 class MPCConfig:
     """Model Predictive Control configuration."""
 
-    horizon_steps: Dict[str, int]
-    actuation_steps: Dict[str, int]
+    horizon_steps: dict[str, int]
+    actuation_steps: dict[str, int]
 
-    state_bounds: List[Dict[str, Any]]
-    input_bounds: List[Dict[str, float]]
-    goal_bounds: Optional[List[float]] = None
+    state_bounds: list[dict[str, Any]]
+    input_bounds: list[dict[str, float]]
+    goal_bounds: list[float] | None = None
     """Optional shell radii for standalone Chaser goal allocation, in meters."""
     min_chaser_separation: float = 0.35
 
@@ -210,7 +211,7 @@ class MPCConfig:
         ):
             raise ValueError("Docking tolerances must be finite and positive")
 
-    def bounds(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, float]]]:
+    def bounds(self) -> tuple[list[dict[str, Any]], list[dict[str, float]]]:
         return self.state_bounds, self.input_bounds
 
 
@@ -224,14 +225,14 @@ class TargetConfig:
     inertia: np.ndarray
     shape: str
     center: np.ndarray
-    limits: Dict[str, float]
+    limits: dict[str, float]
     tolerance: float
     docking_standoff: float
     assignment_strategy: str
     stop_time: float
     discretize_dockers: bool
 
-    observation_error: Dict[str, float]
+    observation_error: dict[str, float]
 
     def __post_init__(self) -> None:
         self.initial_orientation = _finite_vector(
@@ -302,7 +303,7 @@ class TargetConfig:
     def rendezvous_radius(self) -> float:
         return self.bounding_sphere_radius * (1.0 + self.tolerance)
 
-    def collision_params(self, operation: str = "rendezvous") -> Dict[str, Any]:
+    def collision_params(self, operation: str = "rendezvous") -> dict[str, Any]:
         """Translate target geometry into solver constraint parameters."""
         radius = self.radius * (1.0 + self.tolerance)
         half_length = self.half_length * (1.0 + self.tolerance)
@@ -326,12 +327,12 @@ class TubeMPCConfig:
     """Tube MPC settings."""
 
     run_tube: bool
-    bandwidth_0: List[float]
-    boundary_layer_0: List[float]
-    sliding_gains: List[float]
+    bandwidth_0: list[float]
+    boundary_layer_0: list[float]
+    sliding_gains: list[float]
 
     # Adaptation ranges
-    bandwidth_range: Dict[str, float]
+    bandwidth_range: dict[str, float]
     feedback_substeps: int = 32
     bandwidth_rate_limit: float = 1500.0
     bandwidth_weight: float = 1.0e-7
@@ -380,10 +381,10 @@ class TubeMPCConfig:
         self,
         *,
         enabled: bool,
-        eccentricity_range: Tuple[float, float],
-        target_drag_range: Tuple[float, float],
-        chaser_drag_range: Tuple[float, float],
-    ) -> Optional[Dict[str, Any]]:
+        eccentricity_range: tuple[float, float],
+        target_drag_range: tuple[float, float],
+        chaser_drag_range: tuple[float, float],
+    ) -> dict[str, Any] | None:
         if not enabled:
             return None
         return {
@@ -454,7 +455,7 @@ class AdaptationConfig:
     error_bound: float = 0.15
     prediction_error_threshold: float = 0.005
     max_iter: int = 90
-    minimum_widths: Dict[str, float] = field(
+    minimum_widths: dict[str, float] = field(
         default_factory=lambda: {
             "eccentricity": 0.04,
             "alpha": 1.0e-7,
@@ -462,7 +463,7 @@ class AdaptationConfig:
         }
     )
     prior_eccentricity_half_width: float = 0.08
-    prior_drag_factors: List[float] = field(default_factory=lambda: [0.5, 1.5])
+    prior_drag_factors: list[float] = field(default_factory=lambda: [0.5, 1.5])
     window_intervals: int = 8
 
     def __post_init__(self) -> None:
@@ -511,7 +512,7 @@ class SolverConfig:
         gekko_memory_exponent(self.max_memory)
         composite_geometry_mode(self.composite_geometry_mode)
 
-    def options(self) -> Dict[str, Any]:
+    def options(self) -> dict[str, Any]:
         return dict(
             remote=self.remote,
             disp=self.disp,

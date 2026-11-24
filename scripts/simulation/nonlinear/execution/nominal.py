@@ -7,18 +7,18 @@ is keyed by the declared nominal model and enclosure configuration.
 from __future__ import annotations
 
 import numpy as np
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.control.certification.reachability import IntervalBox, OrbitalModelBounds
 from orbexa.control.certification.orbital import (
     OrbitalHoldContext,
-    OrbitalHoldRequest,
     OrbitalHoldProofService,
+    OrbitalHoldRequest,
 )
+from orbexa.control.certification.reachability import IntervalBox, OrbitalModelBounds
 from orbexa.control.tubes.sensed import (
-    _upper,
     _outward_tube_endpoint,
+    _upper,
     measurement_radius,
 )
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
 from orbexa.estimation.navigation.boxes import midpoint
 
 

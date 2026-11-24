@@ -169,8 +169,9 @@ Runs alongside W2–W8 and must be finished before W10. Each step is its own pul
 
 Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` reports 2,263 findings, 1,250 of them auto-fixable. There are 533 module-level `def`s, some of them math helpers that may stay. One of 73 source folders has a README.
 
-- [ ] Formatting-only pull request: `ruff format` across the tree. Confirm the AST is unchanged for every file.
-- [ ] `ruff check` cleanup, one package per pull request. Apply only safe fixes, then fix the rest by hand.
+- [x] Formatting-only pull request: `ruff format` across the tree. Confirm the AST is unchanged for every file.
+- [x] Safe `ruff check --fix` across the tree. The hash-masked proof journal and run records of a capped run are unchanged.
+- [ ] Fix the remaining 907 manual `ruff check` findings by hand, one package per pull request.
 - [ ] Classes and callables: convert module-level behavior to classes or callable objects package by package. Keep math helpers as functions.
 - [ ] Headers and docstrings: add the file header ending in `Copyright: Aaron John Sabu` and factual docstrings, package by package.
 - [ ] Folder READMEs with File Structure tables. Restructure the root README into the standard sections.

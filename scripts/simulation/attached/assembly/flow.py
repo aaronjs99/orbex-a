@@ -7,33 +7,31 @@ An unresolved inclusion refuses propagation instead of restarting at a point.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
 import copy
 import hashlib
+from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
     _ProofUnresolved,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
 from orbexa.simulation.numerics.rigid_interval import (
     add,
-    subtract,
-    scale,
     cross,
-    matvec,
-    transpose,
     inverse3,
-    square,
-    normalized_quaternion,
-    quaternion_rotation,
+    matvec,
     quaternion_product,
+    quaternion_rotation,
+    scale,
+    square,
+    subtract,
+    transpose,
 )
 
 

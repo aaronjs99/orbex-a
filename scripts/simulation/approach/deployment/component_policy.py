@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from orbexa.control.mpc.references import sample_tracking_reference
 from orbexa.simulation.approach.models import MissionPhase
 from orbexa.simulation.approach.references.policy import MissionReferencePolicy

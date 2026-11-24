@@ -16,7 +16,6 @@ from orbexa.control.certification.geometry import (
 )
 from orbexa.control.terminal.physical import PhysicalTerminalBoundsBuilder
 
-
 COMPOSITE_TERMINAL_METHOD = "arb-composite-orbit-rigid-body-terminal-v1"
 
 

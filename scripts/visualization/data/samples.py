@@ -1,9 +1,10 @@
 """Shared recorded-sample alignment and saved target kinematics."""
 
 from __future__ import annotations
-from typing import List, Optional, Tuple
+
 from collections.abc import Mapping
 from types import SimpleNamespace
+
 import numpy as np
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
 from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
@@ -45,7 +46,7 @@ class MissionSamples:
         self.result = result
         self.target = result.target or {}
         self.metadata = result.metadata or {}
-        self.notes: List[str] = []
+        self.notes: list[str] = []
         q = recorded_array(result.anom_history).reshape(-1)
         if len(q) and not np.all(np.isfinite(q)):
             q = q[: int(np.flatnonzero(~np.isfinite(q))[0])]
@@ -62,19 +63,17 @@ class MissionSamples:
                 if not np.all(finite):
                     values = values[: int(np.flatnonzero(~finite)[0])]
                     self.notes.append(
-                        "{} stops before its first nonfinite recorded state.".format(
-                            identifier
-                        )
+                        f"{identifier} stops before its first nonfinite recorded state."
                     )
                 if len(values):
                     trajectories[identifier] = values
                 else:
                     self.notes.append(
-                        "No usable recorded state trajectory for {}.".format(identifier)
+                        f"No usable recorded state trajectory for {identifier}."
                     )
             else:
                 self.notes.append(
-                    "No usable recorded state trajectory for {}.".format(identifier)
+                    f"No usable recorded state trajectory for {identifier}."
                 )
         count = (
             min([len(q)] + [len(values) for values in trajectories.values()])
@@ -92,14 +91,10 @@ class MissionSamples:
             len(values) != count for values in trajectories.values()
         ):
             self.notes.append(
-                "Views use the {} state samples shared by the saved anomaly and trajectory histories.".format(
-                    count
-                )
+                f"Views use the {count} state samples shared by the saved anomaly and trajectory histories."
             )
         self.title = (
-            "Single chaser"
-            if len(self.ids) == 1
-            else "{} chasers".format(len(self.ids))
+            "Single chaser" if len(self.ids) == 1 else f"{len(self.ids)} chasers"
         )
         phases = list(
             result.sample_phase_history or self.metadata.get("sample_phase_history", [])
@@ -228,7 +223,7 @@ class MissionSamples:
 
     def _target_history(
         self, history, saved_key: str, kind: str, *, q=None
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         q = self.q if q is None else q
         if not len(q):
             return None
@@ -258,23 +253,21 @@ class MissionSamples:
             reconstructed[np.flatnonzero(finite)] = values[:count][finite]
         if not np.all(np.isfinite(reconstructed)):
             return None
-        note = "Target {} samples reconstructed from the model stored in this result.".format(
-            kind
+        note = (
+            f"Target {kind} samples reconstructed from the model stored in this result."
         )
         if note not in self.notes:
             self.notes.append(note)
         return reconstructed
 
-    def phase_switch_indices(self) -> List[int]:
+    def phase_switch_indices(self) -> list[int]:
         return [
             index
             for index in range(1, len(self.q))
             if self.phases[index] != self.phases[index - 1]
         ]
 
-    def frame_indices(
-        self, limit: Optional[int] = None, *, start: int = 0
-    ) -> List[int]:
+    def frame_indices(self, limit: int | None = None, *, start: int = 0) -> list[int]:
         """Select recorded stops, always retaining transitions and the final row."""
         count = len(self.q)
         if start < 0 or start >= count:
@@ -329,7 +322,7 @@ class MissionSamples:
             ):
                 yield values[:, :3]
 
-    def cylinder(self) -> Optional[Tuple[float, float]]:
+    def cylinder(self) -> tuple[float, float] | None:
         target = self.target
         if target.get("shape", "cylinder") != "cylinder":
             return None

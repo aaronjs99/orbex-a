@@ -5,21 +5,19 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
-from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
+import numpy as np
 from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Rectangle
-import numpy as np
-
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
 from orbexa.visualization.data.samples import MissionSamples
+from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
 from orbexa.visualization.style import (
-    _MARKERS,
-    _LINES,
     _INK,
+    _LINES,
+    _MARKERS,
     _MUTED,
     _STYLE,
     chaser_color,
@@ -70,11 +68,11 @@ class MissionInsights:
             raise ValueError("fps must be a positive integer")
         self.result, self.output_dir, self.fps = result, Path(output_dir), fps
         self.samples = samples if samples is not None else MissionSamples(result)
-        self.skipped_artifacts: Dict[str, str] = {}
-        self.artifacts: List[Tuple[Path, str]] = []
-        self.provenance: Dict[str, object] = {}
+        self.skipped_artifacts: dict[str, str] = {}
+        self.artifacts: list[tuple[Path, str]] = []
+        self.provenance: dict[str, object] = {}
 
-    def render(self) -> List[Tuple[Path, str]]:
+    def render(self) -> list[tuple[Path, str]]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts, self.skipped_artifacts, self.provenance = [], {}, {}
         with plt.rc_context(_STYLE):
@@ -198,9 +196,7 @@ class MissionInsights:
         fig.text(
             0.5,
             0.93,
-            "{} recorded simulation states · dashed vertical line marks docking when recorded".format(
-                len(s.q)
-            ),
+            f"{len(s.q)} recorded simulation states · dashed vertical line marks docking when recorded",
             ha="center",
             color=_MUTED,
         )
@@ -262,7 +258,7 @@ class MissionInsights:
                         color=_INK,
                         linestyle=(0, (5, 3)),
                         linewidth=1.1,
-                        label="{} ({})".format(tolerance, source),
+                        label=f"{tolerance} ({source})",
                     )
                     ax.legend(loc="upper right", frameon=False, fontsize=9)
                 self._error_scale(ax, [values])
@@ -277,10 +273,10 @@ class MissionInsights:
         final_velocity = (
             None if s.velocity_error is None else float(np.nanmax(s.velocity_error[-1]))
         )
-        final_text = "Final largest position error: {:.5g}".format(final_position)
+        final_text = f"Final largest position error: {final_position:.5g}"
         if final_velocity is not None:
-            final_text += "   |   Final largest velocity-state error: {:.5g}".format(
-                final_velocity
+            final_text += (
+                f"   |   Final largest velocity-state error: {final_velocity:.5g}"
             )
         fig.text(0.5, 0.085, final_text, ha="center")
         fig.text(
@@ -527,7 +523,7 @@ class MissionInsights:
                 color=_INK,
                 linestyle=(0, (5, 3)),
                 linewidth=1.1,
-                label="Saved error bound {:g}".format(float(bound)),
+                label=f"Saved error bound {float(bound):g}",
             )
         self._error_scale(ax, series)
         self._axis(ax, q)
@@ -713,9 +709,7 @@ class MissionInsights:
                 line_xz.set_data(trail[:, 0], trail[:, 2])
                 point_xz.set_data([point[0]], [point[2]])
             status.set_text(
-                "Recorded sample {} / {}   |   True anomaly {:.4f} rad".format(
-                    frame + 1, len(s.q), s.q[frame]
-                )
+                f"Recorded sample {frame + 1} / {len(s.q)}   |   True anomaly {s.q[frame]:.4f} rad"
             )
             return [item for group in artists for item in group] + [status]
 
@@ -783,9 +777,7 @@ class MissionInsights:
         self.artifacts.append(
             (
                 path,
-                "Body-frame docking replay of {} selected recorded samples at {} fps; no interpolated states.".format(
-                    len(frames), self.fps
-                ),
+                f"Body-frame docking replay of {len(frames)} selected recorded samples at {self.fps} fps; no interpolated states.",
             )
         )
 
@@ -822,9 +814,9 @@ class MissionInsights:
         fig.suptitle(
             "Minimum pairwise spacing over recorded samples", y=0.975, fontsize=17
         )
-        subtitle = "{} states · smallest center spacing {:.5g}".format(len(s.q), low)
+        subtitle = f"{len(s.q)} states · smallest center spacing {low:.5g}"
         subtitle += (
-            " · saved minimum {:g}".format(float(limit))
+            f" · saved minimum {float(limit):g}"
             if limit is not None
             else " · configured minimum unavailable"
         )
@@ -849,7 +841,7 @@ class MissionInsights:
                     ax.text(
                         col,
                         row,
-                        "—" if not np.isfinite(value) else "{:.3f}".format(value),
+                        "—" if not np.isfinite(value) else f"{value:.3f}",
                         ha="center",
                         va="center",
                         color="#9BA4AD"

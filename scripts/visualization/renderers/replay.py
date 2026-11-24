@@ -7,11 +7,10 @@ from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
-
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
+from orbexa.visualization.data.geometry import MissionGeometry
 from orbexa.visualization.data.samples import MissionSamples
 from orbexa.visualization.style import chaser_color, chaser_label
-from orbexa.visualization.data.geometry import MissionGeometry
 
 
 class MissionReplay:
@@ -114,9 +113,7 @@ class MissionReplay:
             if s.phases[index] != "unknown"
             else "Phase unavailable"
         )
-        return "{} · Recorded sample {} / {} · {} · q = {:.4f} rad".format(
-            escape(s.title), index + 1, len(s.q), escape(phase), s.q[index]
-        )
+        return f"{escape(s.title)} · Recorded sample {index + 1} / {len(s.q)} · {escape(phase)} · q = {s.q[index]:.4f} rad"
 
     def write(self, path: Path) -> Path:
         path = Path(path)
@@ -238,9 +235,7 @@ class MissionReplay:
             else "Saved mission criteria did not all pass. "
             + str(self.result.message or "")
         )
-        playback = "{} of {} recorded samples are replay stops; trails include intervening recorded states. No interpolation. Playback is not physical time.".format(
-            len(selected), count
-        )
+        playback = f"{len(selected)} of {count} recorded samples are replay stops; trails include intervening recorded states. No interpolation. Playback is not physical time."
         if count == 1:
             playback = "One recorded state; no motion was recorded."
         notes = (

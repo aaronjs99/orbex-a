@@ -1,10 +1,11 @@
 """Stable artifact manifest schema and raw-data references."""
 
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+
 from orbexa.utils.io.data import save_data
 
 _CORE_ARTIFACTS = (
@@ -29,7 +30,7 @@ _CORE_ARTIFACTS = (
 )
 
 
-def _raw_data_reference(data_file: Optional[Path], root: Path) -> Dict:
+def _raw_data_reference(data_file: Path | None, root: Path) -> dict:
     if data_file is None:
         return {}
     try:
@@ -47,10 +48,10 @@ class ADTMPCMissionManifest:
     mission: str
     approximation: str
     solver_backend: str
-    data_file: Optional[Path] = None
-    artifacts: List[Path] = field(default_factory=list)
-    artifact_labels: Dict[str, str] = field(default_factory=dict)
-    skipped_artifacts: Dict[str, str] = field(default_factory=dict)
+    data_file: Path | None = None
+    artifacts: list[Path] = field(default_factory=list)
+    artifact_labels: dict[str, str] = field(default_factory=dict)
+    skipped_artifacts: dict[str, str] = field(default_factory=dict)
     success: bool = False
     mission_complete: bool = False
     sample_count: int = 0
@@ -59,7 +60,7 @@ class ADTMPCMissionManifest:
     model_version: str = ""
     controller: str = ""
 
-    def add(self, path: Path, label: Optional[str] = None) -> Path:
+    def add(self, path: Path, label: str | None = None) -> Path:
         self.artifacts.append(path)
         if label is not None:
             self.artifact_labels[path.name] = label

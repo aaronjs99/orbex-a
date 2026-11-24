@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+
 from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.recording.artifacts import _sha, _write_json
 from orbexa.simulation.service.jobs.resume import _resume_source

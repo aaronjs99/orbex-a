@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import numpy as np
-from scipy.integrate import solve_ivp
 
-from orbexa.simulation.attached.assembly.model import positive
-from orbexa.simulation.attached.disposal.simulator import orbital_elements
-from orbexa.simulation.attached.disposal.schedule import ApoapsisBurnWindow
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
+from orbexa.simulation.attached.assembly.model import positive
+from orbexa.simulation.attached.disposal.schedule import ApoapsisBurnWindow
+from orbexa.simulation.attached.disposal.simulator import orbital_elements
+from scipy.integrate import solve_ivp
 
 
 @dataclass(frozen=True)

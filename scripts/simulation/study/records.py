@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
-from fractions import Fraction
 import json
-from pathlib import Path
 import threading
 import time
+from dataclasses import asdict, is_dataclass
+from fractions import Fraction
+from pathlib import Path
 
 
 def write_record(path, value):
@@ -58,11 +58,11 @@ class StudyTelemetry:
     def put(self, value):
         # Native attempts have their own durable source transcript. Keep only
         # small progress events here, never trajectory or proof copies.
-        with self.lock:
-            with (self.directory / "progress.jsonl").open(
-                "a", encoding="utf-8"
-            ) as stream:
-                stream.write(json.dumps(value, allow_nan=False) + "\n")
+        with (
+            self.lock,
+            (self.directory / "progress.jsonl").open("a", encoding="utf-8") as stream,
+        ):
+            stream.write(json.dumps(value, allow_nan=False) + "\n")
 
     def checkpoint(self, archive, update, runner, outcome):
         import numpy as np

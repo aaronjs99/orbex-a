@@ -6,13 +6,12 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 from orbexa.core.dynamics.reference_frame import exact
+from orbexa.simulation.approach.records.checkpoint import plain
 from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY
 from orbexa.simulation.completion.coordinator import (
     ApproachPropellantBudget,
     _outward_float,
 )
-from orbexa.simulation.approach.records.checkpoint import plain
-from orbexa.simulation.nonlinear.records.archive import NonlinearHoldArchive
 from orbexa.simulation.completion.nonlinear.contracts import (
     _dyadic_upper,
     _require,
@@ -24,6 +23,7 @@ from orbexa.simulation.completion.nonlinear.journal import (
     verified_nonlinear_holds,
     verify_nonlinear_timeline,
 )
+from orbexa.simulation.nonlinear.records.archive import NonlinearHoldArchive
 
 
 @dataclass(frozen=True)

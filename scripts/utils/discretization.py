@@ -12,7 +12,6 @@
 
 """Continuous-to-discrete linear state-space conversion."""
 
-from typing import Optional, Tuple
 import numpy as np
 from scipy import signal
 
@@ -21,9 +20,9 @@ def discretize(
     dt: float,
     A: np.ndarray,
     B: np.ndarray,
-    C: Optional[np.ndarray] = None,
-    D: Optional[np.ndarray] = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    C: np.ndarray | None = None,
+    D: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert a continuous-time system to discrete-time.
 

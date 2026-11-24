@@ -16,10 +16,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 
 import numpy as np
-
 from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
 
 
@@ -32,7 +30,7 @@ class CylinderConstraint:
     orientation: np.ndarray
     tube_radius: float = 0.0
 
-    def margins(self, position: np.ndarray) -> Tuple[float, float]:
+    def margins(self, position: np.ndarray) -> tuple[float, float]:
         """Return length-valued radial/axial margins in metres.
 
         The maximum is an exclusion margin, with safety when nonnegative. It
@@ -161,7 +159,7 @@ def project_box_halfspace(
     offset: float,
     lower: np.ndarray,
     upper: np.ndarray,
-) -> Optional[np.ndarray]:
+) -> np.ndarray | None:
     """Nearest bounded input satisfying ``normal @ input >= offset``.
 
     A scalar multiplier solves the Euclidean projection onto a box intersected
@@ -231,6 +229,6 @@ def project_box_halfspace(
 
 def collision_params_from_target_config(
     target_config, operation: str = "rendezvous"
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Build solver-ready target collision parameters from a TargetConfig."""
     return target_config.collision_params(operation=operation)

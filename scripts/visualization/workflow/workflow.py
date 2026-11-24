@@ -1,19 +1,19 @@
 """Compose session selection, result loading/running and artifact publication."""
 
 from __future__ import annotations
+
 import logging
 import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 from urllib.parse import quote
-from orbexa.contracts import PHYSICAL_MODEL_ID, COUPLED_CONTROLLER_ID
+
+from orbexa.contracts import COUPLED_CONTROLLER_ID, PHYSICAL_MODEL_ID
 from orbexa.layout import PACKAGE_ROOT, project_root
 from orbexa.sessions import MissionSession
 from orbexa.simulation.approach.records.results import load_adtmpc_mission_result
 from orbexa.utils.io.data import save_data
-from orbexa.visualization.workflow.config import DemoConfig
 from orbexa.visualization.data.manifest import ADTMPCMissionManifest
 from orbexa.visualization.publishing.catalog import (
     MissionCatalog,
@@ -21,6 +21,7 @@ from orbexa.visualization.publishing.catalog import (
 )
 from orbexa.visualization.publishing.gallery import MissionGallery
 from orbexa.visualization.renderers.mission import ADTMPCMissionRenderer
+from orbexa.visualization.workflow.config import DemoConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class OrbexaDemo:
     def __init__(self, config: DemoConfig):
         self.config = config
 
-    def run(self) -> List[ADTMPCMissionManifest]:
+    def run(self) -> list[ADTMPCMissionManifest]:
         if self.config.from_data and self.config.clean_generated:
             raise ValueError("--from-data cannot be combined with --clean-generated")
         session = MissionSession.select(
@@ -74,7 +75,7 @@ class OrbexaDemo:
                 )
             session.create()
 
-        manifests: List[ADTMPCMissionManifest] = []
+        manifests: list[ADTMPCMissionManifest] = []
         for mission in self._missions():
             manifests.append(
                 self._run_or_render(
@@ -130,7 +131,7 @@ class OrbexaDemo:
         data_session_dir: Path,
         session_id: str,
         *,
-        preview_mission: Optional[str] = None,
+        preview_mission: str | None = None,
     ) -> None:
         """Create editable notes, linking the preview from each README's own root."""
         for directory in (output_session_dir, data_session_dir):
@@ -164,7 +165,7 @@ class OrbexaDemo:
                 readme.write_text(updated, encoding="utf-8")
 
     @staticmethod
-    def _preview_line(preview_href: Optional[str]) -> str:
+    def _preview_line(preview_href: str | None) -> str:
         return (
             f"![ADTMPC trajectory preview]({quote(preview_href, safe='/%')})"
             if preview_href
@@ -172,7 +173,7 @@ class OrbexaDemo:
         )
 
     def _run_readme_template(
-        self, session_id: str, *, preview_href: Optional[str] = None
+        self, session_id: str, *, preview_href: str | None = None
     ) -> str:
         missions = ", ".join(self._missions())
         return f"""# ADTMPC Run Notes
@@ -214,7 +215,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
 
     def _link_session_demo_gif(
         self, output_session_dir: Path, entries=None
-    ) -> Optional[str]:
+    ) -> str | None:
         """Expose an available qualified nonlinear family's trajectory preview."""
         if entries is None:
             entries = self._read_gallery_catalog(output_session_dir).values()
@@ -253,7 +254,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
             shutil.copy2(source, link)
         return selected
 
-    def _missions(self) -> List[str]:
+    def _missions(self) -> list[str]:
         if self.config.mission == "all":
             return ["single", "multi"]
         return [self.config.mission]
@@ -297,7 +298,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
 
 
 def clean_generated_outputs(
-    output_dir: Path, data_dir: Path, *, scenario_path: Optional[Path] = None
+    output_dir: Path, data_dir: Path, *, scenario_path: Path | None = None
 ) -> None:
     """Remove only the selected generated roots, rejecting source and overlapping paths."""
     roots = [

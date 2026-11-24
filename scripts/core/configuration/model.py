@@ -13,19 +13,18 @@
 """Simulation configuration composition and stable public model exports."""
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
-import numpy as np
+from typing import Any
 
+import numpy as np
 from orbexa.core.configuration.types import (
-    OrbitConfig,
+    AdaptationConfig,
+    MissionPolicyConfig,
     MPCConfig,
+    OrbitConfig,
+    SolverConfig,
     TargetConfig,
     TubeMPCConfig,
-    MissionPolicyConfig,
-    AdaptationConfig,
-    SolverConfig,
     _positive_integer,
-    _as_square_weight_matrix,
 )
 
 
@@ -67,12 +66,12 @@ class SimulationConfig:
     def iter_anomaly(self) -> float:
         return self.num_update_steps * self.anom_step
 
-    def dynamics_params(self) -> Dict[str, float]:
+    def dynamics_params(self) -> dict[str, float]:
         params = self.orbit.dynamics_params()
         params["anom_step"] = self.anom_step
         return params
 
-    def default_adaptation_params(self) -> Dict[str, Any]:
+    def default_adaptation_params(self) -> dict[str, Any]:
         """Paper-scale default feasible sets for SMID when YAML is silent."""
         return {
             "eccentricity": [0.0, max(0.6, float(self.orbit.eccentricity))],
@@ -81,7 +80,7 @@ class SimulationConfig:
         }
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "SimulationConfig":
+    def load(cls, path: str | None = None) -> "SimulationConfig":
         """Decode a scenario through the dedicated YAML loader."""
         from orbexa.core.configuration.loader import load_simulation_config
 

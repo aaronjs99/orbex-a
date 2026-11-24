@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-
-from orbexa.core.dynamics.reference_frame import exact, bounds
 from orbexa.control.certification.reachability import IntervalBox
+from orbexa.core.dynamics.reference_frame import bounds, exact
 
 
 def infer_target_ephemeris(gnss_packet, relative_box, clock, precision_bits=128):
@@ -20,10 +19,10 @@ def infer_target_ephemeris(gnss_packet, relative_box, clock, precision_bits=128)
         or len(gnss_packet.value) != 6
     ):
         raise ValueError("A chaser inertial GNSS packet is required")
+    import flint
     from orbexa.control.certification.nonlinear import _Arithmetic
     from orbexa.control.certification.reachability import _ARB_LOCK
     from orbexa.core.dynamics.relative import matvec, z
-    import flint
 
     with _ARB_LOCK, flint.ctx.workprec(precision_bits):
         ar = _Arithmetic(flint)
@@ -66,11 +65,11 @@ def propagate_pose_estimate(
     all floating matrix/rotation evaluation error. This prevents latency from
     becoming an unmodeled pose lag while retaining the full error support.
     """
-    from scipy.spatial.transform import Rotation
-    from orbexa.control.certification.nonlinear import _Arithmetic
-    from orbexa.control.certification.attitude import _sqrt_upper
-    from orbexa.control.certification.reachability import _ARB_LOCK
     import flint
+    from orbexa.control.certification.attitude import _sqrt_upper
+    from orbexa.control.certification.nonlinear import _Arithmetic
+    from orbexa.control.certification.reachability import _ARB_LOCK
+    from scipy.spatial.transform import Rotation
 
     q0, q1 = bounds(q_start), bounds(q_end)
     delta_lo = max(exact(0), time_end.lower[0] - time_start.upper[0])

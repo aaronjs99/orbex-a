@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 TUBE_MODEL_VERSION = "held-ancillary-bounded-v1"
 SENSED_TUBE_MODEL_VERSION = "held-ancillary-observation-bounded-v2"
 TUBE_ASSUMPTIONS = (

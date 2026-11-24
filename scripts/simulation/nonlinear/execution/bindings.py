@@ -7,9 +7,10 @@ observation clock. It cannot commit physical motion or navigation state.
 from __future__ import annotations
 
 import copy
+
 import numpy as np
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
 from orbexa.control.certification.reachability import IntervalBox
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
 
 
 class PerformanceStageBindings:

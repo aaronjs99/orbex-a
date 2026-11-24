@@ -10,30 +10,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction
-from typing import Optional
-import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.optimize import brentq
-from scipy.spatial.transform import Rotation
 
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.simulation.attached.assembly.model import (
-    AttachedAssembly,
-    AssemblyState,
     STANDARD_GRAVITY,
+    AssemblyState,
+    AttachedAssembly,
     positive,
 )
-from orbexa.simulation.attached.propulsion import ThrusterSystem
 from orbexa.simulation.attached.disposal.entry import (
     EntryInterfaceMonitor,
     radial_status,
 )
 from orbexa.simulation.attached.disposal.schedule import (
     ApoapsisBurnWindow,
-    supported_planning_state,
     bounded_hold_duration,
+    supported_planning_state,
 )
+from orbexa.simulation.attached.propulsion import ThrusterSystem
 from orbexa.simulation.recording.stages import StageRecordRetainer
+from scipy.integrate import solve_ivp
+from scipy.optimize import brentq
+from scipy.spatial.transform import Rotation
 
 
 def _rate_within(state, limit):
@@ -186,9 +185,9 @@ class DeorbitOptions:
     pointing_rate_tolerance_rad_s: float = 0.0005
     max_initial_rate_rad_s: float = 0.00005
     max_body_rate_rad_s: float = 0.1
-    burn_force_n: Optional[float] = None
+    burn_force_n: float | None = None
     coast_rtol: float = 1e-10
-    burn_window_half_angle_rad: Optional[float] = None
+    burn_window_half_angle_rad: float | None = None
 
     def __post_init__(self):
         ApoapsisBurnWindow(self.burn_window_half_angle_rad)
@@ -231,8 +230,8 @@ class DeorbitSimulator:
     def __init__(
         self,
         *,
-        options: Optional[DeorbitOptions] = None,
-        pointing_policy: Optional[ThrustPointingPolicy] = None,
+        options: DeorbitOptions | None = None,
+        pointing_policy: ThrustPointingPolicy | None = None,
         burn_axis_planner=None,
         burn_throttle_planner=None,
     ):

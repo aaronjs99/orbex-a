@@ -15,17 +15,17 @@
 
 from __future__ import annotations
 
+import random
 from abc import ABC, abstractmethod
 from itertools import count
-import random
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig
-    from orbexa.core.spacecraft.target import Target
     from orbexa.core.spacecraft.chaser import Chaser
+    from orbexa.core.spacecraft.target import Target
 
 
 def target_state_update_func(
@@ -37,10 +37,10 @@ def target_state_update_func(
     Euler chart rejects explicitly; Target itself propagates a quaternion.
     """
     from orbexa.core.dynamics.attitude import (
-        finite_vector,
-        evaluate_torque,
-        body_rates_to_euler_rates,
         body_rate_derivative,
+        body_rates_to_euler_rates,
+        evaluate_torque,
+        finite_vector,
         inertia_matrix,
     )
 
@@ -60,7 +60,7 @@ class Spacecraft(ABC):
 
     _ids = count(0)
 
-    def __init__(self, config: "SimulationConfig", **kwargs):
+    def __init__(self, config: SimulationConfig, **kwargs):
         """
         Initialize Spacecraft.
 
@@ -108,7 +108,7 @@ class Spacecraft(ABC):
     def update_state(self, *args, **kwargs):
         """Advance this spacecraft's explicit state model."""
 
-    def plot_state_history(self, params: Dict, *args, **kwargs):
+    def plot_state_history(self, params: dict, *args, **kwargs):
         """Plot the history of states."""
         import matplotlib.pyplot as plt
 
@@ -159,4 +159,4 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["Spacecraft", "Target", "Chaser", "target_state_update_func"]
+__all__ = ["Chaser", "Spacecraft", "Target", "target_state_update_func"]

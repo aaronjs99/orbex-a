@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
-import numpy as np
+from typing import Any
 
+import numpy as np
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.simulation.attached.assembly.model import positive
 
@@ -137,7 +138,7 @@ class ContactMember:
     tangent_u_body: np.ndarray
     tangent_v_body: np.ndarray
     arm_reach_m: float = 0.1
-    patch_id: Optional[str] = None
+    patch_id: str | None = None
 
     def __post_init__(self):
         if not isinstance(self.id, str) or not self.id:

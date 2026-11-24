@@ -13,18 +13,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Protocol, Sequence
+from typing import Protocol
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import optimize as opt
-
 from orbexa.utils.geometry.occlusion import (
-    calc_global_occlusion_cost,
     calc_local_occlusion_cost,
 )
-from orbexa.planning.coordination.allocation.system import TaskAllocationSystem
+from scipy import optimize as opt
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Neighbor policies + network
 # -----------------------------
 class NeighborPolicy(Protocol):
-    def neighbors(self, states: Sequence[np.ndarray]) -> List[List[int]]: ...
+    def neighbors(self, states: Sequence[np.ndarray]) -> list[list[int]]: ...
 
 
 @dataclass(frozen=True)
@@ -42,10 +40,10 @@ class MaxDistanceNeighbors:
 
     max_distance: float
 
-    def neighbors(self, states: Sequence[np.ndarray]) -> List[List[int]]:
+    def neighbors(self, states: Sequence[np.ndarray]) -> list[list[int]]:
         x = np.asarray(states, dtype=float)
         num_agents = x.shape[0]
-        out: List[List[int]] = [[] for _ in range(num_agents)]
+        out: list[list[int]] = [[] for _ in range(num_agents)]
         for i in range(num_agents):
             deltas = x - x[i]
             dists = np.linalg.norm(deltas, axis=1)
@@ -58,9 +56,9 @@ class MaxDistanceNeighbors:
 class AgentStateNetwork:
     """Owns agent state vectors and a communication graph (adjacency list)."""
 
-    states: List[np.ndarray]
+    states: list[np.ndarray]
     neighbor_policy: NeighborPolicy
-    neighbors: List[List[int]] = field(init=False)
+    neighbors: list[list[int]] = field(init=False)
 
     def __post_init__(self) -> None:
         self.states = [np.asarray(s, dtype=float).copy() for s in self.states]
@@ -76,14 +74,14 @@ class AgentStateNetwork:
     def set_state(self, agent_id: int, state: np.ndarray) -> None:
         self.states[agent_id] = np.asarray(state, dtype=float).copy()
 
-    def snapshot_states(self) -> List[np.ndarray]:
+    def snapshot_states(self) -> list[np.ndarray]:
         return [s.copy() for s in self.states]
 
     def evaluate_global_cost(
         self,
         global_cost: Callable[..., float],
         *,
-        states_snapshot: Optional[Sequence[np.ndarray]] = None,
+        states_snapshot: Sequence[np.ndarray] | None = None,
     ) -> float:
         """
         Optional helper for logging or analysis.
@@ -108,7 +106,7 @@ class DistributedOptimizationAgent:
     step_limit: float = 1.0
     renormalize_neighbor_weights: bool = False
 
-    state_history: List[np.ndarray] = field(default_factory=list)
+    state_history: list[np.ndarray] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         n = self.network.num_agents
@@ -146,7 +144,7 @@ class DistributedOptimizationAgent:
         self,
         local_cost: Callable[..., float],
         *,
-        states_snapshot: Optional[Sequence[np.ndarray]] = None,
+        states_snapshot: Sequence[np.ndarray] | None = None,
         recompute_neighbors: bool = False,
     ) -> np.ndarray:
         """
@@ -195,7 +193,7 @@ def run_demo(
     step_limit: float = 1.0,
     recompute_neighbors_each_step: bool = True,
     local_cost: Callable[..., float] = calc_local_occlusion_cost,
-    global_cost: Optional[Callable[..., float]] = None,
+    global_cost: Callable[..., float] | None = None,
     renormalize_neighbor_weights: bool = False,
 ) -> None:
     logging.basicConfig(level=logging.INFO)

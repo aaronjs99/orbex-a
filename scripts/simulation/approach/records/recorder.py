@@ -14,29 +14,30 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence, TYPE_CHECKING
 import copy
-import numpy as np
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from orbexa.contracts import COUPLED_CONTROLLER_ID, PHYSICAL_MODEL_ID
 from orbexa.control.tubes.model import input_tightening_from_profile
-from orbexa.control.tubes.sample_hold import TUBE_MODEL_VERSION, TUBE_ASSUMPTIONS
+from orbexa.control.tubes.sample_hold import TUBE_ASSUMPTIONS, TUBE_MODEL_VERSION
+from orbexa.core.dynamics.anomaly import orbital_anomaly_rate
 from orbexa.estimation.adaptation.belief import (
     ParameterBelief,
     serial_estimates,
     serial_ranges,
 )
 from orbexa.simulation.approach.records.results import ADTMPCMissionResult
-from orbexa.core.dynamics.anomaly import orbital_anomaly_rate
 
 if TYPE_CHECKING:
     from orbexa.estimation.adaptation.belief import ParameterBelief
     from orbexa.estimation.adaptation.mission import MissionAdaptation
     from orbexa.simulation.approach.execution import ExecutionStep
-    from orbexa.simulation.approach.planning import PlanningStep
-    from orbexa.simulation.approach.state import CoupledMissionState
     from orbexa.simulation.approach.models import ChaserConfig, MissionPhase
+    from orbexa.simulation.approach.planning import PlanningStep
     from orbexa.simulation.approach.scenario import MissionScenario
+    from orbexa.simulation.approach.state import CoupledMissionState
 
 
 class MissionRecorder:
@@ -207,7 +208,7 @@ class MissionRecorder:
         )
         return recorder
 
-    def tube_metadata(self, anom: float, profile) -> Dict[str, Any]:
+    def tube_metadata(self, anom: float, profile) -> dict[str, Any]:
         return {
             "start_anom": float(anom),
             "time_grid": profile.time_grid.tolist(),

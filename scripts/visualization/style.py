@@ -38,9 +38,7 @@ def chaser_color(index: int) -> str:
         return _COLORS[index]
     hue = (0.11 + (index - len(_COLORS)) * 0.61803398875) % 1.0
     red, green, blue = colorsys.hls_to_rgb(hue, 0.43, 0.62)
-    return "#{:02X}{:02X}{:02X}".format(
-        round(red * 255), round(green * 255), round(blue * 255)
-    )
+    return f"#{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}"
 
 
 def chaser_label(identifier: str) -> str:

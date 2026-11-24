@@ -8,13 +8,15 @@ planes only.  Admission uses exact supports and outward Arb norm bounds.
 
 from __future__ import annotations
 
+import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
-import json
 from numbers import Integral
-from typing import Any, Sequence
+from typing import Any
 
 from orbexa.control.certification.reachability import (
+    _ARB_LOCK,
     FRAME,
     CollisionCertificate,
     EnclosureStatus,
@@ -22,12 +24,10 @@ from orbexa.control.certification.reachability import (
     GuardStatus,
     IntervalBox,
     SweptCollisionGuard,
-    _ARB_LOCK,
     _ArbArithmetic,
-    _ProofUnresolved,
     _exact,
+    _ProofUnresolved,
 )
-
 
 COMPOSITE_SWEEP_METHOD = "arb-composite-swept-separation-v1"
 COMPOSITE_DISTANCE_METHOD = "arb-composite-reference-separation-v1"

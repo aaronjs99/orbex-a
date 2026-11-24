@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Tuple, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 from orbexa.control.mpc.constraints import rendezvous_margin
 from orbexa.simulation.approach.models import MissionPhase
@@ -100,16 +102,16 @@ class MissionSafety:
 
     def safety_margins(
         self,
-        actual: Dict[str, List[List[float]]],
+        actual: dict[str, list[list[float]]],
         anom_history: Sequence[float],
         sample_phase_history: Sequence[str],
         tube_radius_history: Sequence[float],
-    ) -> Tuple[
-        Dict[str, List[float]],
-        Dict[str, List[float]],
-        Dict[str, List[float]],
-        Dict[str, List[float]],
-        Dict[str, List[float]],
+    ) -> tuple[
+        dict[str, list[float]],
+        dict[str, list[float]],
+        dict[str, list[float]],
+        dict[str, list[float]],
+        dict[str, list[float]],
     ]:
         """Compute physical safety margins separately from tube-tightened margins.
 
@@ -193,7 +195,7 @@ class MissionSafety:
         )
 
     def active_target_margins_safe(
-        self, active_margins: Dict[str, Sequence[float]]
+        self, active_margins: dict[str, Sequence[float]]
     ) -> bool:
         for values in active_margins.values():
             arr = np.asarray(values, dtype=float)
@@ -202,7 +204,7 @@ class MissionSafety:
         return True
 
     def pairwise_spacing_safe(
-        self, pairwise_spacing: Sequence[Dict[str, float]]
+        self, pairwise_spacing: Sequence[dict[str, float]]
     ) -> bool:
         values = [
             float(value)
@@ -216,13 +218,13 @@ class MissionSafety:
 
     def spacing_history(
         self,
-        actual: Dict[str, List[List[float]]],
+        actual: dict[str, list[list[float]]],
         anom_history: Sequence[float],
-    ) -> List[Dict[str, float]]:
+    ) -> list[dict[str, float]]:
         chaser_ids = list(actual.keys())
         spacing = []
         for idx in range(len(anom_history)):
-            entry: Dict[str, float] = {}
+            entry: dict[str, float] = {}
             for left_idx, left_id in enumerate(chaser_ids):
                 for right_id in chaser_ids[left_idx + 1 :]:
                     left = np.asarray(
@@ -235,7 +237,7 @@ class MissionSafety:
             spacing.append(entry)
         return spacing
 
-    def planned_separation_messages(self, plans: Dict[str, Any]) -> List[str]:
+    def planned_separation_messages(self, plans: dict[str, Any]) -> list[str]:
         """Check both newly planned tubes before any fleet command is applied."""
         messages = []
         ids = list(plans)

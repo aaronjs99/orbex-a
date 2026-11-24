@@ -11,11 +11,11 @@ from fractions import Fraction
 
 from orbexa.control.certification.reachability import IntervalBox
 from orbexa.simulation.numerics.rigid_interval import (
+    add,
+    matvec,
     normalized_quaternion,
     quaternion_rotation,
-    add,
     subtract,
-    matvec,
     transpose,
 )
 

@@ -15,17 +15,17 @@ inferred by accepting these processed products.
 
 from __future__ import annotations
 
+import uuid
 from collections import deque
 from dataclasses import dataclass
 from fractions import Fraction
-import uuid
 
 from orbexa.control.certification.reachability import IntervalBox, _exact
-from orbexa.control.fallback.refuge import RefugeObservation
-from orbexa.control.fallback.records import HeldFleetDecision
 from orbexa.control.fallback.plan import FleetFallbackPlan
-from orbexa.estimation.navigation.records import SensorPacket
+from orbexa.control.fallback.records import HeldFleetDecision
+from orbexa.control.fallback.refuge import RefugeObservation
 from orbexa.estimation.navigation.boxes import intersect
+from orbexa.estimation.navigation.records import SensorPacket
 from orbexa.simulation.nonlinear.safety.drift import ZERO_NOMINAL_ID
 
 

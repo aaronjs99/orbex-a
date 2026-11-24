@@ -6,15 +6,14 @@ controller, create contact/lifecycle states, or establish a new certificate.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from fractions import Fraction
 import hashlib
 import json
+from collections.abc import Mapping
+from fractions import Fraction
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-
 from orbexa.visualization.plots.canvas import artifact_subplots
 from orbexa.visualization.style import _STYLE, chaser_color
 

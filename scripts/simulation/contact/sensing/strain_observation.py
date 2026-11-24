@@ -8,28 +8,25 @@ The measured couple is the pad's free couple, not its bus lever-arm moment.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
-from fractions import Fraction
 import hashlib
-from pathlib import Path
+from fractions import Fraction
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
     _ProofUnresolved,
 )
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.core.dynamics.reference_frame import fingerprint
-from orbexa.simulation.contact.sensing.observation import ContactObservationBounds
+from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.contact.dynamics.rotation import auxiliary_initial, intersect
 from orbexa.simulation.contact.dynamics.strain import initial_strain_boxes
-from orbexa.simulation.numerics.rigid_interval import matvec, transpose, scale, subtract
-
+from orbexa.simulation.contact.sensing.observation import ContactObservationBounds
+from orbexa.simulation.numerics.rigid_interval import matvec, scale, subtract, transpose
+from scipy.spatial.transform import Rotation
 
 _SOURCE = {
     name: hashlib.sha256((PACKAGE_ROOT / name).read_bytes()).hexdigest()

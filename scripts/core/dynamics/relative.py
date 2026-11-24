@@ -6,16 +6,17 @@ inclusion service. Only the latter supplies validated continuous enclosures.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 from functools import cached_property
-import hashlib
 from pathlib import Path
+
 import numpy as np
 from orbexa.core.dynamics.reference_frame import (
+    FloatArithmetic,
     bounds,
     exact,
     fingerprint,
-    FloatArithmetic,
 )
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()

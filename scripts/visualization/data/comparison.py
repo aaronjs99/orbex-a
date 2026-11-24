@@ -12,13 +12,11 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import numpy as np
-
-from orbexa.visualization.plots.nonlinear import reference_density_coefficient
+from matplotlib.patches import Patch
 from orbexa.visualization.plots.canvas import artifact_subplots
+from orbexa.visualization.plots.nonlinear import reference_density_coefficient
 from orbexa.visualization.style import _STYLE
-
 
 ARMS = (
     ("adaptive", "dynamic"),

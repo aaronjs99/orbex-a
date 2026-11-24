@@ -17,10 +17,11 @@ Constructs solver-agnostic MPCProblem objects from ORBEX-A mission parameters.
 This bridges the gap between high-level mission specs and the generic solver interface.
 """
 
-import numpy as np
-from typing import Dict, Any, Optional, Callable, Union, List
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
+import numpy as np
 from orbexa.solvers.base import MPCProblem
 
 
@@ -50,18 +51,18 @@ class ORBEXAProblemConfig:
     # States and goals
     initial_state: np.ndarray = field(default_factory=lambda: np.zeros(6))
     final_state: np.ndarray = field(default_factory=lambda: np.zeros(6))
-    control_0: Optional[np.ndarray] = None
+    control_0: np.ndarray | None = None
 
     # Dynamics (can be matrices OR callables)
-    dynamics_matrix: Union[np.ndarray, Callable, Any] = None
-    input_matrix: Optional[np.ndarray] = None
+    dynamics_matrix: np.ndarray | Callable | Any = None
+    input_matrix: np.ndarray | None = None
     state_cost_matrix: np.ndarray = field(default_factory=lambda: np.eye(6))
     input_cost_matrix: np.ndarray = field(default_factory=lambda: np.eye(3) * 1e-4)
-    disturbance: Union[np.ndarray, Callable] = None  # Disturbance
+    disturbance: np.ndarray | Callable = None  # Disturbance
 
     # Constraints
-    state_bounds: Optional[List[Dict]] = None
-    input_bounds: Optional[List[Dict]] = None
+    state_bounds: list[dict] | None = None
+    input_bounds: list[dict] | None = None
 
     # Orbital mechanics params (for time-varying dynamics)
     eccentricity: float = 0.0
@@ -70,18 +71,18 @@ class ORBEXAProblemConfig:
 
     # Tube MPC settings
     tube_mpc_enabled: bool = False
-    tube_params: Dict[str, Any] = field(default_factory=dict)
+    tube_params: dict[str, Any] = field(default_factory=dict)
 
     # Anomaly scaling
     use_anomaly_scaling: bool = False
 
     # Target tracking
-    target_params: Optional[Dict[str, Any]] = None
-    affine_constraints: List[Any] = field(default_factory=list)
-    terminal_cost_matrix: Optional[np.ndarray] = None
-    state_reference: Optional[np.ndarray] = None
-    input_reference: Optional[np.ndarray] = None
-    dynamic_tube: Optional[Dict[str, Any]] = None
+    target_params: dict[str, Any] | None = None
+    affine_constraints: list[Any] = field(default_factory=list)
+    terminal_cost_matrix: np.ndarray | None = None
+    state_reference: np.ndarray | None = None
+    input_reference: np.ndarray | None = None
+    dynamic_tube: dict[str, Any] | None = None
 
 
 def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
@@ -222,20 +223,20 @@ def build_mpc_problem(config: ORBEXAProblemConfig) -> MPCProblem:
 
 
 def build_from_dynamics(
-    A_func: Optional[Callable] = None,
-    input_matrix: Optional[np.ndarray] = None,
-    state_cost_matrix: Optional[np.ndarray] = None,
-    input_cost_matrix: Optional[np.ndarray] = None,
-    d_func: Optional[Callable] = None,
-    initial_state: Optional[np.ndarray] = None,
-    final_state: Optional[np.ndarray] = None,
+    A_func: Callable | None = None,
+    input_matrix: np.ndarray | None = None,
+    state_cost_matrix: np.ndarray | None = None,
+    input_cost_matrix: np.ndarray | None = None,
+    d_func: Callable | None = None,
+    initial_state: np.ndarray | None = None,
+    final_state: np.ndarray | None = None,
     start_anom: float = 0.0,
     num_steps: int = 2,
-    anom_step: Optional[float] = None,
+    anom_step: float | None = None,
     time_periapsis: float = 0.0,
     eccentricity: float = 0.0,
-    state_bounds: Optional[List[Dict]] = None,
-    input_bounds: Optional[List[Dict]] = None,
+    state_bounds: list[dict] | None = None,
+    input_bounds: list[dict] | None = None,
     **kwargs,
 ) -> MPCProblem:
     """

@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
-from orbexa.control.certification.reachability import _exact
-from orbexa.control.fallback.refuge import _absbox, _identity, fingerprint
-from orbexa.control.fallback.records import CommandResourceBound
+
 from orbexa.control.certification.attitude import _sqrt_upper
+from orbexa.control.certification.reachability import _exact
+from orbexa.control.fallback.records import CommandResourceBound
+from orbexa.control.fallback.refuge import _absbox, _identity, fingerprint
 
 
 @dataclass(frozen=True)

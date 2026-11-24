@@ -7,24 +7,23 @@ import gzip
 import json
 import math
 from pathlib import Path
+
 import numpy as np
-
-from orbexa.layout import ProjectLayout
-
 from orbexa.core.configuration.model import SimulationConfig
 from orbexa.estimation.adaptation.belief import ParameterBelief
+from orbexa.layout import ProjectLayout
 from orbexa.simulation.approach.api import ADTMPCMissionRunner
-from orbexa.simulation.completion.coordinator import (
-    CompleteMissionOptions,
-    CompleteMissionRunner,
-    CompleteMissionStore,
-)
-from orbexa.simulation.approach.records.checkpoint import MissionCheckpoint
-from orbexa.simulation.approach.records.results import MissionResultStore
 from orbexa.simulation.approach.physical.scenario import (
     ContinuousAdmissionOptions,
     PhysicalApproachOptions,
     PhysicalApproachScenario,
+)
+from orbexa.simulation.approach.records.checkpoint import MissionCheckpoint
+from orbexa.simulation.approach.records.results import MissionResultStore
+from orbexa.simulation.completion.coordinator import (
+    CompleteMissionOptions,
+    CompleteMissionRunner,
+    CompleteMissionStore,
 )
 
 
@@ -335,8 +334,8 @@ def main(argv=None):
             checkpoint.validate_scenario(
                 profile.scenario, "single" if args.chasers == 1 else "multi"
             )
-        from orbexa.simulation.contact.capture import ChaserPhysicalProperties
         from orbexa.simulation.approach.physical.attitude import ChaserAttitudeTracker
+        from orbexa.simulation.contact.capture import ChaserPhysicalProperties
 
         tracker = (
             ChaserAttitudeTracker(

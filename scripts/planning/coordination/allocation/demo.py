@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Sequence
 from orbexa.planning.coordination.allocation.contracts import Vec
 from orbexa.planning.coordination.allocation.networks import KNNNetwork
 from orbexa.planning.coordination.allocation.policies.auction import (

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
-import numpy as np
+from typing import Any
 
+import numpy as np
 from orbexa.core.dynamics.attitude import euler_to_quaternion, quaternion_to_euler
 from orbexa.core.dynamics.rigid_motion import RigidBodyMotion
 from orbexa.core.geometry.composite import SpacecraftGeometry

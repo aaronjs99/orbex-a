@@ -9,19 +9,20 @@ declared assumptions. See ``docs/physical-terminal.md``.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import combinations
 from numbers import Integral
-from typing import Any, Sequence
+from typing import Any
 
 from orbexa.control.certification.reachability import (
+    _ARB_LOCK,
     IntervalBox,
     OrbitalModelBounds,
-    _ARB_LOCK,
     _ArbArithmetic,
-    _ProofUnresolved,
     _exact,
+    _ProofUnresolved,
 )
 from orbexa.control.terminal.tracking import (
     BoundScope,
@@ -34,7 +35,6 @@ from orbexa.control.terminal.tracking import (
     TerminalTrackingBounds,
     certify_terminal_tracking,
 )
-
 
 PHYSICAL_TERMINAL_METHOD = "arb-orbit-rigid-body-terminal-v1"
 

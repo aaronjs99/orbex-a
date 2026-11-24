@@ -13,13 +13,11 @@
 """Explicit batch adaptation APIs for ordinary MPC callers."""
 
 import logging
-import time
-import numpy as np
 import queue
 import threading
-from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Any, Optional, Union
-from scipy.optimize import least_squares
+from typing import Any
+
+import numpy as np
 from orbexa.core.dynamics.orbital import orbital_ellp_drag
 from orbexa.utils.solver_options import gekko_memory_exponent
 
@@ -30,8 +28,8 @@ from orbexa.utils.runtime import thread_worker
 
 
 def gen_adaptor_data(
-    range_params: Dict,
-    orbit_params: Dict,
+    range_params: dict,
+    orbit_params: dict,
     mean_motion: float,
     t_periapsis: float,
     *args,
@@ -109,15 +107,15 @@ def run_adaptor_op(
     oper_iter: int,
     dt: float,
     t_s: float,
-    u_t: List[np.ndarray],
+    u_t: list[np.ndarray],
     W: np.ndarray,
     D: float,
-    p_range: List[List[float]],
+    p_range: list[list[float]],
     mean_motion: float,
     t_periapsis: float,
     *args,
     **kwargs,
-) -> Tuple[Any, Any]:
+) -> tuple[Any, Any]:
     """Execute a single adaptation operation (Optimization or FSS check)."""
 
     w_0 = W[0]
@@ -229,16 +227,16 @@ def run_adaptor_op(
 
 
 def run_adaptation(
-    init_params: Dict,
-    range_params: Dict,
-    u_t: List[np.ndarray],
+    init_params: dict,
+    range_params: dict,
+    u_t: list[np.ndarray],
     D: float,
     W: np.ndarray,
     mean_motion: float,
     t_periapsis: float,
     *args,
     **kwargs,
-) -> Tuple[Dict, List, List]:
+) -> tuple[dict, list, list]:
     """
     Main Adaptation Loop.
     """

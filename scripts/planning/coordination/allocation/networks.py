@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+
+import numpy as np
 from orbexa.planning.coordination.allocation.contracts import Vec
 
 
@@ -29,9 +30,9 @@ class StaticNeighborNetwork:
     neighbors_by_agent[i] = list of agent ids agent i can communicate with.
     """
 
-    neighbors_by_agent: List[List[int]]
+    neighbors_by_agent: list[list[int]]
 
-    def neighbors(self, agent_id: int) -> List[int]:
+    def neighbors(self, agent_id: int) -> list[int]:
         return list(self.neighbors_by_agent[agent_id])
 
     def is_connected(self) -> bool:
@@ -60,9 +61,9 @@ class KNNNetwork:
     k: int
     include_self: bool = False
 
-    def neighbors(self, agent_id: int) -> List[int]:
+    def neighbors(self, agent_id: int) -> list[int]:
         x = np.asarray(self.positions[agent_id], dtype=float)
-        dists: List[Tuple[int, float]] = []
+        dists: list[tuple[int, float]] = []
         for j, p in enumerate(self.positions):
             if not self.include_self and j == agent_id:
                 continue
@@ -84,9 +85,9 @@ class RadiusNetwork:
     radius: float
     include_self: bool = False
 
-    def neighbors(self, agent_id: int) -> List[int]:
+    def neighbors(self, agent_id: int) -> list[int]:
         x = np.asarray(self.positions[agent_id], dtype=float)
-        out: List[int] = []
+        out: list[int] = []
         for j, p in enumerate(self.positions):
             if not self.include_self and j == agent_id:
                 continue

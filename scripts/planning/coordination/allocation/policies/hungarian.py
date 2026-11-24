@@ -15,11 +15,12 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass
-from scipy.optimize import linear_sum_assignment
-from typing import List, Sequence
+
+import numpy as np
 from orbexa.planning.coordination.allocation.contracts import AgentState, Network, Vec
+from scipy.optimize import linear_sum_assignment
 
 
 @dataclass
@@ -29,12 +30,12 @@ class LocalHungarianPolicy:
     """
 
     def initialize(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
         return
 
     @staticmethod
-    def _cost_matrix(starts: List[Vec], goals: List[Vec]) -> np.ndarray:
+    def _cost_matrix(starts: list[Vec], goals: list[Vec]) -> np.ndarray:
         C = np.zeros((len(starts), len(goals)))
         for i, s in enumerate(starts):
             for j, g in enumerate(goals):
@@ -43,7 +44,7 @@ class LocalHungarianPolicy:
 
     def step(
         self,
-        agents: List[AgentState],
+        agents: list[AgentState],
         tasks: Sequence[Vec],
         network: Network,
         agent_id: int,
@@ -67,7 +68,7 @@ class LocalHungarianPolicy:
         return len(nbrs)
 
     def has_converged(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
         # Heuristic policy; no strong convergence check.
         return False

@@ -6,6 +6,7 @@ import gzip
 import json
 import math
 from fractions import Fraction
+
 from orbexa.simulation.recording.artifacts import _write_json
 
 
@@ -15,12 +16,12 @@ def _arrival_policy(profile, prior, admission, directory):
     The global controller may refuse; only its globally derived reference jets
     are used here as a planning/entry screen, never as terminal certification.
     """
-    from orbexa.control.terminal.composite import CompositePhysicalTerminalBoundsBuilder
-    from orbexa.control.terminal.physical import PhysicalTerminalErrorBounds, _encode
     from orbexa.control.certification.reachability import (
         IntervalBox,
         OrbitalModelBounds,
     )
+    from orbexa.control.terminal.composite import CompositePhysicalTerminalBoundsBuilder
+    from orbexa.control.terminal.physical import PhysicalTerminalErrorBounds, _encode
     from orbexa.simulation.approach.arrival.policy import ArrivalPolicyConfig
 
     target, cfg = profile.target, profile.config

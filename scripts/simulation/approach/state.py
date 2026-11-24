@@ -14,30 +14,32 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 if TYPE_CHECKING:
-    from orbexa.simulation.approach.arrival.policy import ArrivalCommitment
     from orbexa.core.configuration.model import SimulationConfig
+    from orbexa.simulation.approach.arrival.policy import ArrivalCommitment
     from orbexa.simulation.approach.models import ChaserConfig
 
 
 @dataclass
 class CoupledMissionState:
     anomaly: float
-    states: Dict[str, np.ndarray]
-    centers: Dict[str, np.ndarray]
-    phi: Dict[str, np.ndarray]
-    omega: Dict[str, np.ndarray]
-    bandwidth: Dict[str, np.ndarray]
+    states: dict[str, np.ndarray]
+    centers: dict[str, np.ndarray]
+    phi: dict[str, np.ndarray]
+    omega: dict[str, np.ndarray]
+    bandwidth: dict[str, np.ndarray]
     arrival_commitment: ArrivalCommitment | None = None
 
     @classmethod
     def initialize(
         cls, chasers: Sequence[ChaserConfig], config: SimulationConfig
-    ) -> "CoupledMissionState":
+    ) -> CoupledMissionState:
         ids = [c.chaser_id for c in chasers]
         if not ids or len(set(ids)) != len(ids):
             raise ValueError(
@@ -62,11 +64,11 @@ class CoupledMissionState:
         self,
         anomaly: float,
         *,
-        states: Dict[str, np.ndarray],
-        centers: Dict[str, np.ndarray],
-        phi: Dict[str, np.ndarray],
-        omega: Dict[str, np.ndarray],
-        bandwidth: Dict[str, np.ndarray],
+        states: dict[str, np.ndarray],
+        centers: dict[str, np.ndarray],
+        phi: dict[str, np.ndarray],
+        omega: dict[str, np.ndarray],
+        bandwidth: dict[str, np.ndarray],
     ) -> None:
         """Commit one jointly proposed dense clock step after all inputs are feasible."""
         self.states, self.centers = states, centers

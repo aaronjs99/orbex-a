@@ -13,13 +13,9 @@
 """GEKKO window formulation and local candidate-fitting backend."""
 
 import logging
-import time
+from typing import Any
+
 import numpy as np
-import queue
-import threading
-from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Any, Optional, Union
-from scipy.optimize import least_squares
 from orbexa.core.dynamics.orbital import orbital_ellp_drag
 from orbexa.utils.solver_options import gekko_memory_exponent
 
@@ -44,13 +40,13 @@ class GekkoWindowEstimator:
         *,
         key: str,
         sense: str,
-        feasible_sets: Dict[str, Tuple[float, float]],
+        feasible_sets: dict[str, tuple[float, float]],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[float, str]:
+        dynamics_context: dict[str, Any],
+    ) -> tuple[float, str]:
         lower, upper = feasible_sets[key]
         default_value = lower if sense == "min" else upper
         solver = None
@@ -84,13 +80,13 @@ class GekkoWindowEstimator:
     def verify_candidate(
         self,
         *,
-        feasible_sets: Dict[str, Tuple[float, float]],
+        feasible_sets: dict[str, tuple[float, float]],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
-    ) -> Tuple[bool, Dict[str, float], float, str]:
+        dynamics_context: dict[str, Any],
+    ) -> tuple[bool, dict[str, float], float, str]:
         solver = None
         try:
             solver, p_vars, x_est, final_error = self.build_window_model(
@@ -124,12 +120,12 @@ class GekkoWindowEstimator:
     def build_window_model(
         self,
         *,
-        feasible_sets: Dict[str, Tuple[float, float]],
+        feasible_sets: dict[str, tuple[float, float]],
         states: np.ndarray,
         controls: np.ndarray,
         start_anom: float,
         anom_step: float,
-        dynamics_context: Dict[str, Any],
+        dynamics_context: dict[str, Any],
     ):
         solver = GEKKO(remote=self.remote)
         solver.time = np.linspace(0.0, anom_step * (len(states) - 1), len(states))

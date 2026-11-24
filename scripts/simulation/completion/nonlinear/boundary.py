@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from types import SimpleNamespace
 
 import numpy as np
-
+from orbexa.control.fallback.refuge import exact_record
 from orbexa.control.terminal.contact import (
     ContactAdmissionInputs,
     ContactAdmissionSource,
@@ -14,29 +14,29 @@ from orbexa.control.terminal.contact import (
     contact_reach_admission,
     contact_speed_admission,
 )
-from orbexa.control.fallback.refuge import exact_record
-from orbexa.core.dynamics.relative import NonlinearModelBounds, parameters
 from orbexa.core.dynamics.reference_frame import (
     FloatArithmetic,
     ReferenceClockFrame,
     exact,
     fingerprint,
 )
-from orbexa.simulation.contact.capture import CaptureTruth
-from orbexa.simulation.completion.coordinator import _outward_float
+from orbexa.core.dynamics.relative import NonlinearModelBounds, parameters
 from orbexa.simulation.approach.records.checkpoint import digest
-from orbexa.simulation.nonlinear.records.archive import semantic_sha256
+from orbexa.simulation.completion.coordinator import _outward_float
 from orbexa.simulation.completion.nonlinear.contracts import (
     _box,
     _require,
     nonlinear_completion_source_identity,
 )
+from orbexa.simulation.contact.capture import CaptureTruth
+from orbexa.simulation.nonlinear.records.archive import semantic_sha256
 from orbexa.simulation.nonlinear.safety.target_bounds import (
-    observed_point_goal_bounds,
-    exact_norm_upper,
     _SOURCE_SHA256 as _GOAL_BOUNDS_SOURCE_SHA256,
 )
-
+from orbexa.simulation.nonlinear.safety.target_bounds import (
+    exact_norm_upper,
+    observed_point_goal_bounds,
+)
 
 _CONTACT_ADAPTER_SOURCE_SHA256 = nonlinear_completion_source_identity()["sha256"]
 

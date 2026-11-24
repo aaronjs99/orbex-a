@@ -8,47 +8,44 @@ from __future__ import annotations
 
 import copy
 from types import MappingProxyType
-import numpy as np
 
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.core.dynamics.relative import NonlinearRelativeDynamics
+import numpy as np
+from orbexa.control.actuation import (
+    AffineActuatorRealization,
+    CommandDependentActuationPrior,
+)
+from orbexa.control.certification.nonlinear import FRAME, NonlinearFlowEncloser
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     HeldInputRequest,
+    IntervalBox,
     ValidatedFlowEncloser,
 )
-from orbexa.control.certification.nonlinear import NonlinearFlowEncloser, FRAME
-from orbexa.control.tubes.model import boundary_layer_feedback
-from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 from orbexa.control.fallback.plan import FleetFallbackPlan
-from orbexa.control.fallback.records import PerformanceProposal, PerformanceAttempt
+from orbexa.control.fallback.records import PerformanceAttempt, PerformanceProposal
 from orbexa.control.fallback.refuge import RefugeObservation
-from orbexa.estimation.navigation.boxes import midpoint, intersect
-from orbexa.estimation.membership.nonlinear import NonlinearTransitionObservation
-from orbexa.simulation.nonlinear.execution.blackout import BlackoutObservationPropagator
-from orbexa.simulation.approach.safety import MissionSafety
-
-from orbexa.control.actuation import (
-    CommandActuationSupport,
-    CommandDependentActuationPrior,
-    AffineActuatorRealization,
-    _ACTUATION_SOURCE_SHA256,
-)
+from orbexa.control.fallback.runtime import FleetAdmissionRuntime
+from orbexa.control.tubes.model import boundary_layer_feedback
 from orbexa.control.tubes.sensed import (
     PhysicalTubeWitness,
     _upper,
-    _exact_sensed_stage,
-    _outward_tube_endpoint,
-    stage_from_plan,
+    check_tube_observation,
     feedback_evaluation,
     measurement_radius,
-    check_tube_observation,
+    stage_from_plan,
 )
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.core.dynamics.relative import NonlinearRelativeDynamics
+from orbexa.estimation.membership.nonlinear import NonlinearTransitionObservation
+from orbexa.estimation.navigation.boxes import midpoint
+from orbexa.simulation.approach.safety import MissionSafety
+from orbexa.simulation.nonlinear.execution.bindings import PerformanceStageBindings
+from orbexa.simulation.nonlinear.execution.blackout import BlackoutObservationPropagator
 from orbexa.simulation.nonlinear.execution.contracts import (
     BlackoutNavigationEstimate,
-    NonlinearExecutionStep,
     NonlinearExecutionFailure,
+    NonlinearExecutionStep,
 )
+from orbexa.simulation.nonlinear.execution.nominal import NominalTubePropagator
 from orbexa.simulation.nonlinear.execution.plant import (
     NonlinearFleetPlant,
     sampled_clearance,
@@ -57,9 +54,7 @@ from orbexa.simulation.nonlinear.execution.sensing import (
     MissionSensorDelivery,
     SensorAcquisitionAudit,
 )
-from orbexa.simulation.nonlinear.execution.nominal import NominalTubePropagator
 from orbexa.simulation.recording.journal import ExecutionJournal
-from orbexa.simulation.nonlinear.execution.bindings import PerformanceStageBindings
 
 
 class NonlinearDenseExecutor:
@@ -379,8 +374,8 @@ class NonlinearDenseExecutor:
         suffix = self.runtime.active_fallback.suffix(q + h)
         if self.successor_preparer is None:
             return suffix
-        from orbexa.simulation.nonlinear.safety.planner import ProspectiveFleetEndpoint
         from orbexa.control.fallback.refuge import fingerprint as source_fingerprint
+        from orbexa.simulation.nonlinear.safety.planner import ProspectiveFleetEndpoint
 
         def navigation_id(value):
             return source_fingerprint(

@@ -24,14 +24,14 @@ Key Design Principles:
 """
 
 import logging
-import numpy as np
-from typing import Dict, List, Tuple, Any, Optional, Union, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
-from orbexa.solvers import get_solver, get_solver_from_config, SolverResult
+import numpy as np
 from orbexa.control.mpc.problem import build_from_dynamics
-
 from orbexa.estimation.adaptation.api import run_adaptation
+from orbexa.solvers import SolverResult, get_solver, get_solver_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +41,10 @@ class MissionResult:
     """Result from a complete MPC mission."""
 
     success: bool
-    anom_history: List[float]
-    state_history: List[np.ndarray]
-    input_history: List[np.ndarray]
-    solver_stats: Dict[str, Any]
+    anom_history: list[float]
+    state_history: list[np.ndarray]
+    input_history: list[np.ndarray]
+    solver_stats: dict[str, Any]
     message: str = ""
 
 
@@ -59,8 +59,8 @@ class MPCController:
     def __init__(
         self,
         solver_backend: str = "gekko",
-        solver_config: Optional[Dict[str, Any]] = None,
-        config_path: Optional[str] = None,
+        solver_config: dict[str, Any] | None = None,
+        config_path: str | None = None,
         proposal_provider=None,
     ):
         """
@@ -93,8 +93,8 @@ class MPCController:
         start_anom: float,
         anom_step: float,
         num_steps: int,
-        dynamics: Tuple[Callable, np.ndarray, np.ndarray, np.ndarray, Callable],
-        bounds: Tuple[List[Dict], List[Dict]],
+        dynamics: tuple[Callable, np.ndarray, np.ndarray, np.ndarray, Callable],
+        bounds: tuple[list[dict], list[dict]],
         time_periapsis: float = 0.0,
         eccentricity: float = 0.0,
         **kwargs,
@@ -163,11 +163,11 @@ class MPCController:
         num_mpc_steps: int,
         num_act_steps: int,
         initial_state: np.ndarray,
-        target_state: Union[np.ndarray, Callable],
+        target_state: np.ndarray | Callable,
         control_input_0: np.ndarray,
         dynamics_func: Callable,  # Explicit dynamics factory
-        dynamics_params: Dict[str, Any],  # e.g. {mean_motion: ..., ecc: ...}
-        bounds: Tuple[List[Dict], List[Dict]],
+        dynamics_params: dict[str, Any],  # e.g. {mean_motion: ..., ecc: ...}
+        bounds: tuple[list[dict], list[dict]],
         max_mission_steps: int,
         **kwargs,
     ) -> MissionResult:

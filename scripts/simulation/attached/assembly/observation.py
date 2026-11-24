@@ -8,29 +8,28 @@ noise variance. GNSS products retain their full common-bias support.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from fractions import Fraction
 import copy
 import hashlib
+from dataclasses import dataclass, replace
+from fractions import Fraction
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
 from orbexa.simulation.attached.assembly.flow import _AssemblyField
 from orbexa.simulation.contact.boundary import _intersection, _quaternion_box
 from orbexa.simulation.numerics.rigid_interval import (
+    cross,
     matvec,
+    norm_upper,
     quaternion_rotation,
     subtract,
-    cross,
-    norm_upper,
 )
+from scipy.spatial.transform import Rotation
 
 
 @dataclass(frozen=True)

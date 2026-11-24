@@ -7,10 +7,11 @@ parameter box. Failed inclusions and exhausted budgets retain unknown boxes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from orbexa.control.certification.reachability import IntervalBox, HeldInputRequest
-from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
-from orbexa.core.dynamics.relative import NonlinearModelBounds
+
 from orbexa.control.actuation import CommandDependentActuationPrior
+from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
+from orbexa.control.certification.reachability import HeldInputRequest, IntervalBox
+from orbexa.core.dynamics.relative import NonlinearModelBounds
 
 
 def _disjoint(left, right):

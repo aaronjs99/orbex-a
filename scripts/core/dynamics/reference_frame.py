@@ -6,12 +6,12 @@ this clock. Floats in declarations denote their exact binary rational values.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
-from functools import cached_property
 import hashlib
 import json
 import math
+from dataclasses import dataclass
+from fractions import Fraction
+from functools import cached_property
 from pathlib import Path
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
@@ -180,9 +180,9 @@ class ReferenceClockFrame:
 
     def interval_bounds(self, q_interval, precision_bits=128):
         """Return exact outward boxes for rotation entries, rate and kappa."""
-        from orbexa.control.certification.reachability import _ARB_LOCK
-        from orbexa.control.certification.nonlinear import _Arithmetic
         import flint
+        from orbexa.control.certification.nonlinear import _Arithmetic
+        from orbexa.control.certification.reachability import _ARB_LOCK
 
         interval = self.check_domain(q_interval)
         with _ARB_LOCK, flint.ctx.workprec(precision_bits):
@@ -204,9 +204,9 @@ class ReferenceClockFrame:
         max_segments=10000,
         precision_bits=128,
     ):
-        from orbexa.control.certification.reachability import IntervalBox, _ARB_LOCK
-        from orbexa.control.certification.nonlinear import _Arithmetic
         import flint
+        from orbexa.control.certification.nonlinear import _Arithmetic
+        from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox
 
         start, end, step = exact(q_start), exact(q_end), exact(max_step)
         self.check_domain((start, end))

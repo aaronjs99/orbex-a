@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from fractions import Fraction
 import hashlib
+from fractions import Fraction
 from pathlib import Path
-from orbexa.control.certification.reachability import IntervalBox, _ARB_LOCK
-from orbexa.control.certification.nonlinear import (
-    _Arithmetic,
-    TargetEphemerisCertificate,
+
+from orbexa.control.certification.attitude import (
+    _SOURCE_SHA256 as _ATTITUDE_SOURCE_SHA256,
 )
 from orbexa.control.certification.attitude import (
     _matrix,
     _sqrt_upper,
-    _SOURCE_SHA256 as _ATTITUDE_SOURCE_SHA256,
 )
+from orbexa.control.certification.nonlinear import (
+    TargetEphemerisCertificate,
+    _Arithmetic,
+)
+from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox
 from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.core.dynamics.relative import matvec, transpose, cross, z
+from orbexa.core.dynamics.relative import cross, matvec, transpose, z
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

@@ -6,10 +6,10 @@ import hashlib
 import importlib.metadata
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import sys
+from pathlib import Path
 
 
 def hash_file(path):

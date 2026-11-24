@@ -6,18 +6,18 @@ These operations take declared model/measurement bounds. They never sample truth
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
-import numpy as np
+from pathlib import Path
 
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+import numpy as np
 from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.tubes.sample_hold import (
-    sample_hold_bounds,
     SENSED_TUBE_MODEL_VERSION,
+    sample_hold_bounds,
 )
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
 
 _TUBE_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

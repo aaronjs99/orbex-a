@@ -1,11 +1,13 @@
 """Optional warm-start decorator preserving the authoritative solver boundary."""
 
 from __future__ import annotations
-from dataclasses import replace
+
 import time
+from dataclasses import replace
+
 import numpy as np
-from orbexa.solvers.base import SolverBase
 from orbexa.planning.proposals.trajectory import AffinePrediction, input_limits
+from orbexa.solvers.base import SolverBase
 
 
 class ProposalSeededSolver(SolverBase):

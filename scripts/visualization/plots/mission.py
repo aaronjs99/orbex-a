@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from collections.abc import Mapping
-import matplotlib.pyplot as plt
-from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
-import numpy as np
+from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
 from orbexa.visualization.data.geometry import MissionGeometry
 from orbexa.visualization.data.samples import MissionSamples, recorded_array
+from orbexa.visualization.plots.canvas import artifact_figure, artifact_subplots
 from orbexa.visualization.style import chaser_color
 
 

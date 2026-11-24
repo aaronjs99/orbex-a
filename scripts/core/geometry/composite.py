@@ -7,16 +7,17 @@ There is no cylindrical or spherical replacement for a composite geometry.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from fractions import Fraction
 import hashlib
 import itertools
 import json
 import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from fractions import Fraction
 from numbers import Real
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Sequence
+
 import numpy as np
 
 

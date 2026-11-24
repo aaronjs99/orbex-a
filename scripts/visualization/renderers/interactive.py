@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-
 from orbexa.visualization.data.geometry import MissionGeometry
 from orbexa.visualization.data.samples import MissionSamples, recorded_array
 from orbexa.visualization.style import chaser_color
+from plotly.subplots import make_subplots
 
 
 class MissionInteractive:

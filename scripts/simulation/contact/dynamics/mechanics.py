@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
 from orbexa.core.dynamics.attitude import finite_vector
 from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY
+from scipy.spatial.transform import Rotation
 
 
 class ContactMechanics:

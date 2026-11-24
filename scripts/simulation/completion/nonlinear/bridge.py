@@ -7,10 +7,10 @@ Every bound artifact is rehashed before the physical boundary is used.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import copy
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from orbexa.core.dynamics.reference_frame import fingerprint

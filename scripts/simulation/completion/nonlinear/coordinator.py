@@ -7,92 +7,31 @@ callbacks are declared synthetic realizations; rotational replay stays decoupled
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from collections.abc import Mapping
-from fractions import Fraction
-import copy
-import hashlib
-from itertools import combinations
-from itertools import zip_longest
-from math import isqrt
-from pathlib import Path
-import re
-from types import SimpleNamespace
+from dataclasses import replace
 
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.spatial.transform import Rotation
-
-from orbexa.control.certification.reachability import IntervalBox
-from orbexa.control.fallback.refuge import (
-    fingerprint as exact_fingerprint,
-    exact_record,
-)
-from orbexa.control.terminal.contact import (
-    ContactAdmissionInputs,
-    ContactAdmissionSource,
-    ContactReachPolicy,
-    contact_reach_admission,
-    contact_speed_admission,
-)
-from orbexa.core.dynamics.attitude import body_rate_derivative
-from orbexa.core.dynamics.relative import (
-    ExponentialAtmosphere,
-    NonlinearModelBounds,
-    acceleration,
-    parameters,
-)
-from orbexa.core.dynamics.reference_frame import (
-    FloatArithmetic,
-    ReferenceClockFrame,
-    exact,
-    fingerprint,
-)
-from orbexa.simulation.attached.assembly.model import STANDARD_GRAVITY, positive
-from orbexa.simulation.contact.capture import CaptureTruth
-from orbexa.simulation.completion.coordinator import (
-    ApproachPropellantBudget,
-    CompleteMissionResult,
-    _outward_float,
-)
-from orbexa.simulation.contact.simulator import ContactBodyState
 from orbexa.simulation.approach.records.checkpoint import digest, plain
-from orbexa.simulation.nonlinear.records.archive import (
-    HOLD_INDEX_SCHEMA,
-    NonlinearHoldArchive,
-    hold_index,
-    semantic_sha256,
-)
-from orbexa.simulation.nonlinear.safety.target_bounds import (
-    observed_point_goal_bounds,
-    exact_norm_upper,
-    _SOURCE_SHA256 as _GOAL_BOUNDS_SOURCE_SHA256,
-)
-
-from orbexa.simulation.completion.nonlinear.contracts import (
-    _require,
-    _identity,
-    _pairs,
-    _box,
-    _sqrt_upper,
-    _dyadic_upper,
-    _compact_hold,
-    nonlinear_completion_source_identity,
-)
-from orbexa.simulation.completion.nonlinear.boundary import (
-    _CONTACT_ADAPTER_SOURCE_SHA256,
-    terminal_contact_speed_record,
-    verify_nonlinear_arrival,
-    capture_truth_from_nonlinear,
-)
-from orbexa.simulation.completion.environment.point import NonlinearEnvironment
 from orbexa.simulation.completion.accounting.nonlinear import (
-    NonlinearPropellantBudget,
     NonlinearTranslationAccountant,
 )
+from orbexa.simulation.completion.coordinator import (
+    CompleteMissionResult,
+)
+from orbexa.simulation.completion.environment.point import NonlinearEnvironment
+from orbexa.simulation.completion.nonlinear.boundary import (
+    capture_truth_from_nonlinear,
+    verify_nonlinear_arrival,
+)
+from orbexa.simulation.completion.nonlinear.contracts import (
+    _require,
+)
 from orbexa.simulation.completion.nonlinear.observers import (
-    PastNavigationAttitudeObserver,
     BiasedContactObserver,
+    PastNavigationAttitudeObserver,
+)
+from orbexa.simulation.contact.capture import CaptureTruth
+from orbexa.simulation.nonlinear.records.archive import (
+    semantic_sha256,
 )
 
 

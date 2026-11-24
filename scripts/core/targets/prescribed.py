@@ -14,8 +14,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Protocol, Sequence, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
+
 import numpy as np
 from orbexa.control.mpc.constraints import (
     CylinderConstraint,
@@ -49,11 +51,11 @@ class TargetGeometry(Protocol):
     def docking_acceleration(
         self, docking_point_body: np.ndarray, anom: float
     ) -> np.ndarray: ...
-    def collision_params(self, operation: str, anom: float) -> Dict[str, Any]: ...
+    def collision_params(self, operation: str, anom: float) -> dict[str, Any]: ...
     def assign_docking_targets(
         self, initial_states: Sequence[np.ndarray]
-    ) -> List[Dict[str, Any]]: ...
-    def as_dict(self) -> Dict[str, Any]: ...
+    ) -> list[dict[str, Any]]: ...
+    def as_dict(self) -> dict[str, Any]: ...
 
 
 class CylinderTargetGeometry(TargetGeometry, Protocol):
@@ -95,7 +97,7 @@ class TumblingCylinderTarget:
             object.__setattr__(self, name, value.copy())
 
     @classmethod
-    def from_config(cls, config: SimulationConfig) -> "TumblingCylinderTarget":
+    def from_config(cls, config: SimulationConfig) -> TumblingCylinderTarget:
         if config.target.shape != "cylinder":
             raise ValueError(
                 "The default target requires shape='cylinder'; inject an explicit supported target"
@@ -170,7 +172,7 @@ class TumblingCylinderTarget:
 
     def side_docking_geometry(
         self, azimuth: float, axial: float = 0.0
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         normal = np.array([np.cos(azimuth), np.sin(azimuth), 0.0], dtype=float)
         point = normal * (self.radius + self.docking_standoff)
         point[2] = float(
@@ -180,7 +182,7 @@ class TumblingCylinderTarget:
 
     def docking_points_body(
         self, count: int, start_azimuth: float = 0.0
-    ) -> List[np.ndarray]:
+    ) -> list[np.ndarray]:
         points = []
         for idx in range(count):
             angle = start_azimuth + 2.0 * np.pi * idx / max(count, 1)
@@ -190,7 +192,7 @@ class TumblingCylinderTarget:
 
     def assign_docking_targets(
         self, initial_states: Sequence[np.ndarray]
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         from orbexa.planning.rendezvous.cylinder import assign_docking_targets
 
         return assign_docking_targets(self, initial_states)
@@ -214,7 +216,7 @@ class TumblingCylinderTarget:
             self.angular_velocity_at(anom),
         )
 
-    def collision_params(self, operation: str, anom: float) -> Dict[str, Any]:
+    def collision_params(self, operation: str, anom: float) -> dict[str, Any]:
         radius = self.radius * (1.0 + self.tolerance)
         half_length = self.half_length * (1.0 + self.tolerance)
         return {
@@ -247,7 +249,7 @@ class TumblingCylinderTarget:
             tube_radius=tube_radius,
         )
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "shape": "cylinder",
             "radius": float(self.radius),

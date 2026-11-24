@@ -11,26 +11,22 @@ from dataclasses import asdict, dataclass
 from fractions import Fraction
 
 import numpy as np
-from scipy.spatial.transform import Rotation
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
-    _ProofUnresolved,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
 from orbexa.simulation.contact.boundary import _intersection, _quaternion_box
+from orbexa.simulation.contact.dynamics.rotation import initial_rotation_boxes
 from orbexa.simulation.numerics.rigid_interval import (
     add,
-    subtract,
-    scale,
     cross,
     matvec,
-    transpose,
     quaternion_rotation,
+    subtract,
 )
-from orbexa.simulation.contact.dynamics.rotation import initial_rotation_boxes
+from scipy.spatial.transform import Rotation
 
 
 @dataclass(frozen=True)

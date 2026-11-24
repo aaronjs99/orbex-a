@@ -14,18 +14,16 @@ physical LVLH dynamics. Coupled planning includes the derived held-input forcing
 from sample_hold; numerical integration error still requires a separate bound.
 """
 
-from dataclasses import dataclass
-from typing import List, Tuple
 import warnings
+from dataclasses import dataclass
 
 import numpy as np
-
-from orbexa.core.dynamics.orbital import orbital_ellp_drag
-from orbexa.control.tubes.uncertainty import (
-    uncertainty_envelope,
-    nominal_acceleration_bound,
-)
 from orbexa.control.tubes.sample_hold import sample_hold_bounds
+from orbexa.control.tubes.uncertainty import (
+    nominal_acceleration_bound,
+    uncertainty_envelope,
+)
+from orbexa.core.dynamics.orbital import orbital_ellp_drag
 
 
 def _vector(value, name, *, nonnegative=False):
@@ -56,7 +54,7 @@ class TubeProfile:
     lambda_gain: np.ndarray = None
     alpha: np.ndarray = None
     input_reserve: np.ndarray = None
-    assumptions: Tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
     tube_model_version: str = "continuous-feedback-legacy"
     hold_width: float = None
     forcing: dict = None
@@ -330,10 +328,10 @@ def propagate_tube_profile(
     anom_step: float,
     mean_motion: float,
     t_periapsis: float = 0.0,
-    lambda_gain: List[float],
-    alpha: List[float],
-    phi_0: List[float],
-    eccentricity_range: Tuple[float, float],
+    lambda_gain: list[float],
+    alpha: list[float],
+    phi_0: list[float],
+    eccentricity_range: tuple[float, float],
     initial_error: np.ndarray = None,
     eta: float = 0.0,
     **kwargs,

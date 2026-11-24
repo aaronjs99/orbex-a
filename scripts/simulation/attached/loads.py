@@ -7,35 +7,45 @@ environment callbacks require their own interval model and are refused here.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
 
+import copy
+import hashlib
 from dataclasses import dataclass
 from fractions import Fraction
-import hashlib
-import copy
 from pathlib import Path
 
 import numpy as np
-
 from orbexa.control.certification.reachability import (
-    IntervalBox,
     _ARB_LOCK,
+    IntervalBox,
     _ArbArithmetic,
     _ProofUnresolved,
 )
 from orbexa.core.dynamics.reference_frame import fingerprint
+from orbexa.layout import PACKAGE_ROOT
+from orbexa.simulation.numerics.rigid_interval import (
+    add as _add,
+)
 from orbexa.simulation.numerics.rigid_interval import (
     cross as _cross,
-    add as _add,
-    subtract as _sub,
-    scale as _scale,
-    matvec as _matvec,
+)
+from orbexa.simulation.numerics.rigid_interval import (
     inverse3 as _inverse,
-    transpose,
+)
+from orbexa.simulation.numerics.rigid_interval import (
+    matvec as _matvec,
+)
+from orbexa.simulation.numerics.rigid_interval import (
     normalized_quaternion,
     quaternion_rotation,
+    transpose,
 )
-
+from orbexa.simulation.numerics.rigid_interval import (
+    scale as _scale,
+)
+from orbexa.simulation.numerics.rigid_interval import (
+    subtract as _sub,
+)
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _SOURCE_FILES = {

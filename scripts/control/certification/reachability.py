@@ -11,17 +11,17 @@ An unresolved enclosure, missing dependency or nonseparating box never does.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from fractions import Fraction
 from numbers import Integral
 from pathlib import Path
 from threading import RLock
-from typing import Any, Iterable, Sequence
-import math
-import hashlib
-import json
-
+from typing import Any
 
 _ARB_LOCK = RLock()
 FRAME = "physical-lvlh-v1"

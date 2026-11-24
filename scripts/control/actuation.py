@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
-import numpy as np
+from pathlib import Path
 
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.control.certification.reachability import IntervalBox
+import numpy as np
 from orbexa.control.certification.attitude import _sqrt_upper
+from orbexa.control.certification.reachability import IntervalBox
+from orbexa.core.dynamics.reference_frame import exact, fingerprint
 
 _ACTUATION_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

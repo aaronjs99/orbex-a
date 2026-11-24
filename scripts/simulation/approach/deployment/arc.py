@@ -7,10 +7,11 @@ is introduced. All trajectory derivatives use true anomaly, not seconds.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
-import numpy as np
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from orbexa.simulation.approach.fleet import FleetInitializer
 from orbexa.simulation.approach.models import ChaserConfig
 
@@ -24,8 +25,8 @@ if TYPE_CHECKING:
 class CompactDeploymentOptions:
     """Prospective geometry, anomaly durations and staging acceptance bounds."""
 
-    launch_radius: Optional[float] = None
-    launch_azimuth: Optional[float] = None
+    launch_radius: float | None = None
+    launch_azimuth: float | None = None
     separation_buffer: float = 0.10
     fanout_duration: float = 3.0
     contraction_duration: float = 1.5
@@ -58,7 +59,7 @@ class CompactDeploymentOptions:
             )
 
 
-def _quintic(value: float, duration: float) -> Tuple[float, float, float]:
+def _quintic(value: float, duration: float) -> tuple[float, float, float]:
     """Clamped C2 progress and its first/second anomaly derivatives."""
     if value <= 0.0:
         return 0.0, 0.0, 0.0
@@ -83,8 +84,8 @@ class CompactArcDeployment:
     def __init__(
         self,
         config: SimulationConfig,
-        target: Optional[TargetGeometry] = None,
-        options: Optional[CompactDeploymentOptions] = None,
+        target: TargetGeometry | None = None,
+        options: CompactDeploymentOptions | None = None,
     ):
         if target is None:
             from orbexa.core.targets.prescribed import TumblingCylinderTarget
@@ -179,7 +180,7 @@ class CompactArcDeployment:
 
     def rotation_kinematics(
         self, anomaly: float
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Obtain exact Q, Q' and Q'' from the supported rigid target-point API."""
         states = [
             np.asarray(self.target.docking_state(axis, anomaly), dtype=float)
@@ -212,7 +213,7 @@ class CompactArcDeployment:
             np.column_stack(accelerations),
         )
 
-    def kinematics(self, index: int, anomaly: float) -> Tuple[np.ndarray, np.ndarray]:
+    def kinematics(self, index: int, anomaly: float) -> tuple[np.ndarray, np.ndarray]:
         """Return [p, p'] and [p', p''] in LVLH at any preview anomaly."""
         if (
             isinstance(index, bool)
@@ -286,7 +287,7 @@ class CompactArcDeployment:
             docking_candidate_index=index,
         )
 
-    def scenario_metadata(self) -> Dict[str, Any]:
+    def scenario_metadata(self) -> dict[str, Any]:
         rotation, _, _ = self.rotation_kinematics(0.0)
         center = rotation @ np.array(
             [
@@ -316,7 +317,7 @@ class CompactArcDeployment:
         }
 
     def create_scenario(
-        self, *, horizon_steps: Optional[int] = None, **dependencies: Any
+        self, *, horizon_steps: int | None = None, **dependencies: Any
     ) -> MissionScenario:
         """Compose existing services; other explicit MissionScenario dependencies remain injectable."""
         from orbexa.simulation.approach.deployment.arc_policy import (
@@ -344,19 +345,19 @@ class CompactDeploymentFleet(FleetInitializer):
         super().__init__(deployment.config, deployment.target)
         self.deployment = deployment
 
-    def single_chaser(self) -> List[ChaserConfig]:
+    def single_chaser(self) -> list[ChaserConfig]:
         if self.deployment.count != 1:
             raise ValueError(
                 "Use mission='multi' for a deployment configured with more than one chaser"
             )
         return self.multi_chasers()
 
-    def multi_chasers(self) -> List[ChaserConfig]:
+    def multi_chasers(self) -> list[ChaserConfig]:
         return self.build_chaser_configs(
             self.multi_initial_states(self.deployment.count)
         )
 
-    def multi_initial_states(self, count: int) -> List[np.ndarray]:
+    def multi_initial_states(self, count: int) -> list[np.ndarray]:
         if (
             isinstance(count, bool)
             or not isinstance(count, (int, np.integer))
@@ -369,7 +370,7 @@ class CompactDeploymentFleet(FleetInitializer):
 
     def build_chaser_configs(
         self, initial_states: Sequence[np.ndarray]
-    ) -> List[ChaserConfig]:
+    ) -> list[ChaserConfig]:
         states = [np.asarray(value, dtype=float) for value in initial_states]
         if len(states) != self.deployment.count or any(
             value.shape != (6,) or not np.all(np.isfinite(value)) for value in states

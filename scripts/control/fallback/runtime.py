@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
+
 from orbexa.control.certification.reachability import (
     FlowCertificate,
     HeldInputRequest,
@@ -10,16 +11,16 @@ from orbexa.control.certification.reachability import (
     SweptCollisionGuard,
     _exact,
 )
-from orbexa.control.fallback.refuge import _identity, exact_record
 from orbexa.control.fallback.common import _same_plant
 from orbexa.control.fallback.plan import FleetFallbackPlan
 from orbexa.control.fallback.records import (
-    PerformanceAttempt,
-    PerformanceAdmissionRefusal,
-    PerformanceProposal,
-    HeldFleetDecision,
     CommandResourceBound,
+    HeldFleetDecision,
+    PerformanceAdmissionRefusal,
+    PerformanceAttempt,
+    PerformanceProposal,
 )
+from orbexa.control.fallback.refuge import _identity, exact_record
 
 
 def _intersect(left, right):

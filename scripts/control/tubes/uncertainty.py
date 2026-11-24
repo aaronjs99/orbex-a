@@ -6,9 +6,9 @@ then bounds deviations from the explicitly supplied nominal parameters.  No
 assumption that extrema occur at parameter corners is required.
 """
 
-from dataclasses import dataclass
 import math
-from typing import Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 import numpy as np
 

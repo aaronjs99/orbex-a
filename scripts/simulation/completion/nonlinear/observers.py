@@ -3,20 +3,19 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.integrate import solve_ivp
-from scipy.spatial.transform import Rotation
-
 from orbexa.core.dynamics.attitude import body_rate_derivative
+from orbexa.core.dynamics.reference_frame import FloatArithmetic, exact
 from orbexa.core.dynamics.relative import (
     ExponentialAtmosphere,
     NonlinearModelBounds,
     acceleration,
     parameters,
 )
-from orbexa.core.dynamics.reference_frame import FloatArithmetic, exact
-from orbexa.simulation.contact.simulator import ContactBodyState
 from orbexa.simulation.approach.records.checkpoint import digest
 from orbexa.simulation.completion.nonlinear.contracts import _box, _require
+from orbexa.simulation.contact.simulator import ContactBodyState
+from scipy.integrate import solve_ivp
+from scipy.spatial.transform import Rotation
 
 
 class PastNavigationAttitudeObserver:

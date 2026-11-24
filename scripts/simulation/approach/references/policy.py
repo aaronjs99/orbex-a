@@ -14,7 +14,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, Tuple, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 from orbexa.control.mpc.references import sample_tracking_reference
 from orbexa.simulation.approach.models import ChaserConfig, MissionPhase
@@ -32,7 +34,7 @@ class MissionReferencePolicy:
         self,
         config: SimulationConfig,
         target: TargetGeometry,
-        horizon_steps: Optional[int] = None,
+        horizon_steps: int | None = None,
     ):
         if horizon_steps is not None and (
             isinstance(horizon_steps, bool)
@@ -61,7 +63,7 @@ class MissionReferencePolicy:
             return MissionPhase("docking", "docking")
         return phase
 
-    def scenario_metadata(self) -> Dict[str, Any]:
+    def scenario_metadata(self) -> dict[str, Any]:
         """Extra scenario provenance supplied by an injected policy."""
         return {}
 
@@ -94,9 +96,9 @@ class MissionReferencePolicy:
         current_reference: np.ndarray,
         anom: float,
         horizon_steps: int,
-        matrices: Tuple,
+        matrices: tuple,
         time_periapsis: float,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Preview target motion and the nominal inputs needed to track it."""
         if phase.operation == "docking":
 
@@ -129,7 +131,7 @@ class MissionReferencePolicy:
 
     def rendezvous_goal_satisfied(
         self,
-        states: Dict[str, np.ndarray],
+        states: dict[str, np.ndarray],
         chasers: Sequence[ChaserConfig],
     ) -> bool:
         desired_radius = max(
@@ -170,7 +172,7 @@ class MissionReferencePolicy:
             return int(self.horizon_steps)
         return int(self.config.mpc.horizon_steps.get(phase.operation, 10))
 
-    def configured_horizon_metadata(self) -> Dict[str, int]:
+    def configured_horizon_metadata(self) -> dict[str, int]:
         if self.horizon_steps is not None:
             return {"all": int(self.horizon_steps)}
         return {key: int(value) for key, value in self.config.mpc.horizon_steps.items()}
@@ -182,7 +184,7 @@ class MissionReferencePolicy:
         center: np.ndarray,
         phi: np.ndarray,
         omega: np.ndarray,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         goal = self.target.docking_state(chaser.docking_point_body, anomaly)
         position_bound = np.linalg.norm(np.abs(center[:3] - goal[:3]) + omega)
         velocity_bound = np.linalg.norm(

@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Sequence
+
+import numpy as np
 from orbexa.planning.coordination.allocation import logger
 from orbexa.planning.coordination.allocation.contracts import AgentState, Network, Vec
 
@@ -33,7 +34,7 @@ class DistributedAuctionPolicy:
     epsilon_std: float = 0.05
 
     def initialize(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
         n_tasks = len(tasks)
         if n_tasks == 0:
@@ -55,7 +56,7 @@ class DistributedAuctionPolicy:
 
     def step(
         self,
-        agents: List[AgentState],
+        agents: list[AgentState],
         tasks: Sequence[Vec],
         network: Network,
         agent_id: int,
@@ -116,7 +117,7 @@ class DistributedAuctionPolicy:
         return interactions
 
     def has_converged(
-        self, agents: List[AgentState], tasks: Sequence[Vec], network: Network
+        self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
         assigns = [a.assignment_idx for a in agents]
         return len(assigns) == len(set(assigns))

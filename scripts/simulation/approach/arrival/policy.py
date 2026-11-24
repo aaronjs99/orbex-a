@@ -8,13 +8,13 @@ failure retains its prefix and never implies that a physical plant can pause.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
-from fractions import Fraction
 import hashlib
 import json
 import math
-from numbers import Integral, Real
 import re
+from dataclasses import dataclass
+from fractions import Fraction
+from numbers import Integral, Real
 
 from orbexa.control.terminal.region import TerminalRegion, exact_scalar
 

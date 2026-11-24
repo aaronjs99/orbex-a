@@ -5,16 +5,18 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+
 from orbexa.simulation.recording.artifacts import _sha
 
 
 def native_controller(directory, messages):
     """Retain native solver evidence inside the isolated job process only."""
-    from orbexa.control.mpc.controller import MPCController
-    from orbexa.solvers.gekko.tube import GekkoDynamicTube
-    from orbexa.simulation.approach.records.checkpoint import plain
     import tempfile
+
     import gekko
+    from orbexa.control.mpc.controller import MPCController
+    from orbexa.simulation.approach.records.checkpoint import plain
+    from orbexa.solvers.gekko.tube import GekkoDynamicTube
 
     native = directory / "native"
     native.mkdir(exist_ok=True)
@@ -55,11 +57,13 @@ def native_controller(directory, messages):
                 },
                 scope="Unchanged native problem/acceptance; only transcript output and directory lifetime instrumented",
             )
-            with counter_lock:
-                with (directory / "native-attempts.jsonl").open(
+            with (
+                counter_lock,
+                (directory / "native-attempts.jsonl").open(
                     "a", encoding="utf-8"
-                ) as stream:
-                    stream.write(json.dumps(record, allow_nan=False) + "\n")
+                ) as stream,
+            ):
+                stream.write(json.dumps(record, allow_nan=False) + "\n")
 
     GekkoDynamicTube._solve_once = retained_attempt
 

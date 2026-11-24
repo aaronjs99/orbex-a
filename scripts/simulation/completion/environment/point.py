@@ -5,12 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
-
-from orbexa.core.dynamics.relative import NonlinearModelBounds, acceleration, parameters
 from orbexa.core.dynamics.reference_frame import FloatArithmetic
+from orbexa.core.dynamics.relative import NonlinearModelBounds, acceleration, parameters
 from orbexa.simulation.attached.assembly.model import positive
-from orbexa.simulation.contact.simulator import ContactBodyState
 from orbexa.simulation.completion.nonlinear.contracts import _require
+from orbexa.simulation.contact.simulator import ContactBodyState
 
 
 class NonlinearEnvironment:

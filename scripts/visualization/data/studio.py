@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
-import numpy as np
 
+import numpy as np
 from orbexa.visualization.data.samples import MissionSamples, recorded_array
 
 STUDIO_DATA_SCHEMA = "orbexa.mission.studio.data.v1"

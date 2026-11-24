@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
+
 from orbexa.simulation.service.contracts import (
     ALLOWED_ORIGINS,
     LIVE_PROTOCOL_VERSION,
     LIVE_SERVICE,
-    LiveParameters,
     PARAMETER_LIMITS,
+    LiveParameters,
 )
 from orbexa.simulation.service.session import LiveSimulationService
 

@@ -3,11 +3,11 @@
 
 import argparse
 import logging
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
-from orbexa.sessions import validate_session_id
 from orbexa.layout import project_root
+from orbexa.sessions import validate_session_id
 
 
 def _positive_int(value: str) -> int:
@@ -17,9 +17,7 @@ def _positive_int(value: str) -> int:
     return number
 
 
-def main(
-    argv: Optional[Sequence[str]] = None, *, default_root: Optional[Path] = None
-) -> int:
+def main(argv: Sequence[str] | None = None, *, default_root: Path | None = None) -> int:
     checkout = project_root()
     root = (
         Path(default_root)

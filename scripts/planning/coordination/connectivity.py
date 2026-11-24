@@ -6,7 +6,9 @@ distance gradient used here. MIT source attribution: THIRD_PARTY_NOTICES.md.
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import numpy as np
 
 
