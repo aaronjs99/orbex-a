@@ -1,4 +1,5 @@
 data/*
+!data/paper/
 !data/paper/*
 
 # Byte-compiled / optimized / DLL files

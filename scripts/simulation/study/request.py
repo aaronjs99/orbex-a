@@ -5,7 +5,7 @@ validation do not load numerical or solver dependencies.
 """
 
 from __future__ import annotations
-from orbexa.layout import PACKAGE_ROOT
+from orbexa.layout import ProjectLayout
 
 from dataclasses import dataclass
 import json
@@ -33,8 +33,7 @@ class StudyArmRequest:
                 raise ValueError("Missing explicit " + name + " input: " + str(path))
             object.__setattr__(self, name, path)
         output = Path(self.output_dir).expanduser().resolve()
-        if output.is_relative_to(PACKAGE_ROOT.parent):
-            raise ValueError("Study outputs must be outside the maintained checkout")
+        ProjectLayout.current().require_output(output, "Study outputs")
         if (
             not self.case
             or self.adaptation not in ("adaptive", "frozen")

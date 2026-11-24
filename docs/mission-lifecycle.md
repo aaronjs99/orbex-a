@@ -515,7 +515,7 @@ Synthetic endpoint fixtures can exercise latch conservation, allocation,
 detumbling, finite burns, failures and terminal events. Their qualification
 provenance must say that they are synthetic. They do not establish a successful
 ADTMPC approach. Repository instructions keep such engineering probes and
-generated outputs outside the maintained source tree.
+generated outputs in the gitignored `data/` and `results/` folders, out of commits.
 
 ## Primary references
 

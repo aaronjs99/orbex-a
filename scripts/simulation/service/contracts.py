@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from orbexa.layout import PACKAGE_ROOT
+from orbexa.layout import ProjectLayout
 
 
 LIVE_SERVICE = "orbexa-live-v2"
@@ -108,8 +108,4 @@ class LiveServiceSettings:
             or not 1 <= self.maximum_updates <= 1200
         ):
             raise ValueError("maximum_updates must be an integer in [1, 1200]")
-        checkout = PACKAGE_ROOT.parent
-        if (checkout / "pyproject.toml").is_file() and self.output_dir.is_relative_to(
-            checkout
-        ):
-            raise ValueError("Live outputs must be outside the maintained checkout")
+        ProjectLayout.current().require_output(self.output_dir, "Live outputs")

@@ -19,7 +19,7 @@ keeps recorded outcomes separate from explanatory figures.
 | Attached flight | State, geometry, inertia and load enclosures continue between holds. Chaser-carried sensors observe the assembly. | Controlled/coast continuation and whole-set rate/dwell fixtures pass under the declared mechanism and sensor model. |
 | Entry crossing | A descending whole-set above-to-below coast bracket is required. A numerical point root is insufficient. | A near-interface uncertain coast qualifies; a full mission's burn, coast and final event still need one closed record. |
 
-Generated scientific artifacts remain outside this checkout. Each qualification
+Generated scientific artifacts stay in the gitignored `data/` and `results/` folders. Each qualification
 retains its exact source/input hashes, outcomes and limits. Source changes do
 not retroactively upgrade an older run.
 

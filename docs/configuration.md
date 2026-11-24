@@ -2,10 +2,10 @@
 
 Envisat is the default study, not the controller's target type. A mission uses
 three explicit files: an orbit/controller YAML, a spacecraft JSON, and a study
-JSON. Give each run a new output directory outside the checkout.
+JSON. Each run writes to a new directory under the gitignored `data/` folder.
 
 ```bash
-python run.py --config my-orbit.yaml --spacecraft my-spacecraft.json --study my-study.json --case central --adaptation adaptive --bandwidth dynamic --output-dir ../orbexa-output/my-target
+python run.py --config my-orbit.yaml --spacecraft my-spacecraft.json --study my-study.json --case central --adaptation adaptive --bandwidth dynamic
 ```
 
 ## Which file controls what

@@ -27,7 +27,7 @@ Python API also supports the SciPy and optional CasADi adapters.
 
 ```bash
 python -m pip install -e ".[certification,studio,video]"
-orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json --output-dir ../orbexa-output/envisat-eight
+orbexa-run-mission --config config/envisat.yaml --prior config/envisat-prior.json --admission config/envisat-admission.json
 ```
 
 `certification` supplies python-flint/Arb for continuous held-motion enclosures;

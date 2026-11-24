@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 import sys
 
+from orbexa.layout import ProjectLayout
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -28,8 +30,7 @@ def main(argv=None):
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
-        help="New arm directory outside the maintained checkout",
+        help="New arm directory; defaults to data/nonlinear/<case>/<arm>/<UTC run id>",
     )
     parser.add_argument(
         "--steps",
@@ -42,6 +43,10 @@ def main(argv=None):
         help="Optional explicit python-flint dependency directory",
     )
     args = parser.parse_args(argv)
+    if args.output_dir is None:
+        args.output_dir = ProjectLayout.current().run_directory(
+            "nonlinear", args.case, f"{args.adaptation}-{args.bandwidth}"
+        )
     try:
         if args.proof_deps is not None:
             path = args.proof_deps.expanduser().resolve()

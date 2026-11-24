@@ -8,6 +8,7 @@ from functools import partial
 import json
 from pathlib import Path
 
+from orbexa.layout import ProjectLayout
 from orbexa.simulation.contact.capture import (
     CaptureModel,
     CaptureOptions,
@@ -51,7 +52,11 @@ def main(argv=None):
         type=Path,
         help="Qualified physical mission_data.json or its directory",
     )
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="A new directory; defaults to data/completion/<UTC run id>",
+    )
     parser.add_argument(
         "--terminal-execution",
         type=Path,
@@ -98,6 +103,8 @@ def main(argv=None):
         help="Include assembly gravity-gradient torque; default inherits approach target setting",
     )
     args = parser.parse_args(argv)
+    if args.output_dir is None:
+        args.output_dir = ProjectLayout.current().run_directory("completion")
     if not args.assume_attitude_matched and args.input_component_bound is None:
         parser.error(
             "--input-component-bound is required for actual attitude replay and approach fuel accounting"

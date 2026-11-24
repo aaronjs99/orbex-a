@@ -92,16 +92,16 @@ must merge before the release-candidate freeze.
 
 ## W1b Data and results layout
 
-Files: `scripts/layout.py`, `scripts/sessions.py`, `scripts/simulation/study/{api,request,records}.py`, `scripts/cli/*.py`, `serve.py`, `scripts/simulation/service/`, `scripts/visualization/data/`, `.gitignore`, `README.md`, `INSTALL.md`, `docs/configuration.md`, `docs/deployment.md`.
+Files: `scripts/layout.py`, `scripts/cli/*.py`, `serve.py`, `scripts/simulation/study/request.py`, `scripts/simulation/service/contracts.py`, `.gitignore`, `README.md`, `INSTALL.md` and the affected guides.
 
-- [ ] Add a dependency-free `ProjectLayout` to `scripts/layout.py`, with `data_root` and `results_root`. The defaults are `<checkout>/data` and `<checkout>/results`; an installed wheel falls back to the working directory. Overrides come from `ORBEXA_DATA` / `ORBEXA_RESULTS`, then the CLI flags.
-- [ ] `./data/` holds inputs only: external datasets, downloaded geometry, frozen priors and reusable proof caches. `./data/paper/` stays tracked, as now.
-- [ ] `./results/` holds generated evidence only, at `results/<study>/<case>/<arm>/<run-id>/`. `<run-id>` is the UTC timestamp plus a short source hash. Keep the existing manifest, journal and approach/completion contents unchanged.
-- [ ] Keep `results/index.jsonl` as an append-only catalog: run id, path, source and input hashes, host fingerprint, status and stage reached. Write it atomically when a run starts and when it finishes.
-- [ ] Make `--output-dir` optional on every CLI and default it to the layout. Keep the rule that a fresh directory is required, which unique run ids now guarantee.
-- [ ] Studio, `MissionPlots`, the comparison audit and W8 aggregation discover runs through the index rather than hand-supplied paths.
-- [ ] Add `orbexa-results` with `list`, `show` and `clean` subcommands. `clean` removes only aborted runs, and only with explicit `--yes`.
-- [ ] Replace every `../orbexa-output` reference in code and docs. Change README's "Generated evidence stays outside the checkout" to describe the gitignored folders.
+This follows the convention `orbexa-generate-demo` already used: raw records go in `data/` and rendered artifacts in `results/`.
+
+- [x] `ProjectLayout` in `scripts/layout.py` resolves `data_root` and `results_root` from `ORBEXA_DATA` / `ORBEXA_RESULTS`, otherwise `<checkout>/data` and `<checkout>/results` (the working directory for a wheel).
+- [x] `--output-dir` is optional on every CLI. Nonlinear arms default to `data/nonlinear/<case>/<adaptation>-<bandwidth>/<UTC run id>/`, `run_mission` to `data/mission/<run id>/`, `complete_mission` to `data/completion/<run id>/`, live jobs to `data/live-jobs/` and Studio viewers to `results/studio/`.
+- [x] Output guards refuse checkout paths outside `data/` and `results/`, which protects `scripts/`, `config/`, `paper/` and `docs/`. They used to refuse the whole checkout.
+- [x] `.gitignore` re-includes `data/paper/`, which `data/*` had been hiding.
+- [x] Replace every `../orbexa-output` reference in code and docs.
+- [ ] A run catalog (`results/index.jsonl`) and an `orbexa-results list/show/clean` command move to W8, where study aggregation first needs them.
 
 ## W1 Environment and baseline reproduction
 
