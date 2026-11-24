@@ -163,6 +163,17 @@ Files: `estimation/membership/nonlinear.py`, `estimation/adaptation/{smid,nonlin
 - [ ] If the bound shows separability, implement multi-epoch linked evidence. Optionally add safe excitation inside the admitted tube.
 - [ ] Gate: either a certified support contraction on the mission record (Demonstrated), or the certified non-identifiability bound (Bounded). Do not narrow the declared noise or density.
 
+## WR Restructure (spec: `docs/superpowers/specs/2026-11-24-restructure-design.md`)
+
+Runs before W2–W8 so that new work lands in the final layout.
+
+- [ ] Remove eager package re-exports, so callers import from defining modules.
+- [ ] Retire the analytical pipeline, unmaintained modules and `paper/` PNGs.
+- [ ] Move modules into the layers `common` → `models` → `proofs` → `estimation` → `control`/`solvers` → `mission` → `evidence` → `studies` → `figures` → `service` → `cli`, one PR per layer.
+- [ ] Generate figures into `results/<topic>/` from recorded data.
+- [ ] Root cleanup and ROS 2 files (`package.xml`, `resource/orbexa`). Fold `requirements.txt` and `install_dependencies.sh` into `pyproject.toml` extras.
+- [ ] One guide per layer, `docs/history.md` for narration, and folder READMEs.
+
 ## WS Repository standards (owner rules in `AGENTS.md`)
 
 Runs alongside W2–W8 and must be finished before W10. Each step is its own pull request and must not change behavior.

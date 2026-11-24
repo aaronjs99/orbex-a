@@ -7,7 +7,9 @@
 - Generalize algorithms around explicit interfaces for dynamics, constraints, solvers, estimation, tube propagation, and mission orchestration. Avoid baking one paper experiment, one solver, or one target geometry into shared code.
 - Prefer object-oriented design for project-level concepts: missions, controllers, solvers, estimators, constraints, renderers, demos, and datasets should be classes or dataclasses when they carry state or policy. Keep small stateless math helpers as functions.
 - Generated plots, simulation outputs, caches, and local data should stay out of commits. Clean ignored artifacts periodically and only with explicit intent.
-- Do not track local paper PDFs unless explicitly requested. Keep source paper assets, figures, and implementation code separate from downloaded manuscripts.
+- Figures are generated results. Write them into `results/<topic>/` from recorded data. Do not track figure images, paper PDFs or other generated media.
+- Keep `scripts/` as the `orbexa` package and `run.py`/`serve.py` outside it, matching the owner's ROS 2 package layout.
+- Follow the layer order in `docs/superpowers/specs/2026-11-24-restructure-design.md`. Imports only go downward. Package `__init__` files hold no eager re-exports, so callers import from the defining module.
 
 ## Code Standards
 
