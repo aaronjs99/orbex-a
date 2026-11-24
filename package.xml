@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>orbexa</name>
+  <version>2.3.0</version>
+  <description>Adaptive dynamic tube MPC for multi-chaser capture and disposal of a tumbling spacecraft.</description>
+  <maintainer email="aaronjs@g.ucla.edu">Aaron John Sabu</maintainer>
+  <license>GPL-2.0-only</license>
+  <url type="repository">https://github.com/aaronjs99/orbex-a</url>
+  <author>Aaron John Sabu</author>
+  <author>Brett T. Lopez</author>
+
+  <!-- gekko, python-flint and zstandard have no rosdep keys; see INSTALL.md -->
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

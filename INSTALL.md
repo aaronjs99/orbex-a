@@ -7,7 +7,7 @@ Use Python 3.10 or newer. `scripts/` is the `orbexa` package; `run.py` and
 python -m pip install -e ".[certification,studio,video]"
 ```
 
-- **Base install:** NumPy, SciPy, GEKKO, Matplotlib, Plotly and PyYAML.
+- **Base install:** NumPy, SciPy, GEKKO, Matplotlib and PyYAML.
 - **`certification`:** python-flint/Arb for the held-motion enclosures and zstandard for proof journals. Without them, certification refuses.
 - **`studio`:** the local theory renderer.
 - **`video`:** a packaged local video encoder.
@@ -53,3 +53,22 @@ recorded a completed lifecycle, lifecycle plots and replay data go to
 matched comparison of study arms into `results/comparisons/NAME/`. It refuses
 arms whose sources, declarations or grid do not match. Figures are always
 regenerated from recorded data and never committed.
+
+## ROS 2
+
+`package.xml` declares `ament_python`, so the package builds with colcon:
+
+```bash
+python3 -m pip install gekko "python-flint>=0.8,<0.10" "zstandard==0.25.0"
+colcon build --packages-select orbexa --symlink-install
+source install/setup.bash
+ros2 run orbexa orbexa-run-nonlinear --help
+```
+
+rosdep resolves NumPy, SciPy, Matplotlib and PyYAML. It has no key for GEKKO,
+python-flint or zstandard, and colcon installs without dependencies, so the
+`pip` line above is required before building. Without GEKKO the solver cannot
+load. Without python-flint and zstandard every certified step refuses. Add
+`mistune` for the theory renderer and `imageio-ffmpeg` for video.
+All package metadata is in `setup.py`, because colcon's build directory does
+not link `pyproject.toml`.

@@ -173,7 +173,7 @@ Runs before W2–W8 so that new work lands in the final layout.
 - [x] Move modules into the layers `common` → `models` → `proofs` → `control` → `estimation` → `solvers` → `evidence` → `mission` → `studies` → `figures` → `service` → `cli`. This was one mechanical PR: a single import rewrite per file costs less than eleven.
 - [x] Remove the upward imports. `MPCController` moves to `solvers`, the interval kernel to `common.intervals`, constraints and target snapshots to `models`, rotation bounds to `proofs`, and the run recorders to `mission.records`. `control` now sits below `estimation`, and `evidence` below `mission`.
 - [x] Generate figures into `results/<topic>/` from recorded data with `orbexa-figures`: `mission` writes run plots and lifecycle replay, and `comparison` writes matched-arm comparisons.
-- [ ] Root cleanup and ROS 2 files (`package.xml`, `resource/orbexa`). Fold `requirements.txt` and `install_dependencies.sh` into `pyproject.toml` extras.
+- [x] Root cleanup and ROS 2 files: `package.xml`, `resource/orbexa`, `setup.cfg`, and `setup.py` installing the ament marker. `requirements.txt` and `install_dependencies.sh` are folded into `pyproject.toml` extras, and the unused `mayavi` and `torch` extras are dropped.
 - [ ] One guide per layer, `docs/history.md` for narration, and folder READMEs.
 
 ## WS Repository standards (owner rules in `AGENTS.md`)
