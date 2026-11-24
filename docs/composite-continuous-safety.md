@@ -61,41 +61,22 @@ geometry. Missing segments or missing/unproved flows cannot pass.
 
 `RotatingCompositeBounds` carries the complete geometry, evaluated matrix,
 matrix-error budget, rates, center box and frame/scope. Its geometry identity
-is serialized in the collision certificate. `CertifiedExecutionGuard` selects
-the composite guard explicitly, includes this identity in restart context,
-and refuses a changed or removed appendage inside a committed proof prefix.
+is serialized in the collision certificate. `CompositeSweptCollisionGuard` rejects any target bounds that are not
+`RotatingCompositeBounds` and binds every certificate to the geometry
+fingerprint, so a changed or removed appendage no longer matches earlier
+proofs.
 Exact accumulated clock corrections are included in pose/center uncertainty.
 
-### Derived finite-domain rotation rate
+### Rotation rate
 
-`bound_rigid_body_rotation(start_anomaly, end_anomaly, parameters, *, inertia,
-initial_spin, gravity_gradient=True, precision_bits=160)` returns a typed
-`RigidBodyRotationBounds`. The initial spin box applies at the specified start
-anomaly. It uses Arb orbital radius/clock bounds and the same exact inertia and
-energy comparison described below; it does not take a maximum from the target
-preview. Its whole-domain relative angular-rate upper bound is
-`1 + spin_norm_upper / clock.anomaly_rate.lower[0]`. The added one is the exact
-planar LVLH basis rotation per anomaly radian. Additional torque models are
-unsupported by this helper.
-
-The composite `PhysicalApproachScenario` uses this derived rate over the full
-declared target preview domain, with the target's known initial spin and fixed
-inertia. The target clock, initial spin and gravity-gradient option must agree
-with the explicit approach configuration/options, and its preview must contain
-the initial anomaly zero. The guard records the complete rate derivation in
-`rotation_rate_bounds` and rejects holds outside its finite domain. The
-`ContinuousAdmissionOptions` numerical rotation operator error remains a
-caller-declared assumption; a derived rate does not certify DOP853 attitude
-integration accuracy. Caller rate declarations remain supported for explicitly
-constructed `RotatingCompositeBounds` without a derived certificate, and for
-the separately qualified cylinder path.
-
-For the declared Envisat study tensor, initial axial spin of 2.4 degrees/s,
-`a=7178137 m`, `e=.001`, `alpha=2e-9` and anomaly domain `[0,1.214]`, the
-source-qualified helper gives relative rate at most `124.238590 rad/rad` and
-spin norm at most `.128027116 rad/s`. These conservative energy/clock values
-are conditional on those inputs and gravity-gradient-only torque. A smaller
-declared rate is not disproved by this sufficient upper bound.
+`RotatingCompositeBounds` takes the whole-hold relative angular rate as a
+declared input. The nonlinear mission derives it from the Arb attitude flow
+(`AttitudeFlowCertificate.occupied_bounds`), which supplies the matrix-error
+budget and the rate over the exact hold. The earlier energy-based analytical
+bound, which derived a finite-domain rate from a fixed inertia and an initial
+spin box, is retired together with the analytical pipeline that consumed it.
+A declared rate is an assumption of the caller, and a derived rate does not
+certify the accuracy of a numerical attitude integrator.
 
 ## Reference clearance and terminal tracking
 
@@ -143,25 +124,17 @@ the subsequent input or held-feedback inequalities; those can still refuse.
 ## Runtime and source binding
 
 ```python
-from orbexa.control import RotatingCompositeBounds, CompositeTerminalGeometry
-from orbexa.control import CompositePhysicalTerminalBoundsBuilder
-from orbexa.control import bound_rigid_body_rotation, IntervalBox, OrbitalModelBounds
+from orbexa.proofs.geometry import RotatingCompositeBounds, CompositeTerminalGeometry
+from orbexa.control.terminal.composite import CompositePhysicalTerminalBoundsBuilder
 from orbexa.models.geometry.composite import SpacecraftGeometry
 
 geometry = SpacecraftGeometry.from_json(geometry_path)
 clearance = CompositeTerminalGeometry(geometry).point_separation(body_point)
-rate = bound_rigid_body_rotation(
-    q_initial, q_final, OrbitalModelBounds(**target_clock_parameters),
-    inertia=target_inertia,
-    initial_spin=IntervalBox.from_center_radius(initial_body_spin, spin_error),
-    gravity_gradient=True,
-)
 pose = RotatingCompositeBounds(
     geometry=geometry,
     orientation_matrix_at_start=body_to_lvlh,
     orientation_matrix_error=declared_matrix_and_clock_error,
-    angular_rate_per_anomaly=rate.relative_angular_rate_upper,
-    rotation_rate_bounds=rate,
+    angular_rate_per_anomaly=declared_relative_rate,
 )
 ```
 

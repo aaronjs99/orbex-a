@@ -171,7 +171,6 @@ class RotatingCompositeBounds:
     scope: str = (
         "Declared rigid composite geometry and pose/rate bounds over the complete hold"
     )
-    rotation_rate_bounds: Any = None
 
     def __post_init__(self):
         _geometry_context(self.geometry)
@@ -205,20 +204,6 @@ class RotatingCompositeBounds:
             raise ValueError(
                 "Identify the composite target frame and whole-hold bound source"
             )
-        if self.rotation_rate_bounds is not None:
-            from orbexa.proofs.rotation_bounds import RigidBodyRotationBounds
-
-            if not isinstance(self.rotation_rate_bounds, RigidBodyRotationBounds):
-                raise TypeError(
-                    "Rotation-rate evidence must be explicit RigidBodyRotationBounds"
-                )
-            if (
-                self.angular_rate_per_anomaly
-                < self.rotation_rate_bounds.relative_angular_rate_upper
-            ):
-                raise ValueError(
-                    "The supplied rotation rate does not cover its analytical certificate"
-                )
 
     def as_dict(self):
         _, geometry, identity = _geometry_context(self.geometry)
@@ -236,8 +221,6 @@ class RotatingCompositeBounds:
             "frame": self.frame,
             "scope": self.scope,
         }
-        if self.rotation_rate_bounds is not None:
-            result["rotation_rate_bounds"] = self.rotation_rate_bounds.as_dict()
         return result
 
 
@@ -338,17 +321,6 @@ class CompositeSweptCollisionGuard:
                 "Incompatible composite flow frames or exact clocks",
                 **common,
             )
-        if target.rotation_rate_bounds is not None:
-            domain = target.rotation_rate_bounds.clock.anomaly
-            if (
-                first.start_anomaly[0] < domain[0]
-                or first.start_anomaly[1] + first.hold_width[1] > domain[1]
-            ):
-                return CollisionCertificate(
-                    GuardStatus.UNRESOLVED,
-                    "Continuous hold exceeds the finite analytical target rotation-rate domain",
-                    **common,
-                )
         parts, _, fingerprint = _geometry_context(target.geometry)
         try:
             import flint

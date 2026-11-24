@@ -223,7 +223,7 @@ by its analytic \(\|F_f\|\le\mu F_n\) cone. Finite proof refinements and
 numerical integration substeps remain separate from the held sensor/control
 interval.
 
-`AssemblyEnclosure` carries the post-lock state, uncertain geometry and
+`AssemblyStateEnclosure` carries the post-lock state, uncertain geometry and
 inertia through controlled and zero-thrust intervals. Bounded chaser-carried
 gyros/star trackers condition the common assembly state; the target supplies
 no receiver. Multiple deterministic sensor supports are intersected without

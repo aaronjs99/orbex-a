@@ -192,7 +192,7 @@ explicit exception; proper-matrix queries and the collision payload remain avail
 
 ```python
 import numpy as np
-from orbexa.models import RigidBodyCylinderTarget
+from orbexa.models.targets.cylinder import RigidBodyCylinderTarget
 from orbexa.models.configuration.model import SimulationConfig
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.mission.approach.scenario import MissionScenario

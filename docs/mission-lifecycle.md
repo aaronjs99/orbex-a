@@ -127,13 +127,6 @@ and actual endpoint alignment, and rebuilds conservative fuel from applied-input
 boxes. It does not infer inputs from outer means or use the analytical CH journal.
 See [the continuation contract](finite-contact.md#nonlinear-mission-continuation).
 
-For analytical reproduction, `HeldInputPropellantAccountant` binds the raw approach, its complete ordered
-guard journals and the immutable producer source. It reconstructs the original
-interval-flow and swept-geometry witnesses before using their held actuator
-boxes. Missing or refused holds, changed clocks, mismatched states or incomplete
-source lineage refuse the smaller allowance. A restarted mission requires its
-complete original journal followed by every new admitted hold.
-
 For hold $j$, let $U_{ij}$ bound the absolute anomaly-acceleration command in
 component $i$, let $\bar\nu_j$ bound the anomaly rate in physical seconds, and
 let $\bar\Delta t_j$ bound its physical duration. The initial wet mass $m_0$

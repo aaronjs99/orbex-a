@@ -85,11 +85,11 @@ declared axis convention. Common nonzero drag does not produce the exact
 general quadratic-drag relative damping: that difference is approximation bias,
 not a parameter-identification achievement. No parameter box can automatically
 absorb unmodeled atmosphere, J2, sensor errors, actuator dynamics or contact.
-The independent [Cartesian dynamics comparison](dynamics-fidelity.md) measures
-this bias using nonlinear central gravity and full vector drag. Its evaluated
-discrepancy exceeds the representative approach's extra acceleration allowance.
-The analytical-model inclusion claims below therefore do not certify that richer
-plant. Evaluated samples are not a uniform model-error bound.
+The nonlinear inclusion service in [navigation and physical bounds](nonlinear-navigation.md)
+bounds this bias over a declared regional box using nonlinear central gravity,
+J2 and full vector drag. The analytical-model inclusion claims below therefore
+do not certify that richer plant. Evaluated samples are not a uniform
+model-error bound.
 
 ## 2. Moving reference and occupied target
 
@@ -427,7 +427,7 @@ admitting a performance command, it proves both the current swept interval and
 membership of its successor in a stored admissible continuation. A rejected,
 malformed or failed performance solve therefore selects the previously certified
 backup. This conditional recursive safety argument applies only after a valid
-backup chain has been admitted. `CertifiedExecutionGuard` on an ordinary approach
+backup chain has been admitted. `CompositeSweptCollisionGuard` on an ordinary approach
 does not manufacture that chain: a solver failure there preserves the last
 committed evidence and reports failure.
 

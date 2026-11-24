@@ -7,7 +7,7 @@ it does not manufacture optimizer solutions, nominal plans, SMID observations,
 belief updates or MPC dwell intervals.
 
 ```python
-from orbexa.mission import PhysicalTerminalHandoff
+from orbexa.mission.approach.terminal.handoff import PhysicalTerminalHandoff
 from orbexa.evidence.records.results import MissionResultStore
 from orbexa.mission.lifecycle.coordinator import CompleteMissionOptions, CompleteMissionRunner
 

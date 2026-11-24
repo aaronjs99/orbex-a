@@ -14,7 +14,7 @@
 
 This module implements the Model Predictive Control (MPC) logic for spacecraft
 rendezvous and docking, with optional parameter-estimate adaptation.
-Coupled robust missions are orchestrated by ADTMPCMissionRunner.
+Coupled robust missions are orchestrated by NonlinearMissionRunner.
 
 Key Design Principles:
 - Solver-agnostic: Uses the orbexa.solvers abstraction layer

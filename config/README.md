@@ -33,3 +33,12 @@ fleet. The default Envisat radius remains 30 m. This selects proposals; changing
 target geometry, mass, inertia or spin still requires every original dynamics,
 sensing, force, fuel, contact and whole-set collision check. It does not establish
 arrival for every target.
+
+## File Structure
+
+| File | Relevance | Dependencies | Used by |
+|---|---|---|---|
+| `envisat.yaml` | Orbital constants, MPC cost and constraints, native GEKKO/IPOPT settings and the execution grid. | `models/configuration` loads it | `run.py`, `serve.py`, `orbexa-run-nonlinear`, `orbexa-serve-studio` |
+| `nonlinear-study.json` | The prospective study profile: explicit options and the independently selected truth and noise cases. | `studies/request.py` validates it | `run.py`, `orbexa-run-nonlinear` |
+| `spacecraft/` | The complete vehicle geometry JSON: components, attachment patches, mass and propulsion. | `models/geometry` | `run.py`, `serve.py`, `mission/lifecycle/configuration` |
+
