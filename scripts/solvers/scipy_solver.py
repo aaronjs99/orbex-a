@@ -46,13 +46,24 @@ class ScipySolver(SolverBase):
 
     def setup(self, problem: MPCProblem) -> None:
         """Set up SciPy optimization."""
-        dynamic = problem.extra_params.get('dynamic_tube')
-        if dynamic is not None and dynamic.get('applied_actuator_input_error_abs') is not None:
-            applied = np.asarray(dynamic['applied_actuator_input_error_abs'], dtype=float)
-            if applied.shape != (3,) or not np.all(np.isfinite(applied)) or np.any(applied < 0):
-                raise ValueError('Invalid dynamic-tube applied actuator input support')
+        dynamic = problem.extra_params.get("dynamic_tube")
+        if (
+            dynamic is not None
+            and dynamic.get("applied_actuator_input_error_abs") is not None
+        ):
+            applied = np.asarray(
+                dynamic["applied_actuator_input_error_abs"], dtype=float
+            )
+            if (
+                applied.shape != (3,)
+                or not np.all(np.isfinite(applied))
+                or np.any(applied < 0)
+            ):
+                raise ValueError("Invalid dynamic-tube applied actuator input support")
             if np.any(applied):
-                raise ValueError('SciPy does not implement dynamic-tube applied-input tightening; use the authoritative GEKKO backend')
+                raise ValueError(
+                    "SciPy does not implement dynamic-tube applied-input tightening; use the authoritative GEKKO backend"
+                )
         self._problem = problem
 
         A = problem.dynamics_matrix
@@ -77,11 +88,16 @@ class ScipySolver(SolverBase):
         # Discretize if needed
         if problem.dynamics_type == "continuous":
             self._A_d, self._B_d = self._discretize(
-                np.asarray(A, dtype=float), np.asarray(B, dtype=float), problem.anom_step
+                np.asarray(A, dtype=float),
+                np.asarray(B, dtype=float),
+                problem.anom_step,
             )
             self._d_d = d_vec * problem.anom_step
         else:
-            self._A_d, self._B_d = np.asarray(A, dtype=float), np.asarray(B, dtype=float)
+            self._A_d, self._B_d = (
+                np.asarray(A, dtype=float),
+                np.asarray(B, dtype=float),
+            )
             self._d_d = d_vec
 
         self._is_setup = True
@@ -94,9 +110,7 @@ class ScipySolver(SolverBase):
         states[:, 0] = p.initial_state
         for t in range(num_steps - 1):
             states[:, t + 1] = (
-                self._A_d @ states[:, t]
-                + self._B_d @ inputs[:, t]
-                + self._d_d
+                self._A_d @ states[:, t] + self._B_d @ inputs[:, t] + self._d_d
             )
         return states
 
@@ -110,9 +124,7 @@ class ScipySolver(SolverBase):
         interval_references = p.reference_inputs
         # The final allocated input is unused by dynamics and is omitted
         # from SolverResult; pad its reference without shifting real intervals.
-        input_references = np.hstack(
-            [interval_references, interval_references[:, -1:]]
-        )
+        input_references = np.hstack([interval_references, interval_references[:, -1:]])
 
         cost = 0.0
         for t in range(num_steps):
@@ -201,7 +213,9 @@ class ScipySolver(SolverBase):
         if p.extra_params.get("affine_constraints"):
             constraints.append({"type": "ineq", "fun": self._affine_constraints_inputs})
         if p.state_bounds:
-            constraints.append({"type": "ineq", "fun": self._state_bound_constraints_inputs})
+            constraints.append(
+                {"type": "ineq", "fun": self._state_bound_constraints_inputs}
+            )
 
         start_time = time.time()
 

@@ -77,7 +77,9 @@ def get_solver_from_config(config_path=None) -> SolverBase:
     backend = solver_config.get("backend", "gekko")
     backend_config = solver_config.get(backend)
     if backend_config is None:
-        backend_config = {key: value for key, value in solver_config.items() if key != "backend"}
+        backend_config = {
+            key: value for key, value in solver_config.items() if key != "backend"
+        }
     if not isinstance(backend_config, dict):
         raise ValueError(f"solver.{backend} options must be a mapping")
     return get_solver(backend, backend_config)

@@ -1,4 +1,5 @@
 """Compose session selection, result loading/running and artifact publication."""
+
 from __future__ import annotations
 import logging
 import os
@@ -14,7 +15,10 @@ from orbexa.simulation.approach.records.results import load_adtmpc_mission_resul
 from orbexa.utils.io.data import save_data
 from orbexa.visualization.workflow.config import DemoConfig
 from orbexa.visualization.data.manifest import ADTMPCMissionManifest
-from orbexa.visualization.publishing.catalog import MissionCatalog, require_current_result
+from orbexa.visualization.publishing.catalog import (
+    MissionCatalog,
+    require_current_result,
+)
 from orbexa.visualization.publishing.gallery import MissionGallery
 from orbexa.visualization.renderers.mission import ADTMPCMissionRenderer
 
@@ -31,32 +35,43 @@ class OrbexaDemo:
     def __init__(self, config: DemoConfig):
         self.config = config
 
-
     def run(self) -> List[ADTMPCMissionManifest]:
         if self.config.from_data and self.config.clean_generated:
             raise ValueError("--from-data cannot be combined with --clean-generated")
         session = MissionSession.select(
-            self.config.output_dir, self.config.data_dir,
-            session_id=self.config.session_id, from_data=self.config.from_data,
-            mission=self.config.mission, solver=self.config.primary_solver,
+            self.config.output_dir,
+            self.config.data_dir,
+            session_id=self.config.session_id,
+            from_data=self.config.from_data,
+            mission=self.config.mission,
+            solver=self.config.primary_solver,
         )
         output_session_dir, data_session_dir = session.output_dir, session.data_dir
         session.preflight([(mission, "nonlinear") for mission in self._missions()])
-        gallery_entries = self._read_gallery_catalog(output_session_dir, data_session_dir)
+        gallery_entries = self._read_gallery_catalog(
+            output_session_dir, data_session_dir
+        )
         if self.config.from_data:
             # Read every requested family before changing any rendered artifacts or notes.
             self._saved_results = {}
             for mission in self._missions():
-                result = load_adtmpc_mission_result(data_session_dir / mission / "nonlinear")
+                result = load_adtmpc_mission_result(
+                    data_session_dir / mission / "nonlinear"
+                )
                 if result.mission != mission:
                     raise ValueError(f"Saved data does not match {mission}/nonlinear")
                 self._require_current_result(result)
                 self._saved_results[(mission, "nonlinear")] = result
         else:
             from orbexa.core.configuration.model import SimulationConfig
+
             self._mission_config = SimulationConfig.load(self.config.config_path)
             if self.config.clean_generated:
-                clean_generated_outputs(session.output_root, session.data_root, scenario_path=self.config.config_path)
+                clean_generated_outputs(
+                    session.output_root,
+                    session.data_root,
+                    scenario_path=self.config.config_path,
+                )
             session.create()
 
         manifests: List[ADTMPCMissionManifest] = []
@@ -75,17 +90,31 @@ class OrbexaDemo:
             gallery_entries[entry["relative_dir"]] = entry
         entries = list(gallery_entries.values())
         MissionGallery(output_session_dir).render(entries)
-        if not save_data(output_session_dir / "gallery.json", {
-            "schema": "orbexa.mission.gallery.v1", "entries": entries,
-        }):
+        if not save_data(
+            output_session_dir / "gallery.json",
+            {
+                "schema": "orbexa.mission.gallery.v1",
+                "entries": entries,
+            },
+        ):
             raise OSError("Could not save mission gallery catalog")
         preview_mission = self._link_session_demo_gif(output_session_dir, entries)
-        self._write_run_readme(output_session_dir, data_session_dir, session.name, preview_mission=preview_mission)
+        self._write_run_readme(
+            output_session_dir,
+            data_session_dir,
+            session.name,
+            preview_mission=preview_mission,
+        )
         if not self.config.from_data:
             session.publish()
-            failures = [manifest for manifest in manifests
-                        if self._requires_success(manifest.approximation, manifest.solver_backend)
-                        and not manifest.success]
+            failures = [
+                manifest
+                for manifest in manifests
+                if self._requires_success(
+                    manifest.approximation, manifest.solver_backend
+                )
+                and not manifest.success
+            ]
             if failures:
                 failed = failures[0]
                 raise RuntimeError(
@@ -95,10 +124,13 @@ class OrbexaDemo:
                 )
         return manifests
 
-
     def _write_run_readme(
-        self, output_session_dir: Path, data_session_dir: Path, session_id: str,
-        *, preview_mission: Optional[str] = None,
+        self,
+        output_session_dir: Path,
+        data_session_dir: Path,
+        session_id: str,
+        *,
+        preview_mission: Optional[str] = None,
     ) -> None:
         """Create editable notes, linking the preview from each README's own root."""
         for directory in (output_session_dir, data_session_dir):
@@ -106,7 +138,9 @@ class OrbexaDemo:
             preview_href = None
             if preview_mission is not None:
                 try:
-                    preview_href = Path(os.path.relpath(output_session_dir / "demo.gif", directory)).as_posix()
+                    preview_href = Path(
+                        os.path.relpath(output_session_dir / "demo.gif", directory)
+                    ).as_posix()
                 except ValueError:
                     pass
             content = self._run_readme_template(session_id, preview_href=preview_href)
@@ -117,9 +151,12 @@ class OrbexaDemo:
             previous = readme.read_text(encoding="utf-8")
             revised = []
             for line in previous.splitlines(keepends=True):
-                if (line.strip() == "![Multi-agent ADTMPC demo](demo.gif)" or
-                        line.startswith("![ADTMPC trajectory preview]") or
-                        line.strip() == "No trajectory preview was generated for the available mission families."):
+                if (
+                    line.strip() == "![Multi-agent ADTMPC demo](demo.gif)"
+                    or line.startswith("![ADTMPC trajectory preview]")
+                    or line.strip()
+                    == "No trajectory preview was generated for the available mission families."
+                ):
                     line = self._preview_line(preview_href) + "\n"
                 revised.append(line)
             updated = "".join(revised)
@@ -128,10 +165,15 @@ class OrbexaDemo:
 
     @staticmethod
     def _preview_line(preview_href: Optional[str]) -> str:
-        return (f"![ADTMPC trajectory preview]({quote(preview_href, safe='/%')})" if preview_href else
-                "No trajectory preview was generated for the available mission families.")
+        return (
+            f"![ADTMPC trajectory preview]({quote(preview_href, safe='/%')})"
+            if preview_href
+            else "No trajectory preview was generated for the available mission families."
+        )
 
-    def _run_readme_template(self, session_id: str, *, preview_href: Optional[str] = None) -> str:
+    def _run_readme_template(
+        self, session_id: str, *, preview_href: Optional[str] = None
+    ) -> str:
         missions = ", ".join(self._missions())
         return f"""# ADTMPC Run Notes
 
@@ -170,22 +212,31 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
 - Open questions:
 """
 
-
-    def _link_session_demo_gif(self, output_session_dir: Path, entries=None) -> Optional[str]:
+    def _link_session_demo_gif(
+        self, output_session_dir: Path, entries=None
+    ) -> Optional[str]:
         """Expose an available qualified nonlinear family's trajectory preview."""
         if entries is None:
             entries = self._read_gallery_catalog(output_session_dir).values()
-        available = {entry["mission"]: entry for entry in entries
-                     if entry.get("mission") in ("single", "multi") and
-                     entry.get("approximation") == "nonlinear" and entry.get("backend") == "gekko" and
-                     entry.get("model_version") == PHYSICAL_MODEL_ID and
-                     entry.get("controller") == COUPLED_CONTROLLER_ID}
+        available = {
+            entry["mission"]: entry
+            for entry in entries
+            if entry.get("mission") in ("single", "multi")
+            and entry.get("approximation") == "nonlinear"
+            and entry.get("backend") == "gekko"
+            and entry.get("model_version") == PHYSICAL_MODEL_ID
+            and entry.get("controller") == COUPLED_CONTROLLER_ID
+        }
         source, selected = None, None
         for mission in ("multi", "single"):
             entry = available.get(mission)
             candidate = output_session_dir / mission / "nonlinear" / "trajectory.gif"
             MissionSession._check_path(candidate, output_session_dir)
-            if entry is not None and "trajectory.gif" not in entry.get("skipped_artifacts", {}) and candidate.is_file():
+            if (
+                entry is not None
+                and "trajectory.gif" not in entry.get("skipped_artifacts", {})
+                and candidate.is_file()
+            ):
                 source, selected = candidate, mission
                 break
         if source is None:
@@ -207,7 +258,6 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
             return ["single", "multi"]
         return [self.config.mission]
 
-
     def _run_or_render(
         self,
         *,
@@ -224,6 +274,7 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
             data_file = data_family_dir / "mission_data.json"
         else:
             from orbexa.simulation.approach.api import ADTMPCMissionRunner
+
             runner = ADTMPCMissionRunner(
                 config=self._mission_config,
                 solver_backend=solver_backend,
@@ -237,7 +288,6 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
             data_file=data_file,
         )
 
-
     def _requires_success(self, approximation: str, solver_backend: str) -> bool:
         return (
             self.config.require_primary_success
@@ -246,24 +296,45 @@ Created: `{datetime.now().isoformat(timespec="seconds")}`
         )
 
 
-
-def clean_generated_outputs(output_dir: Path, data_dir: Path, *, scenario_path: Optional[Path] = None) -> None:
+def clean_generated_outputs(
+    output_dir: Path, data_dir: Path, *, scenario_path: Optional[Path] = None
+) -> None:
     """Remove only the selected generated roots, rejecting source and overlapping paths."""
-    roots = [Path(output_dir).expanduser().resolve(), Path(data_dir).expanduser().resolve()]
+    roots = [
+        Path(output_dir).expanduser().resolve(),
+        Path(data_dir).expanduser().resolve(),
+    ]
     checkout = project_root()
-    protected = [PACKAGE_ROOT] + [checkout / name for name in ("config", "paper", "assets", ".git")]
+    protected = [PACKAGE_ROOT] + [
+        checkout / name for name in ("config", "paper", "assets", ".git")
+    ]
     for root in roots:
         if root.exists() and not root.is_dir():
             raise ValueError(f"Generated output root is not a directory: {root}")
-        if scenario_path is not None and root in Path(scenario_path).expanduser().resolve().parents:
-            raise ValueError(f"Refusing to clean the selected scenario YAML: {scenario_path}")
-        if root == Path(root.anchor) or root == Path.home() or root == checkout or root in checkout.parents:
+        if (
+            scenario_path is not None
+            and root in Path(scenario_path).expanduser().resolve().parents
+        ):
+            raise ValueError(
+                f"Refusing to clean the selected scenario YAML: {scenario_path}"
+            )
+        if (
+            root == Path(root.anchor)
+            or root == Path.home()
+            or root == checkout
+            or root in checkout.parents
+        ):
             raise ValueError(f"Refusing to clean protected folder: {root}")
         if (root / ".git").exists() or any(
-            root == item or root in item.parents or item in root.parents for item in protected
+            root == item or root in item.parents or item in root.parents
+            for item in protected
         ):
             raise ValueError(f"Refusing to clean source folder: {root}")
-    if roots[0] == roots[1] or roots[0] in roots[1].parents or roots[1] in roots[0].parents:
+    if (
+        roots[0] == roots[1]
+        or roots[0] in roots[1].parents
+        or roots[1] in roots[0].parents
+    ):
         raise ValueError("Generated output roots must not overlap")
     for root in roots:
         if root.is_dir():

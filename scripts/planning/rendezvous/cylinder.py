@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Cylindrical side-point assignment from each chaser approach direction."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple, TYPE_CHECKING

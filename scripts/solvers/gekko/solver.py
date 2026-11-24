@@ -83,6 +83,7 @@ class GekkoSolver(SolverBase):
             self._dynamic_tube = None
         if problem.extra_params.get("dynamic_tube") is not None:
             from orbexa.solvers.gekko.tube import GekkoDynamicTube
+
             self._dynamic_tube = GekkoDynamicTube(problem, self.config)
             self._is_setup = True
             return
@@ -191,9 +192,7 @@ class GekkoSolver(SolverBase):
             if radius > 0.0:
                 safe_radius = radius + tube_radius
                 eqs.append(
-                    self._states[0] ** 2
-                    + self._states[1] ** 2
-                    + self._states[2] ** 2
+                    self._states[0] ** 2 + self._states[1] ** 2 + self._states[2] ** 2
                     >= safe_radius**2
                 )
         elif operation == "docking" and target_params.get("shape") == "cylinder":
@@ -215,9 +214,7 @@ class GekkoSolver(SolverBase):
                     angles,
                     solver,
                 )
-                body_from_lvlh = [
-                    [rotation[j][i] for j in range(3)] for i in range(3)
-                ]
+                body_from_lvlh = [[rotation[j][i] for j in range(3)] for i in range(3)]
             else:
                 rotation = tait_bryan_to_rotation_matrix(orientation)
                 body_from_lvlh = rotation.T
@@ -340,16 +337,12 @@ class GekkoSolver(SolverBase):
         # --- Objective ---
         # State references use state nodes. GEKKO's raw input node k+1
         # drives interval k; node zero has no preceding control interval.
-        state_references = [
-            solver.Param(value=row) for row in problem.reference_states
-        ]
+        state_references = [solver.Param(value=row) for row in problem.reference_states]
         interval_references = problem.reference_inputs
         nodal_input_references = np.hstack(
             [interval_references[:, :1], interval_references]
         )
-        input_references = [
-            solver.Param(value=row) for row in nodal_input_references
-        ]
+        input_references = [solver.Param(value=row) for row in nodal_input_references]
         state_errors = [
             self._states[i] - state_references[i] for i in range(num_states)
         ]
@@ -368,7 +361,9 @@ class GekkoSolver(SolverBase):
             for j in range(num_states):
                 if problem.state_cost_matrix[i, j] != 0:
                     cost_terms.append(
-                        state_errors[i] * problem.state_cost_matrix[i, j] * state_errors[j]
+                        state_errors[i]
+                        * problem.state_cost_matrix[i, j]
+                        * state_errors[j]
                     )
 
         # Input cost

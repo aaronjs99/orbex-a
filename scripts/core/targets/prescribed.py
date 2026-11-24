@@ -11,12 +11,19 @@
 # ***********************************************************/
 
 """Prescribed cylindrical target geometry and anomaly-domain kinematics."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Protocol, Sequence, Tuple, TYPE_CHECKING
 import numpy as np
-from orbexa.control.mpc.constraints import CylinderConstraint, rotating_body_point_acceleration, rotating_body_point_velocity, rotating_docking_point, target_frame_position
+from orbexa.control.mpc.constraints import (
+    CylinderConstraint,
+    rotating_body_point_acceleration,
+    rotating_body_point_velocity,
+    rotating_docking_point,
+    target_frame_position,
+)
 
 if TYPE_CHECKING:
     from orbexa.core.configuration.model import SimulationConfig
@@ -36,10 +43,16 @@ class TargetGeometry(Protocol):
     def orientation_at(self, anom: float) -> np.ndarray: ...
     def angular_velocity_at(self, anom: float) -> np.ndarray: ...
     def rotation_matrix_at(self, anom: float) -> np.ndarray: ...
-    def docking_state(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray: ...
-    def docking_acceleration(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray: ...
+    def docking_state(
+        self, docking_point_body: np.ndarray, anom: float
+    ) -> np.ndarray: ...
+    def docking_acceleration(
+        self, docking_point_body: np.ndarray, anom: float
+    ) -> np.ndarray: ...
     def collision_params(self, operation: str, anom: float) -> Dict[str, Any]: ...
-    def assign_docking_targets(self, initial_states: Sequence[np.ndarray]) -> List[Dict[str, Any]]: ...
+    def assign_docking_targets(
+        self, initial_states: Sequence[np.ndarray]
+    ) -> List[Dict[str, Any]]: ...
     def as_dict(self) -> Dict[str, Any]: ...
 
 
@@ -50,7 +63,9 @@ class CylinderTargetGeometry(TargetGeometry, Protocol):
     half_length: float
     tolerance: float
 
-    def cylinder_constraint(self, anom: float, tube_radius: float = 0.0) -> CylinderConstraint: ...
+    def cylinder_constraint(
+        self, anom: float, tube_radius: float = 0.0
+    ) -> CylinderConstraint: ...
 
 
 @dataclass(frozen=True)
@@ -74,23 +89,39 @@ class TumblingCylinderTarget:
         for name in ("initial_orientation", "angular_velocity"):
             value = np.asarray(getattr(self, name), dtype=float)
             if value.shape != (3,) or not np.all(np.isfinite(value)):
-                raise ValueError(f"Target {name} must be a finite vector of length three")
+                raise ValueError(
+                    f"Target {name} must be a finite vector of length three"
+                )
             object.__setattr__(self, name, value.copy())
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> "TumblingCylinderTarget":
         if config.target.shape != "cylinder":
-            raise ValueError("The default target requires shape='cylinder'; inject an explicit supported target")
+            raise ValueError(
+                "The default target requires shape='cylinder'; inject an explicit supported target"
+            )
         center = np.asarray(config.target.center, dtype=float)
-        if center.shape != (3,) or not np.all(np.isfinite(center)) or np.any(center != 0.0):
-            raise ValueError("The default cylindrical target requires a finite zero LVLH center of length three")
+        if (
+            center.shape != (3,)
+            or not np.all(np.isfinite(center))
+            or np.any(center != 0.0)
+        ):
+            raise ValueError(
+                "The default cylindrical target requires a finite zero LVLH center of length three"
+            )
         if config.target.assignment_strategy != "cylinder_side_approach_hungarian":
-            raise ValueError(f"Unsupported default target assignment_strategy: {config.target.assignment_strategy}")
+            raise ValueError(
+                f"Unsupported default target assignment_strategy: {config.target.assignment_strategy}"
+            )
         return cls(
             radius=float(config.target.radius),
             half_length=float(config.target.half_length),
-            initial_orientation=np.asarray(config.target.initial_orientation, dtype=float),
-            angular_velocity=np.asarray(config.target.initial_angular_velocity, dtype=float),
+            initial_orientation=np.asarray(
+                config.target.initial_orientation, dtype=float
+            ),
+            angular_velocity=np.asarray(
+                config.target.initial_angular_velocity, dtype=float
+            ),
             tolerance=float(config.target.tolerance),
             docking_standoff=float(config.target.docking_standoff),
         )
@@ -115,6 +146,7 @@ class TumblingCylinderTarget:
 
     def rotation_matrix_at(self, anom: float) -> np.ndarray:
         from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
+
         return tait_bryan_to_rotation_matrix(self.orientation_at(anom))
 
     def approach_azimuth(self, initial_state: np.ndarray) -> float:
@@ -122,7 +154,9 @@ class TumblingCylinderTarget:
         radial_norm = float(np.linalg.norm(position_body[:2]))
         if radial_norm <= 1.0e-9:
             return 0.0
-        return float(np.mod(np.arctan2(position_body[1], position_body[0]), 2.0 * np.pi))
+        return float(
+            np.mod(np.arctan2(position_body[1], position_body[0]), 2.0 * np.pi)
+        )
 
     def approach_position_body(self, initial_state: np.ndarray) -> np.ndarray:
         return target_frame_position(
@@ -139,10 +173,14 @@ class TumblingCylinderTarget:
     ) -> Tuple[np.ndarray, np.ndarray]:
         normal = np.array([np.cos(azimuth), np.sin(azimuth), 0.0], dtype=float)
         point = normal * (self.radius + self.docking_standoff)
-        point[2] = float(np.clip(axial, -0.8 * self.half_length, 0.8 * self.half_length))
+        point[2] = float(
+            np.clip(axial, -0.8 * self.half_length, 0.8 * self.half_length)
+        )
         return point, normal
 
-    def docking_points_body(self, count: int, start_azimuth: float = 0.0) -> List[np.ndarray]:
+    def docking_points_body(
+        self, count: int, start_azimuth: float = 0.0
+    ) -> List[np.ndarray]:
         points = []
         for idx in range(count):
             angle = start_azimuth + 2.0 * np.pi * idx / max(count, 1)
@@ -154,7 +192,9 @@ class TumblingCylinderTarget:
         self, initial_states: Sequence[np.ndarray]
     ) -> List[Dict[str, Any]]:
         from orbexa.planning.rendezvous.cylinder import assign_docking_targets
+
         return assign_docking_targets(self, initial_states)
+
     def docking_state(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
         orientation = self.orientation_at(anom)
         position = rotating_docking_point(docking_point_body, orientation)
@@ -165,7 +205,9 @@ class TumblingCylinderTarget:
         )
         return np.concatenate((position, velocity))
 
-    def docking_acceleration(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
+    def docking_acceleration(
+        self, docking_point_body: np.ndarray, anom: float
+    ) -> np.ndarray:
         return rotating_body_point_acceleration(
             docking_point_body,
             self.orientation_at(anom),
@@ -179,7 +221,9 @@ class TumblingCylinderTarget:
             "operation": operation,
             "shape": "cylinder",
             "active_safety_model": (
-                "bounding_sphere" if operation == "rendezvous" else "rotating_cylinder_union"
+                "bounding_sphere"
+                if operation == "rendezvous"
+                else "rotating_cylinder_union"
             ),
             "center": [0.0, 0.0, 0.0],
             "orientation": self.orientation_at(anom).tolist(),
@@ -193,7 +237,9 @@ class TumblingCylinderTarget:
             "tube_radius": 0.0,
         }
 
-    def cylinder_constraint(self, anom: float, tube_radius: float = 0.0) -> CylinderConstraint:
+    def cylinder_constraint(
+        self, anom: float, tube_radius: float = 0.0
+    ) -> CylinderConstraint:
         return CylinderConstraint(
             radius=self.radius * (1.0 + self.tolerance),
             half_length=self.half_length * (1.0 + self.tolerance),

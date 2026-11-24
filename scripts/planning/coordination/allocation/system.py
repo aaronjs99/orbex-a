@@ -12,12 +12,18 @@
 
 
 """Agent construction and allocation-policy scheduling."""
+
 from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
-from orbexa.planning.coordination.allocation.contracts import AgentState, Network, Policy, Vec
+from orbexa.planning.coordination.allocation.contracts import (
+    AgentState,
+    Network,
+    Policy,
+    Vec,
+)
 
 
 @dataclass

@@ -12,6 +12,7 @@
 
 
 """Incremental auction policy with caller-owned stepping order."""
+
 from __future__ import annotations
 
 import numpy as np

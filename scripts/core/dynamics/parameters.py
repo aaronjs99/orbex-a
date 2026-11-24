@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Fixed plant parameters, independent of mission orchestration and estimators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,7 +24,9 @@ if TYPE_CHECKING:
 ADTMPC_PARAMETER_KEYS = ("eccentricity", "alpha", "beta")
 
 
-def specific_angular_momentum(mu: float, semi_major_axis: float, eccentricity: float) -> float:
+def specific_angular_momentum(
+    mu: float, semi_major_axis: float, eccentricity: float
+) -> float:
     return float(np.sqrt(mu * semi_major_axis * (1.0 - eccentricity**2)))
 
 

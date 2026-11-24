@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 from orbexa.estimation.adaptation.records import SMIDRecord
 from orbexa.estimation.fitting.prediction import ParameterPredictor
 
+
 class SMIDAdaptor:
     """
     Local recorded-window parameter fitting and candidate-set update policy.
@@ -87,7 +88,9 @@ class SMIDAdaptor:
         dynamics_context: Dict[str, Any],
     ) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, float], SMIDRecord]:
         states = np.asarray(states, dtype=float)
-        controls = self._normalize_controls(np.asarray(controls, dtype=float), len(states))
+        controls = self._normalize_controls(
+            np.asarray(controls, dtype=float), len(states)
+        )
         fss_before = self._copy_ranges(feasible_sets)
         estimates_before = {key: float(estimates[key]) for key in self.parameter_keys}
 
@@ -224,15 +227,13 @@ class SMIDAdaptor:
         for key in held_keys:
             candidate[key] = fss_before[key]
 
-        verified, _, verification_error, verify_status = (
-            self._verify_candidate(
-                feasible_sets=candidate,
-                states=states,
-                controls=controls,
-                start_anom=start_anom,
-                anom_step=anom_step,
-                dynamics_context=dynamics_context,
-            )
+        verified, _, verification_error, verify_status = self._verify_candidate(
+            feasible_sets=candidate,
+            states=states,
+            controls=controls,
+            start_anom=start_anom,
+            anom_step=anom_step,
+            dynamics_context=dynamics_context,
         )
         solve_status["verification"] = verify_status
         solve_status["time_series"] = ts_status
@@ -311,7 +312,9 @@ class SMIDAdaptor:
                 continue
             center = 0.5 * (lower + upper)
             half_width = 0.5 * width_floor
-            center = float(np.clip(center, prev_lower + half_width, prev_upper - half_width))
+            center = float(
+                np.clip(center, prev_lower + half_width, prev_upper - half_width)
+            )
             adjusted[key] = (center - half_width, center + half_width)
         return adjusted
 
@@ -378,8 +381,12 @@ class SMIDAdaptor:
             fss_before=self._ranges_to_lists(fss_before),
             fss_candidate=self._ranges_to_lists(fss_candidate),
             fss_after=self._ranges_to_lists(fss_after),
-            estimates_before={key: float(value) for key, value in estimates_before.items()},
-            estimates_after={key: float(value) for key, value in estimates_after.items()},
+            estimates_before={
+                key: float(value) for key, value in estimates_before.items()
+            },
+            estimates_after={
+                key: float(value) for key, value in estimates_after.items()
+            },
             prediction_error=float(prediction_error),
             verification_error=verification_error,
             point_prediction_error=point_prediction_error,
@@ -410,5 +417,11 @@ class SMIDAdaptor:
 
     def _window_backend(self):
         from orbexa.solvers.gekko.estimation import GekkoWindowEstimator
-        return GekkoWindowEstimator(parameter_keys=self.parameter_keys, error_bound=self.error_bound,
-                                    remote=self.remote, disp=self.disp, max_iter=self.max_iter)
+
+        return GekkoWindowEstimator(
+            parameter_keys=self.parameter_keys,
+            error_bound=self.error_bound,
+            remote=self.remote,
+            disp=self.disp,
+            max_iter=self.max_iter,
+        )

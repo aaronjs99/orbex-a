@@ -12,6 +12,7 @@
 
 
 """Explicit static, nearest-neighbor and radius communication networks."""
+
 from __future__ import annotations
 
 import numpy as np

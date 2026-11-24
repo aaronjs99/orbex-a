@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Controller feasible sets and point estimates with reproducible priors."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,14 +40,21 @@ class ParameterBelief:
     estimates: Dict[str, float]
 
     def __post_init__(self) -> None:
-        if set(self.feasible_sets) != set(ADTMPC_PARAMETER_KEYS) or set(self.estimates) != set(ADTMPC_PARAMETER_KEYS):
+        if set(self.feasible_sets) != set(ADTMPC_PARAMETER_KEYS) or set(
+            self.estimates
+        ) != set(ADTMPC_PARAMETER_KEYS):
             raise ValueError("Parameter belief requires eccentricity, alpha and beta")
         for key in ADTMPC_PARAMETER_KEYS:
             interval = np.asarray(self.feasible_sets[key], dtype=float)
             point = float(self.estimates[key])
-            if (interval.shape != (2,) or not np.all(np.isfinite(interval)) or
-                    interval[0] < 0 or interval[0] > interval[1] or
-                    not np.isfinite(point) or not interval[0] <= point <= interval[1]):
+            if (
+                interval.shape != (2,)
+                or not np.all(np.isfinite(interval))
+                or interval[0] < 0
+                or interval[0] > interval[1]
+                or not np.isfinite(point)
+                or not interval[0] <= point <= interval[1]
+            ):
                 raise ValueError(f"Invalid {key} belief interval or point estimate")
             if key == "eccentricity" and interval[1] >= 1:
                 raise ValueError("Eccentricity belief must belong to [0, 1)")
@@ -54,7 +62,9 @@ class ParameterBelief:
             self.estimates[key] = point
 
     @classmethod
-    def from_config_prior(cls, config: Optional[SimulationConfig] = None) -> "ParameterBelief":
+    def from_config_prior(
+        cls, config: Optional[SimulationConfig] = None
+    ) -> "ParameterBelief":
         """Build the initial adaptive belief from broad or config-centered priors."""
         if config is None:
             ranges = {
@@ -69,13 +79,26 @@ class ParameterBelief:
             beta = float(config.orbit.chaser_drag)
             ranges = {
                 "eccentricity": (
-                    max(0.0, eccentricity - config.adaptation.prior_eccentricity_half_width),
-                    min(0.99, eccentricity + config.adaptation.prior_eccentricity_half_width,
-                        1.0 - (config.orbit.central_body_radius + 1.0) /
-                        config.orbit.semi_major_axis),
+                    max(
+                        0.0,
+                        eccentricity - config.adaptation.prior_eccentricity_half_width,
+                    ),
+                    min(
+                        0.99,
+                        eccentricity + config.adaptation.prior_eccentricity_half_width,
+                        1.0
+                        - (config.orbit.central_body_radius + 1.0)
+                        / config.orbit.semi_major_axis,
+                    ),
                 ),
-                "alpha": (max(0.0, config.adaptation.prior_drag_factors[0] * alpha), config.adaptation.prior_drag_factors[1] * alpha),
-                "beta": (max(0.0, config.adaptation.prior_drag_factors[0] * beta), config.adaptation.prior_drag_factors[1] * beta),
+                "alpha": (
+                    max(0.0, config.adaptation.prior_drag_factors[0] * alpha),
+                    config.adaptation.prior_drag_factors[1] * alpha,
+                ),
+                "beta": (
+                    max(0.0, config.adaptation.prior_drag_factors[0] * beta),
+                    config.adaptation.prior_drag_factors[1] * beta,
+                ),
             }
             # Start from a reproducible feasible point rather than the plant
             # truth; SMID/time-series updates are responsible for adaptation.

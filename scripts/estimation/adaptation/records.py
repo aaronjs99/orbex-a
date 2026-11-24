@@ -15,6 +15,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+
 @dataclass
 class SMIDRecord:
     """Audit record for one Algorithm 1 set-membership update."""

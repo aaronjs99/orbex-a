@@ -12,6 +12,7 @@
 
 
 """Local goal-swap policy with its original distance heuristic."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

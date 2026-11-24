@@ -59,6 +59,7 @@ def calc_local_occlusion_cost(
     cost = (penalty - dist_reward) / normalizer
     return cost
 
+
 def calc_global_occlusion_cost(
     states_list: np.ndarray,
     W: np.ndarray,

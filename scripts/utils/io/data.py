@@ -43,6 +43,7 @@ def get_next_test_folder(base_dir="./results/tests") -> Path:
     next_id = (numbers[-1] + 1) if numbers else 1
     return base / f"t{next_id:02d}"
 
+
 def save_test_result(
     properties: dict, files_to_copy=None, base_dir="./results/tests"
 ) -> str:
@@ -72,6 +73,7 @@ def save_test_result(
     logger.info(f"[✓] Saved test result to: {target_folder}")
     return str(target_folder)
 
+
 def save_data(filename: Union[str, Path], data: Any) -> bool:
     """
     Save data to a JSON file. Handles conversion and path creation.
@@ -90,8 +92,12 @@ def save_data(filename: Union[str, Path], data: Any) -> bool:
         payload = json.dumps(convert_numpy_to_list(data), ensure_ascii=False, indent=2)
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent,
-            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
         ) as stream:
             temporary = Path(stream.name)
             stream.write(payload)
@@ -110,6 +116,7 @@ def save_data(filename: Union[str, Path], data: Any) -> bool:
             except OSError:
                 logger.warning("Could not remove incomplete save %s", temporary)
 
+
 def load_data(filename: Union[str, Path]) -> Any:
     """
     Load data from a JSON file.
@@ -122,6 +129,7 @@ def load_data(filename: Union[str, Path]) -> Any:
     """
     with open(filename, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 def latest_data_file(
     folder: Union[str, Path], suffixes: Optional[Sequence[str]] = None
@@ -154,6 +162,7 @@ def latest_data_file(
     latest = max(candidates, key=lambda p: p.stat().st_mtime)
     return str(latest)
 
+
 def convert_numpy_to_list(obj: Any) -> Any:
     """
     Recursively convert numpy arrays/scalars in data to native Python types.
@@ -173,6 +182,7 @@ def convert_numpy_to_list(obj: Any) -> Any:
     if isinstance(obj, np.generic):
         return obj.item()
     return obj
+
 
 def create_filename(folder: Union[str, Path], suffix: str) -> str:
     """

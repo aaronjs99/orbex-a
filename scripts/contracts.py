@@ -8,6 +8,7 @@ PHYSICAL_MODEL_ID = "physical-lvlh-v1"
 COUPLED_CONTROLLER_ID = "coupled-adaptive-dynamic-tube"
 MISSION_RESULT_SCHEMA = "orbexa.adtmpc_mission.v1"
 
+
 @dataclass
 class MPCProblem:
     """
@@ -48,9 +49,13 @@ class MPCProblem:
 
     def __post_init__(self) -> None:
         if self.num_steps < 2:
-            raise ValueError("MPC requires at least two state samples and one control interval")
+            raise ValueError(
+                "MPC requires at least two state samples and one control interval"
+            )
         if self.terminal_cost_matrix is not None:
-            self.terminal_cost_matrix = np.asarray(self.terminal_cost_matrix, dtype=float)
+            self.terminal_cost_matrix = np.asarray(
+                self.terminal_cost_matrix, dtype=float
+            )
             if self.terminal_cost_matrix.shape != (self.num_states, self.num_states):
                 raise ValueError("Terminal cost must have one row and column per state")
             if not np.all(np.isfinite(self.terminal_cost_matrix)):

@@ -16,7 +16,18 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 import numpy as np
 
-from orbexa.core.configuration.types import OrbitConfig, MPCConfig, TargetConfig, TubeMPCConfig, MissionPolicyConfig, AdaptationConfig, SolverConfig, _positive_integer, _as_square_weight_matrix
+from orbexa.core.configuration.types import (
+    OrbitConfig,
+    MPCConfig,
+    TargetConfig,
+    TubeMPCConfig,
+    MissionPolicyConfig,
+    AdaptationConfig,
+    SolverConfig,
+    _positive_integer,
+    _as_square_weight_matrix,
+)
+
 
 @dataclass
 class SimulationConfig:
@@ -44,8 +55,13 @@ class SimulationConfig:
         _positive_integer(self.num_update_steps, "num_update_steps")
         if not isinstance(self.decoupled_mode, bool):
             raise ValueError("decoupled_mode must be a boolean")
-        if any(not np.isfinite(value) or value <= 0 for value in (self.anom_step, self.total_anom)):
-            raise ValueError("Anomaly step and total anomaly must be finite and positive")
+        if any(
+            not np.isfinite(value) or value <= 0
+            for value in (self.anom_step, self.total_anom)
+        ):
+            raise ValueError(
+                "Anomaly step and total anomaly must be finite and positive"
+            )
 
     @property
     def iter_anomaly(self) -> float:
@@ -68,4 +84,5 @@ class SimulationConfig:
     def load(cls, path: Optional[str] = None) -> "SimulationConfig":
         """Decode a scenario through the dedicated YAML loader."""
         from orbexa.core.configuration.loader import load_simulation_config
+
         return load_simulation_config(path, config_type=cls)

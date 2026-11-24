@@ -3,10 +3,19 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
-from orbexa.utils.solver_options import DEFAULT_GEKKO_MAX_MEMORY, gekko_memory_exponent, composite_geometry_mode
+from orbexa.utils.solver_options import (
+    DEFAULT_GEKKO_MAX_MEMORY,
+    gekko_memory_exponent,
+    composite_geometry_mode,
+)
+
 
 def _positive_integer(value: Any, name: str, minimum: int = 1) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < minimum:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, np.integer))
+        or value < minimum
+    ):
         raise ValueError(f"{name} must be an integer at least {minimum}")
 
 
@@ -27,7 +36,9 @@ def _bounds_list(bounds: List[Dict[str, Any]], name: str, size: int) -> None:
             low = -np.inf if bound.get("lower") is None else float(bound["lower"])
             high = np.inf if bound.get("upper") is None else float(bound["upper"])
         except (TypeError, ValueError) as error:
-            raise ValueError(f"{name}[{index}] must use numeric lower/upper bounds") from error
+            raise ValueError(
+                f"{name}[{index}] must use numeric lower/upper bounds"
+            ) from error
         if np.isnan(low) or np.isnan(high) or low > high:
             raise ValueError(f"{name}[{index}] has invalid ordered bounds")
 
@@ -75,19 +86,28 @@ class OrbitConfig:
     """Reference surface radius in meters; zero disables surface admissibility."""
 
     def __post_init__(self) -> None:
-        if not (np.isfinite(self.mu) and self.mu > 0 and
-                np.isfinite(self.semi_major_axis) and self.semi_major_axis > 0 and
-                0 <= self.eccentricity < 1):
+        if not (
+            np.isfinite(self.mu)
+            and self.mu > 0
+            and np.isfinite(self.semi_major_axis)
+            and self.semi_major_axis > 0
+            and 0 <= self.eccentricity < 1
+        ):
             raise ValueError("The reference orbit must be a finite bound ellipse")
         if self.central_body_radius < 0 or not np.isfinite(self.central_body_radius):
             raise ValueError("central_body_radius must be finite and nonnegative")
         if self.semi_major_axis * (1 - self.eccentricity) <= self.central_body_radius:
             raise ValueError("Reference-orbit perigee intersects the central body")
-        if any(not np.isfinite(value) or value < 0 for value in (self.target_drag, self.chaser_drag)):
+        if any(
+            not np.isfinite(value) or value < 0
+            for value in (self.target_drag, self.chaser_drag)
+        ):
             raise ValueError("Drag coefficients must be finite and nonnegative")
         if not np.isfinite(self.time_periapsis):
             raise ValueError("time_periapsis must be finite")
-        self.initial_conditions = _finite_vector(self.initial_conditions, "orbit.initial_conditions", 6)
+        self.initial_conditions = _finite_vector(
+            self.initial_conditions, "orbit.initial_conditions", 6
+        )
 
     @property
     def mean_motion(self) -> float:
@@ -138,33 +158,56 @@ class MPCConfig:
 
     def __post_init__(self) -> None:
         for phase in ("rendezvous", "docking"):
-            _positive_integer(self.horizon_steps[phase], f"mpc.horizon_steps.{phase}", 2)
-            _positive_integer(self.actuation_steps[phase], f"mpc.actuation_steps.{phase}")
+            _positive_integer(
+                self.horizon_steps[phase], f"mpc.horizon_steps.{phase}", 2
+            )
+            _positive_integer(
+                self.actuation_steps[phase], f"mpc.actuation_steps.{phase}"
+            )
         _bounds_list(self.state_bounds, "mpc.state_bounds", 6)
         _bounds_list(self.input_bounds, "mpc.input_bounds", 3)
         for name, size, positive in (("Q", 6, False), ("R", 3, True)):
             matrix = _as_square_weight_matrix(getattr(self, name), size)
-            if not np.all(np.isfinite(matrix)) or not np.allclose(matrix, matrix.T, atol=1e-12, rtol=0):
+            if not np.all(np.isfinite(matrix)) or not np.allclose(
+                matrix, matrix.T, atol=1e-12, rtol=0
+            ):
                 raise ValueError(f"mpc.{name} must be finite and symmetric")
             eigenvalues = np.linalg.eigvalsh(matrix)
-            if (positive and np.min(eigenvalues) <= 0) or (not positive and np.min(eigenvalues) < -1e-12):
-                raise ValueError(f"mpc.{name} must be {'positive definite' if positive else 'positive semidefinite'}")
+            if (positive and np.min(eigenvalues) <= 0) or (
+                not positive and np.min(eigenvalues) < -1e-12
+            ):
+                raise ValueError(
+                    f"mpc.{name} must be {'positive definite' if positive else 'positive semidefinite'}"
+                )
             setattr(self, name, matrix)
-        if not np.isfinite(self.min_chaser_separation) or self.min_chaser_separation <= 0:
+        if (
+            not np.isfinite(self.min_chaser_separation)
+            or self.min_chaser_separation <= 0
+        ):
             raise ValueError("mpc.min_chaser_separation must be finite and positive")
         if self.goal_bounds is not None:
             goal = _finite_vector(self.goal_bounds, "mpc.goal_bounds", 2)
             if not 0 <= goal[0] < goal[1]:
-                raise ValueError("mpc.goal_bounds must be increasing nonnegative shell radii")
+                raise ValueError(
+                    "mpc.goal_bounds must be increasing nonnegative shell radii"
+                )
         if not isinstance(self.terminal_cost_enabled, bool):
             raise ValueError("mpc.terminal_cost_enabled must be a boolean")
         if not isinstance(self.reference_preview_enabled, bool):
             raise ValueError("mpc.reference_preview_enabled must be a boolean")
-        if (not isinstance(self.terminal_dwell_updates, int) or
-                isinstance(self.terminal_dwell_updates, bool) or self.terminal_dwell_updates <= 0):
+        if (
+            not isinstance(self.terminal_dwell_updates, int)
+            or isinstance(self.terminal_dwell_updates, bool)
+            or self.terminal_dwell_updates <= 0
+        ):
             raise ValueError("mpc.terminal_dwell_updates must be a positive integer")
-        if any(not np.isfinite(value) or value <= 0 for value in
-               (self.docking_position_tolerance, self.docking_velocity_tolerance)):
+        if any(
+            not np.isfinite(value) or value <= 0
+            for value in (
+                self.docking_position_tolerance,
+                self.docking_velocity_tolerance,
+            )
+        ):
             raise ValueError("Docking tolerances must be finite and positive")
 
     def bounds(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, float]]]:
@@ -191,19 +234,39 @@ class TargetConfig:
     observation_error: Dict[str, float]
 
     def __post_init__(self) -> None:
-        self.initial_orientation = _finite_vector(self.initial_orientation, "target.initial_orientation", 3)
-        self.initial_angular_velocity = _finite_vector(self.initial_angular_velocity, "target.initial_angular_velocity", 3)
+        self.initial_orientation = _finite_vector(
+            self.initial_orientation, "target.initial_orientation", 3
+        )
+        self.initial_angular_velocity = _finite_vector(
+            self.initial_angular_velocity, "target.initial_angular_velocity", 3
+        )
         self.center = _finite_vector(self.center, "target.center", 3)
         self.inertia = np.asarray(self.inertia, dtype=float)
-        if (self.inertia.shape != (3, 3) or not np.all(np.isfinite(self.inertia)) or
-                not np.allclose(self.inertia, self.inertia.T, atol=1e-12, rtol=0) or
-                np.min(np.linalg.eigvalsh(self.inertia)) <= 0):
-            raise ValueError("target.inertia must be finite, symmetric and positive definite")
-        if any(not np.isfinite(value) or value < 0 for value in (self.tolerance, self.docking_standoff)):
-            raise ValueError("Target tolerance and standoff must be finite and nonnegative")
-        if self.shape == "cylinder" and (not np.isfinite(self.radius) or not np.isfinite(self.half_length) or
-                                          self.radius <= 0 or self.half_length <= 0):
-            raise ValueError("Cylinder radius and half-length must be finite and positive")
+        if (
+            self.inertia.shape != (3, 3)
+            or not np.all(np.isfinite(self.inertia))
+            or not np.allclose(self.inertia, self.inertia.T, atol=1e-12, rtol=0)
+            or np.min(np.linalg.eigvalsh(self.inertia)) <= 0
+        ):
+            raise ValueError(
+                "target.inertia must be finite, symmetric and positive definite"
+            )
+        if any(
+            not np.isfinite(value) or value < 0
+            for value in (self.tolerance, self.docking_standoff)
+        ):
+            raise ValueError(
+                "Target tolerance and standoff must be finite and nonnegative"
+            )
+        if self.shape == "cylinder" and (
+            not np.isfinite(self.radius)
+            or not np.isfinite(self.half_length)
+            or self.radius <= 0
+            or self.half_length <= 0
+        ):
+            raise ValueError(
+                "Cylinder radius and half-length must be finite and positive"
+            )
 
     @property
     def radius(self) -> float:
@@ -290,15 +353,28 @@ class TubeMPCConfig:
         low, high = self.bandwidth_range["lower"], self.bandwidth_range["upper"]
         if not np.isfinite(low) or not np.isfinite(high) or not 0 < low <= high:
             raise ValueError("Invalid tube bandwidth range or feedback sampling")
-        if np.any(np.asarray(self.bandwidth_0) < low) or np.any(np.asarray(self.bandwidth_0) > high):
+        if np.any(np.asarray(self.bandwidth_0) < low) or np.any(
+            np.asarray(self.bandwidth_0) > high
+        ):
             raise ValueError("tube.bandwidth_0 must fit bandwidth_range")
         _positive_integer(self.feedback_substeps, "tube.feedback_substeps")
-        if any(not np.isfinite(value) or value < 0 for value in
-               (self.numerical_reserve, self.membership_error_bound, self.bandwidth_rate_limit,
-                self.bandwidth_weight, self.tube_weight)):
-            raise ValueError("Tube numerical reserves, limits and weights must be finite and nonnegative")
+        if any(
+            not np.isfinite(value) or value < 0
+            for value in (
+                self.numerical_reserve,
+                self.membership_error_bound,
+                self.bandwidth_rate_limit,
+                self.bandwidth_weight,
+                self.tube_weight,
+            )
+        ):
+            raise ValueError(
+                "Tube numerical reserves, limits and weights must be finite and nonnegative"
+            )
         _positive_integer(self.membership_box_budget, "tube.membership_box_budget")
-        _positive_integer(self.membership_update_period, "tube.membership_update_period")
+        _positive_integer(
+            self.membership_update_period, "tube.membership_update_period"
+        )
 
     def runtime_params(
         self,
@@ -338,16 +414,33 @@ class MissionPolicyConfig:
     terminal_activation_distance: float = 0.035
 
     def __post_init__(self) -> None:
-        for name in ("rendezvous_standoff", "rendezvous_capture_radius", "rendezvous_position_tolerance",
-                     "rendezvous_velocity_tolerance", "docking_position_weight_factor", "docking_velocity_weight_factor",
-                     "target_barrier_buffer", "terminal_activation_distance"):
+        for name in (
+            "rendezvous_standoff",
+            "rendezvous_capture_radius",
+            "rendezvous_position_tolerance",
+            "rendezvous_velocity_tolerance",
+            "docking_position_weight_factor",
+            "docking_velocity_weight_factor",
+            "target_barrier_buffer",
+            "terminal_activation_distance",
+        ):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0:
                 raise ValueError(f"mission.{name} must be finite and positive")
-        if not np.isfinite(self.target_safety_tolerance) or self.target_safety_tolerance < 0:
-            raise ValueError("mission.target_safety_tolerance must be finite and nonnegative")
-        if not np.isfinite(self.target_barrier_clearance_fraction) or not 0 < self.target_barrier_clearance_fraction <= 1:
-            raise ValueError("mission.target_barrier_clearance_fraction must be in (0, 1]")
+        if (
+            not np.isfinite(self.target_safety_tolerance)
+            or self.target_safety_tolerance < 0
+        ):
+            raise ValueError(
+                "mission.target_safety_tolerance must be finite and nonnegative"
+            )
+        if (
+            not np.isfinite(self.target_barrier_clearance_fraction)
+            or not 0 < self.target_barrier_clearance_fraction <= 1
+        ):
+            raise ValueError(
+                "mission.target_barrier_clearance_fraction must be in (0, 1]"
+            )
 
     @property
     def target_barrier_clearance(self) -> float:
@@ -361,24 +454,40 @@ class AdaptationConfig:
     error_bound: float = 0.15
     prediction_error_threshold: float = 0.005
     max_iter: int = 90
-    minimum_widths: Dict[str, float] = field(default_factory=lambda: {
-        "eccentricity": 0.04, "alpha": 1.0e-7, "beta": 1.5e-7,
-    })
+    minimum_widths: Dict[str, float] = field(
+        default_factory=lambda: {
+            "eccentricity": 0.04,
+            "alpha": 1.0e-7,
+            "beta": 1.5e-7,
+        }
+    )
     prior_eccentricity_half_width: float = 0.08
     prior_drag_factors: List[float] = field(default_factory=lambda: [0.5, 1.5])
     window_intervals: int = 8
 
     def __post_init__(self) -> None:
-        for name in ("error_bound", "prediction_error_threshold", "prior_eccentricity_half_width"):
+        for name in (
+            "error_bound",
+            "prediction_error_threshold",
+            "prior_eccentricity_half_width",
+        ):
             value = getattr(self, name)
             if not np.isfinite(value) or value <= 0:
                 raise ValueError(f"adaptation.{name} must be finite and positive")
         if set(self.minimum_widths) != {"eccentricity", "alpha", "beta"} or any(
-                not np.isfinite(value) or value < 0 for value in self.minimum_widths.values()):
-            raise ValueError("adaptation.minimum_widths requires finite nonnegative eccentricity, alpha and beta widths")
-        factors = _finite_vector(self.prior_drag_factors, "adaptation.prior_drag_factors", 2)
+            not np.isfinite(value) or value < 0
+            for value in self.minimum_widths.values()
+        ):
+            raise ValueError(
+                "adaptation.minimum_widths requires finite nonnegative eccentricity, alpha and beta widths"
+            )
+        factors = _finite_vector(
+            self.prior_drag_factors, "adaptation.prior_drag_factors", 2
+        )
         if not 0 <= factors[0] <= 1 <= factors[1]:
-            raise ValueError("adaptation.prior_drag_factors must bracket one with nonnegative factors")
+            raise ValueError(
+                "adaptation.prior_drag_factors must bracket one with nonnegative factors"
+            )
         _positive_integer(self.max_iter, "adaptation.max_iter")
         _positive_integer(self.window_intervals, "adaptation.window_intervals")
 
@@ -403,5 +512,10 @@ class SolverConfig:
         composite_geometry_mode(self.composite_geometry_mode)
 
     def options(self) -> Dict[str, Any]:
-        return dict(remote=self.remote, disp=self.disp, max_iter=self.max_iter, max_memory=self.max_memory,
-                    composite_geometry_mode=self.composite_geometry_mode)
+        return dict(
+            remote=self.remote,
+            disp=self.disp,
+            max_iter=self.max_iter,
+            max_memory=self.max_memory,
+            composite_geometry_mode=self.composite_geometry_mode,
+        )

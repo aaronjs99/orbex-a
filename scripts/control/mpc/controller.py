@@ -82,6 +82,7 @@ class MPCController:
             self._solver = get_solver(solver_backend, solver_config)
         if proposal_provider is not None:
             from orbexa.solvers.proposal_seed import ProposalSeededSolver
+
             self._solver = ProposalSeededSolver(self._solver, proposal_provider)
 
     def solve_step(
@@ -176,8 +177,12 @@ class MPCController:
         Args:
            anom_step: True anomaly step size (rad).
         """
-        if (kwargs.get("tube_mpc") or {}).get("enabled") or kwargs.get("dynamic_tube") is not None:
-            raise ValueError("Tube-enabled missions require ADTMPCMissionRunner; MPCController.run_mission supports ordinary MPC only")
+        if (kwargs.get("tube_mpc") or {}).get("enabled") or kwargs.get(
+            "dynamic_tube"
+        ) is not None:
+            raise ValueError(
+                "Tube-enabled missions require ADTMPCMissionRunner; MPCController.run_mission supports ordinary MPC only"
+            )
         # Calculate initial q based on start_time if needed, or assume q_0 is the independent var start
         eccentricity = dynamics_params.get("eccentricity", 0.0)
         mean_motion = dynamics_params.get("mean_motion", 0.001)
@@ -213,7 +218,7 @@ class MPCController:
 
         for step_idx in range(max_mission_steps):
             logger.debug(
-                f"MPC Solve Step {step_idx+1}/{max_mission_steps} | Anomaly: {anom:.4f}"
+                f"MPC Solve Step {step_idx + 1}/{max_mission_steps} | Anomaly: {anom:.4f}"
             )
 
             # Update dynamics model for current step using anom
@@ -274,7 +279,6 @@ class MPCController:
                         )
                 else:
                     applied_control = np.zeros(3)
-
 
                 input_history.append(applied_control)
 

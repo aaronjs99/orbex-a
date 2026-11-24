@@ -5,11 +5,12 @@ Windows Python 3.11's monotonic clock uses GetTickCount64 and can have a
 QueryPerformanceCounter instead.  Selecting that domain does not establish
 timely execution; all requests, deadlines and acknowledgments must use it.
 """
+
 import time
 
 
-MONOTONIC_CLOCK='monotonic-ns-v1'
-PERFORMANCE_CLOCK='perf-counter-ns-v1'
+MONOTONIC_CLOCK = "monotonic-ns-v1"
+PERFORMANCE_CLOCK = "perf-counter-ns-v1"
 
 
 def wall_time_ns(clock_id=MONOTONIC_CLOCK):
@@ -17,4 +18,4 @@ def wall_time_ns(clock_id=MONOTONIC_CLOCK):
         return time.monotonic_ns()
     if clock_id == PERFORMANCE_CLOCK:
         return time.perf_counter_ns()
-    raise ValueError('Use an explicit supported monotonic wall-clock domain')
+    raise ValueError("Use an explicit supported monotonic wall-clock domain")

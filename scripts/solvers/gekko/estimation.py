@@ -29,7 +29,9 @@ from gekko import GEKKO
 
 
 class GekkoWindowEstimator:
-    def __init__(self, *, parameter_keys, error_bound, remote, disp, max_iter, max_memory=4):
+    def __init__(
+        self, *, parameter_keys, error_bound, remote, disp, max_iter, max_memory=4
+    ):
         self.parameter_keys = parameter_keys
         self.error_bound = error_bound
         self.remote = remote
@@ -101,7 +103,9 @@ class GekkoWindowEstimator:
             )
             solver.Minimize(final_error)
             solver.solve(disp=self.disp)
-            estimates = {key: float(p_vars[key].value[-1]) for key in self.parameter_keys}
+            estimates = {
+                key: float(p_vars[key].value[-1]) for key in self.parameter_keys
+            }
             terminal = np.array([float(x_est[i].value[-1]) for i in range(6)])
             error = float(np.linalg.norm(terminal - states[-1]))
             solver.cleanup()
@@ -140,8 +144,7 @@ class GekkoWindowEstimator:
         tau = solver.Var(value=0.0)
         solver.Equation(tau.dt() == 1.0)
         x_est = [
-            solver.Var(value=float(states[0, i]), fixed_initial=True)
-            for i in range(6)
+            solver.Var(value=float(states[0, i]), fixed_initial=True) for i in range(6)
         ]
         # GEKKO node k+1 drives recorded interval k; the initial node has no
         # preceding interval. Keep the numerical predictors interval-aligned.
@@ -172,7 +175,9 @@ class GekkoWindowEstimator:
             accel = 0
             for state_idx in range(6):
                 accel += A_val[axis + 3][state_idx] * x_est[state_idx]
-            equations.append(x_est[axis + 3].dt() == accel + u_param[axis] + d_val[axis + 3])
+            equations.append(
+                x_est[axis + 3].dt() == accel + u_param[axis] + d_val[axis + 3]
+            )
         solver.Equations(equations)
 
         final = np.zeros(len(states))

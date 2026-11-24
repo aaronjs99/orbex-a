@@ -1,18 +1,31 @@
 """Qualification and migration of current-model mission gallery families."""
+
 from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, Optional
 from orbexa.sessions import MissionSession
 from orbexa.contracts import PHYSICAL_MODEL_ID, COUPLED_CONTROLLER_ID
-from orbexa.simulation.approach.records.results import ADTMPCMissionResult, load_adtmpc_mission_result
-from orbexa.visualization.data.manifest import ADTMPCMissionManifest, _raw_data_reference
+from orbexa.simulation.approach.records.results import (
+    ADTMPCMissionResult,
+    load_adtmpc_mission_result,
+)
+from orbexa.visualization.data.manifest import (
+    ADTMPCMissionManifest,
+    _raw_data_reference,
+)
+
 
 def require_current_result(result: ADTMPCMissionResult) -> None:
-    if (result.approximation != "nonlinear" or result.solver_backend != "gekko" or
-            result.metadata.get("model_version") != PHYSICAL_MODEL_ID or
-            result.metadata.get("controller") != COUPLED_CONTROLLER_ID):
-        raise ValueError("Saved mission data must use the current physical LVLH coupled ADTMPC controller")
+    if (
+        result.approximation != "nonlinear"
+        or result.solver_backend != "gekko"
+        or result.metadata.get("model_version") != PHYSICAL_MODEL_ID
+        or result.metadata.get("controller") != COUPLED_CONTROLLER_ID
+    ):
+        raise ValueError(
+            "Saved mission data must use the current physical LVLH coupled ADTMPC controller"
+        )
 
 
 class MissionCatalog:
@@ -20,14 +33,20 @@ class MissionCatalog:
 
     @staticmethod
     def read(
-        output_session_dir: Path, data_session_dir: Optional[Path] = None,
+        output_session_dir: Path,
+        data_session_dir: Optional[Path] = None,
     ) -> Dict[str, Dict]:
         path = output_session_dir / "gallery.json"
         entries = []
         if path.exists():
             payload = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict) or payload.get("schema") != "orbexa.mission.gallery.v1":
-                raise ValueError(f"Refusing to replace an unrecognized gallery catalog: {path}")
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema") != "orbexa.mission.gallery.v1"
+            ):
+                raise ValueError(
+                    f"Refusing to replace an unrecognized gallery catalog: {path}"
+                )
             entries = payload.get("entries")
             if not isinstance(entries, list):
                 raise ValueError(f"Invalid mission gallery catalog: {path}")
@@ -38,14 +57,21 @@ class MissionCatalog:
         def qualify(record, relative, backend_key):
             mission, approximation = relative.split("/")
             identity = {
-                "mission": mission, "approximation": approximation, backend_key: "gekko",
+                "mission": mission,
+                "approximation": approximation,
+                backend_key: "gekko",
                 "model_version": PHYSICAL_MODEL_ID,
                 "controller": COUPLED_CONTROLLER_ID,
             }
             # Missing fields may be recovered from raw evidence; contradictory
             # fields must never be overwritten merely because raw data exists.
-            if (any(record.get(key) not in (None, "", value) for key, value in identity.items()) or
-                    any(record.get(key) not in (None, "", "gekko") for key in ("backend", "solver_backend"))):
+            if any(
+                record.get(key) not in (None, "", value)
+                for key, value in identity.items()
+            ) or any(
+                record.get(key) not in (None, "", "gekko")
+                for key in ("backend", "solver_backend")
+            ):
                 return None, None
             raw_file = None
             if any(record.get(key) != value for key, value in identity.items()):
@@ -70,7 +96,9 @@ class MissionCatalog:
             relative = entry.get("relative_dir")
             if relative not in families:
                 continue
-            MissionSession._check_path(output_session_dir / relative, output_session_dir)
+            MissionSession._check_path(
+                output_session_dir / relative, output_session_dir
+            )
             qualified, raw_file = qualify(entry, relative, "backend")
             if qualified is None:
                 rejected.add(relative)
@@ -91,7 +119,10 @@ class MissionCatalog:
             if not manifest_path.is_file():
                 continue
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict) or payload.get("schema") != "orbexa.adtmpc_mission.manifest.v1":
+            if (
+                not isinstance(payload, dict)
+                or payload.get("schema") != "orbexa.adtmpc_mission.manifest.v1"
+            ):
                 continue
             payload, raw_file = qualify(payload, relative, "solver_backend")
             if payload is None:
@@ -102,35 +133,62 @@ class MissionCatalog:
                 artifact = family / Path(value).name
                 MissionSession._check_path(artifact, output_session_dir)
                 if artifact.is_file():
-                    artifacts.append({"path": artifact.relative_to(output_session_dir).as_posix(),
-                                      "label": payload.get("artifact_labels", {}).get(artifact.name, artifact.stem.replace("_", " "))})
+                    artifacts.append(
+                        {
+                            "path": artifact.relative_to(output_session_dir).as_posix(),
+                            "label": payload.get("artifact_labels", {}).get(
+                                artifact.name, artifact.stem.replace("_", " ")
+                            ),
+                        }
+                    )
             mission, approximation = relative.split("/")
             catalog[relative] = {
-                "mission": mission, "approximation": approximation,
+                "mission": mission,
+                "approximation": approximation,
                 "backend": payload.get("solver_backend", "unspecified"),
-                "success": payload.get("success"), "mission_complete": payload.get("mission_complete"),
-                "sample_count": payload.get("sample_count"), "chaser_count": payload.get("chaser_count"),
+                "success": payload.get("success"),
+                "mission_complete": payload.get("mission_complete"),
+                "sample_count": payload.get("sample_count"),
+                "chaser_count": payload.get("chaser_count"),
                 "message": payload.get("message", ""),
-                "relative_dir": relative, "artifacts": artifacts,
+                "relative_dir": relative,
+                "artifacts": artifacts,
                 "skipped_artifacts": payload.get("skipped_artifacts", {}),
-                "model_version": payload["model_version"], "controller": payload["controller"],
-                **({} if raw_file is None else _raw_data_reference(raw_file, output_session_dir)),
+                "model_version": payload["model_version"],
+                "controller": payload["controller"],
+                **(
+                    {}
+                    if raw_file is None
+                    else _raw_data_reference(raw_file, output_session_dir)
+                ),
             }
         return catalog
 
-
     @staticmethod
     def entry(manifest: ADTMPCMissionManifest, root: Path) -> Dict:
-        artifacts = [{"path": path.relative_to(root).as_posix(),
-                      "label": manifest.artifact_labels.get(path.name, path.stem.replace("_", " "))}
-                     for path in manifest.artifacts if path.is_relative_to(root)]
+        artifacts = [
+            {
+                "path": path.relative_to(root).as_posix(),
+                "label": manifest.artifact_labels.get(
+                    path.name, path.stem.replace("_", " ")
+                ),
+            }
+            for path in manifest.artifacts
+            if path.is_relative_to(root)
+        ]
         return {
-            "mission": manifest.mission, "approximation": manifest.approximation,
-            "backend": manifest.solver_backend, "success": manifest.success,
-            "mission_complete": manifest.mission_complete, "message": manifest.message,
-            "sample_count": manifest.sample_count, "chaser_count": manifest.chaser_count,
+            "mission": manifest.mission,
+            "approximation": manifest.approximation,
+            "backend": manifest.solver_backend,
+            "success": manifest.success,
+            "mission_complete": manifest.mission_complete,
+            "message": manifest.message,
+            "sample_count": manifest.sample_count,
+            "chaser_count": manifest.chaser_count,
             "relative_dir": manifest.output_dir.relative_to(root).as_posix(),
-            "artifacts": artifacts, "skipped_artifacts": manifest.skipped_artifacts,
-            "model_version": manifest.model_version, "controller": manifest.controller,
+            "artifacts": artifacts,
+            "skipped_artifacts": manifest.skipped_artifacts,
+            "model_version": manifest.model_version,
+            "controller": manifest.controller,
             **_raw_data_reference(manifest.data_file, root),
         }

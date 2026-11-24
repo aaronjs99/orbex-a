@@ -12,6 +12,7 @@
 
 
 """Abstract spacecraft base and lazy compatibility facade for the concrete agents."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -27,19 +28,31 @@ if TYPE_CHECKING:
     from orbexa.core.spacecraft.chaser import Chaser
 
 
-def target_state_update_func(t, state, dt, mom_inertia, skew_sym_mat, torque_val, torque_type, *args, **kwargs):
+def target_state_update_func(
+    t, state, dt, mom_inertia, skew_sym_mat, torque_val, torque_type, *args, **kwargs
+):
     """Legacy six-state Euler RHS with current body rates and correct kinematics.
 
     The cached skew matrix is accepted for compatibility and ignored. A singular
     Euler chart rejects explicitly; Target itself propagates a quaternion.
     """
-    from orbexa.core.dynamics.attitude import finite_vector, evaluate_torque, body_rates_to_euler_rates, body_rate_derivative, inertia_matrix
+    from orbexa.core.dynamics.attitude import (
+        finite_vector,
+        evaluate_torque,
+        body_rates_to_euler_rates,
+        body_rate_derivative,
+        inertia_matrix,
+    )
 
     state = finite_vector(state, "Attitude state", 6)
     inertia = inertia_matrix(mom_inertia)
     torque = evaluate_torque(t, state, dt, inertia, torque_val, torque_type)
-    return np.concatenate((body_rates_to_euler_rates(state[:3], state[3:]),
-                           body_rate_derivative(state[3:], inertia, torque)))
+    return np.concatenate(
+        (
+            body_rates_to_euler_rates(state[:3], state[3:]),
+            body_rate_derivative(state[3:], inertia, torque),
+        )
+    )
 
 
 class Spacecraft(ABC):
@@ -61,18 +74,30 @@ class Spacecraft(ABC):
         self.id = next(self._ids)
         self.name = kwargs.get("name", "")
         self.num_states = kwargs.get("numStates", 6)
-        if (isinstance(self.num_states, bool) or not isinstance(self.num_states, (int, np.integer))
-                or self.num_states < 1):
+        if (
+            isinstance(self.num_states, bool)
+            or not isinstance(self.num_states, (int, np.integer))
+            or self.num_states < 1
+        ):
             raise ValueError("numStates must be a positive integer")
         from orbexa.core.dynamics.attitude import finite_vector
 
-        self.init_state = finite_vector(kwargs.get("initState", np.zeros(self.num_states)), "Initial state", self.num_states)
+        self.init_state = finite_vector(
+            kwargs.get("initState", np.zeros(self.num_states)),
+            "Initial state",
+            self.num_states,
+        )
         raw_dt = kwargs.get("dt", self.anom_step)
         try:
             dt = np.asarray(raw_dt, dtype=float)
         except (TypeError, ValueError) as error:
             raise ValueError("dt must be a finite positive scalar") from error
-        if isinstance(raw_dt, (bool, np.bool_)) or dt.shape != () or not np.isfinite(dt) or dt <= 0:
+        if (
+            isinstance(raw_dt, (bool, np.bool_))
+            or dt.shape != ()
+            or not np.isfinite(dt)
+            or dt <= 0
+        ):
             raise ValueError("dt must be a finite positive scalar")
         self.dt = float(dt)
         self.rng = kwargs.get("rng", random.Random(int(config.seed) + self.id))
@@ -120,14 +145,15 @@ class Spacecraft(ABC):
             plt.close()
 
 
-
 def __getattr__(name):
     if name == "Target":
         from orbexa.core.spacecraft.target import Target
+
         globals()[name] = Target
         return Target
     if name == "Chaser":
         from orbexa.core.spacecraft.chaser import Chaser
+
         globals()[name] = Chaser
         return Chaser
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -4,7 +4,9 @@ import numpy as np
 from scipy.linalg import expm, solve_discrete_are
 
 
-def local_terminal_cost(A, B, Q, R, step: float, *, multiplier: float = 1.0) -> np.ndarray:
+def local_terminal_cost(
+    A, B, Q, R, step: float, *, multiplier: float = 1.0
+) -> np.ndarray:
     """Compute a terminal penalty from a frozen local LQR model.
 
     The exact zero-order-hold discretization is independent of the OCP backend.

@@ -79,8 +79,8 @@ def orbital_radius_terms(
         raise ValueError("orbital radius denominator must be positive")
     scale = h**2 * (1.0 + 4.0 * alpha**2) / mu
     radius = scale / denominator
-    denominator_prime = (
-        2.0 * alpha * exponential - eccentricity * backend.sin(q - theta0)
+    denominator_prime = 2.0 * alpha * exponential - eccentricity * backend.sin(
+        q - theta0
     )
     radius_prime = -scale * denominator_prime / denominator**2
     return radius, radius_prime, h
@@ -206,9 +206,11 @@ def dq_dt(
         raise ValueError("elliptical eccentricity must satisfy 0 <= e < 1")
     # Equivalent to differentiating Kepler's equation, without the removable
     # cos(q/2)/cos(E/2) singularity at apogee.
-    return mean_motion * (1.0 + eccentricity * backend.cos(q)) ** 2 / (
-        1.0 - eccentricity**2
-    ) ** 1.5
+    return (
+        mean_motion
+        * (1.0 + eccentricity * backend.cos(q)) ** 2
+        / (1.0 - eccentricity**2) ** 1.5
+    )
 
 
 def dt_dq(
