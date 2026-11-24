@@ -10,11 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from orbexa.control.certification.geometry import (
+from orbexa.control.terminal.physical import PhysicalTerminalBoundsBuilder
+from orbexa.proofs.geometry import (
     CompositeTerminalGeometry,
     _geometry_context,
 )
-from orbexa.control.terminal.physical import PhysicalTerminalBoundsBuilder
 
 COMPOSITE_TERMINAL_METHOD = "arb-composite-orbit-rigid-body-terminal-v1"
 

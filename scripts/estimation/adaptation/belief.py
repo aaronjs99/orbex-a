@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from orbexa.core.dynamics.parameters import (
+from orbexa.models.dynamics.parameters import (
     ADTMPC_PARAMETER_KEYS,
     OrbitalPlantTruth,
     specific_angular_momentum,

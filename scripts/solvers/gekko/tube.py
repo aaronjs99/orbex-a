@@ -13,6 +13,8 @@ from pathlib import Path
 
 import numpy as np
 from gekko import GEKKO
+from orbexa.common.geometry.algebra import tait_bryan_to_rotation_matrix
+from orbexa.common.solver_options import composite_geometry_mode, gekko_memory_exponent
 from orbexa.control.terminal.contact import _norm_upper, _outward
 from orbexa.control.terminal.region import TerminalRegion
 from orbexa.control.tubes.model import advance_tube, held_tube_stage_seed
@@ -22,14 +24,12 @@ from orbexa.control.tubes.sample_hold import (
     sample_hold_expressions,
 )
 from orbexa.control.tubes.specification import ProspectiveContactConstraint
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
 from orbexa.solvers.base import SolverResult
 from orbexa.solvers.gekko.iterations import (
     NATIVE_IPOPT_LOG,
     native_ipopt_iteration_metadata,
 )
-from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
-from orbexa.utils.solver_options import composite_geometry_mode, gekko_memory_exponent
 from scipy.linalg import expm
 
 

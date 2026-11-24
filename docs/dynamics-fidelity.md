@@ -10,7 +10,7 @@ Neither that implementation nor a new viewer upgrades an older analytical record
 
 **The saved analytical guard's `1e-5 m/rad²` componentwise allowance does not qualify the matched full vector quadratic-drag plant at the evaluated saved states.** The largest evaluated component discrepancy is `0.033936410695 m/rad²`, approximately 3,394 times that allowance. Increasing a configured number from these finite samples would not establish a continuous bound. That saved approach, contractor, tube and Arb evidence retains its declared analytical Carter–Humi model scope.
 
-The independent `orbexa.core.inertial_dynamics` service supplies reusable numerical Cartesian propagation for this force/frame comparison, with explicit central gravity, optional J2, atmosphere and drag declarations. Its numerical success does not itself certify a flow, collision avoidance, attachment or closed-loop success. The current nonlinear inclusion service is a separate implementation; neither service retroactively substitutes a new model into the saved analytical mission.
+The independent `orbexa.models.inertial_dynamics` service supplies reusable numerical Cartesian propagation for this force/frame comparison, with explicit central gravity, optional J2, atmosphere and drag declarations. Its numerical success does not itself certify a flow, collision avoidance, attachment or closed-loop success. The current nonlinear inclusion service is a separate implementation; neither service retroactively substitutes a new model into the saved analytical mission.
 
 ## Force model and frame
 
@@ -74,7 +74,7 @@ The inverse includes the same rotation-rate term. For the analytical state `[p, 
 
 ## Public propagation API
 
-The public classes are lazy exports from `orbexa.core`:
+The public classes are lazy exports from `orbexa.models`:
 
 | Class | Contract |
 | --- | --- |
@@ -104,7 +104,7 @@ For example, the following is a declared illustrative atmosphere, not measured E
 
 ```python
 import numpy as np
-from orbexa.core import InertialGravity, QuadraticDrag, LVLHFrame, InertialDynamics
+from orbexa.models import InertialGravity, QuadraticDrag, LVLHFrame, InertialDynamics
 
 gravity = InertialGravity(
     3.986004418e14, j2=1.08262668e-3,

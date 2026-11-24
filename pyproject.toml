@@ -36,7 +36,7 @@ all = ["casadi", "mayavi", "imageio-ffmpeg", "mistune>=3,<4", "python-flint>=0.8
 package-dir = {orbexa = "scripts"}
 
 [tool.setuptools.package-data]
-"orbexa.visualization" = ["studio/*", "studio/vendor/*", "studio/vendor/three/*", "studio/vendor/katex/*", "studio/vendor/katex/fonts/*"]
+"orbexa.figures" = ["studio/*", "studio/vendor/*", "studio/vendor/three/*", "studio/vendor/katex/*", "studio/vendor/katex/fonts/*"]
 
 [project.scripts]
 orbexa-serve-studio = "orbexa.cli.serve_studio:main"

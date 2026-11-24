@@ -86,15 +86,15 @@ Paths in this table are relative to `scripts/`.
 
 | Module | Main interfaces and responsibility |
 |---|---|
-| `core/configuration/types.py`, `core/configuration/loader.py`, `core/configuration/model.py` | Structured scenario validation, YAML loading and configuration composition |
-| `contracts.py`, `layout.py`, `sessions.py` | Solver problem/result records, relocated-checkout paths and explicit generated-session ownership |
-| `core/dynamics/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
-| `core/dynamics/relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
-| `core/targets/nonlinear.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
-| `core/dynamics/inertial.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
-| `core/geometry/composite.py`, `simulation/completion/configuration/design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
-| `control/certification/nonlinear.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
-| `control/certification/attitude.py`, `simulation/nonlinear/safety/target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
+| `models/configuration/types.py`, `models/configuration/loader.py`, `models/configuration/model.py` | Structured scenario validation, YAML loading and configuration composition |
+| `common/contracts.py`, `common/layout.py`, `sessions.py` | Solver problem/result records, relocated-checkout paths and explicit generated-session ownership |
+| `models/dynamics/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
+| `models/dynamics/relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
+| `models/targets/nonlinear.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
+| `models/dynamics/inertial.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
+| `models/geometry/composite.py`, `mission/lifecycle/configuration/design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
+| `proofs/nonlinear.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
+| `proofs/attitude.py`, `mission/safety/target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
 | `estimation/navigation/records.py` | `StudySensorProfile`, `SensorPacket`, `NavigationEstimate`: immutable sensor declarations, processed packets and retained navigation products |
 | `estimation/navigation/sensors.py` | `SensorSuite`: truth-side sampling with versioned random draws, delivery latency and deterministic error support |
 | `estimation/navigation/filter.py` | `BoundedNavigationFilter`: prior/prediction/observation intersections, delayed packets and finite-history velocity bounds |
@@ -103,52 +103,52 @@ Paths in this table are relative to `scripts/`.
 | `estimation/navigation/target_pose.py` | Chaser GNSS target-ephemeris inference and acquisition-age target-pose propagation |
 | `estimation/navigation/noise.py` | `PhysicalSlotNoise`: versioned bounded common random field keyed to physical-time bins and sensor channels; acquisition scheduling remains owned by `SensorSuite` |
 | `estimation/membership/nonlinear.py`, `estimation/adaptation/nonlinear.py`, `estimation/adaptation/belief.py` | Nonlinear transition/observation membership, retained parameter sets and admissible nominal updates; unresolved parameter boxes are retained |
-| `simulation/nonlinear/profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
-| `simulation/nonlinear/planning.py`, `simulation/approach/planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
+| `mission/profile.py` | `NonlinearStudyOptions`, `IndependentTruthCase`, declared model/clock/prior and compact fleet composition |
+| `mission/planning.py`, `mission/approach/planning.py` | `NonlinearPlanningContext`, `NonlinearMissionPlanner`: sensed uncertainty, target forecasts, regional residuals and coupled nominal/tube candidates |
 | `control/tubes/specification.py`, `control/tubes/sample_hold.py`, `solvers/gekko/tube.py` | `DynamicTubeSpec`, sensed held-feedback bounds and `GekkoDynamicTube` nonlinear GEKKO/IPOPT formulation |
 | `solvers/gekko/iterations.py` | Native IPOPT final-summary iteration counts with log hashes and exit provenance; unavailable work remains unknown |
-| `planning/coordination/allocation/{contracts,networks,system}.py` | Agent state, explicit neighbor graphs and task-allocation scheduling |
-| `planning/coordination/allocation/policies/`, `planning/coordination/allocation/demo.py` | Greedy, Hungarian and auction policies; optional plotting and demonstration stay outside controller imports |
+| `mission/coordination/allocation/{contracts,networks,system}.py` | Agent state, explicit neighbor graphs and task-allocation scheduling |
+| `mission/coordination/allocation/policies/`, `mission/coordination/allocation/demo.py` | Greedy, Hungarian and auction policies; optional plotting and demonstration stay outside controller imports |
 | `control/fallback/fuel.py` | `FleetFuelBudget`: exact same-event, same-hardware remaining-fuel budget for finite successor selection; admission independently rechecks the debit and complete reserve |
-| `control/certification/reachability.py`, `control/certification/orbital.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
+| `proofs/reachability.py`, `proofs/orbital.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
 | `control/fallback/refuge.py`, `control/fallback/plan.py` | `RefugeController`, `FleetFallbackPlan`: finite feedback authority, complete route construction and retained certificates |
 | `control/fallback/polynomial.py`, `control/fallback/geometry.py` | Exact polynomial peer bounds, occupied-component projections and whole-fleet separation |
 | `control/fallback/records.py`, `control/fallback/runtime.py` | Immutable proposal/decision/resource records and `FleetAdmissionRuntime` transactions, current-state checks and fuel accounting |
-| `simulation/nonlinear/safety/reference.py`, `simulation/nonlinear/safety/drift.py` | Exact C2 retreat bounds and Arb actual-drift envelopes under a fixed nominal model |
-| `simulation/nonlinear/safety/{geometry,resources,cache}.py` | Complete occupied-pose adapters, physical propulsion limits and guarded frozen-proof identities |
-| `simulation/nonlinear/safety/candidates.py`, `simulation/nonlinear/safety/planner.py` | Bounded refuge search, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
-| `simulation/nonlinear/execution/blackout.py` | Finite causal observation propagation while the installed backup executes |
+| `mission/safety/reference.py`, `mission/safety/drift.py` | Exact C2 retreat bounds and Arb actual-drift envelopes under a fixed nominal model |
+| `mission/safety/{geometry,resources,cache}.py` | Complete occupied-pose adapters, physical propulsion limits and guarded frozen-proof identities |
+| `mission/safety/candidates.py`, `mission/safety/planner.py` | Bounded refuge search, backup preparation/reuse and `ProspectiveFleetEndpoint` successors |
+| `mission/execution/blackout.py` | Finite causal observation propagation while the installed backup executes |
 | `control/actuation.py`, `control/tubes/sensed.py` | Declared actuator support/realization, exact sensed sliding-tube algebra, stage checks, feedback evaluation and physical tube witnesses |
-| `simulation/nonlinear/execution/coordinator.py`, `simulation/nonlinear/execution/contracts.py`, `simulation/approach/state.py` | `NonlinearDenseExecutor`: admission, physical commit and failure ordering; explicit execution outcomes and controller estimate state |
-| `simulation/nonlinear/execution/plant.py`, `simulation/nonlinear/execution/sensing.py` | `NonlinearFleetPlant` proposes numerical motion; `MissionSensorDelivery` owns acquisition and delayed packet queues |
-| `simulation/nonlinear/execution/bindings.py`, `simulation/nonlinear/execution/nominal.py` | `PerformanceStageBindings` checks planning sources; `NominalTubePropagator` owns certified nominal flow/cache and tube endpoint transfer |
-| `simulation/recording/journal.py` | `ExecutionJournal` publishes durable events and retains acknowledged completed holds; later recorder failures preserve that prefix |
-| `simulation/nonlinear/runner.py`, `simulation/nonlinear/records/recorder.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
-| `simulation/nonlinear/records/archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
-| `simulation/study/api.py`, `simulation/study/request.py`, `simulation/study/source.py`, `cli/run_nonlinear.py` | Guarded study entry, prospective request/declaration and coherent source/input freezing |
-| `simulation/study/execution.py`, `simulation/study/records.py`, `simulation/study/metrics.py` | `StudyArmExecution`, `StudyTelemetry`, atomic records and outcome metrics; setup, approach, completion and failure retention remain separate stages |
-| `simulation/completion/nonlinear/coordinator.py`, `simulation/completion/nonlinear/contracts.py` | Physical lifecycle composition, compatible imports and shared completion contracts/source identity |
-| `simulation/completion/nonlinear/boundary.py`, `simulation/completion/nonlinear/journal.py`, `simulation/completion/accounting/nonlinear.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
-| `simulation/completion/environment/point.py`, `simulation/completion/nonlinear/observers.py` | Physical environment and causal attitude/contact observations |
-| `simulation/approach/physical/attitude.py`, `simulation/contact/simulator.py`, `simulation/contact/capture.py` | Controlled chaser-attitude replay, finite-contact coordination, reach/contact gates and accepted assembly construction |
-| `simulation/contact/contracts.py`, `simulation/contact/dynamics/state.py`, `simulation/contact/control/controller.py`, `simulation/contact/dynamics/mechanics.py`, `simulation/contact/control/guards.py`, `simulation/contact/records.py` | Typed contact inputs/results, packed fleet state, observed control, physical wrench/RHS, geometric/load guards and balance/history recording |
-| `simulation/attached/assembly/model.py`, `simulation/attached/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
-| `simulation/attached/disposal/axis.py`, `simulation/attached/disposal/preview.py`, `simulation/attached/detumbling.py`, `simulation/attached/disposal/simulator.py`, `simulation/completion/lifecycle.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
-| `simulation/service/{contracts,session,http}.py` | Typed live inputs, one worker/session owner and the bounded loopback HTTP adapter |
-| `simulation/service/{snapshot,process}.py`, `simulation/service/jobs/` | Coherent source/input freeze, isolated spawned lifetime and explicit nonlinear/historical execution routes |
-| `simulation/recording/{artifacts,native}.py`, `simulation/approach/arrival/composition.py` | Shared durable/native evidence instrumentation and prospective arrival composition, independent of HTTP |
-| `visualization/data/studio.py`, `visualization/renderers/lifecycle.py`, `visualization/publishing/studio.py`, `visualization/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
-| `utils/geometry/`, `utils/discretization.py` | Geometry algebra, sampling, occlusion and region calculations; numerical discretization imports its backend only when selected |
-| `utils/io/{configuration,data}.py`, `utils/runtime.py` | Explicit YAML configuration, atomic data persistence and opt-in runtime/keyboard helpers |
+| `mission/execution/coordinator.py`, `mission/execution/contracts.py`, `mission/approach/state.py` | `NonlinearDenseExecutor`: admission, physical commit and failure ordering; explicit execution outcomes and controller estimate state |
+| `mission/execution/plant.py`, `mission/execution/sensing.py` | `NonlinearFleetPlant` proposes numerical motion; `MissionSensorDelivery` owns acquisition and delayed packet queues |
+| `mission/execution/bindings.py`, `mission/execution/nominal.py` | `PerformanceStageBindings` checks planning sources; `NominalTubePropagator` owns certified nominal flow/cache and tube endpoint transfer |
+| `evidence/journal.py` | `ExecutionJournal` publishes durable events and retains acknowledged completed holds; later recorder failures preserve that prefix |
+| `mission/runner.py`, `evidence/records/recorder.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
+| `evidence/records/archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
+| `studies/api.py`, `studies/request.py`, `evidence/source.py`, `cli/run_nonlinear.py` | Guarded study entry, prospective request/declaration and coherent source/input freezing |
+| `studies/execution.py`, `studies/records.py`, `studies/metrics.py` | `StudyArmExecution`, `StudyTelemetry`, atomic records and outcome metrics; setup, approach, completion and failure retention remain separate stages |
+| `mission/lifecycle/nonlinear/coordinator.py`, `mission/lifecycle/nonlinear/contracts.py` | Physical lifecycle composition, compatible imports and shared completion contracts/source identity |
+| `mission/lifecycle/nonlinear/boundary.py`, `mission/lifecycle/nonlinear/journal.py`, `evidence/accounting/nonlinear.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
+| `mission/lifecycle/environment/point.py`, `mission/lifecycle/nonlinear/observers.py` | Physical environment and causal attitude/contact observations |
+| `mission/approach/physical/attitude.py`, `mission/contact/simulator.py`, `mission/contact/capture.py` | Controlled chaser-attitude replay, finite-contact coordination, reach/contact gates and accepted assembly construction |
+| `mission/contact/contracts.py`, `mission/contact/dynamics/state.py`, `mission/contact/control/controller.py`, `mission/contact/dynamics/mechanics.py`, `mission/contact/control/guards.py`, `mission/contact/records.py` | Typed contact inputs/results, packed fleet state, observed control, physical wrench/RHS, geometric/load guards and balance/history recording |
+| `mission/attached/assembly/model.py`, `mission/attached/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
+| `mission/attached/disposal/axis.py`, `mission/attached/disposal/preview.py`, `mission/attached/detumbling.py`, `mission/attached/disposal/simulator.py`, `mission/lifecycle/stages.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
+| `service/{contracts,session,http}.py` | Typed live inputs, one worker/session owner and the bounded loopback HTTP adapter |
+| `service/{snapshot,process}.py`, `service/jobs/` | Coherent source/input freeze, isolated spawned lifetime and explicit nonlinear/historical execution routes |
+| `evidence/{artifacts,native}.py`, `mission/approach/arrival/composition.py` | Shared durable/native evidence instrumentation and prospective arrival composition, independent of HTTP |
+| `figures/data/studio.py`, `figures/renderers/lifecycle.py`, `figures/publishing/studio.py`, `figures/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
+| `common/geometry/`, `common/discretization.py` | Geometry algebra, sampling, occlusion and region calculations; numerical discretization imports its backend only when selected |
+| `common/io/{configuration,data}.py`, `utils/runtime.py` | Explicit YAML configuration, atomic data persistence and opt-in runtime/keyboard helpers |
 
 ## Changing one subsystem
 
-Change numerical integration in `simulation/nonlinear/execution/plant.py`, sensor
-delivery in `simulation/nonlinear/execution/sensing.py`, and tube equations in
+Change numerical integration in `mission/execution/plant.py`, sensor
+delivery in `mission/execution/sensing.py`, and tube equations in
 `control/tubes/sensed.py`. Change contact forces in
-`simulation/contact/dynamics/mechanics.py`, observed contact control in
-`simulation/contact/control/controller.py`, and acceptance limits in
-`simulation/contact/control/guards.py`. Change
+`mission/contact/dynamics/mechanics.py`, observed contact control in
+`mission/contact/control/controller.py`, and acceptance limits in
+`mission/contact/control/guards.py`. Change
 arrival authentication, fuel arithmetic, and study reporting in their respective
 completion/study modules. The coordinators connect these parts and own stage
 ordering; they do not contain alternate implementations of their equations.
@@ -287,7 +287,7 @@ and published galleries must be assessed from their own closed evidence.
 
 Setuptools maps the checkout's `scripts/` to `orbexa`; wheels contain `orbexa/`.
 Generated sessions and qualification outputs go to the gitignored `data/` and
-`results/` folders, resolved by `ProjectLayout` in `layout.py`; source, configuration
+`results/` folders, resolved by `ProjectLayout` in `common/layout.py`; source, configuration
 and paper folders refuse them. Source paper figures remain publication assets. Repository policy
 retains no test/validation infrastructure. Mathematical claims remain
 conditional on the finite declared domains and admission contracts in

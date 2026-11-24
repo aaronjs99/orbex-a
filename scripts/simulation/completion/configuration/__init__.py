@@ -1,1 +1,0 @@
-"""simulation.completion.configuration package."""

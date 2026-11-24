@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from collections import deque
 
-from orbexa.control.certification.nonlinear import FRAME, MODEL
-from orbexa.control.certification.reachability import HeldInputRequest, IntervalBox
-from orbexa.core.dynamics.reference_frame import bounds, exact
 from orbexa.estimation.navigation.boxes import _product, intersect
 from orbexa.estimation.navigation.moments import _AccelerationMomentLedger
 from orbexa.estimation.navigation.records import NavigationEstimate
@@ -14,6 +11,9 @@ from orbexa.estimation.navigation.target_pose import (
     infer_target_ephemeris,
     propagate_pose_estimate,
 )
+from orbexa.models.dynamics.reference_frame import bounds, exact
+from orbexa.proofs.nonlinear import FRAME, MODEL
+from orbexa.proofs.reachability import HeldInputRequest, IntervalBox
 
 
 class BoundedNavigationFilter:
@@ -37,7 +37,7 @@ class BoundedNavigationFilter:
         sensor_fingerprints=(),
         initial_target_rate_box=None,
     ):
-        from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
+        from orbexa.proofs.nonlinear import NonlinearFlowEncloser
 
         self.boxes, self.target = dict(initial_relative_boxes), target_ephemeris_box
         if (
@@ -76,7 +76,7 @@ class BoundedNavigationFilter:
                 "Initial target angular velocity requires a three-state body-rate box"
             )
         if initial_target_rate_box is not None:
-            from orbexa.control.certification.attitude import _sqrt_upper
+            from orbexa.proofs.attitude import _sqrt_upper
 
             if (
                 _sqrt_upper(
@@ -626,7 +626,7 @@ class BoundedNavigationFilter:
 
     def verify_angular_acceleration_bound(self, attitude_certificate):
         """Gate the pose-prediction hypothesis on an actual attitude inclusion."""
-        from orbexa.control.certification.attitude import (
+        from orbexa.proofs.attitude import (
             AttitudeFlowCertificate,
             _sqrt_upper,
         )

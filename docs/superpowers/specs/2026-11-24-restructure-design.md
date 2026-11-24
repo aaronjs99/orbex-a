@@ -13,7 +13,7 @@ Imports only go downward. Each layer is one top-level package of `orbexa`.
 
 | Layer | Package | Responsibility | Comes from |
 |---|---|---|---|
-| 0 | `common` | Exact intervals and boxes, paths (`ProjectLayout`), JSON/IO, hashing, discretization | `utils`, `layout.py`, `contracts.py`, `IntervalBox` from `control.certification.reachability` |
+| 0 | `common` | Exact intervals and boxes, paths (`ProjectLayout`), JSON/IO, hashing, discretization | `utils`, `common/layout.py`, `common/contracts.py`, `IntervalBox` from `control.certification.reachability` |
 | 1 | `models` | Clocks and frames, translational/attitude dynamics, geometry, vehicles, targets, configuration | `core` |
 | 2 | `proofs` | Picard flow enclosures, orbital hold proofs, attitude flow, rigid interval numerics | `control.certification`, `simulation.numerics` |
 | 3 | `estimation` | Sensors, bounded navigation, membership, adaptation | `estimation` (maintained parts) |

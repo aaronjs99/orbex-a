@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orbexa.control.certification.reachability import IntervalBox
+from orbexa.proofs.reachability import IntervalBox
 
 
 def intersect(left, right):

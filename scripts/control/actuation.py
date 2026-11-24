@@ -9,9 +9,9 @@ from functools import cached_property
 from pathlib import Path
 
 import numpy as np
-from orbexa.control.certification.attitude import _sqrt_upper
-from orbexa.control.certification.reachability import IntervalBox
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
+from orbexa.proofs.attitude import _sqrt_upper
+from orbexa.proofs.reachability import IntervalBox
 
 _ACTUATION_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

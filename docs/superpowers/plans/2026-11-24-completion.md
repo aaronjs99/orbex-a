@@ -92,11 +92,11 @@ must merge before the release-candidate freeze.
 
 ## W1b Data and results layout
 
-Files: `scripts/layout.py`, `scripts/cli/*.py`, `serve.py`, `scripts/simulation/study/request.py`, `scripts/simulation/service/contracts.py`, `.gitignore`, `README.md`, `INSTALL.md` and the affected guides.
+Files: `scripts/common/layout.py`, `scripts/cli/*.py`, `serve.py`, `scripts/studies/request.py`, `scripts/service/contracts.py`, `.gitignore`, `README.md`, `INSTALL.md` and the affected guides.
 
 This follows the convention `orbexa-generate-demo` already used: raw records go in `data/` and rendered artifacts in `results/`.
 
-- [x] `ProjectLayout` in `scripts/layout.py` resolves `data_root` and `results_root` from `ORBEXA_DATA` / `ORBEXA_RESULTS`, otherwise `<checkout>/data` and `<checkout>/results` (the working directory for a wheel).
+- [x] `ProjectLayout` in `scripts/common/layout.py` resolves `data_root` and `results_root` from `ORBEXA_DATA` / `ORBEXA_RESULTS`, otherwise `<checkout>/data` and `<checkout>/results` (the working directory for a wheel).
 - [x] `--output-dir` is optional on every CLI. Nonlinear arms default to `data/nonlinear/<case>/<adaptation>-<bandwidth>/<UTC run id>/`, `run_mission` to `data/mission/<run id>/`, `complete_mission` to `data/completion/<run id>/`, live jobs to `data/live-jobs/` and Studio viewers to `results/studio/`.
 - [x] Output guards refuse checkout paths outside `data/` and `results/`, which protects `scripts/`, `config/`, `paper/` and `docs/`. They used to refuse the whole checkout.
 - [x] `.gitignore` re-includes `data/paper/`, which `data/*` had been hiding.
@@ -113,7 +113,7 @@ Files: `install_dependencies.sh`, `INSTALL.md`.
 
 ## W2 Approach completion (L1). Budget: 4 iterations
 
-Files: `control/fallback/{refuge,plan,fuel,runtime}.py`, `simulation/nonlinear/safety/{candidates,planner,resources}.py`, `simulation/nonlinear/runner.py`.
+Files: `control/fallback/{refuge,plan,fuel,runtime}.py`, `mission/safety/{candidates,planner,resources}.py`, `mission/runner.py`.
 
 - [ ] Rank the reserve overbounds from W1 by contribution. Tighten the largest valid ones: command-specific suffix reserve, attitude-allocation slack and terminal-hold reserve.
 - [ ] Expand the renewal candidates: earlier renewal before the expiry margin, mixed staging/terminal successors and shorter-hold successors. Keep the first-refusal-continues selection.
@@ -122,7 +122,7 @@ Files: `control/fallback/{refuge,plan,fuel,runtime}.py`, `simulation/nonlinear/s
 
 ## W3 Contact, lock and handoff (L2, L3). Budget: 4 iterations
 
-Files: `simulation/completion/nonlinear/{boundary,coordinator}.py`, `simulation/contact/{simulator,capture,enclosure}.py`, `simulation/contact/lock/transition.py`, `control/terminal/contact.py`.
+Files: `mission/lifecycle/nonlinear/{boundary,coordinator}.py`, `mission/contact/{simulator,capture,enclosure}.py`, `mission/contact/lock/transition.py`, `control/terminal/contact.py`.
 
 - [ ] Wire `orbexa-run-nonlinear` so that it continues straight into completion from the authenticated approach journal. Drop the manual `--terminal-execution` path for the maintained mission.
 - [ ] Carry the remaining tube, fuel and clock uncertainty through the contact chart. No separate re-sampling.
@@ -132,7 +132,7 @@ Files: `simulation/completion/nonlinear/{boundary,coordinator}.py`, `simulation/
 
 ## W4 Attached flight to entry (L4–L6). Budget: 3 iterations
 
-Files: `simulation/attached/{assembly/model,propulsion,detumbling}.py`, `simulation/attached/disposal/{simulator,axis,preview}.py`, `simulation/completion/{lifecycle,nonlinear/observers}.py`, `simulation/approach/physical/attitude.py`.
+Files: `mission/attached/{assembly/model,propulsion,detumbling}.py`, `mission/attached/disposal/{simulator,axis,preview}.py`, `mission/lifecycle/{lifecycle,nonlinear/observers}.py`, `mission/approach/physical/attitude.py`.
 
 - [ ] Assembly observation interface: chaser-carried sensors produce bounded assembly pose/rate, with blackout propagation reusing `execution/blackout.py`.
 - [ ] Coupled attitude/nozzle allocation for approach and attached flight. Charge an enclosed delivered-force error as actuator uncertainty in admission.
@@ -141,7 +141,7 @@ Files: `simulation/attached/{assembly/model,propulsion,detumbling}.py`, `simulat
 
 ## W5 Online execution (L7). Budget: 4 iterations
 
-Files: `simulation/nonlinear/execution/{coordinator,plant}.py`, `simulation/recording/journal.py`, `solvers/gekko/{tube,solver}.py`, optional `solvers/casadi/`.
+Files: `mission/execution/{coordinator,plant}.py`, `evidence/journal.py`, `solvers/gekko/{tube,solver}.py`, optional `solvers/casadi/`.
 
 - [ ] Physical-time mode: the plant advances during the measured planner, proof and archive latency. A proposal is admitted only when it is aged to the current state, and a stale one is refused.
 - [ ] Profile the complete command cycle. Attack the largest costs first: per-agent proof parallelism, warm starts, cached geometry and incremental admission.
@@ -150,7 +150,7 @@ Files: `simulation/nonlinear/execution/{coordinator,plant}.py`, `simulation/reco
 
 ## W6 Sensor visibility (L8). Budget: 2 iterations
 
-Files: `estimation/navigation/{sensors,records,filter}.py`, `core/geometry/composite.py`.
+Files: `estimation/navigation/{sensors,records,filter}.py`, `models/geometry/composite.py`.
 
 - [ ] Add FOV cones and component occlusion against the expanded target solids. Occluded samples become declared dropouts.
 - [ ] Gate: the central case runs end to end with visibility on. Record the outage durations.
@@ -170,7 +170,8 @@ Runs before W2–W8 so that new work lands in the final layout.
 - [x] Replace the lazy package export maps with plain package docstrings.
 - [x] Retire the analytical entry points, the historical Studio resume route, analytical-only configs, `paper/` and every module outside the computed closure.
 - [x] Cut the remaining analytical entanglement. This removed `MPCController.run_mission` and the SMID batch stack, the unused default point estimator, and dead classes and methods, until vulture and the import closure were both clean.
-- [ ] Move modules into the layers `common` → `models` → `proofs` → `estimation` → `control`/`solvers` → `mission` → `evidence` → `studies` → `figures` → `service` → `cli`, one PR per layer.
+- [x] Move modules into the layers `common` → `models` → `proofs` → `estimation` → `control`/`solvers` → `mission` → `evidence` → `studies` → `figures` → `service` → `cli`. This was one mechanical PR: a single import rewrite per file costs less than eleven.
+- [ ] Remove the 27 remaining upward imports, so imports only go downward.
 - [ ] Generate figures into `results/<topic>/` from recorded data.
 - [ ] Root cleanup and ROS 2 files (`package.xml`, `resource/orbexa`). Fold `requirements.txt` and `install_dependencies.sh` into `pyproject.toml` extras.
 - [ ] One guide per layer, `docs/history.md` for narration, and folder READMEs.

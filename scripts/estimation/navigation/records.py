@@ -6,11 +6,11 @@ import math
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from orbexa.control.certification.nonlinear import FRAME
-from orbexa.control.certification.reachability import IntervalBox
-from orbexa.core.dynamics.reference_frame import bounds, exact, fingerprint
 from orbexa.estimation.navigation.boxes import midpoint
 from orbexa.estimation.navigation.noise import PhysicalSlotNoise
+from orbexa.models.dynamics.reference_frame import bounds, exact, fingerprint
+from orbexa.proofs.nonlinear import FRAME
+from orbexa.proofs.reachability import IntervalBox
 
 
 @dataclass(frozen=True)

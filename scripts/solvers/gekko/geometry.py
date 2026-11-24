@@ -14,7 +14,7 @@ import math
 from numbers import Integral
 
 import numpy as np
-from orbexa.core.geometry.composite import OBBComponent
+from orbexa.models.geometry.composite import OBBComponent
 
 _OBB_NOMINAL_VERTICES = OBBComponent.nominal_vertices_body_m
 _OBB_VERTICES = OBBComponent._vertices
@@ -29,7 +29,7 @@ class GekkoCompositeGeometry:
     """
 
     def __init__(self, target, rotations, center):
-        from orbexa.core.geometry.composite import SpacecraftGeometry
+        from orbexa.models.geometry.composite import SpacecraftGeometry
 
         payload = target.get("geometry")
         if payload is None:

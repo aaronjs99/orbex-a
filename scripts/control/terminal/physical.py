@@ -16,14 +16,6 @@ from itertools import combinations
 from numbers import Integral
 from typing import Any
 
-from orbexa.control.certification.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    OrbitalModelBounds,
-    _ArbArithmetic,
-    _exact,
-    _ProofUnresolved,
-)
 from orbexa.control.terminal.tracking import (
     BoundScope,
     TerminalCertificate,
@@ -34,6 +26,14 @@ from orbexa.control.terminal.tracking import (
     TerminalReferenceSample,
     TerminalTrackingBounds,
     certify_terminal_tracking,
+)
+from orbexa.proofs.reachability import (
+    _ARB_LOCK,
+    IntervalBox,
+    OrbitalModelBounds,
+    _ArbArithmetic,
+    _exact,
+    _ProofUnresolved,
 )
 
 PHYSICAL_TERMINAL_METHOD = "arb-orbit-rigid-body-terminal-v1"

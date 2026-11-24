@@ -8,7 +8,6 @@ from fractions import Fraction
 from functools import cached_property
 from typing import Any
 
-from orbexa.control.certification.reachability import _exact
 from orbexa.control.fallback.common import _pairs, _same_plant
 from orbexa.control.fallback.geometry import (
     FleetGeometryCertificate,
@@ -19,6 +18,7 @@ from orbexa.control.fallback.polynomial import (
     _reference_methods,
 )
 from orbexa.control.fallback.refuge import RefugeController, exact_record, fingerprint
+from orbexa.proofs.reachability import _exact
 
 FLEET_FALLBACK_METHOD = "exact-finite-fleet-feedback-fallback-v1"
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
 
 
 @dataclass(frozen=True)

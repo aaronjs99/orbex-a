@@ -1,1 +1,0 @@
-"""simulation.contact.lock package."""

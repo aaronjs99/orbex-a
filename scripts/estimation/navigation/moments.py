@@ -7,7 +7,7 @@ from bisect import bisect_left
 from collections import deque
 from fractions import Fraction
 
-from orbexa.control.certification.reachability import (
+from orbexa.proofs.reachability import (
     FlowCertificate,
     IntervalBox,
     SweptSegment,

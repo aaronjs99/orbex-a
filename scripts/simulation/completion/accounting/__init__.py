@@ -1,1 +1,0 @@
-"""simulation.completion.accounting package."""

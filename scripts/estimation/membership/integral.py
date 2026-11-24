@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from uuid import uuid4
 
-from orbexa.core.dynamics.reference_frame import bounds, exact, fingerprint
+from orbexa.models.dynamics.reference_frame import bounds, exact, fingerprint
 
 
 def _add(a, b):
