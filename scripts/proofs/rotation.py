@@ -5,8 +5,8 @@ from __future__ import annotations
 from fractions import Fraction
 from itertools import product
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.proofs.attitude import _sqrt_upper
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 _DIRECTIONS = tuple(
     tuple(map(Fraction, row))

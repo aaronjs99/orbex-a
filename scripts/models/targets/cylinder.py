@@ -12,12 +12,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from orbexa.control.mpc.constraints import CylinderConstraint
 from orbexa.models.dynamics.attitude import (
     euler_to_quaternion,
     quaternion_to_euler,
 )
 from orbexa.models.dynamics.rigid_motion import RigidBodyMotion
+from orbexa.models.geometry.constraints import CylinderConstraint
 from orbexa.models.targets.prescribed import TumblingCylinderTarget
 
 if TYPE_CHECKING:

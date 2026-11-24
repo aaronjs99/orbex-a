@@ -16,6 +16,7 @@ from collections.abc import Callable
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox, _ProofUnresolved
 from orbexa.mission.contact.contracts import (
     ContactBodyState,
     FiniteContactOptions,
@@ -32,7 +33,6 @@ from orbexa.mission.contact.dynamics.state import (
 )
 from orbexa.mission.contact.enclosure import ContactStepEncloser
 from orbexa.mission.contact.records import ContactRecorder
-from orbexa.proofs.reachability import IntervalBox, _ProofUnresolved
 
 _CONTACT_SOURCE_FILES = (
     "mission/contact/simulator.py",
@@ -440,13 +440,10 @@ class FiniteContactSimulator:
                 )
                 enclosure = certificate.endpoint.hull(representative)
                 import flint
+                from orbexa.common.intervals import _ARB_LOCK, _ArbArithmetic
                 from orbexa.proofs.numerics.rigid_interval import (
                     normalized_quaternion,
                     quaternion_rotation,
-                )
-                from orbexa.proofs.reachability import (
-                    _ARB_LOCK,
-                    _ArbArithmetic,
                 )
 
                 with _ARB_LOCK, flint.ctx.workprec(encloser.precision_bits):

@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
+from orbexa.common.intervals import _exact
 from orbexa.control.fallback.records import CommandResourceBound
 from orbexa.control.fallback.refuge import _absbox, _identity, fingerprint
 from orbexa.proofs.attitude import _sqrt_upper
-from orbexa.proofs.reachability import _exact
 
 
 @dataclass(frozen=True)

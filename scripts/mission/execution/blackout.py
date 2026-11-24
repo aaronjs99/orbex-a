@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.refuge import RefugeObservation
 from orbexa.mission.safety.drift import ZERO_NOMINAL_ID
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 class BlackoutObservationPropagator:

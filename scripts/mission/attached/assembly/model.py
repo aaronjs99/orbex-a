@@ -160,11 +160,11 @@ class AssemblyState:
         fuel.setflags(write=False)
         object.__setattr__(self, "fuel_kg", fuel)
         if self.enclosure is not None:
+            from orbexa.common.intervals import IntervalBox
             from orbexa.mission.attached.assembly.flow import (
                 AssemblyStateEnclosure,
                 packed_state,
             )
-            from orbexa.proofs.reachability import IntervalBox
 
             if not isinstance(
                 self.enclosure, AssemblyStateEnclosure
@@ -228,7 +228,7 @@ class AttachedAssembly:
         if self.environment is not None and not callable(self.environment):
             raise TypeError("Assembly environment must be an explicit callable")
         if self.parameter_enclosure is not None:
-            from orbexa.proofs.reachability import IntervalBox
+            from orbexa.common.intervals import IntervalBox
 
             fields = {
                 "position_body_m": ("position_body_m", 3),

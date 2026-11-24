@@ -11,12 +11,12 @@ from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from math import comb
 
+from orbexa.common.intervals import _exact
 from orbexa.control.fallback.refuge import _identity, _vec
 from orbexa.mission.safety.reference import (
     C2RefugeReference,
     PolynomialReferencePiece,
 )
-from orbexa.proofs.reachability import _exact
 
 
 def _shift(coefficients, offset):

@@ -10,13 +10,13 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from orbexa.common.intervals import _exact
 from orbexa.control.fallback.refuge import _vec
 from orbexa.mission.safety.braking import coordinated_braking_references
 from orbexa.mission.safety.reference import (
     C2RefugeReference,
     PolynomialReferencePiece,
 )
-from orbexa.proofs.reachability import _exact
 
 
 @dataclass(frozen=True)

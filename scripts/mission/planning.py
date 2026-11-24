@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 import numpy as np
 from orbexa.common.contracts import SolverResult
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.tubes.specification import (
     DynamicTubeSpec,
     ProspectiveContactConstraint,
@@ -22,7 +23,6 @@ from orbexa.control.tubes.specification import (
 from orbexa.mission.approach.planning import CoupledMissionPlanner, PlanningStep
 from orbexa.models.dynamics.reference_frame import exact
 from orbexa.proofs.nonlinear import bound_nominal_coefficients
-from orbexa.proofs.reachability import IntervalBox
 
 
 def outward_upper(value):

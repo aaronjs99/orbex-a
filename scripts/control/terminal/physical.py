@@ -16,6 +16,14 @@ from itertools import combinations
 from numbers import Integral
 from typing import Any
 
+from orbexa.common.encoding import _encode
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _exact,
+    _ProofUnresolved,
+)
 from orbexa.control.terminal.tracking import (
     BoundScope,
     TerminalCertificate,
@@ -27,14 +35,7 @@ from orbexa.control.terminal.tracking import (
     TerminalTrackingBounds,
     certify_terminal_tracking,
 )
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    OrbitalModelBounds,
-    _ArbArithmetic,
-    _exact,
-    _ProofUnresolved,
-)
+from orbexa.proofs.reachability import OrbitalModelBounds
 
 PHYSICAL_TERMINAL_METHOD = "arb-orbit-rigid-body-terminal-v1"
 
@@ -57,18 +58,6 @@ def _matrix(values, rows, columns, name, *, nonnegative=False):
     if len(result) != rows:
         raise ValueError(f"{name} must have shape ({rows},{columns})")
     return result
-
-
-def _encode(value):
-    if isinstance(value, Fraction):
-        return str(value)
-    if hasattr(value, "as_dict"):
-        return value.as_dict()
-    if isinstance(value, dict):
-        return {key: _encode(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return tuple(_encode(item) for item in value)
-    return value
 
 
 def _abs(ar, ball):

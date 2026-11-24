@@ -23,6 +23,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _ProofUnresolved,
+)
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.mission.contact.enclosure import ContactStepEncloser
 from orbexa.mission.contact.lock.chart import positioner_motion
@@ -41,12 +47,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     square,
     subtract,
     transpose,
-)
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
-    _ProofUnresolved,
 )
 
 
@@ -92,6 +92,7 @@ def _source_manifest():
         "mission/contact/lock/chart.py",
         "mission/lifecycle/environment/enclosure.py",
         "mission/lifecycle/environment/point.py",
+        "common/intervals.py",
         "proofs/reachability.py",
         "models/dynamics/reference_frame.py",
         "models/dynamics/relative.py",

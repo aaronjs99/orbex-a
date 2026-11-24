@@ -170,8 +170,8 @@ Runs before W2–W8 so that new work lands in the final layout.
 - [x] Replace the lazy package export maps with plain package docstrings.
 - [x] Retire the analytical entry points, the historical Studio resume route, analytical-only configs, `paper/` and every module outside the computed closure.
 - [x] Cut the remaining analytical entanglement. This removed `MPCController.run_mission` and the SMID batch stack, the unused default point estimator, and dead classes and methods, until vulture and the import closure were both clean.
-- [x] Move modules into the layers `common` → `models` → `proofs` → `estimation` → `control`/`solvers` → `mission` → `evidence` → `studies` → `figures` → `service` → `cli`. This was one mechanical PR: a single import rewrite per file costs less than eleven.
-- [ ] Remove the 27 remaining upward imports, so imports only go downward.
+- [x] Move modules into the layers `common` → `models` → `proofs` → `control` → `estimation` → `solvers` → `evidence` → `mission` → `studies` → `figures` → `service` → `cli`. This was one mechanical PR: a single import rewrite per file costs less than eleven.
+- [x] Remove the upward imports. `MPCController` moves to `solvers`, the interval kernel to `common.intervals`, constraints and target snapshots to `models`, rotation bounds to `proofs`, and the run recorders to `mission.records`. `control` now sits below `estimation`, and `evidence` below `mission`.
 - [ ] Generate figures into `results/<topic>/` from recorded data.
 - [ ] Root cleanup and ROS 2 files (`package.xml`, `resource/orbexa`). Fold `requirements.txt` and `install_dependencies.sh` into `pyproject.toml` extras.
 - [ ] One guide per layer, `docs/history.md` for narration, and folder READMEs.

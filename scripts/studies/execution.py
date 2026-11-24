@@ -58,6 +58,7 @@ class StudyArmExecution:
         # Later stage-local imports make each stage's dependencies explicit and
         # resolve from this same, already loaded frozen package.
         import numpy as np
+        from orbexa.common.intervals import IntervalBox
         from orbexa.estimation.navigation.records import StudySensorProfile
         from orbexa.evidence.native import (
             native_controller as _native_controller,
@@ -73,7 +74,6 @@ class StudyArmExecution:
             NonlinearStudyOptions,
         )
         from orbexa.models.configuration.model import SimulationConfig
-        from orbexa.proofs.reachability import IntervalBox
 
         self.declaration = load_declaration(self.study_path, self.case)
         options_record = dict(self.declaration["options"])

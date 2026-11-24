@@ -7,6 +7,7 @@ from fractions import Fraction
 from types import MappingProxyType
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.fallback.fuel import FleetFuelBudget
 from orbexa.control.fallback.geometry import FleetGeometryOracle
 from orbexa.control.fallback.refuge import (
@@ -58,7 +59,6 @@ from orbexa.proofs.reachability import (
     EnclosureStatus,
     FlowCertificate,
     HeldInputRequest,
-    IntervalBox,
     SweptCollisionGuard,
 )
 

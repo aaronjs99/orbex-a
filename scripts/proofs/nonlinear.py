@@ -11,6 +11,12 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _Arithmetic,
+    _ProofUnresolved,
+)
 from orbexa.models.dynamics.reference_frame import bounds, fingerprint
 from orbexa.models.dynamics.relative import (
     differential_acceleration,
@@ -22,37 +28,18 @@ from orbexa.models.dynamics.relative import (
     z,
 )
 from orbexa.proofs.reachability import (
-    _ARB_LOCK,
     EnclosureStatus,
     FlowCertificate,
     HeldInputRequest,
-    IntervalBox,
     OrbitalModelBounds,
     ReachabilityConfig,
     SweptSegment,
-    _ArbArithmetic,
     _orbital_coefficients,
-    _ProofUnresolved,
 )
 
 FRAME = "reference-orbit-frame-v1"
 MODEL = "nonlinear-reference-relative-v1"
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
-
-
-class _Arithmetic(_ArbArithmetic):
-    sqrt = staticmethod(lambda value: value.sqrt())
-    exp = staticmethod(lambda value: value.exp())
-    expm1 = staticmethod(lambda value: value.expm1())
-    sin = staticmethod(lambda value: value.sin())
-    cos = staticmethod(lambda value: value.cos())
-
-    def square(self, value):
-        # flint 0.8's generic power uses log for negative balls, even **2.
-        box = self.box((value,))
-        lo, hi = box.lower[0], box.upper[0]
-        lower = 0 if lo <= 0 <= hi else min(lo * lo, hi * hi)
-        return self.interval((lower, max(lo * lo, hi * hi)))
 
 
 @dataclass(frozen=True)

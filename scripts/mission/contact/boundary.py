@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _Arithmetic
 from orbexa.models.dynamics.reference_frame import exact, fingerprint
-from orbexa.proofs.nonlinear import _Arithmetic
 from orbexa.proofs.numerics.rigid_interval import (
     add,
     cross,
@@ -24,7 +24,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     scale,
     transpose,
 )
-from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox
 from scipy.spatial.transform import Rotation
 
 

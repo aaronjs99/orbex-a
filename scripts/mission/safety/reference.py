@@ -7,6 +7,7 @@ from fractions import Fraction
 from math import comb, factorial, gcd, perm
 from typing import Any
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.polynomial import (
     PolynomialReferenceSource,
     PolynomialReferenceSpan,
@@ -21,7 +22,6 @@ from orbexa.control.fallback.refuge import (
     exact_record,
     fingerprint,
 )
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 def _derivative(coefficients, order):

@@ -10,6 +10,7 @@ import copy
 from types import MappingProxyType
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.actuation import (
     AffineActuatorRealization,
     CommandDependentActuationPrior,
@@ -50,11 +51,7 @@ from orbexa.mission.execution.sensing import (
 from orbexa.models.dynamics.reference_frame import exact, fingerprint
 from orbexa.models.dynamics.relative import NonlinearRelativeDynamics
 from orbexa.proofs.nonlinear import FRAME, NonlinearFlowEncloser
-from orbexa.proofs.reachability import (
-    HeldInputRequest,
-    IntervalBox,
-    ValidatedFlowEncloser,
-)
+from orbexa.proofs.reachability import HeldInputRequest, ValidatedFlowEncloser
 
 
 class NonlinearDenseExecutor:

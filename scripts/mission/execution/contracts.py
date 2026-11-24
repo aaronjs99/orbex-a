@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.estimation.navigation.boxes import midpoint
 from orbexa.mission.approach.execution import ExecutionStep
-from orbexa.proofs.reachability import IntervalBox
 
 
 @dataclass(frozen=True)

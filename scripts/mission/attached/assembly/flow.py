@@ -14,6 +14,12 @@ from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _ProofUnresolved,
+)
 from orbexa.models.dynamics.reference_frame import fingerprint
 from orbexa.proofs.numerics.rigid_interval import (
     add,
@@ -26,12 +32,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     square,
     subtract,
     transpose,
-)
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
-    _ProofUnresolved,
 )
 
 

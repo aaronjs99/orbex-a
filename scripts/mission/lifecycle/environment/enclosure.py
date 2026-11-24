@@ -13,11 +13,11 @@ import hashlib
 from dataclasses import dataclass
 from fractions import Fraction
 
+from orbexa.common.intervals import _ProofUnresolved
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.models.dynamics.reference_frame import FloatArithmetic, fingerprint
 from orbexa.models.dynamics.relative import drag, parameters, radial
 from orbexa.proofs.numerics.rigid_interval import norm_upper, square
-from orbexa.proofs.reachability import _ProofUnresolved
 
 _SOURCE = {
     name: hashlib.sha256((PACKAGE_ROOT / name).read_bytes()).hexdigest()

@@ -15,9 +15,10 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     from dataclasses import replace
 
     import numpy as np
+    from orbexa.common.intervals import IntervalBox
+    from orbexa.evidence.projections.studio import StudioDataset
     from orbexa.evidence.records.archive import NonlinearProofArchive
     from orbexa.evidence.records.results import MissionResultStore
-    from orbexa.figures.data.studio import StudioDataset
     from orbexa.mission.lifecycle.configuration.design import (
         SpacecraftMissionDesign,
     )
@@ -31,7 +32,6 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     )
     from orbexa.mission.runner import NonlinearMissionRunner
     from orbexa.models.configuration.model import SimulationConfig
-    from orbexa.proofs.reachability import IntervalBox
 
     cfg = SimulationConfig.load(str(settings.config_path))
     if cfg.solver.remote:

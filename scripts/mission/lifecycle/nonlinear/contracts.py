@@ -12,10 +12,10 @@ import re
 from fractions import Fraction
 from math import isqrt
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.common.serialization import digest
 from orbexa.control.fallback.refuge import fingerprint as exact_fingerprint
-from orbexa.proofs.reachability import IntervalBox
 
 _COMPLETION_SOURCE_FILES = (
     "mission/lifecycle/nonlinear/coordinator.py",
@@ -39,7 +39,7 @@ _COMPLETION_SOURCE_FILES = (
     "mission/lifecycle/environment/enclosure.py",
     "mission/lifecycle/nonlinear/journal.py",
     "mission/lifecycle/nonlinear/observers.py",
-    "evidence/accounting/nonlinear.py",
+    "mission/lifecycle/accounting.py",
     "common/layout.py",
 )
 

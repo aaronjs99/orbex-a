@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.estimation.navigation.boxes import _product, intersect
 from orbexa.estimation.navigation.moments import _AccelerationMomentLedger
 from orbexa.estimation.navigation.records import NavigationEstimate
@@ -13,7 +14,7 @@ from orbexa.estimation.navigation.target_pose import (
 )
 from orbexa.models.dynamics.reference_frame import bounds, exact
 from orbexa.proofs.nonlinear import FRAME, MODEL
-from orbexa.proofs.reachability import HeldInputRequest, IntervalBox
+from orbexa.proofs.reachability import HeldInputRequest
 
 
 class BoundedNavigationFilter:

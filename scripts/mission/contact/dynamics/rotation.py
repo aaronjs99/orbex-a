@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.proofs.numerics.rigid_interval import (
     add,
     matvec,
@@ -17,7 +18,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     subtract,
     transpose,
 )
-from orbexa.proofs.reachability import IntervalBox
 
 
 def intersect(left, right):

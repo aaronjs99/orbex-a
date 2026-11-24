@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
+from orbexa.common.intervals import _exact
 from orbexa.control.fallback.records import PerformanceAttempt
 from orbexa.control.fallback.refuge import fingerprint
 from orbexa.control.fallback.replacement import (
@@ -22,7 +23,6 @@ from orbexa.control.fallback.replacement import (
 )
 from orbexa.control.fallback.runtime import FleetAdmissionRuntime
 from orbexa.mission.online.clock import MONOTONIC_CLOCK, wall_time_ns
-from orbexa.proofs.reachability import _exact
 
 
 @dataclass(frozen=True)

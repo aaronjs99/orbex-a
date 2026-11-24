@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
-from orbexa.control.mpc.constraints import (
+from orbexa.models.geometry.constraints import (
     CylinderConstraint,
     rotating_body_point_acceleration,
     rotating_body_point_velocity,
@@ -181,7 +181,7 @@ class TumblingCylinderTarget:
     def assign_docking_targets(
         self, initial_states: Sequence[np.ndarray]
     ) -> list[dict[str, Any]]:
-        from orbexa.mission.rendezvous.cylinder import assign_docking_targets
+        from orbexa.models.targets.docking import assign_docking_targets
 
         return assign_docking_targets(self, initial_states)
 

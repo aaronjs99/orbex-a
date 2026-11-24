@@ -1050,6 +1050,7 @@ class CaptureModel:
         geometry=None,
     ):
         """Brake relative motion over finite time, then change coordinates only."""
+        from orbexa.common.intervals import IntervalBox
         from orbexa.mission.attached.assembly.flow import (
             AssemblyStateEnclosure,
             assembly_parameter_fingerprint,
@@ -1057,7 +1058,6 @@ class CaptureModel:
         )
         from orbexa.mission.contact.dynamics.state import ContactFleet
         from orbexa.mission.contact.lock.transition import FiniteLockTransition
-        from orbexa.proofs.reachability import IntervalBox
 
         current_members = tuple(
             replace(member, initial_state=contact.final_chasers[member.id])

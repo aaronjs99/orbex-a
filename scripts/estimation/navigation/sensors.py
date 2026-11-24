@@ -5,11 +5,11 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.estimation.navigation.noise import PhysicalSlotNoise
 from orbexa.estimation.navigation.records import SensorPacket, StudySensorProfile
 from orbexa.models.dynamics.reference_frame import exact
 from orbexa.proofs.nonlinear import FRAME
-from orbexa.proofs.reachability import IntervalBox
 
 
 def _reported_additive_support(reported, declared_error):

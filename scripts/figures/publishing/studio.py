@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from orbexa.common.layout import PACKAGE_ROOT
+from orbexa.evidence.projections.studio import StudioDataset
 from orbexa.evidence.records.results import ADTMPCMissionResult
-from orbexa.figures.data.studio import StudioDataset
 
 
 @dataclass

@@ -259,7 +259,7 @@ class _NonlinearTargetQueries:
 
     def assign_docking_targets(self, initial_states):
         if getattr(self._template, "geometry", None) is not None:
-            from orbexa.mission.rendezvous.composite import (
+            from orbexa.models.geometry.rendezvous import (
                 assign_composite_docking_targets,
             )
 

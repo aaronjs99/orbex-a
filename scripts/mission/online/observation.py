@@ -20,13 +20,13 @@ from collections import deque
 from dataclasses import dataclass
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.plan import FleetFallbackPlan
 from orbexa.control.fallback.records import HeldFleetDecision
 from orbexa.control.fallback.refuge import RefugeObservation
 from orbexa.estimation.navigation.boxes import intersect
 from orbexa.estimation.navigation.records import SensorPacket
 from orbexa.mission.safety.drift import ZERO_NOMINAL_ID
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 def _bounded_box(box):

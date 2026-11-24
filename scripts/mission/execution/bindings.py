@@ -9,8 +9,8 @@ from __future__ import annotations
 import copy
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.models.dynamics.reference_frame import exact, fingerprint
-from orbexa.proofs.reachability import IntervalBox
 
 
 class PerformanceStageBindings:

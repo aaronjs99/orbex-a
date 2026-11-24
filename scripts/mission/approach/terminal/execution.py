@@ -15,10 +15,11 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
 
+from orbexa.common.encoding import _encode
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.terminal.physical import (
     PhysicalTerminalBoundsBuilder,
     PhysicalTerminalFleet,
-    _encode,
     _vector,
 )
 from orbexa.control.terminal.tracking import (
@@ -32,13 +33,11 @@ from orbexa.proofs.geometry import (
 )
 from orbexa.proofs.reachability import (
     HeldInputRequest,
-    IntervalBox,
     OrbitalModelBounds,
     ReachabilityConfig,
     RotatingCylinderBounds,
     SweptCollisionGuard,
     ValidatedFlowEncloser,
-    _exact,
 )
 
 EXECUTION_METHOD = "physical-terminal-held-execution-v1"

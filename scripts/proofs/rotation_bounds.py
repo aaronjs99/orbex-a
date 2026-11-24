@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import TYPE_CHECKING
 
-from orbexa.control.terminal.physical import (
-    OrbitalClockBounds,
-    _encode,
-)
-from orbexa.proofs.reachability import (
-    IntervalBox,
-)
+from orbexa.common.encoding import _encode
+from orbexa.common.intervals import IntervalBox
+
+if TYPE_CHECKING:
+    from orbexa.control.terminal.physical import OrbitalClockBounds
 
 RIGID_BODY_ROTATION_METHOD = "arb-rigid-energy-orbital-rotation-v1"
 

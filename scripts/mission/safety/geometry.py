@@ -8,11 +8,10 @@ from fractions import Fraction
 from math import gcd
 from typing import Any
 
+from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _Arithmetic, _exact
 from orbexa.control.fallback.geometry import OccupiedGeometryBounds, OccupiedProjection
 from orbexa.control.fallback.refuge import _identity, _scope, fingerprint
 from orbexa.mission.safety.cache import _FrozenProofIdentityCache
-from orbexa.proofs.nonlinear import _Arithmetic
-from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox, _exact
 from orbexa.proofs.rotation import all_rotation_component_bounds
 
 

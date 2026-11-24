@@ -13,21 +13,16 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
-from orbexa.models.dynamics.reference_frame import exact, fingerprint
-from orbexa.models.dynamics.relative import cross, matvec, radial, transpose
-from orbexa.proofs.nonlinear import (
-    FRAME,
-    TargetEphemerisCertificate,
-    _Arithmetic,
-    _target_box,
-)
-from orbexa.proofs.reachability import (
+from orbexa.common.intervals import (
     _ARB_LOCK,
-    EnclosureStatus,
     IntervalBox,
-    ReachabilityConfig,
+    _Arithmetic,
     _ProofUnresolved,
 )
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.relative import cross, matvec, radial, transpose
+from orbexa.proofs.nonlinear import FRAME, TargetEphemerisCertificate, _target_box
+from orbexa.proofs.reachability import EnclosureStatus, ReachabilityConfig
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

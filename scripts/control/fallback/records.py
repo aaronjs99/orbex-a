@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.common import _pairs
 from orbexa.control.fallback.geometry import FleetGeometryCertificate
 from orbexa.control.fallback.plan import FleetFallbackPlan
 from orbexa.control.fallback.refuge import _identity, exact_record, fingerprint
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 def _freeze(value):

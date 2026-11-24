@@ -7,6 +7,7 @@ is keyed by the declared nominal model and enclosure configuration.
 from __future__ import annotations
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.tubes.sensed import (
     _outward_tube_endpoint,
     _upper,
@@ -19,7 +20,7 @@ from orbexa.proofs.orbital import (
     OrbitalHoldProofService,
     OrbitalHoldRequest,
 )
-from orbexa.proofs.reachability import IntervalBox, OrbitalModelBounds
+from orbexa.proofs.reachability import OrbitalModelBounds
 
 
 class NominalTubePropagator:

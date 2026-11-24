@@ -6,8 +6,8 @@ import time
 from dataclasses import replace
 
 import numpy as np
-from orbexa.mission.proposals.trajectory import AffinePrediction, input_limits
 from orbexa.solvers.base import SolverBase
+from orbexa.solvers.proposals import AffinePrediction, input_limits
 
 
 class ProposalSeededSolver(SolverBase):

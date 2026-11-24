@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.fuel import FleetFuelBudget
 from orbexa.control.fallback.geometry import FleetGeometryOracle
 from orbexa.control.fallback.plan import FleetFallbackPlan, FleetFeedbackSegment
@@ -24,7 +25,6 @@ from orbexa.mission.safety.drift import (
 )
 from orbexa.mission.safety.reference import C2RefugeReference
 from orbexa.mission.safety.resources import StudyPropulsionBounds
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 class RefugeTargetGeometryRefusal(ValueError):

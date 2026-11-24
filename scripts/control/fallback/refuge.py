@@ -16,7 +16,7 @@ from fractions import Fraction
 from functools import cached_property
 from typing import Any, Protocol
 
-from orbexa.proofs.reachability import IntervalBox, _exact
+from orbexa.common.intervals import IntervalBox, _exact
 
 REFUGE_METHOD = "exact-sampled-reference-refuge-v1"
 
