@@ -144,11 +144,3 @@ class MissionResultStore:
         if "result" in payload:
             return ADTMPCMissionResult.from_dict(payload["result"])
         return ADTMPCMissionResult.from_dict(payload)
-
-
-def load_adtmpc_mission_result(output_dir: Path) -> ADTMPCMissionResult:
-    return MissionResultStore.load(Path(output_dir) / MissionResultStore.filename)
-
-
-def result_chaser_ids(result: ADTMPCMissionResult) -> list[str]:
-    return list(result.actual_trajectories.keys())

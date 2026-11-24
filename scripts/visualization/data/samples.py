@@ -260,28 +260,6 @@ class MissionSamples:
             self.notes.append(note)
         return reconstructed
 
-    def phase_switch_indices(self) -> list[int]:
-        return [
-            index
-            for index in range(1, len(self.q))
-            if self.phases[index] != self.phases[index - 1]
-        ]
-
-    def frame_indices(self, limit: int | None = None, *, start: int = 0) -> list[int]:
-        """Select recorded stops, always retaining transitions and the final row."""
-        count = len(self.q)
-        if start < 0 or start >= count:
-            return []
-        number = count - start if limit is None else min(limit, count - start)
-        indices = np.linspace(start, count - 1, max(number, 1)).astype(int).tolist()
-        return sorted(
-            set(
-                indices
-                + [start, count - 1]
-                + [index for index in self.phase_switch_indices() if index >= start]
-            )
-        )
-
     def matched_tube(self, identifier: str):
         """Return this chaser's aligned nominal center and component tube bounds."""
         entry = (self.result.tube_diagnostics or {}).get(identifier, {})
@@ -308,19 +286,6 @@ class MissionSamples:
         ):
             return None
         return center, omega
-
-    def nominal_horizons(self, identifier: str):
-        for history in (self.result.nominal_trajectories or {}).get(
-            identifier, []
-        ) or []:
-            values = recorded_array(history)
-            if (
-                values.ndim == 2
-                and values.shape[1] >= 3
-                and len(values)
-                and np.all(np.isfinite(values[:, :3]))
-            ):
-                yield values[:, :3]
 
     def cylinder(self) -> tuple[float, float] | None:
         target = self.target

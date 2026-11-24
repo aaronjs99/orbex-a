@@ -7,11 +7,8 @@ reported Euler angles are a canonical chart and may jump at chart boundaries.
 """
 
 import warnings
-from collections.abc import Callable
-from dataclasses import dataclass
 
 import numpy as np
-from scipy.integrate import solve_ivp
 from scipy.spatial.transform import Rotation
 
 
@@ -54,19 +51,6 @@ def quaternion_to_euler(quaternion) -> np.ndarray:
         return Rotation.from_quat(quaternion).as_euler("XYZ")
 
 
-def euler_rates_to_body_rates(angles, euler_rates) -> np.ndarray:
-    """Map roll/pitch/yaw derivatives per second to body rates in rad/s."""
-    _, pitch, yaw = finite_vector(angles, "Euler angles", 3)
-    roll_rate, pitch_rate, yaw_rate = finite_vector(euler_rates, "Euler rates", 3)
-    return np.array(
-        [
-            np.cos(pitch) * np.cos(yaw) * roll_rate + np.sin(yaw) * pitch_rate,
-            -np.cos(pitch) * np.sin(yaw) * roll_rate + np.cos(yaw) * pitch_rate,
-            np.sin(pitch) * roll_rate + yaw_rate,
-        ]
-    )
-
-
 def body_rates_to_euler_rates(angles, body_rates, *, solver=None):
     """Map body rates to Euler derivatives in the shared Rx Ry Rz convention.
 
@@ -102,122 +86,3 @@ def body_rates_to_euler_rates(angles, body_rates, *, solver=None):
 def body_rate_derivative(body_rates, inertia, torque) -> np.ndarray:
     """Euler's rigid-body equation, using the current body rate at each call."""
     return np.linalg.solve(inertia, torque - np.cross(body_rates, inertia @ body_rates))
-
-
-def evaluate_torque(t, state, dt, inertia, torque_value, torque_type) -> np.ndarray:
-    """Resolve the legacy Target torque interface into a body-frame torque."""
-    if torque_type == "zero":
-        return np.zeros(3)
-    if torque_type == "given":
-        values = np.asarray(torque_value, dtype=float)
-        if (
-            values.ndim != 2
-            or values.shape[1] != 3
-            or len(values) == 0
-            or not np.all(np.isfinite(values))
-        ):
-            raise ValueError(
-                "Given torque must be a nonempty sequence of finite three-vectors"
-            )
-        if not np.isfinite(dt) or dt <= 0:
-            raise ValueError("Torque sampling dt must be finite and positive")
-        index = min(max(int(np.floor(t / dt)), 0), len(values) - 1)
-        return values[index].copy()
-    if torque_type == "function":
-        if not callable(torque_value):
-            raise ValueError(
-                "Function torque requires a callable accepting (attitude_state, inertia)"
-            )
-        result = torque_value(state.copy(), inertia.copy())
-        if not isinstance(result, dict) or "torque" not in result:
-            raise ValueError(
-                "Torque callable must return a dictionary with a 'torque' three-vector"
-            )
-        return finite_vector(result["torque"], "Torque", 3)
-    raise ValueError("torqueType must be 'zero', 'given' or 'function'")
-
-
-@dataclass(frozen=True)
-class AttitudeTrajectory:
-    """Endpoint samples from quaternion integration, excluding the initial state."""
-
-    times: np.ndarray
-    quaternions: np.ndarray
-    body_rates: np.ndarray
-
-    @property
-    def euler_angles(self) -> np.ndarray:
-        return np.array([quaternion_to_euler(value) for value in self.quaternions])
-
-
-class RigidBodyAttitude:
-    """Numerical attitude propagator with an explicit inertia and tolerance policy."""
-
-    def __init__(self, inertia, *, rtol: float = 1e-10, atol: float = 1e-12):
-        self.inertia = inertia_matrix(inertia)
-        if any(not np.isfinite(value) or value <= 0 for value in (rtol, atol)):
-            raise ValueError("Integration tolerances must be finite and positive")
-        self.rtol, self.atol = float(rtol), float(atol)
-
-    def propagate(
-        self, quaternion, body_rates, times, *, torque: Callable | None = None
-    ) -> AttitudeTrajectory:
-        """Integrate from local time zero to positive, strictly increasing endpoints.
-
-        The optional torque callable accepts ``(time_seconds, quaternion, body_rate)``.
-        Integration failure raises; no frozen-state replacement is manufactured.
-        """
-        quaternion = finite_vector(quaternion, "Quaternion", 4)
-        norm = np.linalg.norm(quaternion)
-        if norm == 0:
-            raise ValueError("Quaternion must have nonzero norm")
-        quaternion /= norm
-        body_rates = finite_vector(body_rates, "Body angular velocity", 3)
-        times = np.asarray(times, dtype=float)
-        if (
-            times.ndim != 1
-            or len(times) == 0
-            or not np.all(np.isfinite(times))
-            or times[0] <= 0
-            or np.any(np.diff(times) <= 0)
-        ):
-            raise ValueError(
-                "Attitude endpoints must be finite, positive and strictly increasing"
-            )
-
-        def rhs(t, state):
-            vector, scalar, omega = state[:3], state[3], state[4:]
-            quaternion_dot = 0.5 * np.concatenate(
-                (scalar * omega + np.cross(vector, omega), [-np.dot(vector, omega)])
-            )
-            applied = (
-                np.zeros(3)
-                if torque is None
-                else finite_vector(
-                    torque(t, state[:4].copy(), omega.copy()), "Torque", 3
-                )
-            )
-            return np.concatenate(
-                (quaternion_dot, body_rate_derivative(omega, self.inertia, applied))
-            )
-
-        solution = solve_ivp(
-            rhs,
-            (0.0, float(times[-1])),
-            np.concatenate((quaternion, body_rates)),
-            t_eval=times,
-            method="DOP853",
-            rtol=self.rtol,
-            atol=self.atol,
-        )
-        if (
-            not solution.success
-            or solution.y.shape[1] != len(times)
-            or not np.all(np.isfinite(solution.y))
-        ):
-            raise RuntimeError(
-                f"Rigid-body attitude integration failed: {solution.message}"
-            )
-        quaternions = solution.y[:4].T.copy()
-        quaternions /= np.linalg.norm(quaternions, axis=1)[:, None]
-        return AttitudeTrajectory(times.copy(), quaternions, solution.y[4:].T.copy())

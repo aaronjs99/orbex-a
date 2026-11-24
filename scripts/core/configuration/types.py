@@ -377,27 +377,6 @@ class TubeMPCConfig:
             self.membership_update_period, "tube.membership_update_period"
         )
 
-    def runtime_params(
-        self,
-        *,
-        enabled: bool,
-        eccentricity_range: tuple[float, float],
-        target_drag_range: tuple[float, float],
-        chaser_drag_range: tuple[float, float],
-    ) -> dict[str, Any] | None:
-        if not enabled:
-            return None
-        return {
-            "enabled": True,
-            "lambda_gain": self.sliding_gains,
-            "alpha": self.bandwidth_0,
-            "phi": self.boundary_layer_0,
-            "eccentricity_range": eccentricity_range,
-            "aRange": target_drag_range,
-            "bRange": chaser_drag_range,
-            "tighten_inputs": True,
-        }
-
 
 @dataclass
 class MissionPolicyConfig:

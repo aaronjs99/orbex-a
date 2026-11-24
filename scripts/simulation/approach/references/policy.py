@@ -176,28 +176,3 @@ class MissionReferencePolicy:
         if self.horizon_steps is not None:
             return {"all": int(self.horizon_steps)}
         return {key: int(value) for key, value in self.config.mpc.horizon_steps.items()}
-
-    def terminal_bounds(
-        self,
-        chaser: ChaserConfig,
-        anomaly: float,
-        center: np.ndarray,
-        phi: np.ndarray,
-        omega: np.ndarray,
-    ) -> tuple[float, float]:
-        goal = self.target.docking_state(chaser.docking_point_body, anomaly)
-        position_bound = np.linalg.norm(np.abs(center[:3] - goal[:3]) + omega)
-        velocity_bound = np.linalg.norm(
-            np.abs(center[3:] - goal[3:])
-            + phi
-            + np.asarray(self.config.tube.sliding_gains) * omega
-        )
-        return float(position_bound), float(velocity_bound)
-
-    def terminal_bounds_admissible(
-        self, position_bound: float, velocity_bound: float
-    ) -> bool:
-        return (
-            position_bound <= self.config.mpc.docking_position_tolerance
-            and velocity_bound <= self.config.mpc.docking_velocity_tolerance
-        )

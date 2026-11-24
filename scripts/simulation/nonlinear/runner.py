@@ -1147,7 +1147,3 @@ class NonlinearMissionRunner:
         self.recorder.emit_progress("complete", result)
         self.result = result
         return result
-
-
-def cfg_array(value):
-    return np.asarray(value, dtype=float)

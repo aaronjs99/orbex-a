@@ -58,18 +58,6 @@ class TargetGeometry(Protocol):
     def as_dict(self) -> dict[str, Any]: ...
 
 
-class CylinderTargetGeometry(TargetGeometry, Protocol):
-    """Explicit cylinder-only extension used by the paper baseline."""
-
-    radius: float
-    half_length: float
-    tolerance: float
-
-    def cylinder_constraint(
-        self, anom: float, tube_radius: float = 0.0
-    ) -> CylinderConstraint: ...
-
-
 @dataclass(frozen=True)
 class TumblingCylinderTarget:
     """Tumbling cylindrical target geometry and docking-point kinematics."""

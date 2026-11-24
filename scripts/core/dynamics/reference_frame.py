@@ -228,25 +228,6 @@ class ReferenceClockFrame:
                 upper += increment.upper[0]
         return IntervalBox((lower,), (upper,))
 
-    def to_reference(self, cartesian_states, q, target_state):
-        import numpy as np
-
-        point = self.point(q)
-        states = np.atleast_2d(np.asarray(cartesian_states, dtype=float))
-        target = np.asarray(target_state, dtype=float)
-        if (
-            states.shape[1] != 6
-            or target.shape != (6,)
-            or not np.all(np.isfinite(states))
-            or not np.all(np.isfinite(target))
-        ):
-            raise ValueError("Finite inertial states have six components")
-        rotation = np.asarray(point.rotation)
-        p = (states[:, :3] - target[:3]) @ rotation
-        relative_v = (states[:, 3:] - target[3:]) @ rotation / point.rate_s_inv
-        zp = np.column_stack((-p[:, 1], p[:, 0], np.zeros(len(p))))
-        return np.concatenate((p, relative_v - zp), axis=1)
-
     def to_inertial(self, relative_states, q, target_state):
         import numpy as np
 

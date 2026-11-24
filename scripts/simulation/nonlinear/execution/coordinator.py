@@ -644,11 +644,6 @@ class NonlinearDenseExecutor:
             precision_bits=self.encloser.config.precision_bits,
         )
 
-    def _stage_source_snapshot(self, planning, planner, key, *, _target_identity=None):
-        return self._stage_bindings().snapshot(
-            planning, planner, key, _target_identity=_target_identity
-        )
-
     def _bind_stage_sources(self, planning, planner, q0, stage):
         return self._stage_bindings().bind(planning, planner, q0, stage)
 

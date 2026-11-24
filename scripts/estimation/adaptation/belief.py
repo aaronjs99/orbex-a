@@ -25,7 +25,7 @@ from orbexa.core.dynamics.parameters import (
 )
 
 if TYPE_CHECKING:
-    from orbexa.core.configuration.model import SimulationConfig
+    pass
 
 
 def serial_ranges(ranges: dict[str, tuple[float, float]]) -> dict[str, list[float]]:
@@ -64,54 +64,6 @@ class ParameterBelief:
                 raise ValueError("Eccentricity belief must belong to [0, 1)")
             self.feasible_sets[key] = (float(interval[0]), float(interval[1]))
             self.estimates[key] = point
-
-    @classmethod
-    def from_config_prior(
-        cls, config: SimulationConfig | None = None
-    ) -> ParameterBelief:
-        """Build the initial adaptive belief from broad or config-centered priors."""
-        if config is None:
-            ranges = {
-                "eccentricity": (0.02, 0.38),
-                "alpha": (0.0, 5.5e-7),
-                "beta": (0.0, 8.55e-7),
-            }
-            estimates = {key: float(np.mean(value)) for key, value in ranges.items()}
-        else:
-            eccentricity = float(config.orbit.eccentricity)
-            alpha = float(config.orbit.target_drag)
-            beta = float(config.orbit.chaser_drag)
-            ranges = {
-                "eccentricity": (
-                    max(
-                        0.0,
-                        eccentricity - config.adaptation.prior_eccentricity_half_width,
-                    ),
-                    min(
-                        0.99,
-                        eccentricity + config.adaptation.prior_eccentricity_half_width,
-                        1.0
-                        - (config.orbit.central_body_radius + 1.0)
-                        / config.orbit.semi_major_axis,
-                    ),
-                ),
-                "alpha": (
-                    max(0.0, config.adaptation.prior_drag_factors[0] * alpha),
-                    config.adaptation.prior_drag_factors[1] * alpha,
-                ),
-                "beta": (
-                    max(0.0, config.adaptation.prior_drag_factors[0] * beta),
-                    config.adaptation.prior_drag_factors[1] * beta,
-                ),
-            }
-            # Start from a reproducible feasible point rather than the plant
-            # truth; SMID/time-series updates are responsible for adaptation.
-            rng = np.random.default_rng(int(config.seed))
-            estimates = {
-                key: float(rng.uniform(low=value[0], high=value[1]))
-                for key, value in ranges.items()
-            }
-        return cls(feasible_sets=ranges, estimates=estimates)
 
     def copy(self) -> ParameterBelief:
         return ParameterBelief(

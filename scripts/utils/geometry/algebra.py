@@ -79,21 +79,3 @@ def tait_bryan_to_rotation_matrix(angles: np.ndarray) -> np.ndarray:
             [sa * sg - ca * sb * cg, sa * cg + ca * sb * sg, ca * cb],
         ]
     )
-
-
-def calc_current_pos(target, x_i, t):
-    """
-    Compute the current position of a point on the target.
-
-    Args:
-        target (Target): Target object with inertial state.
-        x_i (np.ndarray): Initial position of the point.
-        t (float): Time.
-
-    Returns:
-        np.ndarray: Current position vector.
-    """
-    rotMatrix = tait_bryan_to_rotation_matrix(target.getObservedState(t))
-    x_t = np.dot(rotMatrix, x_i)
-    x_t = np.append(x_t, [0.00, 0.00, 0.00])
-    return x_t

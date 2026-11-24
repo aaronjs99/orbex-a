@@ -314,21 +314,6 @@ class AttachmentPatch:
         object.__setattr__(self, "margin_m", margin)
         object.__setattr__(self, "provenance", _freeze(self.provenance))
 
-    def point_at(self, u_m=0.0, v_m=0.0):
-        u, v = _real(u_m, "Patch coordinate u"), _real(v_m, "Patch coordinate v")
-        if (
-            abs(u) > self.half_extents_m[0] - self.margin_m
-            or abs(v) > self.half_extents_m[1] - self.margin_m
-        ):
-            raise ValueError(
-                "Requested point is outside the declared patch edge margin"
-            )
-        return (
-            np.asarray(self.point_body_m)
-            + u * np.asarray(self.tangent_u_body)
-            + v * np.asarray(self.tangent_v_body)
-        )
-
     def contains(self, point_body_m, *, tolerance_m=1e-9):
         delta = np.array(_vector(point_body_m, 3, "Patch query")) - np.asarray(
             self.point_body_m

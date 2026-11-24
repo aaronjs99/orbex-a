@@ -12,68 +12,16 @@
 
 """Atomic JSON persistence, data conversion and result-folder naming."""
 
-import datetime
 import json
 import logging
 import os
-import shutil
 import tempfile
-from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import yaml
 
 logger = logging.getLogger("orbexa.utils.io_utils")
-
-
-def get_next_test_folder(base_dir="./results/tests") -> Path:
-    """
-    Get the next available test folder path.
-
-    Args:
-        base_dir (str): Base directory for test folders.
-
-    Returns:
-        Path: Path to the next test folder.
-    """
-    base = Path(base_dir)
-    base.mkdir(parents=True, exist_ok=True)
-    existing = [d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("t")]
-    numbers = sorted(int(d[1:]) for d in existing if d[1:].isdigit())
-    next_id = (numbers[-1] + 1) if numbers else 1
-    return base / f"t{next_id:02d}"
-
-
-def save_test_result(
-    properties: dict, files_to_copy=None, base_dir="./results/tests"
-) -> str:
-    """
-    Creates a new test result folder, saves the properties.yaml, and copies optional files.
-
-    Args:
-        properties (dict): Metadata to save as properties.yaml
-        files_to_copy (list of tuples): Each tuple is (src_path, dst_filename)
-        base_dir (str): Path to the results/tests directory
-    """
-    target_folder = get_next_test_folder(base_dir)
-    target_folder.mkdir(parents=True)
-
-    # Save properties.yaml
-    with open(target_folder / "properties.yaml", "w") as f:
-        yaml.dump(properties, f, default_flow_style=False)
-
-    # Copy additional files
-    if files_to_copy:
-        for src_path, dst_name in files_to_copy:
-            try:
-                shutil.copy(src_path, target_folder / dst_name)
-            except Exception as e:
-                logger.warning(f"Failed to copy {src_path}: {e}")
-
-    logger.info(f"[✓] Saved test result to: {target_folder}")
-    return str(target_folder)
 
 
 def save_data(filename: str | Path, data: Any) -> bool:
@@ -133,36 +81,6 @@ def load_data(filename: str | Path) -> Any:
         return json.load(f)
 
 
-def latest_data_file(folder: str | Path, suffixes: Sequence[str] | None = None) -> str:
-    """
-    Get the most recent file in a folder (by modification time).
-
-    Args:
-        folder (str | Path): Path to folder.
-        suffixes (Sequence[str], optional): Valid suffixes (e.g. ['.json']).
-
-    Returns:
-        str: Path to latest file.
-    """
-    folder = Path(folder)
-    if not folder.exists():
-        raise FileNotFoundError(f"Folder does not exist: {folder}")
-
-    candidates = [p for p in folder.iterdir() if p.is_file()]
-    if suffixes:
-        cands_filtered = [p for p in candidates if p.suffix in suffixes]
-        # Fallback if no specific suffix found?
-        # User requested filtering. If empty, maybe fall back to all?
-        # But if user asks for .json and only .txt exists, returning .txt is wrong.
-        candidates = cands_filtered
-
-    if not candidates:
-        raise FileNotFoundError(f"No files found in: {folder}")
-
-    latest = max(candidates, key=lambda p: p.stat().st_mtime)
-    return str(latest)
-
-
 def convert_numpy_to_list(obj: Any) -> Any:
     """
     Recursively convert numpy arrays/scalars in data to native Python types.
@@ -182,20 +100,3 @@ def convert_numpy_to_list(obj: Any) -> Any:
     if isinstance(obj, np.generic):
         return obj.item()
     return obj
-
-
-def create_filename(folder: str | Path, suffix: str) -> str:
-    """
-    Generate a timestamped filename.
-
-    Args:
-        folder (str | Path): Folder path.
-        suffix (str): File extension (e.g., '.json').
-
-    Returns:
-        str: Full filename with timestamp.
-    """
-    folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    return str(folder / f"{ts}{suffix}")

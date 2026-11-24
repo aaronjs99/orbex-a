@@ -457,7 +457,3 @@ class DynamicTubeSpec:
                 self.applied_actuator_input_error_abs.copy()
             )
         return result
-
-    @classmethod
-    def from_extra_params(cls, parameters: Mapping[str, Any]) -> DynamicTubeSpec:
-        return cls(**dict(parameters))

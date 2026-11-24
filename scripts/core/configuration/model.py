@@ -13,7 +13,6 @@
 """Simulation configuration composition and stable public model exports."""
 
 from dataclasses import dataclass, field
-from typing import Any
 
 import numpy as np
 from orbexa.core.configuration.types import (
@@ -70,14 +69,6 @@ class SimulationConfig:
         params = self.orbit.dynamics_params()
         params["anom_step"] = self.anom_step
         return params
-
-    def default_adaptation_params(self) -> dict[str, Any]:
-        """Paper-scale default feasible sets for SMID when YAML is silent."""
-        return {
-            "eccentricity": [0.0, max(0.6, float(self.orbit.eccentricity))],
-            "alpha": [0.0, max(5.0e-7, float(self.orbit.target_drag))],
-            "beta": [float(self.orbit.chaser_drag), float(self.orbit.chaser_drag)],
-        }
 
     @classmethod
     def load(cls, path: str | None = None) -> "SimulationConfig":
