@@ -1,8 +1,10 @@
-"""An explicit verified old-source approach boundary for a later completion.
+"""bridge.py: An explicit verified old-source approach boundary for a later completion.
 
 This adapter consumes a trusted independently executed closed-arm audit. It
 never edits an approach or rebrands its old arrival certificates as new ones.
 Every bound artifact is rehashed before the physical boundary is used.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

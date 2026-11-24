@@ -1,4 +1,7 @@
-"""Exact fleet identity, ordered member and plant-context checks."""
+"""common.py: Exact fleet identity, ordered member and plant-context checks.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

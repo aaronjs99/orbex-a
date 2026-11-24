@@ -1,8 +1,10 @@
-"""Observation-driven nonlinear ADTMPC mission orchestration.
+"""runner.py: Observation-driven nonlinear ADTMPC mission orchestration.
 
 Physical truth, sensors, set navigation, nominal planning, operational fallback
 and evidence recording have separate interfaces. Expensive planning/proof work
 is an offline simulation; recorded wall time does not claim a flight deadline.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

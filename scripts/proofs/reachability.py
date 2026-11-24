@@ -1,4 +1,4 @@
-"""Validated continuous held-input flow and swept collision certificates.
+"""reachability.py: Validated continuous held-input flow and swept collision certificates.
 
 This module encloses the *continuous ODE*, not an RK4 map.  Its optional
 ``python-flint`` dependency supplies Arb ball arithmetic; no binary64
@@ -7,6 +7,8 @@ transcendental evaluation participates in a proof.  See
 
 Only ``PROVEN`` flows and ``PROVEN_SAFE`` collision decisions permit execution.
 An unresolved enclosure, missing dependency or nonseparating box never does.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

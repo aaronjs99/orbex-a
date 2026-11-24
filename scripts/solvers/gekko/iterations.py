@@ -1,4 +1,7 @@
-"""Read authoritative per-attempt IPOPT iterations without zero defaults."""
+"""iterations.py: Read authoritative per-attempt IPOPT iterations without zero defaults.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

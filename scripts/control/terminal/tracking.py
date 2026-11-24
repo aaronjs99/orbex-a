@@ -1,10 +1,12 @@
-"""Exact algebra certificates for a held-input terminal tracking controller.
+"""tracking.py: Exact algebra certificates for a held-input terminal tracking controller.
 
 The reference is an authoritative continuous trajectory, not an MPC shooting
 center.  Certification is conditional on the supplied globally valid bounds;
 it does not infer bounds from samples or certify a reference implementation.
 All admission decisions use exact rational arithmetic.  See
 ``docs/terminal-tracking.md`` for the controller and first-exit proof.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

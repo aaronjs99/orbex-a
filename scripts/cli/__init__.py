@@ -10,4 +10,7 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Command-line entrypoints for ORBEX-A."""
+"""cli/__init__.py: Command-line entrypoints for ORBEX-A.
+
+Copyright: Aaron John Sabu
+"""

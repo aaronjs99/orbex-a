@@ -1,7 +1,9 @@
-"""Finite-budget Arb inclusions for the explicitly declared nonlinear plant.
+"""nonlinear.py: Finite-budget Arb inclusions for the explicitly declared nonlinear plant.
 
 No numeric callback, sampled maximum, or numerical ephemeris reset is accepted
 as an interval model. Coordinates use the immutable commanded reference clock.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

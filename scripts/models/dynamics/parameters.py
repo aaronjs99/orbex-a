@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Fixed plant parameters, independent of mission orchestration and estimators."""
+"""parameters.py: Fixed plant parameters, independent of mission orchestration and estimators.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

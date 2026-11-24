@@ -1,4 +1,7 @@
-"""Explicit live protocol, parameter limits and worker input contracts."""
+"""contracts.py: Explicit live protocol, parameter limits and worker input contracts.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

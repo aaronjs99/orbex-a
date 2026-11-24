@@ -1,9 +1,11 @@
-"""Finite-domain sampled feedback refuge certificates.
+"""refuge.py: Finite-domain sampled feedback refuge certificates.
 
 All admission inequalities use exact rationals.  Nonlinear drift and reference
 bounds are explicit trusted proof inputs; a numerical trajectory or sampled
 maximum cannot replace them.  See ``docs/fleet-fallback.md`` for the first-exit
 argument, finite fuel scope and executable provider contracts.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

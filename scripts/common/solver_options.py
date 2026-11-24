@@ -1,4 +1,7 @@
-"""Backend option contracts that do not import an optimization runtime."""
+"""solver_options.py: Backend option contracts that do not import an optimization runtime.
+
+Copyright: Aaron John Sabu
+"""
 
 from numbers import Integral
 

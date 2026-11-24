@@ -1,10 +1,12 @@
-"""First-exit comparison bounds for the implemented held ancillary controller.
+"""sample_hold.py: First-exit comparison bounds for the implemented held ancillary controller.
 
 All vector inequalities are componentwise. ``A_variation`` bounds a change in
 the nominal acceleration matrix over any feedback hold; a full outer-interval
 coefficient width is sufficient and is already a change, not a derivative.
 The bounded-term construction is valid for every nonnegative sliding width,
 including zero. It makes no small-layer division or sampling smallness claim.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

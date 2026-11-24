@@ -1,4 +1,7 @@
-"""Sample moving state goals and their nominal holding inputs for MPC."""
+"""references.py: Sample moving state goals and their nominal holding inputs for MPC.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

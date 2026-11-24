@@ -1,8 +1,10 @@
-"""Bounded external-thruster wrench allocation shared by mission stages.
+"""propulsion.py: Bounded external-thruster wrench allocation shared by mission stages.
 
 Each signed actuator represents two opposed nozzles at one location; fuel
 flow uses the absolute command. No reaction-wheel momentum sink is assumed.
 Nozzle directions and locations stay fixed to the captured structure.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

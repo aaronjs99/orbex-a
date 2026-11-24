@@ -1,7 +1,9 @@
-"""Independent binding of an optimized tube stage to its declared sources.
+"""bindings.py: Independent binding of an optimized tube stage to its declared sources.
 
 The checker reads configuration, the current admission authority and one
 observation clock. It cannot commit physical motion or navigation state.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

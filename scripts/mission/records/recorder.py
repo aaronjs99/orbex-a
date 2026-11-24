@@ -1,4 +1,7 @@
-"""Separate physical truth, observed navigation and controller mission records."""
+"""recorder.py: Separate physical truth, observed navigation and controller mission records.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

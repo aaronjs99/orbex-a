@@ -1,4 +1,7 @@
-"""Study metrics from recorded physical prefixes, sampled histories and refusals."""
+"""metrics.py: Study metrics from recorded physical prefixes, sampled histories and refusals.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

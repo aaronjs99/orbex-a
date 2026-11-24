@@ -1,4 +1,7 @@
-"""YAML decoding into structured configuration, loaded on demand."""
+"""loader.py: YAML decoding into structured configuration, loaded on demand.
+
+Copyright: Aaron John Sabu
+"""
 
 import logging
 

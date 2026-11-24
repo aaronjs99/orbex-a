@@ -1,9 +1,11 @@
-"""Typed interval counterpart of the maintained completion J2/drag adapter.
+"""enclosure.py: Typed interval counterpart of the maintained completion J2/drag adapter.
 
 Only the exact built-in adapter is accepted. Its cached point parameters must
 still equal its declaration; a generic numeric callback is not an interval law.
 The central term is canceled analytically, retaining the declared J2 axis,
 co-rotating atmosphere, wind, density, drag semantics and physical ECI frame.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

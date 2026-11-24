@@ -10,10 +10,12 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Typed coupled-tube data at the solver boundary.
+"""specification.py: Typed coupled-tube data at the solver boundary.
 
 Without optional declarations, conversion preserves the existing
 ``MPCProblem.extra_params['dynamic_tube']`` mapping and backend expressions.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

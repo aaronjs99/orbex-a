@@ -1,10 +1,12 @@
-"""Source-qualified numerical continuation of a committed mission record.
+"""serialization.py: Source-qualified numerical continuation of a committed mission record.
 
 This is a numerical restart, not the admissible safe-backup theorem. Actual
 states, persistent nominal centers, tube widths/gains, belief, clock, phase and
 assignments are retained. Unavailable full control warm starts and dense SMID
 measurements are explicitly reset; neither is reconstructed from mean inputs.
 No callables or pickle payloads are serialized.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

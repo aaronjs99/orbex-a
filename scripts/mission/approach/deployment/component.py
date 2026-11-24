@@ -1,4 +1,7 @@
-"""Compact release and staged, component-aware spacecraft approach references."""
+"""component.py: Compact release and staged, component-aware spacecraft approach references.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
-"""Sensing-only sufficient bridge to the physical capture speed gate.
+"""contact.py: Sensing-only sufficient bridge to the physical capture speed gate.
 
 This pointwise algebra preserves capture's separate nominal and tube norms.
 It does not replace navigation support, continuous geometry, attitude, contact,
 or lifecycle admission.  No physical truth or solver status is an input.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

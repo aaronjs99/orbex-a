@@ -1,4 +1,7 @@
-"""Execution evidence and failures, independent of the execution coordinator."""
+"""contracts.py: Execution evidence and failures, independent of the execution coordinator.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

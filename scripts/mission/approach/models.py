@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Plain chaser assignments and phase records shared by runtime services."""
+"""models.py: Plain chaser assignments and phase records shared by runtime services.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Execution lifecycle for one already frozen nonlinear study arm."""
+"""execution.py: Execution lifecycle for one already frozen nonlinear study arm.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

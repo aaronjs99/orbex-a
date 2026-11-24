@@ -1,4 +1,7 @@
-"""Injectable vehicle sizing for composite-target mission studies."""
+"""design.py: Injectable vehicle sizing for composite-target mission studies.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

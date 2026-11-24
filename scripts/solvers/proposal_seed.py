@@ -1,4 +1,7 @@
-"""Optional warm-start decorator preserving the authoritative solver boundary."""
+"""proposal_seed.py: Optional warm-start decorator preserving the authoritative solver boundary.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

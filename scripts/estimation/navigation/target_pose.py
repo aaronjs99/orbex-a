@@ -1,4 +1,7 @@
-"""Source-bound target ephemeris inference and delayed pose propagation."""
+"""target_pose.py: Source-bound target ephemeris inference and delayed pose propagation.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

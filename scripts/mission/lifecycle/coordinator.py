@@ -1,9 +1,11 @@
-"""Compose a recorded physical approach with attitude, latch and disposal stages.
+"""coordinator.py: Compose a recorded physical approach with attitude, latch and disposal stages.
 
 The approach remains the nonlinear ADTMPC simulation. Rotational replay is a
 separate bounded-actuator model. Translation propellant is conservatively
 debited using a continuously enclosed orbital clock, rather than silently
 starting capture with full tanks. Stage failures retain the preceding record.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

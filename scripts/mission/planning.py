@@ -1,8 +1,10 @@
-"""GEKKO ADTMPC adapter with explicit nonlinear regional residuals and sensing.
+"""planning.py: GEKKO ADTMPC adapter with explicit nonlinear regional residuals and sensing.
 
 The optimizer remains the maintained multiple-shooting implementation. A
 regional certificate is an input to that formulation, never a sampled residual
 maximum or a substitute for admission of the actual executed nonlinear hold.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

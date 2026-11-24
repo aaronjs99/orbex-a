@@ -1,10 +1,12 @@
-"""Derived finite-domain terminal bounds for an eccentric rigid-body target.
+"""physical.py: Derived finite-domain terminal bounds for an eccentric rigid-body target.
 
 Arb interval Taylor coefficients bound the analytical orbit continuously. Exact
 rational first-exit comparisons bound the target spin, and rotation-invariant
 geometry bounds the assigned side ports. No sampled maximum is a proof input.
 The numerical target preview and sensor/actuator errors remain explicit,
 declared assumptions. See ``docs/physical-terminal.md``.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

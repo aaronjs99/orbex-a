@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Explicit YAML loading and relocated-checkout configuration fallback."""
+"""configuration.py: Explicit YAML loading and relocated-checkout configuration fallback.
+
+Copyright: Aaron John Sabu
+"""
 
 from pathlib import Path
 

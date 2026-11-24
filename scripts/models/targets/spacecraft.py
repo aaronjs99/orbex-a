@@ -1,4 +1,7 @@
-"""Rigid spacecraft motion with explicit component solids and surface patches."""
+"""spacecraft.py: Rigid spacecraft motion with explicit component solids and surface patches.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

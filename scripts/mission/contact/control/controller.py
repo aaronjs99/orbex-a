@@ -1,4 +1,7 @@
-"""Measured-state stationkeeping and finite-bandwidth positioner commands."""
+"""controller.py: Measured-state stationkeeping and finite-bandwidth positioner commands.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,7 +1,9 @@
-"""Exact acceleration-prefix proposals followed by finite coordinated braking.
+"""contingency.py: Exact acceleration-prefix proposals followed by finite coordinated braking.
 
 These curves carry no admission authority. The ordinary nonlinear tracking,
 whole-fleet geometry, force, fuel and uncertain-entry checks still apply.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

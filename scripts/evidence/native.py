@@ -1,4 +1,7 @@
-"""Shared native solver transcript retention for isolated study and live jobs."""
+"""native.py: Shared native solver transcript retention for isolated study and live jobs.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

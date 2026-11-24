@@ -1,4 +1,7 @@
-"""Run one explicit arm of a predeclared sensed nonlinear 2-by-2 study."""
+"""run_nonlinear.py: Run one explicit arm of a predeclared sensed nonlinear 2-by-2 study.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,9 @@ from orbexa.common.layout import ProjectLayout
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Run one explicit arm of a predeclared sensed nonlinear 2-by-2 study."
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--spacecraft", type=Path, required=True)
     parser.add_argument(

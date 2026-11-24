@@ -10,8 +10,7 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-ORBEX-A Orbital Dynamics Models.
+"""orbital.py: ORBEX-A Orbital Dynamics Models.
 
 This module provides various orbital dynamics models including:
 - Clohessy-Wiltshire-Hill (CWH) equations for relative motion
@@ -22,6 +21,8 @@ This module provides various orbital dynamics models including:
 All models support both continuous and discrete time representations.
 This module is strictly functional and stateless; all parameters must be passed
 as arguments.
+
+Copyright: Aaron John Sabu
 """
 
 from collections.abc import Callable

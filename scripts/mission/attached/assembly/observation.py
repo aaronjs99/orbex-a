@@ -1,9 +1,11 @@
-"""Bounded chaser-carried navigation for the captured rigid assembly.
+"""observation.py: Bounded chaser-carried navigation for the captured rigid assembly.
 
 The target supplies no cooperative receiver. Gyros and star trackers on the
 chasers observe one common rigid twist through uncertain captured mountings;
 their deterministic error balls are intersected, without averaging a claimed
 noise variance. GNSS products retain their full common-bias support.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

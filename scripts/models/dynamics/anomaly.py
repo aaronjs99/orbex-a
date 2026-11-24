@@ -10,6 +10,11 @@
 # *                                                         *
 # ***********************************************************/
 
+"""anomaly.py: Keplerian true-anomaly helpers: orbital radius terms, anomaly-to-time conversion and the anomaly rate dq/dt with its reciprocal.
+
+Copyright: Aaron John Sabu
+"""
+
 from typing import Any
 
 import numpy as np

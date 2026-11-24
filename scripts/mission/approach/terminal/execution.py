@@ -1,9 +1,11 @@
-"""Offline execution of a certified physical terminal stage from its real entry.
+"""execution.py: Offline execution of a certified physical terminal stage from its real entry.
 
 The caller supplies the actual approach endpoint and its measurement enclosure.
 Refusal preserves that endpoint; no projection or synthetic reset is performed.
 Each admitted held input is linked to its continuous Arb flow and whole-fleet
 swept geometry certificate. This simulator does not provide a hardware scheduler.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

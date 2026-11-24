@@ -1,8 +1,10 @@
-"""Dynamics-consistent initial guesses for the existing MPC problem boundary.
+"""proposals.py: Dynamics-consistent initial guesses for the existing MPC problem boundary.
 
 These hints own no motion authority. The actual moving reference, frame, input
 units and RK4 coefficients come from MPCProblem. No toy simulator is substituted.
 MIT source attribution: THIRD_PARTY_NOTICES.md.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Local goal-swap policy with its original distance heuristic."""
+"""greedy.py: Local goal-swap policy with its original distance heuristic.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

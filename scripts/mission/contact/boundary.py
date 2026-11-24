@@ -1,8 +1,10 @@
-"""Source-bound transfer of a terminal navigation/tube set into contact.
+"""boundary.py: Source-bound transfer of a terminal navigation/tube set into contact.
 
 The common uncertain target ephemeris occupies the translating reference;
 relative coordinates are never widened by subtracting two independent copies
 of that common ephemeris. No uncertainty is replaced by executed point truth.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

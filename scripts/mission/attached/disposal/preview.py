@@ -1,4 +1,7 @@
-"""Finite Cartesian burn previews for numerical throttle selection."""
+"""preview.py: Finite Cartesian burn previews for numerical throttle selection.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

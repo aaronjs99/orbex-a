@@ -1,4 +1,7 @@
-"""Exact available resources for selecting a complete finite continuation."""
+"""fuel.py: Exact available resources for selecting a complete finite continuation.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Prepare complete nonlinear fleet refuge proofs from navigation snapshots."""
+"""planner.py: Prepare complete nonlinear fleet refuge proofs from navigation snapshots.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

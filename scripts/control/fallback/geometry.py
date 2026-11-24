@@ -1,4 +1,7 @@
-"""Whole-fleet occupied-component and peer separation certificates."""
+"""geometry.py: Whole-fleet occupied-component and peer separation certificates.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

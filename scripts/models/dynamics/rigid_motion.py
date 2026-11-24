@@ -1,7 +1,9 @@
-"""Shape-independent unactuated quaternion/Euler motion on a declared orbital clock.
+"""rigid_motion.py: Shape-independent unactuated quaternion/Euler motion on a declared orbital clock.
 
 Implementations supply inertia, spin, initial quaternion and integration settings.
 Collision geometry never enters these equations.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

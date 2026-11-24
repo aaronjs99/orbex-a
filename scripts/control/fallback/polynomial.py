@@ -1,4 +1,7 @@
-"""Exact shared-clock polynomial references and independent peer bounds."""
+"""polynomial.py: Exact shared-clock polynomial references and independent peer bounds.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

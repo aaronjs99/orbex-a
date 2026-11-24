@@ -1,4 +1,7 @@
-"""Reusable qualified-approach → attachment → detumbling → deorbit composition."""
+"""stages.py: Reusable qualified-approach → attachment → detumbling → deorbit composition.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

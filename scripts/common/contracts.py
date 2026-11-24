@@ -1,4 +1,7 @@
-"""Backend-neutral optimization records and maintained mission identities."""
+"""contracts.py: Backend-neutral optimization records and maintained mission identities.
+
+Copyright: Aaron John Sabu
+"""
 
 from dataclasses import dataclass, field
 from typing import Any

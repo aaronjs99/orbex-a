@@ -1,9 +1,11 @@
-"""Prepare and independently activate one future certified feedback policy.
+"""replacement.py: Prepare and independently activate one future certified feedback policy.
 
 The complete old relational error tube must enter the new policy at its exact
 activation clock. The final gate rechecks entry, physical supports and full
 future fuel without a new nonlinear or geometry proof. No future measurement
 or hard real-time guarantee is inferred.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

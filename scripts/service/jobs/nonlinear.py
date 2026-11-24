@@ -1,4 +1,7 @@
-"""Sensed nonlinear mission composition and committed live projections."""
+"""nonlinear.py: Sensed nonlinear mission composition and committed live projections.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

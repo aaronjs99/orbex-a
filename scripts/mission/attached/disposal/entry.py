@@ -1,4 +1,7 @@
-"""Whole-set descending entry-interface brackets from contiguous held flows."""
+"""entry.py: Whole-set descending entry-interface brackets from contiguous held flows.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

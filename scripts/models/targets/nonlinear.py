@@ -1,8 +1,10 @@
-"""Separate executed nonlinear target truth and observation-driven preview.
+"""nonlinear.py: Separate executed nonlinear target truth and observation-driven preview.
 
 Geometry is composed from an existing declared target. Its analytical motion
 is never delegated: Cartesian ephemeris, physical time and gravity-gradient
 torque are propagated with the declared nonlinear model/reference clock.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

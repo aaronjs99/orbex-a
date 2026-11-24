@@ -1,8 +1,10 @@
-"""Same-event bounded contact observations intersect the carried state set.
+"""observation.py: Same-event bounded contact observations intersect the carried state set.
 
 Commands alone do not retain the information in a camera, rate gyro, range,
 wrench or internal encoder. This contractor never substitutes an observed
 center for a propagated physical set, and unsupported callbacks do not narrow.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

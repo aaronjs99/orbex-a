@@ -1,4 +1,7 @@
-"""Run the optional allocation demonstration explicitly."""
+"""__main__.py: Run the optional allocation demonstration explicitly.
+
+Copyright: Aaron John Sabu
+"""
 
 from .demo import demo_main
 

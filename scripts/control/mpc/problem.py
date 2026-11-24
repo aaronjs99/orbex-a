@@ -10,11 +10,12 @@
 # *                                                         *
 # ***********************************************************/
 
-"""
-MPC Problem Builder
+"""problem.py: MPC Problem Builder
 
 Constructs solver-agnostic MPCProblem objects from ORBEX-A mission parameters.
 This bridges the gap between high-level mission specs and the generic solver interface.
+
+Copyright: Aaron John Sabu
 """
 
 from collections.abc import Callable

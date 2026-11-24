@@ -1,7 +1,9 @@
-"""Immutable commanded orbit coordinates; these are not the perturbed LVLH.
+"""reference_frame.py: Immutable commanded orbit coordinates; these are not the perturbed LVLH.
 
 The reference rate defines dt/dq. Adaptive controller parameters never redefine
 this clock. Floats in declarations denote their exact binary rational values.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

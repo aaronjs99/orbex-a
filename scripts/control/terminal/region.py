@@ -1,8 +1,10 @@
-"""Declared reference-centered region shared by arrival planning and entry screens.
+"""region.py: Declared reference-centered region shared by arrival planning and entry screens.
 
 This object is not a terminal-controller certificate. Its error bounds and
 finite reference domain need their own source; an independently qualified
 physical controller and its actual endpoint admission remain necessary.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

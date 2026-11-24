@@ -1,4 +1,7 @@
-"""Capacity and geometry guards with their observed extrema and clearances."""
+"""guards.py: Capacity and geometry guards with their observed extrema and clearances.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

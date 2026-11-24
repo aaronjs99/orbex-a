@@ -1,9 +1,11 @@
-"""Componentwise uncertainty bounds for the physical anomaly-domain LVLH model.
+"""uncertainty.py: Componentwise uncertainty bounds for the physical anomaly-domain LVLH model.
 
 Bounds cover the entire eccentricity/drag box and anomaly interval.  Forward
 interval differentiation bounds the parameter Jacobian; the mean-value theorem
 then bounds deviations from the explicitly supplied nominal parameters.  No
 assumption that extrema occur at parameter corners is required.
+
+Copyright: Aaron John Sabu
 """
 
 import math

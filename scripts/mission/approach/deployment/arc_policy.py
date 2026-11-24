@@ -1,4 +1,7 @@
-"""Moving arc references and current-state gating for compact free-flight staging."""
+"""arc_policy.py: Moving arc references and current-state gating for compact free-flight staging.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

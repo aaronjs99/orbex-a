@@ -1,4 +1,7 @@
-"""Finite causal observation propagation during declared sensor blackouts."""
+"""blackout.py: Finite causal observation propagation during declared sensor blackouts.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
-"""Physical continuation of an authenticated sensed nonlinear approach.
+"""coordinator.py: Physical continuation of an authenticated sensed nonlinear approach.
 
 The adapter uses the executed Cartesian endpoint and the commanded reference
 clock. It never reconstructs a Clohessy-Hill ephemeris or fuel history. Sensor
 callbacks are declared synthetic realizations; rotational replay stays decoupled.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

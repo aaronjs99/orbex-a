@@ -1,7 +1,9 @@
-"""Explicit, prospective inputs for one nonlinear study arm.
+"""request.py: Explicit, prospective inputs for one nonlinear study arm.
 
 This declaration layer uses only the standard library so CLI help and request
 validation do not load numerical or solver dependencies.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

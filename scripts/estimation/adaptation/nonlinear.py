@@ -1,8 +1,10 @@
-"""Observation-only initial-orbit contraction and nonlinear drag membership.
+"""nonlinear.py: Observation-only initial-orbit contraction and nonlinear drag membership.
 
 The initial osculating eccentricity is not treated as constant throughout a
 J2-perturbed orbit. Drag membership acts on the actual Cartesian force law.
 Unknown candidates are retained. No numerical plant truth enters this class.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

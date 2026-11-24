@@ -1,7 +1,9 @@
-"""Acquisition and delayed packet delivery for nonlinear execution.
+"""sensing.py: Acquisition and delayed packet delivery for nonlinear execution.
 
 Queues belong here; navigation owns its estimator and the numerical plant owns
 truth. Their dependencies enter explicitly at acquisition/delivery boundaries.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

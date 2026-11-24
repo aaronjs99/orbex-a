@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run one declared sensed nonlinear mission from a movable source checkout."""
+"""run.py: Run one declared sensed nonlinear mission from a movable source checkout.
+
+Copyright: Aaron John Sabu
+"""
 
 import sys
 from importlib.util import module_from_spec, spec_from_file_location

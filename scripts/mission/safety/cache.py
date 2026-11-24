@@ -1,4 +1,7 @@
-"""Frozen proof identities with mutable-context guards."""
+"""cache.py: Frozen proof identities with mutable-context guards.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

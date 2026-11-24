@@ -1,4 +1,7 @@
-"""Finite refuge construction, target preflight and bounded candidate search."""
+"""candidates.py: Finite refuge construction, target preflight and bounded candidate search.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,7 +1,9 @@
-"""Verify and describe every arm of a predeclared nonlinear 2-by-2 study.
+"""comparison.py: Verify and describe every arm of a predeclared nonlinear 2-by-2 study.
 
 Matching is a source/input and declaration check. It does not establish a
 causal superiority claim or discard an arm because it failed or reached a cap.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

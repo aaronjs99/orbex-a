@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Array geometry, attitude algebra and observed target coordinates."""
+"""algebra.py: Array geometry, attitude algebra and observed target coordinates.
+
+Copyright: Aaron John Sabu
+"""
 
 import numpy as np
 

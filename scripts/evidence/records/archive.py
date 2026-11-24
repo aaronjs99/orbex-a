@@ -1,4 +1,7 @@
-"""Durable streaming nonlinear witnesses and a reusable source-bound hold view."""
+"""archive.py: Durable streaming nonlinear witnesses and a reusable source-bound hold view.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

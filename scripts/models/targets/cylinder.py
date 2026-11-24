@@ -1,8 +1,10 @@
-"""Unactuated rigid-body attitude with the supported cylinder collision envelope.
+"""cylinder.py: Unactuated rigid-body attitude with the supported cylinder collision envelope.
 
 Physical body rates describe rotation relative to an inertial frame. The public
 target rotation maps body coordinates into the rotating mission LVLH frame.
 Quaternions are scalar-last; Euler angles are only a compatibility chart.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

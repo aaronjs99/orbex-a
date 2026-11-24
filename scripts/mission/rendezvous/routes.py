@@ -1,8 +1,10 @@
-"""Component-aware attachment assignment and finite-bus reference routes.
+"""routes.py: Component-aware attachment assignment and finite-bus reference routes.
 
 This bounded visibility search screens geometric references. It does not
 establish dynamic feasibility, uncertain navigation or continuous execution;
 the nonlinear controller and swept-flow admission retain those boundaries.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

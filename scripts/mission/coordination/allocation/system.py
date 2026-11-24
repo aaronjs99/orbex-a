@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Agent construction and allocation-policy scheduling."""
+"""system.py: Agent construction and allocation-policy scheduling.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

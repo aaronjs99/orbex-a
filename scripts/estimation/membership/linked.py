@@ -1,9 +1,11 @@
-"""Bounded nonlinear set membership with shared affine-actuator hypotheses.
+"""linked.py: Bounded nonlinear set membership with shared affine-actuator hypotheses.
 
 A branch contains a *fixed* matrix and bias for one agent over the retained
 window. Interval propagation may overapproximate that dependency, but never
 replaces a covering branch by a sampled point. Only complete disjointness can
 remove a branch; every unevaluated or unresolved branch remains possible.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

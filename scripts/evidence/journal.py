@@ -1,7 +1,9 @@
-"""Durable publication and acknowledged completed-hold retention.
+"""journal.py: Durable publication and acknowledged completed-hold retention.
 
 Publication must return before the coordinator acknowledges a completed hold.
 Recorder callbacks happen afterward, preserving evidence if a callback fails.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

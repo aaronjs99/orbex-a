@@ -1,4 +1,7 @@
-"""One replaceable worker with retained jobs and monotone state revisions."""
+"""session.py: One replaceable worker with retained jobs and monotone state revisions.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

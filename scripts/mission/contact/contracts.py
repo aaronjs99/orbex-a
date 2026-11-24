@@ -1,4 +1,7 @@
-"""Public SI contracts for finite compliant contact, independent of execution."""
+"""contracts.py: Public SI contracts for finite compliant contact, independent of execution.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Dense sampled ancillary feedback on one shared fleet clock."""
+"""execution.py: Dense sampled ancillary feedback on one shared fleet clock.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

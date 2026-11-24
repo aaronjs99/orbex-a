@@ -1,4 +1,7 @@
-"""Portable, sample-aligned projection of a recorded mission for browser replay."""
+"""studio.py: Portable, sample-aligned projection of a recorded mission for browser replay.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

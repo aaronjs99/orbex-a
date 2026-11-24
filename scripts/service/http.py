@@ -1,4 +1,7 @@
-"""Bounded loopback HTTP adapter for the injected live session owner."""
+"""http.py: Bounded loopback HTTP adapter for the injected live session owner.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

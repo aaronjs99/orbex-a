@@ -1,8 +1,10 @@
-"""Finite-budget continuous enclosures for the declared compliant-pad model.
+"""enclosure.py: Finite-budget continuous enclosures for the declared compliant-pad model.
 
 Picard/first-exit inclusions carry the endpoint set to the next held interval.
 The RK4 state is only a numerical representative; it never replaces that set.
 The unilateral dashpot's contact discontinuity is covered by a branch hull.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

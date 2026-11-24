@@ -1,4 +1,7 @@
-"""Fuel-limited detumbling by bounded external thruster torque."""
+"""detumbling.py: Fuel-limited detumbling by bounded external thruster torque.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

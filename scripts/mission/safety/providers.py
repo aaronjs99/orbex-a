@@ -1,4 +1,7 @@
-"""Serializable fixed proof sources for detached planning contexts."""
+"""providers.py: Serializable fixed proof sources for detached planning contexts.
+
+Copyright: Aaron John Sabu
+"""
 
 from dataclasses import dataclass
 

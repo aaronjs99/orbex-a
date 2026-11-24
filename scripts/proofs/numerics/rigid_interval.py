@@ -1,4 +1,7 @@
-"""Small ball-arithmetic operations shared by rigid contact/load enclosures."""
+"""rigid_interval.py: Small ball-arithmetic operations shared by rigid contact/load enclosures.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

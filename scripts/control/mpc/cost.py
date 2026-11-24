@@ -1,4 +1,7 @@
-"""Local Riccati penalty for a finite MPC horizon."""
+"""cost.py: Local Riccati penalty for a finite MPC horizon.
+
+Copyright: Aaron John Sabu
+"""
 
 import numpy as np
 from scipy.linalg import expm, solve_discrete_are

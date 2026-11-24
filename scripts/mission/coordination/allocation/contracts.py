@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Typed agent memory and policy/network contracts."""
+"""contracts.py: Typed agent memory and policy/network contracts.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

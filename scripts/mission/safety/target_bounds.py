@@ -1,4 +1,7 @@
-"""Validated moving-goal errors about an observation-driven numerical preview."""
+"""target_bounds.py: Validated moving-goal errors about an observation-driven numerical preview.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

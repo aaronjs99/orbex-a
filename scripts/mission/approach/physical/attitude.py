@@ -1,9 +1,11 @@
-"""Bounded free-flying bus attitude tracking during a saved approach.
+"""attitude.py: Bounded free-flying bus attitude tracking during a saved approach.
 
 This is a numerical attitude replay in physical seconds. It does not alter
 the translational mission, certify its collision geometry, or infer a bus
 pose from point-mass translation. A fuel allowance for that translation is
 required explicitly. Quaternions are body-to-ECI, scalar last (xyzw).
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

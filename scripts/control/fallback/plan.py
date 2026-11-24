@@ -1,4 +1,7 @@
-"""Complete finite feedback plans, integrity and remaining resources."""
+"""plan.py: Complete finite feedback plans, integrity and remaining resources.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Actual nonlinear drift enclosures for the exact-zero nominal refuge."""
+"""drift.py: Actual nonlinear drift enclosures for the exact-zero nominal refuge.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

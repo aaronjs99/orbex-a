@@ -1,9 +1,11 @@
-"""Validated componentwise Euler and fixed-body-port derivative enclosures.
+"""body_jets.py: Validated componentwise Euler and fixed-body-port derivative enclosures.
 
 The supplied orbital rate, torque and elapsed-time bounds must hold globally.
 Spin inclusion is a strict bidirectional first-exit comparison, not a sampled
 maximum or a contraction claim. Exact polynomial coefficients retain full
 off-diagonal inertia and combine cancellations before interval evaluation.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

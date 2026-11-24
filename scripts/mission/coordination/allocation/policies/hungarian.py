@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Local Hungarian reassignment with Euclidean travel costs."""
+"""hungarian.py: Local Hungarian reassignment with Euclidean travel costs.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

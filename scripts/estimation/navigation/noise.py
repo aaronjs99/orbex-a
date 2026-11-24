@@ -1,7 +1,9 @@
-"""Versioned physical-time common random field for synthetic sensor studies.
+"""noise.py: Versioned physical-time common random field for synthetic sensor studies.
 
 The field is constant within declared time bins. It is not iid white noise and
 does not schedule observations or change their actual acquisition timestamps.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

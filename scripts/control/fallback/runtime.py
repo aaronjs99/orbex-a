@@ -1,4 +1,7 @@
-"""Transactional held-fleet admission, fallback dispatch and commit."""
+"""runtime.py: Transactional held-fleet admission, fallback dispatch and commit.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

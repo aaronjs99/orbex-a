@@ -11,7 +11,10 @@
 # ***********************************************************/
 
 
-"""Explicit static, nearest-neighbor and radius communication networks."""
+"""networks.py: Explicit static, nearest-neighbor and radius communication networks.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

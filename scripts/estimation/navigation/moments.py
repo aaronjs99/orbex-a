@@ -1,4 +1,7 @@
-"""Exact acceleration-history moment indexing for navigation queries."""
+"""moments.py: Exact acceleration-history moment indexing for navigation queries.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

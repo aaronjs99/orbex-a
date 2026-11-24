@@ -1,4 +1,4 @@
-"""Physical post-capture rigid assembly, in SI units and a fixed inertial frame.
+"""model.py: Physical post-capture rigid assembly, in SI units and a fixed inertial frame.
 
 The body basis stays fixed in the target structure. Its origin need not equal
 the assembly center of mass. Fuel is distributed with its owning component;
@@ -7,6 +7,8 @@ leave with the local co-rotation velocity in addition to its exhaust velocity.
 Small symmetric depletion splits preserve the material structure while moving
 the center-of-mass coordinate. This is a finite-step variable-mass model, not a
 sloshing, elastic-contact or resolved plume model.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

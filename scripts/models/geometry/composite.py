@@ -1,8 +1,10 @@
-"""Declared composite spacecraft solids and unprepared surface candidates.
+"""composite.py: Declared composite spacecraft solids and unprepared surface candidates.
 
 Numerical distances select candidate routes; they are not collision proofs.
 Exact expanded vertices bind interval proofs to the same occupied components.
 There is no cylindrical or spherical replacement for a composite geometry.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations

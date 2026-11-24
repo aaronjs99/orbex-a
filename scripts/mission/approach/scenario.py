@@ -10,7 +10,10 @@
 # *                                                         *
 # ***********************************************************/
 
-"""Explicit dependencies and policy services for a coupled tube mission."""
+"""scenario.py: Explicit dependencies and policy services for a coupled tube mission.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

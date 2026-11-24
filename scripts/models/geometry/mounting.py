@@ -1,4 +1,7 @@
-"""Common right-handed mounting frames for arbitrary structural surface normals."""
+"""mounting.py: Common right-handed mounting frames for arbitrary structural surface normals.
+
+Copyright: Aaron John Sabu
+"""
 
 from __future__ import annotations
 

@@ -1,8 +1,10 @@
-"""Finite arrival commitments without moving a receding-horizon deadline.
+"""policy.py: Finite arrival commitments without moving a receding-horizon deadline.
 
 The retained nonlinear fleet candidate is numerical evidence, not an admitted
 backup. Every actual hold still needs the ordinary shared continuous guard;
 failure retains its prefix and never implies that a physical plant can pause.
+
+Copyright: Aaron John Sabu
 """
 
 from __future__ import annotations
