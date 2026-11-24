@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.models.dynamics.reference_frame import exact, fingerprint
-from orbexa.proofs.reachability import IntervalBox
 
 METHOD = "sensed-split-capture-speed-v1"
 FRAME = "reference-orbit-frame-v1"

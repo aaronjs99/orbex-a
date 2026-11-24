@@ -8,10 +8,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.actuation import CommandDependentActuationPrior
 from orbexa.models.dynamics.relative import NonlinearModelBounds
 from orbexa.proofs.nonlinear import NonlinearFlowEncloser
-from orbexa.proofs.reachability import HeldInputRequest, IntervalBox
+from orbexa.proofs.reachability import HeldInputRequest
 
 
 def _disjoint(left, right):

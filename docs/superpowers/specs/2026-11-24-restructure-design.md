@@ -11,20 +11,22 @@
 
 Imports only go downward. Each layer is one top-level package of `orbexa`.
 
-| Layer | Package | Responsibility | Comes from |
-|---|---|---|---|
-| 0 | `common` | Exact intervals and boxes, paths (`ProjectLayout`), JSON/IO, hashing, discretization | `utils`, `common/layout.py`, `common/contracts.py`, `IntervalBox` from `control.certification.reachability` |
-| 1 | `models` | Clocks and frames, translational/attitude dynamics, geometry, vehicles, targets, configuration | `core` |
-| 2 | `proofs` | Picard flow enclosures, orbital hold proofs, attitude flow, rigid interval numerics | `control.certification`, `simulation.numerics` |
-| 3 | `estimation` | Sensors, bounded navigation, membership, adaptation | `estimation` (maintained parts) |
-| 4 | `control` | Tubes, MPC formulation, finite fallback, terminal and contact control, actuation | `control` minus `certification` |
-| 4 | `solvers` | GEKKO/IPOPT reference backend and optional backends; depends only on formulations | `solvers` |
-| 5 | `mission` | Stages and their orchestration: `approach`, `contact`, `attached`, `lifecycle`, `coordination` | `simulation.nonlinear`, `simulation.contact`, `simulation.attached`, `simulation.completion`, the maintained parts of `simulation.approach`, `planning` |
-| 6 | `evidence` | Journals, archives, manifests, source freezing and fuel accounting | `simulation.recording`, `simulation.study.source`, records and archive modules |
-| 7 | `studies` | Study arms, metrics, comparisons | `simulation.study` |
-| 8 | `figures` | Plots, renderers and Studio export from saved data into `results/<topic>/` | `visualization` (maintained parts) |
-| 9 | `service` | Loopback live jobs and HTTP | `simulation.service` |
-| 10 | `cli` | Thin command lines only | `cli` |
+| Layer | Package | Responsibility |
+|---|---|---|
+| 0 | `common` | Exact interval boxes and Arb arithmetic (`intervals`), exact-record encoding, serialization, paths (`ProjectLayout`), IO, discretization |
+| 1 | `models` | Clocks and frames, translational/attitude dynamics, geometry and constraints, targets and their snapshots, configuration |
+| 2 | `proofs` | Picard flow enclosures, orbital hold proofs, attitude flow, rotation bounds, rigid interval numerics |
+| 3 | `control` | Tubes, MPC formulation, finite fallback, terminal and contact control, actuation |
+| 4 | `estimation` | Sensors, bounded navigation, membership, adaptation |
+| 5 | `solvers` | GEKKO/IPOPT reference backend, optional backends, the `MPCController` dispatcher and proposal seeds |
+| 6 | `evidence` | Journals, proof archives, result records, stage envelopes, native solver evidence, source freezing, data projections |
+| 7 | `mission` | Approach, execution, safety, contact, attached flight, lifecycle, records collected during a run, coordination, online execution |
+| 8 | `studies` | Study arms, telemetry and metrics |
+| 9 | `figures` | Plots, renderers and Studio export into `results/<topic>/` |
+| 10 | `service` | Loopback live jobs and HTTP |
+| 11 | `cli` | Thin command lines |
+
+Imports only go downward. The one exception is a typing-only import: `proofs.rotation_bounds` names `control.terminal.physical.OrbitalClockBounds` under `TYPE_CHECKING`.
 
 Package `__init__` files hold no eager re-exports. Callers import a class from the module that defines it, and there are no compatibility facades.
 

@@ -16,7 +16,8 @@ from fractions import Fraction
 from numbers import Integral
 from typing import Any
 
-from orbexa.proofs.reachability import FRAME, IntervalBox
+from orbexa.common.intervals import IntervalBox
+from orbexa.proofs.reachability import FRAME
 
 TERMINAL_METHOD = "exact-held-reference-terminal-v1"
 MIDPOINT_TERMINAL_METHOD = "exact-held-midpoint-reference-terminal-v1"

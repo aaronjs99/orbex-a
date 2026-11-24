@@ -7,8 +7,8 @@ import copy
 import numpy as np
 from orbexa.control.fallback.refuge import fingerprint
 from orbexa.control.tubes.sample_hold import SENSED_TUBE_MODEL_VERSION
-from orbexa.evidence.records.arrays import MissionRecorder
 from orbexa.evidence.records.results import ADTMPCMissionResult
+from orbexa.mission.records.arrays import MissionRecorder
 from orbexa.models.dynamics.reference_frame import exact
 
 
@@ -299,7 +299,7 @@ class NonlinearMissionRecorder:
         sink = self.scenario.progress_sink
         if sink is None:
             return
-        from orbexa.figures.data.studio import StudioDataset
+        from orbexa.evidence.projections.studio import StudioDataset
 
         record = result if result is not None else self._record(False, False, [], None)
         projection = StudioDataset(record).to_dict()

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.models.dynamics.reference_frame import bounds, exact
-from orbexa.proofs.reachability import IntervalBox
 
 
 def infer_target_ephemeris(gnss_packet, relative_box, clock, precision_bits=128):
@@ -20,9 +20,8 @@ def infer_target_ephemeris(gnss_packet, relative_box, clock, precision_bits=128)
     ):
         raise ValueError("A chaser inertial GNSS packet is required")
     import flint
+    from orbexa.common.intervals import _ARB_LOCK, _Arithmetic
     from orbexa.models.dynamics.relative import matvec, z
-    from orbexa.proofs.nonlinear import _Arithmetic
-    from orbexa.proofs.reachability import _ARB_LOCK
 
     with _ARB_LOCK, flint.ctx.workprec(precision_bits):
         ar = _Arithmetic(flint)
@@ -66,9 +65,8 @@ def propagate_pose_estimate(
     becoming an unmodeled pose lag while retaining the full error support.
     """
     import flint
+    from orbexa.common.intervals import _ARB_LOCK, _Arithmetic
     from orbexa.proofs.attitude import _sqrt_upper
-    from orbexa.proofs.nonlinear import _Arithmetic
-    from orbexa.proofs.reachability import _ARB_LOCK
     from scipy.spatial.transform import Rotation
 
     q0, q1 = bounds(q_start), bounds(q_end)

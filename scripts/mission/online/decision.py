@@ -16,10 +16,10 @@ from copy import deepcopy
 from dataclasses import fields, is_dataclass
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.fallback import refuge
 from orbexa.control.fallback.records import HeldFleetDecision
 from orbexa.control.fallback.runtime import FleetAdmissionRuntime
-from orbexa.proofs.reachability import IntervalBox
 
 _EXACT_RECORD = refuge.exact_record
 _FINGERPRINT = refuge.fingerprint

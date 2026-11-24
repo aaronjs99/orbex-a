@@ -15,6 +15,12 @@ from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _ProofUnresolved,
+)
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.models.dynamics.reference_frame import fingerprint
 from orbexa.proofs.numerics.rigid_interval import (
@@ -39,12 +45,6 @@ from orbexa.proofs.numerics.rigid_interval import (
 )
 from orbexa.proofs.numerics.rigid_interval import (
     subtract as _sub,
-)
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
-    _ProofUnresolved,
 )
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()

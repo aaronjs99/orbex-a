@@ -15,7 +15,7 @@ def native_controller(directory, messages):
 
     import gekko
     from orbexa.common.serialization import plain
-    from orbexa.control.mpc.controller import MPCController
+    from orbexa.solvers.controller import MPCController
     from orbexa.solvers.gekko.tube import GekkoDynamicTube
 
     native = directory / "native"

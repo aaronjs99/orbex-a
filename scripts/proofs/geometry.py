@@ -15,18 +15,20 @@ from fractions import Fraction
 from numbers import Integral
 from typing import Any
 
-from orbexa.proofs.reachability import (
+from orbexa.common.intervals import (
     _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _exact,
+    _ProofUnresolved,
+)
+from orbexa.proofs.reachability import (
     FRAME,
     CollisionCertificate,
     EnclosureStatus,
     FlowCertificate,
     GuardStatus,
-    IntervalBox,
     SweptCollisionGuard,
-    _ArbArithmetic,
-    _exact,
-    _ProofUnresolved,
 )
 
 COMPOSITE_SWEEP_METHOD = "arb-composite-swept-separation-v1"
@@ -202,7 +204,7 @@ class RotatingCompositeBounds:
                 "Identify the composite target frame and whole-hold bound source"
             )
         if self.rotation_rate_bounds is not None:
-            from orbexa.control.terminal.rotation_bounds import RigidBodyRotationBounds
+            from orbexa.proofs.rotation_bounds import RigidBodyRotationBounds
 
             if not isinstance(self.rotation_rate_bounds, RigidBodyRotationBounds):
                 raise TypeError(

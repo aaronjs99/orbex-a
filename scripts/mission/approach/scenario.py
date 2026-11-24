@@ -44,7 +44,7 @@ class ControllerFactory(Protocol):
 def default_controller_factory(
     *, solver_backend: str, solver_config: dict[str, Any]
 ) -> CoupledController:
-    from orbexa.control.mpc.controller import MPCController
+    from orbexa.solvers.controller import MPCController
 
     return MPCController(solver_backend=solver_backend, solver_config=solver_config)
 

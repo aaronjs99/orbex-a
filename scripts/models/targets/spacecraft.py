@@ -90,7 +90,7 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         }
 
     def assign_docking_targets(self, initial_states: Sequence[np.ndarray]):
-        from orbexa.mission.rendezvous.composite import (
+        from orbexa.models.geometry.rendezvous import (
             assign_composite_docking_targets,
         )
 

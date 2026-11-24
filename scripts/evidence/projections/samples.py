@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from types import SimpleNamespace
 
 import numpy as np
-from orbexa.evidence.records.results import ADTMPCMissionResult
 from orbexa.common.geometry.algebra import tait_bryan_to_rotation_matrix
+from orbexa.evidence.records.results import ADTMPCMissionResult
 
 
 def recorded_array(value) -> np.ndarray:
@@ -206,7 +206,9 @@ class MissionSamples:
                     self.states[:, :, 3:] - velocities, axis=2
                 )
             elif self.rates is not None:
-                from orbexa.control.mpc.constraints import rotating_body_point_velocity
+                from orbexa.models.geometry.constraints import (
+                    rotating_body_point_velocity,
+                )
 
                 velocities = np.array(
                     [

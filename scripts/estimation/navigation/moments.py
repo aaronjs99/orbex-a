@@ -7,11 +7,8 @@ from bisect import bisect_left
 from collections import deque
 from fractions import Fraction
 
-from orbexa.proofs.reachability import (
-    FlowCertificate,
-    IntervalBox,
-    SweptSegment,
-)
+from orbexa.common.intervals import IntervalBox
+from orbexa.proofs.reachability import FlowCertificate, SweptSegment
 
 
 class _AccelerationMomentLedger:

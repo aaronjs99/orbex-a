@@ -123,12 +123,12 @@ Paths in this table are relative to `scripts/`.
 | `mission/execution/plant.py`, `mission/execution/sensing.py` | `NonlinearFleetPlant` proposes numerical motion; `MissionSensorDelivery` owns acquisition and delayed packet queues |
 | `mission/execution/bindings.py`, `mission/execution/nominal.py` | `PerformanceStageBindings` checks planning sources; `NominalTubePropagator` owns certified nominal flow/cache and tube endpoint transfer |
 | `evidence/journal.py` | `ExecutionJournal` publishes durable events and retains acknowledged completed holds; later recorder failures preserve that prefix |
-| `mission/runner.py`, `evidence/records/recorder.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
+| `mission/runner.py`, `mission/records/recorder.py` | Outer orchestration, arrival/deadline/dwell gates and `NonlinearMissionRecorder` with explicit truth/navigation/control-source histories |
 | `evidence/records/archive.py` | `NonlinearProofArchive`, `NonlinearHoldArchive`: durable staged/applied/failure witnesses, hash-bound lightweight indexes and lazy complete-hold iteration |
 | `studies/api.py`, `studies/request.py`, `evidence/source.py`, `cli/run_nonlinear.py` | Guarded study entry, prospective request/declaration and coherent source/input freezing |
 | `studies/execution.py`, `studies/records.py`, `studies/metrics.py` | `StudyArmExecution`, `StudyTelemetry`, atomic records and outcome metrics; setup, approach, completion and failure retention remain separate stages |
 | `mission/lifecycle/nonlinear/coordinator.py`, `mission/lifecycle/nonlinear/contracts.py` | Physical lifecycle composition, compatible imports and shared completion contracts/source identity |
-| `mission/lifecycle/nonlinear/boundary.py`, `mission/lifecycle/nonlinear/journal.py`, `evidence/accounting/nonlinear.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
+| `mission/lifecycle/nonlinear/boundary.py`, `mission/lifecycle/nonlinear/journal.py`, `mission/lifecycle/accounting.py` | Arrival/contact-boundary authentication, complete-hold authentication and translation fuel accounting |
 | `mission/lifecycle/environment/point.py`, `mission/lifecycle/nonlinear/observers.py` | Physical environment and causal attitude/contact observations |
 | `mission/approach/physical/attitude.py`, `mission/contact/simulator.py`, `mission/contact/capture.py` | Controlled chaser-attitude replay, finite-contact coordination, reach/contact gates and accepted assembly construction |
 | `mission/contact/contracts.py`, `mission/contact/dynamics/state.py`, `mission/contact/control/controller.py`, `mission/contact/dynamics/mechanics.py`, `mission/contact/control/guards.py`, `mission/contact/records.py` | Typed contact inputs/results, packed fleet state, observed control, physical wrench/RHS, geometric/load guards and balance/history recording |
@@ -137,7 +137,7 @@ Paths in this table are relative to `scripts/`.
 | `service/{contracts,session,http}.py` | Typed live inputs, one worker/session owner and the bounded loopback HTTP adapter |
 | `service/{snapshot,process}.py`, `service/jobs/` | Coherent source/input freeze, isolated spawned lifetime and explicit nonlinear/historical execution routes |
 | `evidence/{artifacts,native}.py`, `mission/approach/arrival/composition.py` | Shared durable/native evidence instrumentation and prospective arrival composition, independent of HTTP |
-| `figures/data/studio.py`, `figures/renderers/lifecycle.py`, `figures/publishing/studio.py`, `figures/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
+| `evidence/projections/studio.py`, `figures/renderers/lifecycle.py`, `figures/publishing/studio.py`, `figures/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
 | `common/geometry/`, `common/discretization.py` | Geometry algebra, sampling, occlusion and region calculations; numerical discretization imports its backend only when selected |
 | `common/io/{configuration,data}.py`, `utils/runtime.py` | Explicit YAML configuration, atomic data persistence and opt-in runtime/keyboard helpers |
 

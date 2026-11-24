@@ -89,8 +89,8 @@ def supported_planning_state(physical, sensed):
         raise ValueError("Burn planning needs the exact current sensed/physical clock")
     if physical.enclosure is None:
         return sensed
+    from orbexa.common.intervals import IntervalBox
     from orbexa.mission.attached.assembly.flow import packed_state
-    from orbexa.proofs.reachability import IntervalBox
 
     result = replace(sensed, enclosure=physical.enclosure)
     if not physical.enclosure.box.contains(IntervalBox.point(packed_state(result))):

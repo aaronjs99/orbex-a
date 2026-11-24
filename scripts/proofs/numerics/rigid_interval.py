@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orbexa.proofs.reachability import _ProofUnresolved
+from orbexa.common.intervals import _ProofUnresolved
 
 
 def cross(a, b):

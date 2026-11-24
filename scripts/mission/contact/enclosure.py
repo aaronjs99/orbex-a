@@ -13,6 +13,12 @@ from dataclasses import asdict, dataclass, replace
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _ProofUnresolved,
+)
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.mission.contact.dynamics.rotation import (
     auxiliary_initial,
@@ -43,12 +49,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     square,
     subtract,
     transpose,
-)
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
-    _ProofUnresolved,
 )
 from scipy.spatial.transform import Rotation
 

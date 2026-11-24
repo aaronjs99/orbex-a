@@ -12,6 +12,7 @@ from fractions import Fraction
 from itertools import combinations, zip_longest
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.common.serialization import digest, plain
 from orbexa.control.fallback.refuge import fingerprint as exact_fingerprint
 from orbexa.evidence.records.archive import (
@@ -30,7 +31,6 @@ from orbexa.mission.lifecycle.nonlinear.contracts import (
 )
 from orbexa.models.dynamics.reference_frame import ReferenceClockFrame, exact
 from orbexa.models.dynamics.relative import NonlinearModelBounds
-from orbexa.proofs.reachability import IntervalBox
 
 
 @dataclass(frozen=True)

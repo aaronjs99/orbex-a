@@ -18,8 +18,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from orbexa.control.mpc.constraints import rendezvous_margin
 from orbexa.mission.approach.models import MissionPhase
+from orbexa.models.geometry.constraints import rendezvous_margin
 
 if TYPE_CHECKING:
     from orbexa.models.configuration.model import SimulationConfig

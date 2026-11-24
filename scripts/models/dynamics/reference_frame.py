@@ -181,8 +181,7 @@ class ReferenceClockFrame:
     def interval_bounds(self, q_interval, precision_bits=128):
         """Return exact outward boxes for rotation entries, rate and kappa."""
         import flint
-        from orbexa.proofs.nonlinear import _Arithmetic
-        from orbexa.proofs.reachability import _ARB_LOCK
+        from orbexa.common.intervals import _ARB_LOCK, _Arithmetic
 
         interval = self.check_domain(q_interval)
         with _ARB_LOCK, flint.ctx.workprec(precision_bits):
@@ -205,8 +204,7 @@ class ReferenceClockFrame:
         precision_bits=128,
     ):
         import flint
-        from orbexa.proofs.nonlinear import _Arithmetic
-        from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox
+        from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _Arithmetic
 
         start, end, step = exact(q_start), exact(q_end), exact(max_step)
         self.check_domain((start, end))

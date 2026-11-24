@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _ArbArithmetic
 from orbexa.mission.contact.boundary import _intersection, _quaternion_box
 from orbexa.mission.contact.dynamics.rotation import initial_rotation_boxes
 from orbexa.models.dynamics.reference_frame import fingerprint
@@ -20,11 +21,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     matvec,
     quaternion_rotation,
     subtract,
-)
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
 )
 from scipy.spatial.transform import Rotation
 

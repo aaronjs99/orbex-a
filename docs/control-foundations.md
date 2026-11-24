@@ -751,8 +751,8 @@ establish every stage.
 Supply a provider explicitly when constructing a controller:
 
 ```python
-from orbexa.control.mpc.controller import MPCController
-from orbexa.mission.proposals.trajectory import TrackingHint
+from orbexa.solvers.controller import MPCController
+from orbexa.solvers.proposals import TrackingHint
 
 # Use the constructor's normal dynamics/configuration arguments, plus:
 # controller = MPCController(..., proposal_provider=TrackingHint(...))
@@ -764,7 +764,7 @@ For direct solver use:
 ```python
 from orbexa.solvers.gekko.solver import GekkoSolver
 from orbexa.solvers.proposal_seed import ProposalSeededSolver
-from orbexa.mission.proposals.trajectory import ConvexTrajectoryHint
+from orbexa.solvers.proposals import ConvexTrajectoryHint
 
 solver = ProposalSeededSolver(
     GekkoSolver({"remote": False}), ConvexTrajectoryHint(),

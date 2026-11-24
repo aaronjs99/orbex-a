@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from fractions import Fraction
 
+from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _Arithmetic, _exact
 from orbexa.control.fallback.refuge import (
     NonlinearDriftBounds,
     _absbox,
@@ -14,13 +15,7 @@ from orbexa.control.fallback.refuge import (
 )
 from orbexa.mission.safety.cache import _FrozenProofIdentityCache
 from orbexa.models.dynamics.relative import parameters, relative_field
-from orbexa.proofs.nonlinear import (
-    TargetEphemerisCertificate,
-    _Arithmetic,
-    _region,
-    _target_box,
-)
-from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox, _exact
+from orbexa.proofs.nonlinear import TargetEphemerisCertificate, _region, _target_box
 
 ZERO_NOMINAL_ID = "exact-zero-drift-refuge-v1"
 

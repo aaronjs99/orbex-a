@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from orbexa.solvers.base import MPCProblem
+from orbexa.common.contracts import MPCProblem
 
 
 def _square_weight_matrix(matrix: np.ndarray, size: int) -> np.ndarray:

@@ -19,12 +19,8 @@ from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
-from orbexa.common.serialization import (
-    _target_signature,
-    digest,
-    physical_target_from_snapshot,
-    plain,
-)
+from orbexa.common.intervals import IntervalBox, _exact, _float_outward
+from orbexa.common.serialization import digest, plain
 from orbexa.control.terminal.physical import (
     PhysicalTerminalBoundsBuilder,
     PhysicalTerminalErrorBounds,
@@ -43,13 +39,14 @@ from orbexa.mission.contact.capture import (
     CaptureTruth,
     TargetPhysicalProperties,
 )
+from orbexa.models.targets.snapshot import (
+    _target_signature,
+    physical_target_from_snapshot,
+)
 from orbexa.proofs.reachability import (
     HeldInputRequest,
-    IntervalBox,
     OrbitalModelBounds,
     ReachabilityConfig,
-    _exact,
-    _float_outward,
 )
 
 HANDOFF_METHOD = "verified-physical-terminal-handoff-v1"

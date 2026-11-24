@@ -17,22 +17,25 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from orbexa.common import intervals as _intervals
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _exact,
+    _pair,
+    _ProofUnresolved,
+)
 from orbexa.proofs import reachability as _reachability
 from orbexa.proofs.reachability import (
-    _ARB_LOCK,
     FRAME,
     EnclosureStatus,
     FlowCertificate,
     HeldInputRequest,
-    IntervalBox,
     OrbitalModelBounds,
     ReachabilityConfig,
     ValidatedFlowEncloser,
-    _ArbArithmetic,
-    _exact,
     _orbital_coefficients,
-    _pair,
-    _ProofUnresolved,
 )
 from orbexa.proofs.reachability import (
     METHOD as PICARD_METHOD,
@@ -72,6 +75,7 @@ def _require_box(value, dimension, name):
 
 def _source_identity():
     files = {
+        "common/intervals.py": Path(_intervals.__file__),
         "proofs/reachability.py": Path(_reachability.__file__),
         "proofs/orbital.py": Path(__file__),
     }
@@ -85,6 +89,7 @@ def _source_identity():
             "Readable supported source files are required for orbital proof identity"
         ) from error
     loaded = {
+        "common/intervals.py": _intervals._LOADED_SOURCE_SHA256,
         "proofs/reachability.py": _reachability._LOADED_SOURCE_SHA256,
         "proofs/orbital.py": _LOADED_SOURCE_SHA256,
     }

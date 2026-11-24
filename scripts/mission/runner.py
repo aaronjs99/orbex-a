@@ -12,6 +12,7 @@ from dataclasses import replace
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import IntervalBox
 from orbexa.control.fallback.records import PerformanceAttempt
 from orbexa.control.fallback.refuge import fingerprint as source_fingerprint
 from orbexa.control.terminal.contact import (
@@ -23,7 +24,6 @@ from orbexa.control.tubes.specification import ProspectiveContactConstraint
 from orbexa.estimation.adaptation.nonlinear import NonlinearMissionAdaptation
 from orbexa.estimation.navigation.filter import BoundedNavigationFilter
 from orbexa.estimation.navigation.sensors import SensorSuite
-from orbexa.evidence.records.recorder import NonlinearMissionRecorder
 from orbexa.mission.approach.planning import PlanningStep
 from orbexa.mission.approach.state import CoupledMissionState
 from orbexa.mission.execution.coordinator import (
@@ -45,6 +45,7 @@ from orbexa.mission.profile import (
     reference_clock,
     reference_environment,
 )
+from orbexa.mission.records.recorder import NonlinearMissionRecorder
 from orbexa.mission.safety.planner import NonlinearSafetyPlanner, radius
 from orbexa.mission.safety.target_bounds import (
     exact_norm_upper,
@@ -55,7 +56,7 @@ from orbexa.models.dynamics.reference_frame import exact, fingerprint
 from orbexa.models.targets.nonlinear import NonlinearTargetPreview, NonlinearTargetTruth
 from orbexa.proofs.attitude import AttitudeFlowEncloser
 from orbexa.proofs.nonlinear import NonlinearFlowEncloser
-from orbexa.proofs.reachability import IntervalBox, ReachabilityConfig
+from orbexa.proofs.reachability import ReachabilityConfig
 
 
 class NonlinearMissionRunner:

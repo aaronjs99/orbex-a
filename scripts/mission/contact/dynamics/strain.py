@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox
 from orbexa.mission.contact.dynamics.rotation import intersect
 from orbexa.proofs.numerics.rigid_interval import (
     quaternion_conjugate,
@@ -11,7 +12,6 @@ from orbexa.proofs.numerics.rigid_interval import (
     square,
     subtract,
 )
-from orbexa.proofs.reachability import IntervalBox
 
 
 def initial_strain_boxes(model, time, combined, ar, supplied=None):

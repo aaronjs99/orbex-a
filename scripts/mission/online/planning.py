@@ -13,6 +13,7 @@ import pickle
 from dataclasses import dataclass, replace
 from fractions import Fraction
 
+from orbexa.common.intervals import IntervalBox, _exact
 from orbexa.control.fallback.plan import FleetFallbackPlan
 from orbexa.control.fallback.refuge import fingerprint
 from orbexa.control.fallback.replacement import prepare_fleet_replacement
@@ -26,7 +27,6 @@ from orbexa.mission.safety.reference import (
     C2RefugeReference,
     PolynomialReferencePiece,
 )
-from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 class _PreparationRuntime(FleetAdmissionRuntime):

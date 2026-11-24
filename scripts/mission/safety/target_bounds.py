@@ -6,6 +6,7 @@ import hashlib
 from fractions import Fraction
 from pathlib import Path
 
+from orbexa.common.intervals import _ARB_LOCK, IntervalBox, _Arithmetic
 from orbexa.models.dynamics.reference_frame import exact, fingerprint
 from orbexa.models.dynamics.relative import cross, matvec, transpose, z
 from orbexa.proofs.attitude import (
@@ -15,11 +16,7 @@ from orbexa.proofs.attitude import (
     _matrix,
     _sqrt_upper,
 )
-from orbexa.proofs.nonlinear import (
-    TargetEphemerisCertificate,
-    _Arithmetic,
-)
-from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox
+from orbexa.proofs.nonlinear import TargetEphemerisCertificate
 
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 

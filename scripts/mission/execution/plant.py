@@ -7,7 +7,7 @@ all admitted numerical trajectories have been computed. Clearance is diagnostic.
 from __future__ import annotations
 
 import numpy as np
-from orbexa.proofs.reachability import IntervalBox
+from orbexa.common.intervals import IntervalBox
 from scipy.integrate import solve_ivp
 
 

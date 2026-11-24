@@ -13,6 +13,12 @@ import hashlib
 from fractions import Fraction
 
 import numpy as np
+from orbexa.common.intervals import (
+    _ARB_LOCK,
+    IntervalBox,
+    _ArbArithmetic,
+    _ProofUnresolved,
+)
 from orbexa.common.layout import PACKAGE_ROOT
 from orbexa.mission.contact.dynamics.rotation import auxiliary_initial, intersect
 from orbexa.mission.contact.dynamics.strain import initial_strain_boxes
@@ -20,12 +26,6 @@ from orbexa.mission.contact.sensing.observation import ContactObservationBounds
 from orbexa.models.dynamics.attitude import finite_vector
 from orbexa.models.dynamics.reference_frame import fingerprint
 from orbexa.proofs.numerics.rigid_interval import matvec, scale, subtract, transpose
-from orbexa.proofs.reachability import (
-    _ARB_LOCK,
-    IntervalBox,
-    _ArbArithmetic,
-    _ProofUnresolved,
-)
 from scipy.spatial.transform import Rotation
 
 _SOURCE = {
