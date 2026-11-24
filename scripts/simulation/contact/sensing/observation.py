@@ -290,7 +290,7 @@ class ContactSetConditioner:
                     target_coordinate = ar.interval((lower[6 + axis], upper[6 + axis]))
                     narrow(begin + axis, ar.box((candidate + target_coordinate,)))
                 gap_records.append(
-                    dict(member_id=member.id, supported_gap_m=gap.as_dict())
+                    {"member_id": member.id, "supported_gap_m": gap.as_dict()}
                 )
             rotations = initial_rotation_boxes(
                 fleet,
@@ -304,35 +304,35 @@ class ContactSetConditioner:
             raise ValueError(
                 "Contact sensor support contradicts the executed numerical representative"
             )
-        record = dict(
-            method="same-event-bounded-contact-set-intersection-v1",
-            time_s=target.time_s,
-            initial_fingerprint=fingerprint(initial.as_dict()),
-            exact_elapsed_time_s=None
+        record = {
+            "method": "same-event-bounded-contact-set-intersection-v1",
+            "time_s": target.time_s,
+            "initial_fingerprint": fingerprint(initial.as_dict()),
+            "exact_elapsed_time_s": None
             if exact_elapsed_time_s is None
             else str(exact_elapsed_time_s),
-            exact_time_s=None
+            "exact_time_s": None
             if exact_elapsed_time_s is None
             else str(Fraction(fleet.started) + Fraction(exact_elapsed_time_s)),
-            conditioned_fingerprint=fingerprint(result.as_dict()),
-            support=support.as_dict(),
-            gap_constraints=gap_records,
-            rotation_supports=[box.as_dict() for box in rotations],
-            observation=dict(
-                target=target.to_dict(),
-                chasers={
+            "conditioned_fingerprint": fingerprint(result.as_dict()),
+            "support": support.as_dict(),
+            "gap_constraints": gap_records,
+            "rotation_supports": [box.as_dict() for box in rotations],
+            "observation": {
+                "target": target.to_dict(),
+                "chasers": {
                     key: value.to_dict()
                     for key, value in observation["chasers"].items()
                 },
-                contact_gaps_m=observation.get("contact_gaps_m"),
-                contact_wrenches_eci={
+                "contact_gaps_m": observation.get("contact_gaps_m"),
+                "contact_wrenches_eci": {
                     key: {
                         name: np.asarray(vector).tolist()
                         for name, vector in item.items()
                     }
                     for key, item in observation.get("contact_wrenches_eci", {}).items()
                 },
-                positioner_encoders=None
+                "positioner_encoders": None
                 if observation.get("positioner_encoders") is None
                 else {
                     key: {
@@ -341,7 +341,7 @@ class ContactSetConditioner:
                     }
                     for key, item in observation["positioner_encoders"].items()
                 },
-            ),
-        )
+            },
+        }
         record["identity"] = fingerprint(record)
         return result, record

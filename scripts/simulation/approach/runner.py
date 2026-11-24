@@ -218,11 +218,11 @@ class CoupledTubeMission:
                     f"Arrival policy refused planning before motion: {error}"
                 )
                 arrival.events.append(
-                    dict(
-                        status="POLICY_REFUSED",
-                        update=update_offset + update,
-                        reason=str(error),
-                    )
+                    {
+                        "status": "POLICY_REFUSED",
+                        "update": update_offset + update,
+                        "reason": str(error),
+                    }
                 )
                 break
             recorder.record_planning(planning, state.anomaly)

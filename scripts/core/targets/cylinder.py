@@ -204,21 +204,21 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
             principal_moments_kg_m2=np.linalg.eigvalsh(self.inertia).tolist(),
             inertia_triangle_relative_roundoff_tolerance=64.0 * np.finfo(float).eps,
             clock_model="analytical_inverse_radius_quadratic_drag",
-            clock_parameters=dict(
-                eccentricity=float(self.eccentricity),
-                alpha=float(self.alpha),
-                mu=float(self.mu),
-                semi_major_axis=float(self.semi_major_axis),
-                theta0=0.0,
-            ),
+            clock_parameters={
+                "eccentricity": float(self.eccentricity),
+                "alpha": float(self.alpha),
+                "mu": float(self.mu),
+                "semi_major_axis": float(self.semi_major_axis),
+                "theta0": 0.0,
+            },
             inertial_reference="fixed coincident to LVLH at the first anomaly",
             lvlh_frame_rotation="positive anomaly increment about orbit normal",
-            integration=dict(
-                method="DOP853",
-                rtol=float(self.integration_rtol),
-                atol=float(self.integration_atol),
-                max_anomaly_step=float(self.integration_max_step),
-            ),
+            integration={
+                "method": "DOP853",
+                "rtol": float(self.integration_rtol),
+                "atol": float(self.integration_atol),
+                "max_anomaly_step": float(self.integration_max_step),
+            },
             assumptions=[
                 "rigid body with constant physically realizable body-frame inertia",
                 (

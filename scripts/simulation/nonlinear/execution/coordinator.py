@@ -694,13 +694,13 @@ class NonlinearDenseExecutor:
             and witness.model_fingerprint == self.model.fingerprint
             and witness.clock_fingerprint == self.clock.fingerprint
         ):
-            return dict(
-                method="PRIOR_ADMITTED_PHYSICAL_TUBE",
-                witness_id=witness.fingerprint,
-                exact_q=str(q),
-                current_observation_id=observation.fingerprint,
-                scope="Relational physical inclusion; current navigation box corners need not all be reachable",
-            )
+            return {
+                "method": "PRIOR_ADMITTED_PHYSICAL_TUBE",
+                "witness_id": witness.fingerprint,
+                "exact_q": str(q),
+                "current_observation_id": observation.fingerprint,
+                "scope": "Relational physical inclusion; current navigation box corners need not all be reachable",
+            }
         self._check_tube_observation(
             observation.state_enclosure,
             state.centers[key],
@@ -708,12 +708,14 @@ class NonlinearDenseExecutor:
             state.omega[key],
             lam,
         )
-        return dict(
-            method="COMPLETE_CURRENT_NAVIGATION_BOX",
-            exact_q=str(q),
-            current_observation_id=observation.fingerprint,
-            discarded_prior_witness_id=None if witness is None else witness.fingerprint,
-        )
+        return {
+            "method": "COMPLETE_CURRENT_NAVIGATION_BOX",
+            "exact_q": str(q),
+            "current_observation_id": observation.fingerprint,
+            "discarded_prior_witness_id": None
+            if witness is None
+            else witness.fingerprint,
+        }
 
     def _nominal(self, center, u, q, h, params, phi, omega, stage, lam):
         return self.nominal_tube.propagate(
@@ -939,76 +941,78 @@ class NonlinearDenseExecutor:
     ):
         from orbexa.control.fallback.refuge import exact_record
 
-        record = dict(
-            exact_start=str(q),
-            exact_end=str(q + h),
-            exact_hold_width=str(h),
-            decision=decision.as_dict(),
-            initial_observations={
+        record = {
+            "exact_start": str(q),
+            "exact_end": str(q + h),
+            "exact_hold_width": str(h),
+            "decision": decision.as_dict(),
+            "initial_observations": {
                 key: exact_record(value) for key, value in observations.items()
             },
-            target_flow_id=None if tf is None else tf.fingerprint,
-            flow_ids={key: value.fingerprint for key, value in flows.items()},
-            navigation_flow_ids={
+            "target_flow_id": None if tf is None else tf.fingerprint,
+            "flow_ids": {key: value.fingerprint for key, value in flows.items()},
+            "navigation_flow_ids": {
                 key: value.fingerprint for key, value in navigation_flows.items()
             },
-            navigation_prediction_input_supports={
+            "navigation_prediction_input_supports": {
                 key: value.request["held_input"]
                 for key, value in navigation_flows.items()
             },
-            admission_input_supports={
+            "admission_input_supports": {
                 key: value.as_dict() for key, value in decision.applied_inputs
             },
-            navigation_input_supports={
+            "navigation_input_supports": {
                 key: value.as_dict() for key, value in navigation_supports.items()
             },
-            actuation_prior_id=self.actuation_prior.fingerprint,
-            actuation_prior=self.actuation_prior.as_dict(),
-            actuation_realization_validation=self.actuation_validation,
-            actuation_realization_validation_id=self.actuation_validation["identity"],
-            nominal_flow_ids={
+            "actuation_prior_id": self.actuation_prior.fingerprint,
+            "actuation_prior": self.actuation_prior.as_dict(),
+            "actuation_realization_validation": self.actuation_validation,
+            "actuation_realization_validation_id": self.actuation_validation[
+                "identity"
+            ],
+            "nominal_flow_ids": {
                 key: value[3].fingerprint for key, value in nominal.items()
             }
             if decision.source == "PERFORMANCE"
             else {},
-            plant_fingerprint=self.model.fingerprint,
-            clock_fingerprint=self.clock.fingerprint,
-            actuator_realization_id=self.actuator.fingerprint,
-            sensor_profile_id=self.sensors.profile.fingerprint,
-            numerical_delivery_at_start={
+            "plant_fingerprint": self.model.fingerprint,
+            "clock_fingerprint": self.clock.fingerprint,
+            "actuator_realization_id": self.actuator.fingerprint,
+            "sensor_profile_id": self.sensors.profile.fingerprint,
+            "numerical_delivery_at_start": {
                 key: np.asarray(self.actuator.apply(key, command, float(q))).tolist()
                 for key, command in decision.float_commands().items()
             },
-            proof_blackout=blackout,
-            proof_service_error=service_error,
-            prospective_successor={}
+            "proof_blackout": blackout,
+            "proof_service_error": service_error,
+            "prospective_successor": {}
             if successor_preparation is None
             else successor_preparation,
-            performance_tube_proofs={}
+            "performance_tube_proofs": {}
             if performance_tube_proofs is None
             else performance_tube_proofs,
-            performance_feedback_coefficients=None
+            "performance_feedback_coefficients": None
             if feedback_coefficients is None
             else feedback_coefficients.as_dict(),
-            source="ADMITTED_DECISION_BEFORE_ANY_NUMERICAL_OR_PHYSICAL_MOTION",
-        )
+            "source": "ADMITTED_DECISION_BEFORE_ANY_NUMERICAL_OR_PHYSICAL_MOTION",
+        }
         record["staged_identity"] = fingerprint(record)
-        self._active_staged = dict(
-            archive_event_kind="ADMITTED_BEFORE_MOTION",
-            staged_identity=record["staged_identity"],
-            record=record,
-            target=None if tf is None else tf.as_dict(),
-            flows={key: value.as_dict() for key, value in flows.items()},
-            navigation_flows={
+        self._active_staged = {
+            "archive_event_kind": "ADMITTED_BEFORE_MOTION",
+            "staged_identity": record["staged_identity"],
+            "record": record,
+            "target": None if tf is None else tf.as_dict(),
+            "flows": {key: value.as_dict() for key, value in flows.items()},
+            "navigation_flows": {
                 key: value.as_dict() for key, value in navigation_flows.items()
             },
-            nominal={key: value[3].as_dict() for key, value in nominal.items()}
+            "nominal": {key: value[3].as_dict() for key, value in nominal.items()}
             if decision.source == "PERFORMANCE"
             else {},
-            successor_witnesses={}
+            "successor_witnesses": {}
             if successor_witnesses is None
             else successor_witnesses,
-        )
+        }
         self._execution_stage = "ARCHIVE_BEFORE_MOTION"
         self._publish_archive(
             "ADMITTED_BEFORE_MOTION",
@@ -1033,30 +1037,32 @@ class NonlinearDenseExecutor:
         staged = self._active_staged
         start = None if staged is None else exact(staged["record"]["exact_start"])
         pending = None if self.runtime is None else self.runtime._pending
-        event = dict(
-            status="ASSUMPTION_VIOLATION",
-            staged_identity=None if staged is None else staged["staged_identity"],
-            execution_stage=self._execution_stage,
-            error_type=type(error).__name__,
-            error=str(error),
-            physical_motion_committed=start is not None and actual_q > start,
-            exact_actual_committed_q=str(actual_q),
-            actual_physical_time_s=float(target[13]),
-            actual_truth_relative={key: value.tolist() for key, value in truth.items()},
-            target_full_state=target.tolist(),
-            observed_q=str(self.observed_q),
-            runtime_q=None if self.runtime is None else str(self.runtime.q),
-            pending_decision_id=None if pending is None else pending[0].fingerprint,
-            decision=None if staged is None else staged["record"]["decision"],
-            actual_input_at_start=(
+        event = {
+            "status": "ASSUMPTION_VIOLATION",
+            "staged_identity": None if staged is None else staged["staged_identity"],
+            "execution_stage": self._execution_stage,
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "physical_motion_committed": start is not None and actual_q > start,
+            "exact_actual_committed_q": str(actual_q),
+            "actual_physical_time_s": float(target[13]),
+            "actual_truth_relative": {
+                key: value.tolist() for key, value in truth.items()
+            },
+            "target_full_state": target.tolist(),
+            "observed_q": str(self.observed_q),
+            "runtime_q": None if self.runtime is None else str(self.runtime.q),
+            "pending_decision_id": None if pending is None else pending[0].fingerprint,
+            "decision": None if staged is None else staged["record"]["decision"],
+            "actual_input_at_start": (
                 None
                 if staged is None or start is None or actual_q <= start
                 else staged["record"]["numerical_delivery_at_start"]
             ),
-            completion_record_unconfirmed=self._active_completion,
-            continuation_authorized=False,
-            scope="Already applied motion is retained; no successful endpoint or clock pause is inferred",
-        )
+            "completion_record_unconfirmed": self._active_completion,
+            "continuation_authorized": False,
+            "scope": "Already applied motion is retained; no successful endpoint or clock pause is inferred",
+        }
         outcome.success = False
         outcome.messages.append(type(error).__name__ + ": " + str(error))
         outcome.end_anomaly = float(actual_q)
@@ -1070,11 +1076,11 @@ class NonlinearDenseExecutor:
         try:
             self._publish_archive("ASSUMPTION_VIOLATION", event, outcome)
         except Exception as archive_error:
-            event["failure_archive_error"] = dict(
-                type=type(archive_error).__name__,
-                message=str(archive_error),
-                persistence="UNCONFIRMED",
-            )
+            event["failure_archive_error"] = {
+                "type": type(archive_error).__name__,
+                "message": str(archive_error),
+                "persistence": "UNCONFIRMED",
+            }
         raise NonlinearExecutionFailure(
             str(error),
             outcome=outcome,
@@ -1139,15 +1145,15 @@ class NonlinearDenseExecutor:
             membership_target = estimate.target_ephemeris_box
             membership_target_record = membership_target.as_dict()
             membership_navigation_id = fingerprint(
-                dict(
-                    exact_event_q=str(estimate.exact_event_q),
-                    physical_time_box=estimate.physical_time_box.as_dict(),
-                    target_ephemeris_box=membership_target_record,
-                    clock_fingerprint=estimate.clock_fingerprint,
-                    model_fingerprint=estimate.model_fingerprint,
-                    packet_ids=estimate.packet_ids,
-                    sensor_fingerprints=estimate.sensor_fingerprints,
-                )
+                {
+                    "exact_event_q": str(estimate.exact_event_q),
+                    "physical_time_box": estimate.physical_time_box.as_dict(),
+                    "target_ephemeris_box": membership_target_record,
+                    "clock_fingerprint": estimate.clock_fingerprint,
+                    "model_fingerprint": estimate.model_fingerprint,
+                    "packet_ids": estimate.packet_ids,
+                    "sensor_fingerprints": estimate.sensor_fingerprints,
+                }
             )
             endpoint_observations = self.observations()
         self._execution_stage = "RUNTIME_COMMIT"
@@ -1239,16 +1245,20 @@ class NonlinearDenseExecutor:
                             tf.physical_time_initial,
                             self.runtime.acceleration_disturbance,
                             observation_id=fingerprint(
-                                dict(
-                                    observation=endpoint_observations[key].fingerprint,
-                                    input_support=navigation_supports[key].fingerprint,
-                                    actuation_prior=self.actuation_prior.fingerprint,
-                                    agent_id=key,
-                                    actuation_persistence="fixed-affine-per-agent-v1",
-                                    navigation=membership_navigation_id,
-                                    target_endpoint_q=str(estimate.exact_event_q),
-                                    target_observed=membership_target_record,
-                                )
+                                {
+                                    "observation": endpoint_observations[
+                                        key
+                                    ].fingerprint,
+                                    "input_support": navigation_supports[
+                                        key
+                                    ].fingerprint,
+                                    "actuation_prior": self.actuation_prior.fingerprint,
+                                    "agent_id": key,
+                                    "actuation_persistence": "fixed-affine-per-agent-v1",
+                                    "navigation": membership_navigation_id,
+                                    "target_endpoint_q": str(estimate.exact_event_q),
+                                    "target_observed": membership_target_record,
+                                }
                             ),
                             target_observed=membership_target,
                             agent_id=key,
@@ -1288,59 +1298,63 @@ class NonlinearDenseExecutor:
                         outcome.min_spacing,
                         float(np.linalg.norm(positions[key] - positions[other])),
                     )
-        record = dict(
-            exact_start=str(q),
-            exact_end=str(q + h),
-            decision=decision.as_dict(),
-            runtime_commit=committed,
-            exact_hold_width=str(h),
-            target_flow_id=None if tf is None else tf.fingerprint,
-            flow_ids={key: value.fingerprint for key, value in flows.items()},
-            navigation_flow_ids={
+        record = {
+            "exact_start": str(q),
+            "exact_end": str(q + h),
+            "decision": decision.as_dict(),
+            "runtime_commit": committed,
+            "exact_hold_width": str(h),
+            "target_flow_id": None if tf is None else tf.fingerprint,
+            "flow_ids": {key: value.fingerprint for key, value in flows.items()},
+            "navigation_flow_ids": {
                 key: value.fingerprint for key, value in navigation_flows.items()
             },
-            navigation_prediction_input_supports={
+            "navigation_prediction_input_supports": {
                 key: value.request["held_input"]
                 for key, value in navigation_flows.items()
             },
-            admission_input_supports={
+            "admission_input_supports": {
                 key: value.as_dict() for key, value in decision.applied_inputs
             },
-            navigation_input_supports={
+            "navigation_input_supports": {
                 key: value.as_dict() for key, value in navigation_supports.items()
             },
-            actuation_prior_id=self.actuation_prior.fingerprint,
-            actuation_realization_validation_id=self.actuation_validation["identity"],
-            nominal_flow_ids={
+            "actuation_prior_id": self.actuation_prior.fingerprint,
+            "actuation_realization_validation_id": self.actuation_validation[
+                "identity"
+            ],
+            "nominal_flow_ids": {
                 key: value[3].fingerprint for key, value in nominal.items()
             }
             if decision.source == "PERFORMANCE"
             else {},
-            nominal_picard_flow_ids={
+            "nominal_picard_flow_ids": {
                 key: value[3].picard_flow.fingerprint for key, value in nominal.items()
             }
             if decision.source == "PERFORMANCE"
             else {},
-            nominal_endpoint_ids={
+            "nominal_endpoint_ids": {
                 key: value[3].endpoint_certificate.fingerprint
                 for key, value in nominal.items()
             }
             if decision.source == "PERFORMANCE"
             else {},
-            nominal_model_role="CH-surrogate-in-commanded-coordinates; physical admission uses separate nonlinear flows",
-            tube_transition="CONTINUOUS_NOMINAL_ENDPOINT_TRANSFER"
+            "nominal_model_role": "CH-surrogate-in-commanded-coordinates; physical admission uses separate nonlinear flows",
+            "tube_transition": "CONTINUOUS_NOMINAL_ENDPOINT_TRANSFER"
             if decision.source == "PERFORMANCE"
             else "RESET_FROM_CERTIFIED_NAVIGATION",
-            actuator_realization_id=self.actuator.fingerprint,
-            sensor_profile_id=self.sensors.profile.fingerprint,
-            actual_input_at_start={
+            "actuator_realization_id": self.actuator.fingerprint,
+            "sensor_profile_id": self.sensors.profile.fingerprint,
+            "actual_input_at_start": {
                 key: np.asarray(self.actuator.apply(key, command, float(q))).tolist()
                 for key, command in decision.float_commands().items()
             },
-            navigation_status=estimate.status,
-            proof_blackout=blackout,
-            actual_truth_relative={key: value.tolist() for key, value in truth.items()},
-        )
+            "navigation_status": estimate.status,
+            "proof_blackout": blackout,
+            "actual_truth_relative": {
+                key: value.tolist() for key, value in truth.items()
+            },
+        }
         record["ancillary_control_semantics"] = (
             "Executed performance ancillary; zero for fallback, whose full command is recorded separately"
         )
@@ -1351,20 +1365,20 @@ class NonlinearDenseExecutor:
         if decision.source == "PERFORMANCE":
             for key in ids:
                 proof = self._active_staged["record"]["performance_tube_proofs"][key]
-                source = dict(
-                    staged_identity=self._active_staged["staged_identity"],
-                    decision_id=decision.fingerprint,
-                    parent_witness_id=proof["initial_membership"].get("witness_id"),
-                    initial_membership_method=proof["initial_membership"]["method"],
-                    exact_stage_id=proof["exact_stage"]["identity"],
-                    feedback_evaluation_id=proof["feedback_evaluation"]["identity"],
-                    nominal_transfer_id=proof["nominal_transfer"]["identity"],
-                    nominal_endpoint_id=nominal[key][
+                source = {
+                    "staged_identity": self._active_staged["staged_identity"],
+                    "decision_id": decision.fingerprint,
+                    "parent_witness_id": proof["initial_membership"].get("witness_id"),
+                    "initial_membership_method": proof["initial_membership"]["method"],
+                    "exact_stage_id": proof["exact_stage"]["identity"],
+                    "feedback_evaluation_id": proof["feedback_evaluation"]["identity"],
+                    "nominal_transfer_id": proof["nominal_transfer"]["identity"],
+                    "nominal_endpoint_id": nominal[key][
                         3
                     ].endpoint_certificate.fingerprint,
-                    physical_flow_id=flows[key].fingerprint,
-                    residual_id=proof["regional_residual_id"],
-                )
+                    "physical_flow_id": flows[key].fingerprint,
+                    "residual_id": proof["regional_residual_id"],
+                }
                 next_witnesses[key] = PhysicalTubeWitness(
                     key,
                     q + h,
@@ -1534,11 +1548,11 @@ class NonlinearDenseExecutor:
                         self.navigation.time,
                     )
                 except (RuntimeError, TimeoutError) as error:
-                    service_error = dict(
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                        service="target-flow",
-                    )
+                    service_error = {
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                        "service": "target-flow",
+                    }
                     performance = False
                     attempt = PerformanceAttempt(
                         "PROOF_SERVICE_UNAVAILABLE",
@@ -1655,11 +1669,11 @@ class NonlinearDenseExecutor:
                                 lam,
                             )
                         except (RuntimeError, TimeoutError) as error:
-                            service_error = dict(
-                                exception_type=type(error).__name__,
-                                message=str(error),
-                                service="nominal-surrogate-flow",
-                            )
+                            service_error = {
+                                "exception_type": type(error).__name__,
+                                "message": str(error),
+                                "service": "nominal-surrogate-flow",
+                            }
                             raise ValueError(
                                 "Nominal proof service unavailable: " + str(error)
                             ) from error
@@ -1743,11 +1757,11 @@ class NonlinearDenseExecutor:
                 except (RuntimeError, TimeoutError) as error:
                     if decision.source == "PERFORMANCE":
                         raise
-                    service_error = dict(
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                        service="fallback-navigation-flow",
-                    )
+                    service_error = {
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                        "service": "fallback-navigation-flow",
+                    }
                     blackout = True
                     flows = {}
                 if any(not value.proven for value in flows.values()):
@@ -1773,18 +1787,18 @@ class NonlinearDenseExecutor:
                         for key, value in navigation_supports.items()
                     }
                     if any(not value.proven for value in navigation_flows.values()):
-                        service_error = dict(
-                            service="navigation-subset-flow",
-                            message="Subset inclusion unresolved; complete admitted flow retained for prediction",
-                        )
+                        service_error = {
+                            "service": "navigation-subset-flow",
+                            "message": "Subset inclusion unresolved; complete admitted flow retained for prediction",
+                        }
                         navigation_flows = flows
                 except (RuntimeError, TimeoutError) as error:
-                    service_error = dict(
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                        service="navigation-subset-flow",
-                        response="Complete admitted flow retained for conservative prediction",
-                    )
+                    service_error = {
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                        "service": "navigation-subset-flow",
+                        "response": "Complete admitted flow retained for conservative prediction",
+                    }
                     navigation_flows = flows
             if decision.source != "PERFORMANCE":
                 performance = False
@@ -1811,16 +1825,16 @@ class NonlinearDenseExecutor:
             if decision.source == "PERFORMANCE":
                 for key in ids:
                     residual = copy.deepcopy(planner.residuals[key][0])
-                    tube_proofs[key] = dict(
-                        initial_membership=tube_memberships[key],
-                        exact_stage=stage[key]["proof_record"],
-                        nominal_transfer=stage[key]["last_transfer"],
-                        source_binding=stage[key]["source_binding"],
-                        feedback_evaluation=feedback_evaluations[key],
-                        regional_residual=residual,
-                        regional_residual_id=fingerprint(residual),
-                        region=planner.regions[key].as_dict(),
-                        measurement_error_abs=tuple(
+                    tube_proofs[key] = {
+                        "initial_membership": tube_memberships[key],
+                        "exact_stage": stage[key]["proof_record"],
+                        "nominal_transfer": stage[key]["last_transfer"],
+                        "source_binding": stage[key]["source_binding"],
+                        "feedback_evaluation": feedback_evaluations[key],
+                        "regional_residual": residual,
+                        "regional_residual_id": fingerprint(residual),
+                        "region": planner.regions[key].as_dict(),
+                        "measurement_error_abs": tuple(
                             map(
                                 str,
                                 map(
@@ -1829,9 +1843,9 @@ class NonlinearDenseExecutor:
                                 ),
                             )
                         ),
-                        physical_flow_id=flows[key].fingerprint,
-                        source_observation_id=observations[key].fingerprint,
-                    )
+                        "physical_flow_id": flows[key].fingerprint,
+                        "source_observation_id": observations[key].fingerprint,
+                    }
             self._stage_admitted_hold(
                 outcome,
                 q,

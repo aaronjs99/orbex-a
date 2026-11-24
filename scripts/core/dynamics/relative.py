@@ -76,15 +76,15 @@ class ExponentialAtmosphere:
             raise ValueError("Atmosphere provenance declaration is required")
 
     def as_dict(self):
-        return dict(
-            law="radial-exponential-rigid-corotation-constant-wind-v1",
-            rho0_kg_m3=tuple(map(str, self.rho0_kg_m3)),
-            reference_radius_m=str(self.reference_radius_m),
-            scale_height_m=tuple(map(str, self.scale_height_m)),
-            rotation_rad_s=tuple(tuple(map(str, v)) for v in self.rotation_rad_s),
-            wind_m_s=tuple(tuple(map(str, v)) for v in self.wind_m_s),
-            declaration=self.declaration,
-        )
+        return {
+            "law": "radial-exponential-rigid-corotation-constant-wind-v1",
+            "rho0_kg_m3": tuple(map(str, self.rho0_kg_m3)),
+            "reference_radius_m": str(self.reference_radius_m),
+            "scale_height_m": tuple(map(str, self.scale_height_m)),
+            "rotation_rad_s": tuple(tuple(map(str, v)) for v in self.rotation_rad_s),
+            "wind_m_s": tuple(tuple(map(str, v)) for v in self.wind_m_s),
+            "declaration": self.declaration,
+        }
 
 
 @dataclass(frozen=True)
@@ -210,19 +210,19 @@ def parameters(model, arithmetic):
     atmosphere = model.atmosphere
     axis = tuple(map(s, model.j2_axis))
     norm = arithmetic.sqrt(dot(axis, axis))
-    return dict(
-        mu=convert(model.mu_m3_s2),
-        j2=convert(model.j2),
-        re=s(model.gravity_reference_radius_m),
-        axis=tuple(v / norm for v in axis),
-        sigma_target=convert(model.sigma_target),
-        sigma_chaser=convert(model.sigma_chaser),
-        rho0=convert(atmosphere.rho0_kg_m3),
-        h=convert(atmosphere.scale_height_m),
-        r0=s(atmosphere.reference_radius_m),
-        omega=tuple(map(convert, atmosphere.rotation_rad_s)),
-        wind=tuple(map(convert, atmosphere.wind_m_s)),
-    )
+    return {
+        "mu": convert(model.mu_m3_s2),
+        "j2": convert(model.j2),
+        "re": s(model.gravity_reference_radius_m),
+        "axis": tuple(v / norm for v in axis),
+        "sigma_target": convert(model.sigma_target),
+        "sigma_chaser": convert(model.sigma_chaser),
+        "rho0": convert(atmosphere.rho0_kg_m3),
+        "h": convert(atmosphere.scale_height_m),
+        "r0": s(atmosphere.reference_radius_m),
+        "omega": tuple(map(convert, atmosphere.rotation_rad_s)),
+        "wind": tuple(map(convert, atmosphere.wind_m_s)),
+    }
 
 
 def radial(position, model, arithmetic):

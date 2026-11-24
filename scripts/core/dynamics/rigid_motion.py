@@ -313,35 +313,37 @@ class RigidBodyMotion:
         positions = np.array([self.orbital_position_inertial_at(q) for q in queries])
         orbital_radii = np.linalg.norm(positions, axis=1)
         body_momenta = body_rates @ self.inertia.T
-        return dict(
-            anomaly=queries,
-            physical_time=np.array([state[0] for state in states]),
-            quaternions=np.array([self.quaternion_at(q) for q in queries]),
-            inertial_quaternions=inertial_quaternions,
-            inertial_rotations=inertial_rotations,
-            body_angular_velocity=body_rates,
-            body_angular_acceleration=np.array(
+        return {
+            "anomaly": queries,
+            "physical_time": np.array([state[0] for state in states]),
+            "quaternions": np.array([self.quaternion_at(q) for q in queries]),
+            "inertial_quaternions": inertial_quaternions,
+            "inertial_rotations": inertial_rotations,
+            "body_angular_velocity": body_rates,
+            "body_angular_acceleration": np.array(
                 [
                     body_rate_derivative(omega, self.inertia, torque)
                     for omega, torque in zip(body_rates, body_torques)
                 ]
             ),
-            body_torque=body_torques,
-            inertial_torque=np.einsum("nij,nj->ni", inertial_rotations, body_torques),
-            inertial_angular_momentum=np.einsum(
+            "body_torque": body_torques,
+            "inertial_torque": np.einsum(
+                "nij,nj->ni", inertial_rotations, body_torques
+            ),
+            "inertial_angular_momentum": np.einsum(
                 "nij,nj->ni", inertial_rotations, body_momenta
             ),
-            rotational_kinetic_energy=0.5
+            "rotational_kinetic_energy": 0.5
             * np.einsum("ni,ni->n", body_rates, body_momenta),
-            rotational_power=np.einsum("ni,ni->n", body_rates, body_torques),
-            orbital_position_inertial=positions,
-            orbital_radius=orbital_radii,
-            radial_unit_body=np.einsum(
+            "rotational_power": np.einsum("ni,ni->n", body_rates, body_torques),
+            "orbital_position_inertial": positions,
+            "orbital_radius": orbital_radii,
+            "radial_unit_body": np.einsum(
                 "nji,nj->ni", inertial_rotations, positions / orbital_radii[:, None]
             ),
-            rotations=np.array([value[0] for value in rotations]),
-            rotation_primes=np.array([value[1] for value in rotations]),
-            rotation_double_primes=np.array([value[2] for value in rotations]),
-            anomaly_rate=clock[:, 0],
-            anomaly_rate_prime=clock[:, 1],
-        )
+            "rotations": np.array([value[0] for value in rotations]),
+            "rotation_primes": np.array([value[1] for value in rotations]),
+            "rotation_double_primes": np.array([value[2] for value in rotations]),
+            "anomaly_rate": clock[:, 0],
+            "anomaly_rate_prime": clock[:, 1],
+        }

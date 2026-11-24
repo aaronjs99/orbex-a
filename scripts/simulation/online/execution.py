@@ -171,11 +171,11 @@ class SampledOnlineAdapter:
                 "Sampled actuator did not acknowledge the exact preflighted hold"
             )
         observations = self.observer.commit_hold(prediction, packets=receipt.packets)
-        self.last_boundary_timing_ns = dict(
-            preflight=prepared - before,
-            actuate=receipt.acknowledged_ns - prepared,
-            observation_commit=window.now_ns() - receipt.acknowledged_ns,
-        )
+        self.last_boundary_timing_ns = {
+            "preflight": prepared - before,
+            "actuate": receipt.acknowledged_ns - prepared,
+            "observation_commit": window.now_ns() - receipt.acknowledged_ns,
+        }
         return AppliedHoldReceipt(
             receipt.decision_id,
             receipt.exact_end_q,
@@ -199,11 +199,11 @@ def execution_context_id(runtime, *, source_id):
             "Bind online context to an exact source/configuration identity"
         )
     return fingerprint(
-        dict(
-            source_id=source_id,
-            active_fallback_id=runtime.active_fallback.fingerprint,
-            acceleration_disturbance=runtime.acceleration_disturbance,
-        )
+        {
+            "source_id": source_id,
+            "active_fallback_id": runtime.active_fallback.fingerprint,
+            "acceleration_disturbance": runtime.acceleration_disturbance,
+        }
     )
 
 
@@ -342,18 +342,18 @@ class OnlineFiniteExecutor:
             raise TypeError("Use an explicit exact physical hold window")
         if window.now_ns() < window.release_ns:
             raise ValueError("Call the executor when the physical window is released")
-        record = dict(
-            schema="orbexa.online-execution-event.v1",
-            sequence=self.sequence,
-            exact_start=str(window.start),
-            exact_hold_width=str(window.hold_width),
-            release_ns=window.release_ns,
-            dispatch_deadline_ns=window.dispatch_deadline_ns,
-            acknowledgement_deadline_ns=window.acknowledgement_deadline_ns,
-            wall_clock_id=window.wall_clock_id,
-            source_id=self.source_id,
-            worker_independent=True,
-        )
+        record = {
+            "schema": "orbexa.online-execution-event.v1",
+            "sequence": self.sequence,
+            "exact_start": str(window.start),
+            "exact_hold_width": str(window.hold_width),
+            "release_ns": window.release_ns,
+            "dispatch_deadline_ns": window.dispatch_deadline_ns,
+            "acknowledgement_deadline_ns": window.acknowledgement_deadline_ns,
+            "wall_clock_id": window.wall_clock_id,
+            "source_id": self.source_id,
+            "worker_independent": True,
+        }
         self.sequence += 1
         try:
             if window.start != self.runtime.q:

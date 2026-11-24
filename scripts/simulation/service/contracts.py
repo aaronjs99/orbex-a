@@ -26,11 +26,11 @@ ALLOWED_ORIGINS = frozenset(
 )
 
 
-PARAMETER_LIMITS = dict(
-    release_distance_m=(100.0, 1000.0),
-    cluster_spacing_m=(1.4, 3.0),
-    target_spin_deg_s=(0.2, 3.0),
-)
+PARAMETER_LIMITS = {
+    "release_distance_m": (100.0, 1000.0),
+    "cluster_spacing_m": (1.4, 3.0),
+    "target_spin_deg_s": (0.2, 3.0),
+}
 
 
 @dataclass(frozen=True)

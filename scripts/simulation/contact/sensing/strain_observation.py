@@ -109,12 +109,12 @@ class ContactStrainConditioner:
                 activation = ar.box((row["activation"],))
                 if activation.lower[0] <= 0:
                     records.append(
-                        dict(
-                            member_id=member.id,
-                            contracted=False,
-                            reason="engagement_activation_not_strictly_positive",
-                            activation=activation.as_dict(),
-                        )
+                        {
+                            "member_id": member.id,
+                            "contracted": False,
+                            "reason": "engagement_activation_not_strictly_positive",
+                            "activation": activation.as_dict(),
+                        }
                     )
                     continue
                 force_eci = measured(
@@ -199,42 +199,42 @@ class ContactStrainConditioner:
                     )
                 result[k] = posterior
                 records.append(
-                    dict(
-                        member_id=member.id,
-                        contracted=True,
-                        activation=activation.as_dict(),
-                        initial=prior.as_dict(),
-                        supported_inverse=cover.as_dict(),
-                        conditioned=posterior.as_dict(),
-                        supported_unscaled_wrench=wrench_support.as_dict(),
-                        measured_force_eci_n=ar.box(force_eci).as_dict(),
-                        measured_free_couple_eci_nm=ar.box(couple_eci).as_dict(),
-                        local_force_n=ar.box(force).as_dict(),
-                        local_free_couple_nm=ar.box(couple).as_dict(),
-                        unbonded_local_force_n=ar.box(
+                    {
+                        "member_id": member.id,
+                        "contracted": True,
+                        "activation": activation.as_dict(),
+                        "initial": prior.as_dict(),
+                        "supported_inverse": cover.as_dict(),
+                        "conditioned": posterior.as_dict(),
+                        "supported_unscaled_wrench": wrench_support.as_dict(),
+                        "measured_force_eci_n": ar.box(force_eci).as_dict(),
+                        "measured_free_couple_eci_nm": ar.box(couple_eci).as_dict(),
+                        "local_force_n": ar.box(force).as_dict(),
+                        "local_free_couple_nm": ar.box(couple).as_dict(),
+                        "unbonded_local_force_n": ar.box(
                             row["unbonded_force_patch"]
                         ).as_dict(),
-                        relative_velocity_m_s=ar.box(row["u"]).as_dict(),
-                        relative_spin_rad_s=ar.box(row["spin"]).as_dict(),
-                        logarithm_multiplier=ar.box((multiplier,)).as_dict(),
-                    )
+                        "relative_velocity_m_s": ar.box(row["u"]).as_dict(),
+                        "relative_spin_rad_s": ar.box(row["spin"]).as_dict(),
+                        "logarithm_multiplier": ar.box((multiplier,)).as_dict(),
+                    }
                 )
-        record = dict(
-            method="bounded-same-event-wrench-bond-strain-intersection-v1",
-            source_files=dict(_SOURCE),
-            physical_initial_fingerprint=fingerprint(initial.as_dict()),
-            exact_elapsed_time_s=str(time_s),
-            exact_time_s=str(Fraction(fleet.started) + Fraction(time_s)),
-            observation_identity=observation_identity,
-            support=support.as_dict(),
-            members=records,
-            law=dict(
-                bond_stiffness_n_m=options.bond_stiffness_n_m,
-                bond_damping_n_s_m=options.bond_damping_n_s_m,
-                rotational_stiffness_nm_rad=options.bond_rotational_stiffness_nm_rad,
-                rotational_damping_nm_s_rad=options.bond_rotational_damping_nm_s_rad,
-            ),
-            scope="Intersection of the carried same-event physical strain graph with bounded pad force/free-couple products under the declared exact constitutive law; the supported unscaled B/M wrench uses these same measurements, with no reset, independent-noise averaging, or material/sensor qualification",
-        )
+        record = {
+            "method": "bounded-same-event-wrench-bond-strain-intersection-v1",
+            "source_files": dict(_SOURCE),
+            "physical_initial_fingerprint": fingerprint(initial.as_dict()),
+            "exact_elapsed_time_s": str(time_s),
+            "exact_time_s": str(Fraction(fleet.started) + Fraction(time_s)),
+            "observation_identity": observation_identity,
+            "support": support.as_dict(),
+            "members": records,
+            "law": {
+                "bond_stiffness_n_m": options.bond_stiffness_n_m,
+                "bond_damping_n_s_m": options.bond_damping_n_s_m,
+                "rotational_stiffness_nm_rad": options.bond_rotational_stiffness_nm_rad,
+                "rotational_damping_nm_s_rad": options.bond_rotational_damping_nm_s_rad,
+            },
+            "scope": "Intersection of the carried same-event physical strain graph with bounded pad force/free-couple products under the declared exact constitutive law; the supported unscaled B/M wrench uses these same measurements, with no reset, independent-noise averaging, or material/sensor qualification",
+        }
         record["identity"] = fingerprint(record)
         return result, record

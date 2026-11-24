@@ -75,22 +75,22 @@ class AttachmentLoadCertificate:
         return self.status == "PROVEN"
 
     def as_dict(self):
-        return dict(
-            method="arb-whole-held-attachment-loads-v1",
-            status=self.status,
-            passed=self.passed,
-            reason=self.reason,
-            backend_source_sha256=_SOURCE_SHA256,
-            source_files=dict(_SOURCE_FILES),
-            context=copy.deepcopy(self.context),
-            angular_velocity_swept=None
+        return {
+            "method": "arb-whole-held-attachment-loads-v1",
+            "status": self.status,
+            "passed": self.passed,
+            "reason": self.reason,
+            "backend_source_sha256": _SOURCE_SHA256,
+            "source_files": dict(_SOURCE_FILES),
+            "context": copy.deepcopy(self.context),
+            "angular_velocity_swept": None
             if self.angular_velocity_swept is None
             else self.angular_velocity_swept.as_dict(),
-            members=copy.deepcopy(self.members or {}),
-            maximum_capacity_ratio_upper=self.maximum_capacity_ratio_upper,
-            picard_iterations=self.iterations,
-            scope="Exact declared rigid held-wrench ODE and split fuel depletion, conditional on the declared start set; no RK4 error, compliant-latch, flexible-body or flight certificate",
-        )
+            "members": copy.deepcopy(self.members or {}),
+            "maximum_capacity_ratio_upper": self.maximum_capacity_ratio_upper,
+            "picard_iterations": self.iterations,
+            "scope": "Exact declared rigid held-wrench ODE and split fuel depletion, conditional on the declared start set; no RK4 error, compliant-latch, flexible-body or flight certificate",
+        }
 
 
 @dataclass(frozen=True)
@@ -203,23 +203,23 @@ class AttachmentLoadEncloser:
             raise ValueError(
                 "The declared attachment quaternion/fuel sets must contain the supplied state"
             )
-        context = dict(
-            state=state.to_dict(),
-            initial_spin=boxes[0].as_dict(),
-            initial_position=boxes[1].as_dict(),
-            initial_velocity=boxes[2].as_dict(),
-            initial_quaternion=quaternion.as_dict(),
-            initial_fuel=fuel.as_dict(),
-            commands_n=commands.tolist(),
-            duration_s=str(duration),
-            assembly=assembly.to_dict(),
-            propulsion=propulsion.to_dict(),
-            precision_bits=self.precision_bits,
-            capacity_fraction=str(fraction),
-            max_step_s=self.max_step_s,
-            max_substeps=self.max_substeps,
-            max_picard_iterations=self.max_picard_iterations,
-        )
+        context = {
+            "state": state.to_dict(),
+            "initial_spin": boxes[0].as_dict(),
+            "initial_position": boxes[1].as_dict(),
+            "initial_velocity": boxes[2].as_dict(),
+            "initial_quaternion": quaternion.as_dict(),
+            "initial_fuel": fuel.as_dict(),
+            "commands_n": commands.tolist(),
+            "duration_s": str(duration),
+            "assembly": assembly.to_dict(),
+            "propulsion": propulsion.to_dict(),
+            "precision_bits": self.precision_bits,
+            "capacity_fraction": str(fraction),
+            "max_step_s": self.max_step_s,
+            "max_substeps": self.max_substeps,
+            "max_picard_iterations": self.max_picard_iterations,
+        }
         context["request_fingerprint"] = fingerprint(context)
         if not assembly.attachment_limits:
             return AttachmentLoadCertificate(
@@ -652,22 +652,22 @@ class AttachmentLoadEncloser:
             fn = sum(x * y for x, y in zip(reaction, normal))
             normal_box = ar.box((fn,))
             shear = _sub(reaction, _scale(fn, normal))
-            ratios = dict(
-                tensile=max(Fraction(0), -normal_box.lower[0])
+            ratios = {
+                "tensile": max(Fraction(0), -normal_box.lower[0])
                 / Fraction(limit["tensile_limit_n"]),
-                compression=max(Fraction(0), normal_box.upper[0])
+                "compression": max(Fraction(0), normal_box.upper[0])
                 / Fraction(limit["compression_limit_n"]),
-                shear=norm_upper(shear) / Fraction(limit["shear_limit_n"]),
-                moment=norm_upper(moment) / Fraction(limit["moment_limit_nm"]),
-            )
+                "shear": norm_upper(shear) / Fraction(limit["shear_limit_n"]),
+                "moment": norm_upper(moment) / Fraction(limit["moment_limit_nm"]),
+            }
             maximum = max(maximum, *ratios.values())
-            members[element.name] = dict(
-                force_body_n=ar.box(reaction).as_dict(),
-                moment_at_pad_body_nm=ar.box(moment).as_dict(),
-                capacity_ratio_upper={
+            members[element.name] = {
+                "force_body_n": ar.box(reaction).as_dict(),
+                "moment_at_pad_body_nm": ar.box(moment).as_dict(),
+                "capacity_ratio_upper": {
                     name: str(value) for name, value in ratios.items()
                 },
-            )
+            }
         context.update(
             fuel_swept_kg=[tuple(map(str, pair)) for pair in fuel],
             radial_lower_m=str(radial_reserve),

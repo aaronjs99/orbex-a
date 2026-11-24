@@ -229,7 +229,9 @@ class PPOProposalPolicy:
             )
         with self.torch.no_grad():
             self.model.log_std.fill_(math.log(std))
-        self.exploration_resets.append(dict(after_updates=self.updates, std=float(std)))
+        self.exploration_resets.append(
+            {"after_updates": self.updates, "std": float(std)}
+        )
 
     def update(self, records):
         torch = self.torch
@@ -293,14 +295,14 @@ class PPOProposalPolicy:
         )
         for group in self.optimizer.param_groups:
             group["lr"] = lr
-        return dict(
-            actor_loss=float(actor_loss.detach()),
-            value_loss=float(value_loss.detach()),
-            entropy=float(entropy.detach()),
-            gradient_norm=float(gradient),
-            learning_rate=float(lr),
-            updates=self.updates,
-        )
+        return {
+            "actor_loss": float(actor_loss.detach()),
+            "value_loss": float(value_loss.detach()),
+            "entropy": float(entropy.detach()),
+            "gradient_norm": float(gradient),
+            "learning_rate": float(lr),
+            "updates": self.updates,
+        }
 
     def fingerprint(self):
         digest = hashlib.sha256(
@@ -317,29 +319,29 @@ class PPOProposalPolicy:
         manifest = path.with_suffix(path.suffix + ".json")
         if path.exists() or manifest.exists():
             raise FileExistsError("Checkpoint destinations must be new")
-        payload = dict(
-            schema="orbexa.ppo-proposal-checkpoint.v1",
-            config=asdict(self.config),
-            model=self.model.state_dict(),
-            optimizer=self.optimizer.state_dict(),
-            generator=self.generator.get_state(),
-            updates=self.updates,
-            episodes_completed=self.episodes_completed,
-            exploration_resets=self.exploration_resets,
-        )
+        payload = {
+            "schema": "orbexa.ppo-proposal-checkpoint.v1",
+            "config": asdict(self.config),
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "generator": self.generator.get_state(),
+            "updates": self.updates,
+            "episodes_completed": self.episodes_completed,
+            "exploration_resets": self.exploration_resets,
+        }
         with path.open("xb") as stream:
             self.torch.save(payload, stream)
             stream.flush()
             os.fsync(stream.fileno())
-        record = dict(
-            schema=payload["schema"],
-            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-            bytes=path.stat().st_size,
-            updates=self.updates,
-            episodes_completed=self.episodes_completed,
-            policy_fingerprint=self.fingerprint(),
-            scope="Planning proposal learner; no mission-safety qualification",
-        )
+        record = {
+            "schema": payload["schema"],
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "bytes": path.stat().st_size,
+            "updates": self.updates,
+            "episodes_completed": self.episodes_completed,
+            "policy_fingerprint": self.fingerprint(),
+            "scope": "Planning proposal learner; no mission-safety qualification",
+        }
         with manifest.open("x", encoding="utf-8") as stream:
             json.dump(record, stream, indent=2)
             stream.write("\n")
@@ -452,11 +454,11 @@ class PPOInitialGuess:
         return TrajectoryHint(
             states,
             controls,
-            dict(
-                method=method,
-                policy_fingerprint=policy_id,
-                observation_scale=scale.tolist(),
-                identity=hint_identity(states, controls, method),
-                role="Initial guess only; no learned policy can bypass native planning or physical admission",
-            ),
+            {
+                "method": method,
+                "policy_fingerprint": policy_id,
+                "observation_scale": scale.tolist(),
+                "identity": hint_identity(states, controls, method),
+                "role": "Initial guess only; no learned policy can bypass native planning or physical admission",
+            },
         )

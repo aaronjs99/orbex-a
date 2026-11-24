@@ -97,24 +97,24 @@ class BoundedAssemblyObserver:
             ) * Rotation.from_rotvec(
                 0.8 * self.support.star_tracker_error_rad * direction
             )
-            measurements[name] = dict(
-                angular_velocity_body_rad_s=gyro.tolist(),
-                quaternion_body_to_eci=star.as_quat().tolist(),
-                position_eci_m=(
+            measurements[name] = {
+                "angular_velocity_body_rad_s": gyro.tolist(),
+                "quaternion_body_to_eci": star.as_quat().tolist(),
+                "position_eci_m": (
                     np.asarray(body["position_eci_m"]) + np.array((0.35, -0.4, 0.2))
                 ).tolist(),
-                velocity_eci_m_s=(
+                "velocity_eci_m_s": (
                     np.asarray(body["velocity_eci_m_s"])
                     + np.array((0.001, -0.001, 0.0))
                 ).tolist(),
-            )
-        return dict(
-            method="synthetic-chaser-carried-assembly-packets-v1",
-            time_s=state.time_s,
-            measurements=measurements,
-            support=self.support.as_dict(),
-            common_gnss_bias_semantics="shared deterministic bias; no independence or variance-reduction assumption",
-        )
+            }
+        return {
+            "method": "synthetic-chaser-carried-assembly-packets-v1",
+            "time_s": state.time_s,
+            "measurements": measurements,
+            "support": self.support.as_dict(),
+            "common_gnss_bias_semantics": "shared deterministic bias; no independence or variance-reduction assumption",
+        }
 
     def update(self, assembly, state, *, packet=None):
         """Intersect observations with the prior; retain the physical plant point."""
@@ -224,10 +224,10 @@ class BoundedAssemblyObserver:
                 )
                 narrow(6, quaternion)
                 attitude_packets.append(
-                    dict(
-                        member_id=element.name,
-                        mounting_operator_error_upper=str(mount_error),
-                    )
+                    {
+                        "member_id": element.name,
+                        "mounting_operator_error_upper": str(mount_error),
+                    }
                 )
             # A norm-ball constraint gives a stronger bound than a cube,
             # while retaining every deterministic sensor error realization.
@@ -316,20 +316,24 @@ class BoundedAssemblyObserver:
             midpoint(10, 13),
             state.fuel_kg,
         )
-        record = dict(
-            method="bounded-common-rigid-rate-and-fleet-gnss-intersection-v1",
-            exact_time_s=str(state.enclosure.exact_time_s),
-            packet=packet,
-            previous_proof_chain_sha256=state.enclosure.proof_chain_sha256,
-            prior_fingerprint=fingerprint(prior.as_dict()),
-            posterior=posterior.as_dict(),
-            gyro_balls=[
-                dict(member_id=name, center=tuple(map(str, center)), radius=str(radius))
+        record = {
+            "method": "bounded-common-rigid-rate-and-fleet-gnss-intersection-v1",
+            "exact_time_s": str(state.enclosure.exact_time_s),
+            "packet": packet,
+            "previous_proof_chain_sha256": state.enclosure.proof_chain_sha256,
+            "prior_fingerprint": fingerprint(prior.as_dict()),
+            "posterior": posterior.as_dict(),
+            "gyro_balls": [
+                {
+                    "member_id": name,
+                    "center": tuple(map(str, center)),
+                    "radius": str(radius),
+                }
                 for center, radius, name in balls
             ],
-            attitude_mount_supports=attitude_packets,
-            controller_uses="posterior center; physical plant state is retained separately",
-        )
+            "attitude_mount_supports": attitude_packets,
+            "controller_uses": "posterior center; physical plant state is retained separately",
+        }
         record["identity"] = fingerprint(record)
         chain = hashlib.sha256(
             ((state.enclosure.proof_chain_sha256 or "") + record["identity"]).encode(
@@ -343,10 +347,10 @@ class BoundedAssemblyObserver:
         return physical_state, feedback, record
 
     def as_dict(self):
-        return dict(
-            method="bounded-chaser-carried-rigid-assembly-observer-v1",
-            calls=self.calls,
-            support=self.support.as_dict(),
-            synthetic_bias_realization="0.95 support-norm gyro bias and0.8support-angle star bias on fixed Fibonacci directions; shared GNSS bias",
-            scope="Synthetic processed chaser sensor products and uncertain rigid-mount fusion; no target receiver, hardware calibration or universal identification claim",
-        )
+        return {
+            "method": "bounded-chaser-carried-rigid-assembly-observer-v1",
+            "calls": self.calls,
+            "support": self.support.as_dict(),
+            "synthetic_bias_realization": "0.95 support-norm gyro bias and0.8support-angle star bias on fixed Fibonacci directions; shared GNSS bias",
+            "scope": "Synthetic processed chaser sensor products and uncertain rigid-mount fusion; no target receiver, hardware calibration or universal identification claim",
+        }

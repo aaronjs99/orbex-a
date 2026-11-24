@@ -146,15 +146,15 @@ def _proper_rotation_comparison(attitude, preview, clock, queries, ar):
             elapsed_upper += duration.upper[0]
             variation += contribution
             pieces.append(
-                dict(
-                    segment_index=index,
-                    q_interval=tuple(map(str, (start, stop))),
-                    body_rate_deviation_box=delta.as_dict(),
-                    body_rate_deviation_norm_upper=str(deviation),
-                    clock_rate_box=clock_box.as_dict(),
-                    duration_s=duration.as_dict(),
-                    rotation_variation_upper=str(contribution),
-                )
+                {
+                    "segment_index": index,
+                    "q_interval": tuple(map(str, (start, stop))),
+                    "body_rate_deviation_box": delta.as_dict(),
+                    "body_rate_deviation_norm_upper": str(deviation),
+                    "clock_rate_box": clock_box.as_dict(),
+                    "duration_s": duration.as_dict(),
+                    "rotation_variation_upper": str(contribution),
+                }
             )
             if stop in wanted:
                 prefix[stop] = (elapsed_lower, elapsed_upper, variation, len(pieces))
@@ -193,29 +193,29 @@ def _proper_rotation_comparison(attitude, preview, clock, queries, ar):
         )
         reference_defect = _matrix_difference_norm(comparison, nominal, ar)
         gamma = gamma0 + integral + reference_defect
-        records[q] = dict(
-            rotation_operator_error_upper=gamma,
-            initial_operator_error_upper=gamma0,
-            integrated_rate_variation_upper=integral,
-            reference_minus_preview_operator_upper=reference_defect,
-            elapsed_time_s=(lower, upper),
-            rate_piece_count=count,
-        )
-    witness = dict(
-        method="proper-rotation-constant-spin-comparison-v1",
-        backend_source_sha256=_SOURCE_SHA256,
-        attitude_flow_fingerprint=attitude.fingerprint,
-        clock_fingerprint=clock.fingerprint,
-        plant_fingerprint=attitude.context["plant_fingerprint"],
-        target_flow_fingerprint=attitude.context["target_flow_fingerprint"],
-        exact_start_q=str(q0),
-        observed_rotation=tuple(tuple(map(str, row)) for row in observed),
-        observation_operator_error=str(error),
-        proper_reference_quaternion=tuple(str(exact(value)) for value in raw),
-        initial_projection_operator_error=str(projection),
-        constant_body_rate_rad_s=tuple(map(str, omega0)),
-        rate_variation_pieces=pieces,
-        records=[
+        records[q] = {
+            "rotation_operator_error_upper": gamma,
+            "initial_operator_error_upper": gamma0,
+            "integrated_rate_variation_upper": integral,
+            "reference_minus_preview_operator_upper": reference_defect,
+            "elapsed_time_s": (lower, upper),
+            "rate_piece_count": count,
+        }
+    witness = {
+        "method": "proper-rotation-constant-spin-comparison-v1",
+        "backend_source_sha256": _SOURCE_SHA256,
+        "attitude_flow_fingerprint": attitude.fingerprint,
+        "clock_fingerprint": clock.fingerprint,
+        "plant_fingerprint": attitude.context["plant_fingerprint"],
+        "target_flow_fingerprint": attitude.context["target_flow_fingerprint"],
+        "exact_start_q": str(q0),
+        "observed_rotation": tuple(tuple(map(str, row)) for row in observed),
+        "observation_operator_error": str(error),
+        "proper_reference_quaternion": tuple(str(exact(value)) for value in raw),
+        "initial_projection_operator_error": str(projection),
+        "constant_body_rate_rad_s": tuple(map(str, omega0)),
+        "rate_variation_pieces": pieces,
+        "records": [
             dict(
                 exact_q=str(q),
                 **{
@@ -229,12 +229,12 @@ def _proper_rotation_comparison(attitude, preview, clock, queries, ar):
             )
             for q, values in records.items()
         ],
-        assumptions=[
+        "assumptions": [
             "Physical initial attitude is proper and lies in the declared observation support",
             "Body rates follow the linked nonlinear Euler/Picard forecast",
             "The defined numerical preview is a reference center; its integration error is explicitly enclosed",
         ],
-    )
+    }
     witness["identity"] = fingerprint(witness)
     return records, witness
 
@@ -311,23 +311,23 @@ def observed_point_goal_bounds(
                 + (gamma * exact_norm_upper(omega) + rate_error) * length / nu_lower
                 + ve
             )
-            goals[chaser.chaser_id] = dict(
-                position_error_norm_upper=position,
-                velocity_error_norm_upper=speed,
-                numerical_position_defect=pe,
-                numerical_velocity_defect=ve,
-            )
-    return dict(
-        exact_q=str(q),
-        rotation_operator_error_upper=gamma,
-        rate_error_norm_upper=rate_error,
-        numerical_preview_rotation=nominal,
-        numerical_preview_body_rate=omega,
-        clock_rate_lower=nu_lower,
-        goals=goals,
-        clock_fingerprint=clock.fingerprint,
-        method="observed-proper-rotation-point-goal-bound-v1",
-    )
+            goals[chaser.chaser_id] = {
+                "position_error_norm_upper": position,
+                "velocity_error_norm_upper": speed,
+                "numerical_position_defect": pe,
+                "numerical_velocity_defect": ve,
+            }
+    return {
+        "exact_q": str(q),
+        "rotation_operator_error_upper": gamma,
+        "rate_error_norm_upper": rate_error,
+        "numerical_preview_rotation": nominal,
+        "numerical_preview_body_rate": omega,
+        "clock_rate_lower": nu_lower,
+        "goals": goals,
+        "clock_fingerprint": clock.fingerprint,
+        "method": "observed-proper-rotation-point-goal-bound-v1",
+    }
 
 
 def preview_error_bounds(
@@ -494,31 +494,31 @@ def preview_error_bounds(
                 vnorm = min(raw_vnorm, norm_velocity)
                 maximum_position = max(maximum_position, pnorm)
                 maximum_velocity = max(maximum_velocity, vnorm)
-                goal_errors[chaser.chaser_id] = dict(
-                    component_error=difference.as_dict(),
-                    position_norm_upper=str(pnorm),
-                    velocity_norm_upper=str(vnorm),
-                    raw_quaternion_position_norm_upper=str(raw_pnorm),
-                    raw_quaternion_velocity_norm_upper=str(raw_vnorm),
-                    proper_rotation_position_norm_upper=str(norm_position),
-                    proper_rotation_velocity_norm_upper=str(norm_velocity),
-                    numerical_position_defect=str(pe),
-                    numerical_velocity_defect=str(ve),
-                )
+                goal_errors[chaser.chaser_id] = {
+                    "component_error": difference.as_dict(),
+                    "position_norm_upper": str(pnorm),
+                    "velocity_norm_upper": str(vnorm),
+                    "raw_quaternion_position_norm_upper": str(raw_pnorm),
+                    "raw_quaternion_velocity_norm_upper": str(raw_vnorm),
+                    "proper_rotation_position_norm_upper": str(norm_position),
+                    "proper_rotation_velocity_norm_upper": str(norm_velocity),
+                    "numerical_position_defect": str(pe),
+                    "numerical_velocity_defect": str(ve),
+                }
             records.append(
-                dict(
-                    exact_q=str(q),
-                    rotation_operator_error_upper=str(gamma),
-                    raw_quaternion_rotation_operator_upper=str(raw_gamma),
-                    point_state=state.as_dict(),
-                    rate_error_norm_upper=str(rate_difference),
-                    clock_rate_lower=str(nu_lower),
-                    numerical_preview_rotation=tuple(
+                {
+                    "exact_q": str(q),
+                    "rotation_operator_error_upper": str(gamma),
+                    "raw_quaternion_rotation_operator_upper": str(raw_gamma),
+                    "point_state": state.as_dict(),
+                    "rate_error_norm_upper": str(rate_difference),
+                    "clock_rate_lower": str(nu_lower),
+                    "numerical_preview_rotation": tuple(
                         tuple(map(str, row)) for row in nominal
                     ),
-                    numerical_preview_body_rate=tuple(map(str, nominal_rate)),
-                    goals=goal_errors,
-                )
+                    "numerical_preview_body_rate": tuple(map(str, nominal_rate)),
+                    "goals": goal_errors,
+                }
             )
     if (
         attitude.fingerprint != source_identity
@@ -526,15 +526,15 @@ def preview_error_bounds(
         or (target_flow is not None and target_flow.fingerprint != target_identity)
     ):
         raise ValueError("Moving-goal proof sources changed during evaluation")
-    return dict(
-        rotation_operator_error_upper=maximum_rotation,
-        position_error_norm_upper=maximum_position,
-        velocity_error_norm_upper=maximum_velocity,
-        records=records,
-        attitude_flow_fingerprint=source_identity,
-        clock_fingerprint=clock_identity,
-        target_flow_fingerprint=attitude.context["target_flow_fingerprint"],
-        backend_source_sha256=_SOURCE_SHA256,
-        proper_rotation_comparison=comparison_witness,
-        method="minimum-independent-Arb-point-quaternion-and-proper-rotation-reference-bounds-v2",
-    )
+    return {
+        "rotation_operator_error_upper": maximum_rotation,
+        "position_error_norm_upper": maximum_position,
+        "velocity_error_norm_upper": maximum_velocity,
+        "records": records,
+        "attitude_flow_fingerprint": source_identity,
+        "clock_fingerprint": clock_identity,
+        "target_flow_fingerprint": attitude.context["target_flow_fingerprint"],
+        "backend_source_sha256": _SOURCE_SHA256,
+        "proper_rotation_comparison": comparison_witness,
+        "method": "minimum-independent-Arb-point-quaternion-and-proper-rotation-reference-bounds-v2",
+    }

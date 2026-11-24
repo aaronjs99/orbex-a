@@ -136,17 +136,17 @@ def sample_hold_expressions(
     if sensed is not None:
         rho = wrap([rho[i] + sensed[i] for i in range(3)])
     total = wrap([base_forcing[i] + rho[i] for i in range(3)])
-    result = dict(
-        base_forcing=list(base_forcing),
-        hold_forcing=rho,
-        disturbance_bound=total,
-        velocity_peak=velocity,
-        error_peak=error,
-        input_reserve=reserve,
-        velocity_derivative_bound=dv,
-        error_derivative_bound=de,
-        sliding_derivative_bound=ds,
-    )
+    result = {
+        "base_forcing": list(base_forcing),
+        "hold_forcing": rho,
+        "disturbance_bound": total,
+        "velocity_peak": velocity,
+        "error_peak": error,
+        "input_reserve": reserve,
+        "velocity_derivative_bound": dv,
+        "error_derivative_bound": de,
+        "sliding_derivative_bound": ds,
+    }
     if sensed is not None:
         result["measurement_forcing"] = sensed
     return result

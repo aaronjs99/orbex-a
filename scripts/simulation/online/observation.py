@@ -409,13 +409,13 @@ class OnlineRelativeObserver:
                 raise TypeError(
                     "The sensing adapter must return typed processed SensorPacket products"
                 )
-            event = dict(
-                schema="orbexa.online-relative-sensing.v1",
-                packet_id=packet.packet_id,
-                agent_id=packet.agent_id,
-                exact_event_q=str(self.q),
-                acquired_q=tuple(map(str, packet.acquired_q)),
-            )
+            event = {
+                "schema": "orbexa.online-relative-sensing.v1",
+                "packet_id": packet.packet_id,
+                "agent_id": packet.agent_id,
+                "exact_event_q": str(self.q),
+                "acquired_q": tuple(map(str, packet.acquired_q)),
+            }
             if packet.packet_id in self._accepted_set:
                 event["status"] = "DUPLICATE"
             elif packet.sensor_model_fingerprint not in self.allowed_sensor_ids:

@@ -92,29 +92,30 @@ class NonlinearEnvironment:
             )
             radius = np.linalg.norm(state.position_eci_m)
             central = -self.par["mu"] * state.position_eci_m / radius**3
-            result[key] = dict(
-                acceleration_eci_m_s2=full - central, torque_body_nm=np.zeros(3)
-            )
+            result[key] = {
+                "acceleration_eci_m_s2": full - central,
+                "torque_body_nm": np.zeros(3),
+            }
         self.calls += 1
         return result
 
     def as_dict(self):
-        return dict(
-            method="same-declared-point-j2-vector-drag-minus-central-v1",
-            source_model=self.original_model.as_dict(),
-            source_model_fingerprint=self.original_model.fingerprint,
-            continuation_radius_domain_m=tuple(map(str, self.model.radius_domain_m)),
-            dry_mass_kg=self.dry_mass,
-            drag_area_m2_by_name=self.drag_area,
-            drag_semantics=(
+        return {
+            "method": "same-declared-point-j2-vector-drag-minus-central-v1",
+            "source_model": self.original_model.as_dict(),
+            "source_model_fingerprint": self.original_model.fingerprint,
+            "continuation_radius_domain_m": tuple(map(str, self.model.radius_domain_m)),
+            "dry_mass_kg": self.dry_mass,
+            "drag_area_m2_by_name": self.drag_area,
+            "drag_semantics": (
                 "declared constant CdA/m from approach"
                 if self.drag_area is None
                 else "explicit CdA divided by actual current dry plus fuel mass"
             ),
-            frame="unchanged physical ECI basis; original inclined J2 and atmosphere rotation axes",
-            intrinsic_extra_torque="zero; configured central gravity-gradient torque remains separate",
-            scope="Same numerical force law through delivery; radius-domain extension is not atmospheric demise or flight qualification",
-        )
+            "frame": "unchanged physical ECI basis; original inclined J2 and atmosphere rotation axes",
+            "intrinsic_extra_torque": "zero; configured central gravity-gradient torque remains separate",
+            "scope": "Same numerical force law through delivery; radius-domain extension is not atmospheric demise or flight qualification",
+        }
 
     def interval_model(self):
         """Snapshot the maintained force declaration for continuous enclosures."""

@@ -107,16 +107,16 @@ class PlanningRequest:
     def fingerprint(self):
         return _digest(
             json.dumps(
-                dict(
-                    request_id=self.request_id,
-                    context_id=self.context_id,
-                    activation_q=self.activation_q,
-                    hold_width=self.hold_width,
-                    submitted_ns=self.submitted_ns,
-                    deadline_ns=self.deadline_ns,
-                    wall_clock_id=self.wall_clock_id,
-                    payload_sha256=_digest(self.payload),
-                ),
+                {
+                    "request_id": self.request_id,
+                    "context_id": self.context_id,
+                    "activation_q": self.activation_q,
+                    "hold_width": self.hold_width,
+                    "submitted_ns": self.submitted_ns,
+                    "deadline_ns": self.deadline_ns,
+                    "wall_clock_id": self.wall_clock_id,
+                    "payload_sha256": _digest(self.payload),
+                },
                 sort_keys=True,
                 separators=(",", ":"),
             ).encode()
@@ -143,33 +143,33 @@ class PlanningResult:
         return pickle.loads(self.payload)
 
     def as_dict(self):
-        return dict(
-            schema="orbexa.online-planning-result.v1",
-            request_id=self.request.request_id,
-            request_identity=self.request.fingerprint,
-            context_id=self.request.context_id,
-            activation_q=self.request.activation_q,
-            hold_width=self.request.hold_width,
-            status=self.status,
-            worker_spec=self.worker_spec,
-            worker_source_sha256=self.worker_source_sha256,
-            started_ns=self.started_ns,
-            completed_ns=self.completed_ns,
-            received_ns=self.received_ns,
-            deadline_ns=self.request.deadline_ns,
-            wall_clock_id=self.request.wall_clock_id,
-            ready_by_declared_deadline=(
+        return {
+            "schema": "orbexa.online-planning-result.v1",
+            "request_id": self.request.request_id,
+            "request_identity": self.request.fingerprint,
+            "context_id": self.request.context_id,
+            "activation_q": self.request.activation_q,
+            "hold_width": self.request.hold_width,
+            "status": self.status,
+            "worker_spec": self.worker_spec,
+            "worker_source_sha256": self.worker_source_sha256,
+            "started_ns": self.started_ns,
+            "completed_ns": self.completed_ns,
+            "received_ns": self.received_ns,
+            "deadline_ns": self.request.deadline_ns,
+            "wall_clock_id": self.request.wall_clock_id,
+            "ready_by_declared_deadline": (
                 self.status == "READY"
                 and self.received_ns is not None
                 and self.completed_ns <= self.request.deadline_ns
                 and self.received_ns <= self.request.deadline_ns
             ),
-            timing_scope="Completed product serialization in worker; full envelope received/decoded by parent separately",
-            product_sha256=_digest(self.payload),
-            product_bytes=len(self.payload),
-            reason=self.reason,
-            process_id=self.process_id,
-        )
+            "timing_scope": "Completed product serialization in worker; full envelope received/decoded by parent separately",
+            "product_sha256": _digest(self.payload),
+            "product_bytes": len(self.payload),
+            "reason": self.reason,
+            "process_id": self.process_id,
+        }
 
 
 def _execute(spec, source_id, request, buffer, length, completed, maximum_bytes):

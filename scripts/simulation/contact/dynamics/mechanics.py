@@ -159,26 +159,26 @@ class ContactMechanics:
             positioner_power = -float(f @ (r[j] @ tips[k, 3:]))
             powers[2] += positioner_power
             rows.append(
-                dict(
-                    gap=gap,
-                    compression=compression,
-                    normal_force=normal_force,
-                    force=f,
-                    force_patch=pad_force,
-                    bond_force=bond_force,
-                    couple=couple,
-                    e=e,
-                    u=u,
-                    angle=angle,
-                    spin=relative_w,
-                    activation=activation,
-                    positioner_power=positioner_power,
-                    tip=tip,
-                    patch=patch,
-                    rotation=r[j],
-                    tip_velocity=tip_velocity,
-                    relative_rotation=r[0].T @ r[j],
-                )
+                {
+                    "gap": gap,
+                    "compression": compression,
+                    "normal_force": normal_force,
+                    "force": f,
+                    "force_patch": pad_force,
+                    "bond_force": bond_force,
+                    "couple": couple,
+                    "e": e,
+                    "u": u,
+                    "angle": angle,
+                    "spin": relative_w,
+                    "activation": activation,
+                    "positioner_power": positioner_power,
+                    "tip": tip,
+                    "patch": patch,
+                    "rotation": r[j],
+                    "tip_velocity": tip_velocity,
+                    "relative_rotation": r[0].T @ r[j],
+                }
             )
         force += internal_force
         torque += np.einsum("nji,nj->ni", r, internal_torque)
@@ -253,22 +253,22 @@ class ContactMechanics:
         internal_h = np.sum(
             np.cross(b[:, :3], internal_force) + internal_torque, axis=0
         )
-        return derivative, dict(
-            rows=rows,
-            rotations=r,
-            spins=w,
-            masses=mass,
-            inertias=inertia,
-            potential=potential,
-            kinetic=kinetic,
-            linear=linear,
-            angular=angular,
-            internal_force=float(np.linalg.norm(np.sum(internal_force, axis=0))),
-            internal_torque=float(np.linalg.norm(internal_h)),
-            fuel_flow=flow,
-            acceleration=db[:, 3:6].copy(),
-            angular_acceleration=db[:, 10:13].copy(),
-        )
+        return derivative, {
+            "rows": rows,
+            "rotations": r,
+            "spins": w,
+            "masses": mass,
+            "inertias": inertia,
+            "potential": potential,
+            "kinetic": kinetic,
+            "linear": linear,
+            "angular": angular,
+            "internal_force": float(np.linalg.norm(np.sum(internal_force, axis=0))),
+            "internal_torque": float(np.linalg.norm(internal_h)),
+            "fuel_flow": flow,
+            "acceleration": db[:, 3:6].copy(),
+            "angular_acceleration": db[:, 10:13].copy(),
+        }
 
     def settling_state(self, values, diag):
         """Return rigidization energy and the original all-body quiet condition."""

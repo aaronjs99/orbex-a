@@ -129,7 +129,7 @@ def _refuse_target_geometry(
             start,
             end,
             region_fingerprints=tuple(
-                fingerprint(dict(reference_bounds=bounds[key], omega=omega))
+                fingerprint({"reference_bounds": bounds[key], "omega": omega})
                 for key in references
             ),
         )
@@ -146,29 +146,29 @@ def _refuse_target_geometry(
             reason = f"No strict whole-set separation for {decisive.first_id} and component {decisive.second_id}"
             raise RefugeTargetGeometryRefusal(
                 reason,
-                dict(
-                    kind="TARGET_COMPONENT_EARLY_REFUSAL",
-                    decisive_target_record=decisive,
-                    geometry_probe=certificate,
-                    occupied_bounds=occupied,
-                    reference_bounds=tuple(bounds.items()),
-                    position_boxes=tuple(boxes.items()),
-                    omega=omega,
-                    geometry_oracle_id=geometry.fingerprint,
-                    evaluated_target_windows=checked + 1,
-                    selected_original_window_indices=indices,
-                    decisive_original_window_index=index,
-                    preflight_window_budget=window_budget,
-                    already_checked_controller=checked_controller,
-                    independent_box_peer_results="IGNORED; polynomial correlation is checked by the original final constructor",
-                    remaining_checks=(
+                {
+                    "kind": "TARGET_COMPONENT_EARLY_REFUSAL",
+                    "decisive_target_record": decisive,
+                    "geometry_probe": certificate,
+                    "occupied_bounds": occupied,
+                    "reference_bounds": tuple(bounds.items()),
+                    "position_boxes": tuple(boxes.items()),
+                    "omega": omega,
+                    "geometry_oracle_id": geometry.fingerprint,
+                    "evaluated_target_windows": checked + 1,
+                    "selected_original_window_indices": indices,
+                    "decisive_original_window_index": index,
+                    "preflight_window_budget": window_budget,
+                    "already_checked_controller": checked_controller,
+                    "independent_box_peer_results": "IGNORED; polynomial correlation is checked by the original final constructor",
+                    "remaining_checks": (
                         "REMAINING_NONLINEAR_CONTROLLER_CERTIFICATES_UNEVALUATED",
                         "COMPLETE_ROUTE_INPUT_AND_FUEL_UNEVALUATED",
                         "CORRELATED_PEER_PROOFS_UNEVALUATED",
                         "INITIAL_ENTRY_UNEVALUATED",
                         "OTHER_TARGET_WINDOWS_UNEVALUATED_BY_PREFLIGHT",
                     ),
-                ),
+                },
             )
 
 

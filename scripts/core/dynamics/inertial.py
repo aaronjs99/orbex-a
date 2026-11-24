@@ -85,9 +85,9 @@ class InertialGravity:
 
     def __post_init__(self):
         for name, options in (
-            ("mu_m3_s2", dict(positive=True)),
+            ("mu_m3_s2", {"positive": True}),
             ("j2", {}),
-            ("minimum_radius_m", dict(nonnegative=True)),
+            ("minimum_radius_m", {"nonnegative": True}),
         ):
             object.__setattr__(
                 self, name, _scalar(getattr(self, name), name, **options)
@@ -158,13 +158,13 @@ class InertialGravity:
         return value
 
     def as_dict(self):
-        return dict(
-            mu_m3_s2=self.mu_m3_s2,
-            j2=self.j2,
-            reference_radius_m=self.reference_radius_m,
-            symmetry_axis=self.symmetry_axis.tolist(),
-            minimum_radius_m=self.minimum_radius_m,
-        )
+        return {
+            "mu_m3_s2": self.mu_m3_s2,
+            "j2": self.j2,
+            "reference_radius_m": self.reference_radius_m,
+            "symmetry_axis": self.symmetry_axis.tolist(),
+            "minimum_radius_m": self.minimum_radius_m,
+        }
 
 
 @dataclass(frozen=True)
@@ -331,17 +331,17 @@ class InertialPropagationResult:
         return self.states[-1]
 
     def as_dict(self):
-        return dict(
-            status=self.status,
-            reason=self.reason,
-            success=self.success,
-            times_s=self.times_s.tolist(),
-            states=self.states.tolist(),
-            requested_samples_completed=self.requested_samples_completed,
-            accepted_steps=self.accepted_steps,
-            evaluations=self.evaluations,
-            context=self.context,
-        )
+        return {
+            "status": self.status,
+            "reason": self.reason,
+            "success": self.success,
+            "times_s": self.times_s.tolist(),
+            "states": self.states.tolist(),
+            "requested_samples_completed": self.requested_samples_completed,
+            "accepted_steps": self.accepted_steps,
+            "evaluations": self.evaluations,
+            "context": self.context,
+        }
 
 
 class InertialDynamics:
@@ -440,32 +440,32 @@ class InertialDynamics:
         self.accelerations(
             times[0], states
         )  # Validate model/fleet before any propagation.
-        context = dict(
-            gravity=self.gravity.as_dict(),
-            drags=[
+        context = {
+            "gravity": self.gravity.as_dict(),
+            "drags": [
                 None
                 if item is None
-                else dict(
-                    cda_over_mass_m2_kg=item.cda_over_mass_m2_kg,
-                    declaration=item.description,
-                    atmosphere="stationary inertial"
+                else {
+                    "cda_over_mass_m2_kg": item.cda_over_mass_m2_kg,
+                    "declaration": item.description,
+                    "atmosphere": "stationary inertial"
                     if item.atmosphere_velocity_m_s is None
                     else "caller-supplied inertial velocity",
-                )
+                }
                 for item in self.drag_models
             ],
-            control=control_description,
-            integration=dict(
-                method="DOP853",
-                scipy_version=scipy.__version__,
-                rtol=rtol,
-                atol=tolerance.tolist(),
-                max_step_s=max_step_s,
-                max_steps=int(max_steps),
-                requested_span_s=[float(times[0]), float(times[-1])],
-            ),
-            scope="Numerical Cartesian gravity/drag replay; no validated flow, collision certificate or closed-loop mission claim",
-        )
+            "control": control_description,
+            "integration": {
+                "method": "DOP853",
+                "scipy_version": scipy.__version__,
+                "rtol": rtol,
+                "atol": tolerance.tolist(),
+                "max_step_s": max_step_s,
+                "max_steps": int(max_steps),
+                "requested_span_s": [float(times[0]), float(times[-1])],
+            },
+            "scope": "Numerical Cartesian gravity/drag replay; no validated flow, collision certificate or closed-loop mission claim",
+        }
         output_times, output_states, index, steps, evaluations = (
             [float(times[0])],
             [states.copy()],

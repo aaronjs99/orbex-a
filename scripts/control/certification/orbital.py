@@ -92,13 +92,13 @@ def _source_identity():
         raise ValueError(
             "Supported source bytes differ from the loaded orbital proof modules"
         )
-    return dict(
-        model=MODEL,
-        frame=FRAME,
-        picard_method=PICARD_METHOD,
-        endpoint_method=ENDPOINT_METHOD,
-        source_files_sha256=hashes,
-    )
+    return {
+        "model": MODEL,
+        "frame": FRAME,
+        "picard_method": PICARD_METHOD,
+        "endpoint_method": ENDPOINT_METHOD,
+        "source_files_sha256": hashes,
+    }
 
 
 def _box_record(value, name):
@@ -162,16 +162,16 @@ class OrbitalHoldContext:
             name: str(value) if isinstance(value, Fraction) else value
             for name, value in vars(self.reachability_config).items()
         }
-        return dict(
-            model=MODEL,
-            frame=FRAME,
-            model_bounds=self.model.as_dict(),
-            anomaly_domain=tuple(map(str, self.anomaly_domain)),
-            input_limits=self.input_limits.as_dict(),
-            acceleration_disturbance=self.acceleration_disturbance.as_dict(),
-            model_source_sha256=self.model_source_sha256,
-            proof_policy=policy,
-        )
+        return {
+            "model": MODEL,
+            "frame": FRAME,
+            "model_bounds": self.model.as_dict(),
+            "anomaly_domain": tuple(map(str, self.anomaly_domain)),
+            "input_limits": self.input_limits.as_dict(),
+            "acceleration_disturbance": self.acceleration_disturbance.as_dict(),
+            "model_source_sha256": self.model_source_sha256,
+            "proof_policy": policy,
+        }
 
 
 @dataclass(frozen=True)
@@ -205,13 +205,13 @@ class OrbitalHoldRequest:
         _json(self.as_dict())
 
     def as_dict(self):
-        return dict(
-            initial_state=self.initial_state.as_dict(),
-            constant_input=self.constant_input.as_dict(),
-            varying_actuator_error=self.varying_actuator_error.as_dict(),
-            start_anomaly=str(self.start_anomaly),
-            hold_width=str(self.hold_width),
-        )
+        return {
+            "initial_state": self.initial_state.as_dict(),
+            "constant_input": self.constant_input.as_dict(),
+            "varying_actuator_error": self.varying_actuator_error.as_dict(),
+            "start_anomaly": str(self.start_anomaly),
+            "hold_width": str(self.hold_width),
+        }
 
     @classmethod
     def from_dict(cls, value):
@@ -401,23 +401,23 @@ class OrbitalHoldProofService:
                 reason = "Original continuous Picard swept proof and separate constant-input VoC endpoint proved"
             except _ProofUnresolved as error:
                 status, reason = EnclosureStatus.UNRESOLVED, str(error)
-        record = dict(
-            schema=HOLD_SCHEMA,
-            status=status.value,
-            reason=reason,
-            context=context.as_dict(),
-            implementation=self._implementation,
-            request=request.as_dict(),
-            picard_request=source_request.as_dict(),
-            picard_flow=flow.as_dict(),
-            picard_flow_fingerprint=flow.fingerprint,
-            endpoint_certificate=None if endpoint is None else endpoint.as_dict(),
-            endpoint_certificate_fingerprint=None
+        record = {
+            "schema": HOLD_SCHEMA,
+            "status": status.value,
+            "reason": reason,
+            "context": context.as_dict(),
+            "implementation": self._implementation,
+            "request": request.as_dict(),
+            "picard_request": source_request.as_dict(),
+            "picard_flow": flow.as_dict(),
+            "picard_flow_fingerprint": flow.fingerprint,
+            "endpoint_certificate": None if endpoint is None else endpoint.as_dict(),
+            "endpoint_certificate_fingerprint": None
             if endpoint is None
             else endpoint.fingerprint,
-            input_semantics="One unknown constant vector per exact hold plus separately bounded measurable varying actuator delivery",
-            scope="Analytical orbital held-flow and endpoint proof only; no fleet, terminal, runtime fallback or hardware claim",
-        )
+            "input_semantics": "One unknown constant vector per exact hold plus separately bounded measurable varying actuator delivery",
+            "scope": "Analytical orbital held-flow and endpoint proof only; no fleet, terminal, runtime fallback or hardware claim",
+        }
         return OrbitalHeldFlow(flow, endpoint, _json(record))
 
     def _refine(self, flow, request):
@@ -514,48 +514,48 @@ class OrbitalHoldProofService:
             def matrix_box(rows):
                 return [ar.box(tuple(row)).as_dict() for row in rows]
 
-            record = dict(
-                schema=ENDPOINT_SCHEMA,
-                method=ENDPOINT_METHOD,
-                precision_bits=config.precision_bits,
-                backend_version=flint.__version__,
-                frame=FRAME,
-                model=MODEL,
-                model_bounds=model.as_dict(),
-                context_fingerprint=_digest(self.context.as_dict()),
-                implementation_fingerprint=_digest(self._implementation),
-                request=request.as_dict(),
-                source_picard_request=flow.request,
-                initial_state_subset_of_picard_entry=flow.initial_state.contains(
+            record = {
+                "schema": ENDPOINT_SCHEMA,
+                "method": ENDPOINT_METHOD,
+                "precision_bits": config.precision_bits,
+                "backend_version": flint.__version__,
+                "frame": FRAME,
+                "model": MODEL,
+                "model_bounds": model.as_dict(),
+                "context_fingerprint": _digest(self.context.as_dict()),
+                "implementation_fingerprint": _digest(self._implementation),
+                "request": request.as_dict(),
+                "source_picard_request": flow.request,
+                "initial_state_subset_of_picard_entry": flow.initial_state.contains(
                     request.initial_state
                 ),
-                picard_flow_fingerprint=flow.fingerprint,
-                validated_picard_swept_state=flow.swept_state.as_dict(),
-                frozen_exact_F0=[[str(value) for value in row] for row in f0],
-                frozen_exact_b0=[str(value) for value in b0],
-                coefficient_matrix_enclosure=matrix_box(matrix),
-                affine_enclosure=ar.box(affine).as_dict(),
-                residual_enclosure=residual_box.as_dict(),
-                residual_abs_upper=tuple(map(str, residual_abs)),
-                matrix_E_enclosure=matrix_box(
+                "picard_flow_fingerprint": flow.fingerprint,
+                "validated_picard_swept_state": flow.swept_state.as_dict(),
+                "frozen_exact_F0": [[str(value) for value in row] for row in f0],
+                "frozen_exact_b0": [str(value) for value in b0],
+                "coefficient_matrix_enclosure": matrix_box(matrix),
+                "affine_enclosure": ar.box(affine).as_dict(),
+                "residual_enclosure": residual_box.as_dict(),
+                "residual_abs_upper": tuple(map(str, residual_abs)),
+                "matrix_E_enclosure": matrix_box(
                     [[transition[i, j] for j in range(6)] for i in range(6)]
                 ),
-                matrix_G_enclosure=matrix_box(
+                "matrix_G_enclosure": matrix_box(
                     [[transition[i, j + 6] for j in range(6)] for i in range(6)]
                 ),
-                matrix_exp_abs_F0_h_enclosure=matrix_box(
+                "matrix_exp_abs_F0_h_enclosure": matrix_box(
                     [[positive[i, j] for j in range(6)] for i in range(6)]
                 ),
-                error_radius_upper=tuple(map(str, error)),
-                raw_voc_endpoint=raw.as_dict(),
-                original_picard_endpoint=flow.endpoint.as_dict(),
-                refined_intersection_endpoint=endpoint.as_dict(),
-                constant_input=request.constant_input.as_dict(),
-                varying_actuator_error=request.varying_actuator_error.as_dict(),
-                original_process_disturbance=self.context.acceleration_disturbance.as_dict(),
-                status="CONDITIONAL_PROVEN_ENDPOINT_ONLY",
-                theorem="Constant held input uses G; varying delivery and process are included once in the residual; original genuine Picard swept family remains unchanged",
-            )
+                "error_radius_upper": tuple(map(str, error)),
+                "raw_voc_endpoint": raw.as_dict(),
+                "original_picard_endpoint": flow.endpoint.as_dict(),
+                "refined_intersection_endpoint": endpoint.as_dict(),
+                "constant_input": request.constant_input.as_dict(),
+                "varying_actuator_error": request.varying_actuator_error.as_dict(),
+                "original_process_disturbance": self.context.acceleration_disturbance.as_dict(),
+                "status": "CONDITIONAL_PROVEN_ENDPOINT_ONLY",
+                "theorem": "Constant held input uses G; varying delivery and process are included once in the residual; original genuine Picard swept family remains unchanged",
+            }
             return OrbitalEndpointCertificate(_json(record))
 
     def rebuild(self, evidence: Mapping[str, Any] | OrbitalHeldFlow):

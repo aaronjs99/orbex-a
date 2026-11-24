@@ -43,10 +43,10 @@ class ProposalSeededSolver(SolverBase):
 
     def setup(self, problem):
         self._problem = problem
-        record = dict(
-            status="PRESERVED_CALLER_GUESS",
-            role="Initial guess only; native optimization and physical admission remain required",
-        )
+        record = {
+            "status": "PRESERVED_CALLER_GUESS",
+            "role": "Initial guess only; native optimization and physical admission remain required",
+        }
         extra = dict(problem.extra_params)
         existing = any(
             extra.get(k) is not None

@@ -112,15 +112,15 @@ class NonlinearZeroDriftBounds:
                 "Existing nonlinear drift source lacks a complete same-model target proof"
             )
         source = fingerprint(
-            dict(
-                target=self._identities.identity(target),
-                model=self.model.fingerprint,
-                clock=self.clock.fingerprint,
-                region=exact_record(certificate.state_box),
-                scope=(str(spec.start), str(spec.end)),
-                extra=exact_record(extra),
-                precision=self.precision_bits,
-            )
+            {
+                "target": self._identities.identity(target),
+                "model": self.model.fingerprint,
+                "clock": self.clock.fingerprint,
+                "region": exact_record(certificate.state_box),
+                "scope": (str(spec.start), str(spec.end)),
+                "extra": exact_record(extra),
+                "precision": self.precision_bits,
+            }
         )
         if (
             certificate.drift_bounds.proof_reference
@@ -193,15 +193,15 @@ class NonlinearZeroDriftBounds:
             v + e for v, e in zip(_absbox(result), self.extra_acceleration_abs)
         )
         source = fingerprint(
-            dict(
-                target=target_id,
-                model=model.fingerprint,
-                clock=clock.fingerprint,
-                region=exact_record(state_box),
-                scope=(str(spec.start), str(spec.end)),
-                extra=exact_record(self.extra_acceleration_abs),
-                precision=self.precision_bits,
-            )
+            {
+                "target": target_id,
+                "model": model.fingerprint,
+                "clock": clock.fingerprint,
+                "region": exact_record(state_box),
+                "scope": (str(spec.start), str(spec.end)),
+                "extra": exact_record(self.extra_acceleration_abs),
+                "precision": self.precision_bits,
+            }
         )
         return NonlinearDriftBounds(
             spec.start,

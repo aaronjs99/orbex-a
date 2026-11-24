@@ -265,10 +265,10 @@ class NonlinearStudyOptions:
             raise ValueError("Initial bandwidth must belong to its prospective range")
 
     def as_dict(self):
-        result = asdict(self) | dict(
-            sensor=self.sensor.as_dict(),
-            scope="Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification",
-        )
+        result = asdict(self) | {
+            "sensor": self.sensor.as_dict(),
+            "scope": "Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification",
+        }
         if self.completion is None:
             result.pop("completion")
         else:
@@ -290,20 +290,20 @@ class NonlinearStudyOptions:
                 "membership_max_flow_evaluations_per_candidate",
             ):
                 result.pop(name)
-            defaults = dict(
-                rendezvous_horizon_steps=8,
-                docking_horizon_steps=6,
-                terminal_activation_distance_m=0.3,
-                near_feedback_subdivisions=1,
-                initial_target_orientation_error=0.02,
-                target_rate_bound_rad_s=0.08,
-                target_acceleration_bound_rad_s2=0.005,
-                controller_parameter_prior=(),
-                target_sigma_prior_m2_kg=(0.008, 0.04),
-                chaser_sigma_prior_m2_kg=(0.018, 0.09),
-                nominal_body_spin_rad_s=None,
-                deployment=None,
-            )
+            defaults = {
+                "rendezvous_horizon_steps": 8,
+                "docking_horizon_steps": 6,
+                "terminal_activation_distance_m": 0.3,
+                "near_feedback_subdivisions": 1,
+                "initial_target_orientation_error": 0.02,
+                "target_rate_bound_rad_s": 0.08,
+                "target_acceleration_bound_rad_s2": 0.005,
+                "controller_parameter_prior": (),
+                "target_sigma_prior_m2_kg": (0.008, 0.04),
+                "chaser_sigma_prior_m2_kg": (0.018, 0.09),
+                "nominal_body_spin_rad_s": None,
+                "deployment": None,
+            }
             for name, value in defaults.items():
                 if getattr(self, name) == value:
                     result.pop(name)
@@ -328,18 +328,19 @@ class NonlinearStudyOptions:
         )
         cfg.tube.sliding_gains = np.full(3, self.lambda_per_rad)
         cfg.tube.bandwidth_0 = np.full(3, self.initial_bandwidth_per_rad)
-        cfg.tube.bandwidth_range = dict(
-            lower=self.bandwidth_bounds_per_rad[0],
-            upper=self.bandwidth_bounds_per_rad[1],
-        )
+        cfg.tube.bandwidth_range = {
+            "lower": self.bandwidth_bounds_per_rad[0],
+            "upper": self.bandwidth_bounds_per_rad[1],
+        }
         cfg.tube.bandwidth_rate_limit = self.bandwidth_rate_per_rad2
         cfg.mpc.docking_position_tolerance = self.precontact_position_tolerance_m
         cfg.mpc.docking_velocity_tolerance = (
             self.precontact_velocity_tolerance_m_per_rad
         )
-        cfg.mpc.horizon_steps = dict(
-            rendezvous=self.rendezvous_horizon_steps, docking=self.docking_horizon_steps
-        )
+        cfg.mpc.horizon_steps = {
+            "rendezvous": self.rendezvous_horizon_steps,
+            "docking": self.docking_horizon_steps,
+        }
         cfg.mission.terminal_activation_distance = self.terminal_activation_distance_m
         cfg.__post_init__()
         return cfg

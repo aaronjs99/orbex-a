@@ -63,18 +63,18 @@ def orbital_elements(position_eci_m, velocity_eci_m_s, mu_m3_s2=3.986004418e14):
     axis = None if energy == 0 else -mu / (2 * energy)
     p = h_norm**2 / mu
     apogee = p / (1 - e) if energy < 0 and e < 1 else None
-    return dict(
-        specific_energy_j_kg=energy,
-        specific_angular_momentum_m2_s=h_norm,
-        angular_momentum_direction_eci=(h / h_norm).tolist(),
-        eccentricity=e,
-        eccentricity_vector_eci=eccentricity_vector.tolist(),
-        semi_major_axis_m=axis,
-        perigee_radius_m=float(p / (1 + e)),
-        apogee_radius_m=apogee,
-        radius_m=float(radius),
-        radial_velocity_m_s=float(np.dot(r, v) / radius),
-    )
+    return {
+        "specific_energy_j_kg": energy,
+        "specific_angular_momentum_m2_s": h_norm,
+        "angular_momentum_direction_eci": (h / h_norm).tolist(),
+        "eccentricity": e,
+        "eccentricity_vector_eci": eccentricity_vector.tolist(),
+        "semi_major_axis_m": axis,
+        "perigee_radius_m": float(p / (1 + e)),
+        "apogee_radius_m": apogee,
+        "radius_m": float(radius),
+        "radial_velocity_m_s": float(np.dot(r, v) / radius),
+    }
 
 
 def time_to_apoapsis_s(position, velocity, mu):
@@ -216,14 +216,14 @@ class DeorbitResult:
     audit: dict
 
     def to_dict(self):
-        return dict(
-            success=self.success,
-            message=self.message,
-            final_state=self.final_state.to_dict(),
-            history=self.history,
-            controls=self.controls,
-            audit=self.audit,
-        )
+        return {
+            "success": self.success,
+            "message": self.message,
+            "final_state": self.final_state.to_dict(),
+            "history": self.history,
+            "controls": self.controls,
+            "audit": self.audit,
+        }
 
 
 class DeorbitSimulator:
@@ -271,7 +271,7 @@ class DeorbitSimulator:
             return (
                 initial,
                 False,
-                dict(relative_energy_drift=0.0, relative_angular_momentum_drift=0.0),
+                {"relative_energy_drift": 0.0, "relative_angular_momentum_drift": 0.0},
             )
         if initial.enclosure is not None:
             return self._carried_coast(
@@ -356,21 +356,21 @@ class DeorbitSimulator:
         after = orbital_elements(
             state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2
         )
-        drift = dict(
-            relative_energy_drift=abs(
+        drift = {
+            "relative_energy_drift": abs(
                 after["specific_energy_j_kg"] / before["specific_energy_j_kg"] - 1
             ),
-            relative_angular_momentum_drift=abs(
+            "relative_angular_momentum_drift": abs(
                 after["specific_angular_momentum_m2_s"]
                 / before["specific_angular_momentum_m2_s"]
                 - 1
             ),
-            scope=(
+            "scope": (
                 "Physical osculating-element change includes the injected environment; not an isolated numerical conservation error"
                 if assembly.environment is not None
                 else "Two-body coast conservation diagnostic"
             ),
-        )
+        }
         crossed = bool(stop_at_entry and len(solution.t_events[0]) > 0)
         return state, crossed, drift
 
@@ -407,27 +407,27 @@ class DeorbitSimulator:
             after = orbital_elements(
                 state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2
             )
-            result = dict(
-                relative_energy_drift=abs(
+            result = {
+                "relative_energy_drift": abs(
                     after["specific_energy_j_kg"] / before["specific_energy_j_kg"] - 1
                 ),
-                relative_angular_momentum_drift=abs(
+                "relative_angular_momentum_drift": abs(
                     after["specific_angular_momentum_m2_s"]
                     / before["specific_angular_momentum_m2_s"]
                     - 1
                 ),
-                carried_state_enclosure=state.enclosure.as_dict(),
-                entry_interface_certificate=monitor.certificate,
-                scope="Carried whole-state and whole-hold zero-command load inclusion; successful entry requires a continuous whole-set descending above-to-below bracket",
-            )
+                "carried_state_enclosure": state.enclosure.as_dict(),
+                "entry_interface_certificate": monitor.certificate,
+                "scope": "Carried whole-state and whole-hold zero-command load inclusion; successful entry requires a continuous whole-set descending above-to-below bracket",
+            }
             if refusal is not None:
-                result["refusal"] = dict(
-                    time_s=state.time_s,
-                    exception_type=type(refusal).__name__,
-                    message=str(refusal),
-                    proposed_hold_applied=False,
-                    accepted_elapsed_s=elapsed,
-                )
+                result["refusal"] = {
+                    "time_s": state.time_s,
+                    "exception_type": type(refusal).__name__,
+                    "message": str(refusal),
+                    "proposed_hold_applied": False,
+                    "accepted_elapsed_s": elapsed,
+                }
             return state, crossed, result
 
         while elapsed < duration - 1e-9:
@@ -515,11 +515,11 @@ class DeorbitSimulator:
             else None
         )
         assembly_model = assembly.to_dict()
-        audit = dict(
-            entry_interface_altitude_m=options.entry_interface_altitude_m,
-            target_perigee_altitude_m=options.target_perigee_altitude_m,
-            terminal_scope="descending entry-interface handoff; no below-interface entry, heating, breakup, demise or impact propagation",
-            dynamics=(
+        audit = {
+            "entry_interface_altitude_m": options.entry_interface_altitude_m,
+            "target_perigee_altitude_m": options.target_perigee_altitude_m,
+            "terminal_scope": "descending entry-interface handoff; no below-interface entry, heating, breakup, demise or impact propagation",
+            "dynamics": (
                 "central-gravity Cartesian ECI and controlled rigid-body attitude; "
                 + (
                     "configured central gravity-gradient torque; "
@@ -532,11 +532,11 @@ class DeorbitSimulator:
                     else "no extra environment callback"
                 )
             ),
-            gravity_gradient=assembly_model["gravity_gradient"],
-            environment=assembly_model["environment"],
-            environment_contract=assembly_model["environment_contract"],
-            initial_orbit=history[0]["orbit"],
-        )
+            "gravity_gradient": assembly_model["gravity_gradient"],
+            "environment": assembly_model["environment"],
+            "environment_contract": assembly_model["environment_contract"],
+            "initial_orbit": history[0]["orbit"],
+        }
         audit["burn_window"] = burn_window.as_dict()
         thrust_delta_v, saturated_steps, max_balance = 0.0, 0, 0.0
         force_residual, torque_residual, burn_time = 0.0, 0.0, 0.0
@@ -708,35 +708,35 @@ class DeorbitSimulator:
             try:
                 state, feedback_state, measurement = observer.update(assembly, state)
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
-                audit["refused_observation"] = dict(
-                    time_s=state.time_s,
-                    applied=False,
-                    exception_type=type(error).__name__,
-                    message=str(error),
-                )
+                audit["refused_observation"] = {
+                    "time_s": state.time_s,
+                    "applied": False,
+                    "exception_type": type(error).__name__,
+                    "message": str(error),
+                }
                 return finish(False, "deorbit_observation_refused: " + str(error))
             observations.append(measurement)
         try:
             planning_state = supported_planning_state(state, feedback_state)
         except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
-            audit["refused_planning_support"] = dict(
-                time_s=state.time_s,
-                applied=False,
-                exception_type=type(error).__name__,
-                message=str(error),
-            )
+            audit["refused_planning_support"] = {
+                "time_s": state.time_s,
+                "applied": False,
+                "exception_type": type(error).__name__,
+                "message": str(error),
+            }
             return finish(False, "deorbit_planning_support_refused: " + str(error))
-        audit["burn_planning_support"] = dict(
-            method="sensed_center_with_unchanged_carried_physical_posterior",
-            physical_state_not_substituted=True,
-            time_s=planning_state.time_s,
-            carried_state_enclosure=None
+        audit["burn_planning_support"] = {
+            "method": "sensed_center_with_unchanged_carried_physical_posterior",
+            "physical_state_not_substituted": True,
+            "time_s": planning_state.time_s,
+            "carried_state_enclosure": None
             if planning_state.enclosure is None
             else planning_state.enclosure.as_dict(),
-            observation_identity=None
+            "observation_identity": None
             if not observations
             else observations[-1]["identity"],
-        )
+        }
         pointing_policy = self.pointing_policy
         axis = np.asarray(getattr(pointing_policy, "thrust_axis_body", (1.0, 0.0, 0.0)))
         plan = None
@@ -748,12 +748,12 @@ class DeorbitSimulator:
                     assembly, planning_state, propulsion, options.control_step_s
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
-                audit["refused_axis_plan"] = dict(
-                    time_s=state.time_s,
-                    applied=False,
-                    exception_type=type(error).__name__,
-                    message=str(error),
-                )
+                audit["refused_axis_plan"] = {
+                    "time_s": state.time_s,
+                    "applied": False,
+                    "exception_type": type(error).__name__,
+                    "message": str(error),
+                }
                 return finish(False, "deorbit_axis_plan_refused: " + str(error))
             pointing_policy = pointing_policy.with_thrust_axis(plan.direction_body)
             axis = np.asarray(plan.direction_body)
@@ -778,12 +778,12 @@ class DeorbitSimulator:
                     assembly, planning_state, propulsion, plan, options
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
-                audit["refused_throttle_plan"] = dict(
-                    time_s=state.time_s,
-                    applied=False,
-                    exception_type=type(error).__name__,
-                    message=str(error),
-                )
+                audit["refused_throttle_plan"] = {
+                    "time_s": state.time_s,
+                    "applied": False,
+                    "exception_type": type(error).__name__,
+                    "message": str(error),
+                }
                 return finish(False, "deorbit_throttle_plan_refused: " + str(error))
             audit["finite_burn_plan"] = throttle
             if throttle["status"] != "FINITE_BURN_PREDICTED":
@@ -808,12 +808,12 @@ class DeorbitSimulator:
                     ArithmeticError,
                     ImportError,
                 ) as error:
-                    audit["refused_observation"] = dict(
-                        time_s=state.time_s,
-                        applied=False,
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    audit["refused_observation"] = {
+                        "time_s": state.time_s,
+                        "applied": False,
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                     return finish(False, "deorbit_observation_refused: " + str(error))
                 observations.append(measurement)
             try:
@@ -826,12 +826,12 @@ class DeorbitSimulator:
                     assembly.mu_m3_s2,
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
-                audit["refused_control"] = dict(
-                    time_s=state.time_s,
-                    applied=False,
-                    exception_type=type(error).__name__,
-                    message=str(error),
-                )
+                audit["refused_control"] = {
+                    "time_s": state.time_s,
+                    "applied": False,
+                    "exception_type": type(error).__name__,
+                    "message": str(error),
+                }
                 return finish(False, "deorbit_control_refused: " + str(error))
             aligned = (
                 pointing <= options.pointing_tolerance_rad
@@ -878,12 +878,12 @@ class DeorbitSimulator:
                     )
                 )
                 if duration <= 0:
-                    audit["burn_wall_budget"] = dict(
-                        exact_start_time_s=str(burn_start_clock),
-                        exact_current_time_s=str(current_clock),
-                        exact_remaining_s=str(remaining),
-                        proposed_hold_applied=False,
-                    )
+                    audit["burn_wall_budget"] = {
+                        "exact_start_time_s": str(burn_start_clock),
+                        "exact_current_time_s": str(current_clock),
+                        "exact_remaining_s": str(remaining),
+                        "proposed_hold_applied": False,
+                    }
                     return finish(False, "deorbit_finite_burn_duration_limit")
             fire = burn_start is not None and aligned and window_request["active"]
             force = axis * (burn_force if fire else 0.0)
@@ -893,26 +893,26 @@ class DeorbitSimulator:
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit.setdefault("refused_holds", []).append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        applied=False,
-                        phase="allocation",
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "applied": False,
+                        "phase": "allocation",
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                 )
                 return finish(False, "deorbit_allocation_refused: " + str(error))
             if not allocation.success:
                 audit.setdefault("refused_allocations", []).append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        requested_force_body_n=force.tolist(),
-                        requested_torque_body_nm=torque.tolist(),
-                        allocation=allocation.to_dict(),
-                        applied=False,
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "requested_force_body_n": force.tolist(),
+                        "requested_torque_body_nm": torque.tolist(),
+                        "allocation": allocation.to_dict(),
+                        "applied": False,
+                    }
                 )
                 return finish(False, f"deorbit_{allocation.message}")
 
@@ -947,14 +947,14 @@ class DeorbitSimulator:
                 predicted = predict(duration)
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit.setdefault("refused_holds", []).append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        applied=False,
-                        allocation=allocation.to_dict(),
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "applied": False,
+                        "allocation": allocation.to_dict(),
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                 )
                 return finish(False, "deorbit_held_preview_refused: " + str(error))
             next_orbit = orbital_elements(
@@ -1001,12 +1001,12 @@ class DeorbitSimulator:
                         ArithmeticError,
                         ImportError,
                     ) as error:
-                        audit["refused_perigee_preview"] = dict(
-                            time_s=state.time_s,
-                            applied=False,
-                            exception_type=type(error).__name__,
-                            message=str(error),
-                        )
+                        audit["refused_perigee_preview"] = {
+                            "time_s": state.time_s,
+                            "applied": False,
+                            "exception_type": type(error).__name__,
+                            "message": str(error),
+                        }
                         return finish(
                             False, "deorbit_perigee_preview_refused: " + str(error)
                         )
@@ -1030,12 +1030,12 @@ class DeorbitSimulator:
                     ArithmeticError,
                     ImportError,
                 ) as error:
-                    audit["refused_entry_preview"] = dict(
-                        time_s=state.time_s,
-                        applied=False,
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    audit["refused_entry_preview"] = {
+                        "time_s": state.time_s,
+                        "applied": False,
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                     return finish(False, "deorbit_entry_preview_refused: " + str(error))
             # Both roots are bracketed against the original complete hold.
             # A later perigee cutoff must never hide an earlier entry handoff.
@@ -1063,14 +1063,14 @@ class DeorbitSimulator:
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 audit.setdefault("refused_holds", []).append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        applied=False,
-                        allocation=allocation.to_dict(),
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "applied": False,
+                        "allocation": allocation.to_dict(),
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                 )
                 return finish(False, "deorbit_held_flow_refused: " + str(error))
             interface = None
@@ -1095,19 +1095,19 @@ class DeorbitSimulator:
             max_balance = max(
                 max_balance, angular_audit["angular_momentum_balance_residual_kg_m2_s"]
             )
-            control_record = dict(
-                time_s=state.time_s,
-                duration_s=duration,
-                phase="finite_burn" if fire else "thrust_alignment",
-                pointing_error_rad=pointing,
-                pointing_rate_error_rad_s=tracking_rate,
-                burn_window=window_request,
-                aligned=aligned,
-                requested_force_body_n=force.tolist(),
-                requested_torque_body_nm=torque.tolist(),
-                allocation=allocation.to_dict(),
-                integration=angular_audit,
-            )
+            control_record = {
+                "time_s": state.time_s,
+                "duration_s": duration,
+                "phase": "finite_burn" if fire else "thrust_alignment",
+                "pointing_error_rad": pointing,
+                "pointing_rate_error_rad_s": tracking_rate,
+                "burn_window": window_request,
+                "aligned": aligned,
+                "requested_force_body_n": force.tolist(),
+                "requested_torque_body_nm": torque.tolist(),
+                "allocation": allocation.to_dict(),
+                "integration": angular_audit,
+            }
             control_summary = {
                 key: control_record[key] for key in ("time_s", "duration_s", "phase")
             }
@@ -1130,13 +1130,13 @@ class DeorbitSimulator:
                     ImportError,
                 ) as error:
                     audit.setdefault("refused_holds", []).append(
-                        dict(
-                            time_s=state.time_s,
-                            phase="accepted_endpoint_diagnostic",
-                            proposed_hold_applied=True,
-                            exception_type=type(error).__name__,
-                            message=str(error),
-                        )
+                        {
+                            "time_s": state.time_s,
+                            "phase": "accepted_endpoint_diagnostic",
+                            "proposed_hold_applied": True,
+                            "exception_type": type(error).__name__,
+                            "message": str(error),
+                        }
                     )
                     controls[-1] = records.keep(
                         "controls", control_record, control_summary

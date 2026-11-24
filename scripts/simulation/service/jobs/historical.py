@@ -60,22 +60,22 @@ def _execute_historical_analytical_job(
     }
     _write_json(
         directory / "source-inputs.json",
-        dict(
-            paths=inputs,
-            sha256={name: _sha(path) for name, path in inputs.items()},
-            runtime_python_sha256={
+        {
+            "paths": inputs,
+            "sha256": {name: _sha(path) for name, path in inputs.items()},
+            "runtime_python_sha256": {
                 str(path.relative_to(PACKAGE_ROOT)): _sha(path)
                 for path in PACKAGE_ROOT.rglob("*.py")
             },
-            parameters=parameters.as_dict(),
-            maximum_updates=settings.maximum_updates,
-            origin="historical_analytical_checkpoint",
-            execution_model="historical_analytical_resume",
-            resume_source=None
+            "parameters": parameters.as_dict(),
+            "maximum_updates": settings.maximum_updates,
+            "origin": "historical_analytical_checkpoint",
+            "execution_model": "historical_analytical_resume",
+            "resume_source": None
             if settings.resume_path is None
             else str(settings.resume_path),
-            transfer_duration_rule=".18*sqrt(release_distance_m/300)rad; unchanged hardware/input caps",
-        ),
+            "transfer_duration_rule": ".18*sqrt(release_distance_m/300)rad; unchanged hardware/input caps",
+        },
     )
     cfg = SimulationConfig.load(str(settings.config_path))
     if cfg.solver.remote:
@@ -217,21 +217,21 @@ def _execute_historical_analytical_job(
                 )
             _write_json(
                 directory / "resume-source.json",
-                dict(
-                    checkpoint_identity=checkpoint.identity,
-                    source_record_sha256=checkpoint.source_record_sha256,
-                    source_canonical_sha256=checkpoint.source_canonical_sha256,
-                    frozen_inputs={
+                {
+                    "checkpoint_identity": checkpoint.identity,
+                    "source_record_sha256": checkpoint.source_record_sha256,
+                    "source_canonical_sha256": checkpoint.source_canonical_sha256,
+                    "frozen_inputs": {
                         name: manifest["inputs"][name]
                         for name in ("resume_path", "resume_journal")
                     },
-                    prefix=prefix,
-                    additional_update_cap=additional_updates,
-                    original_total_update_cap=remaining_cap
+                    "prefix": prefix,
+                    "additional_update_cap": additional_updates,
+                    "original_total_update_cap": remaining_cap
                     + checkpoint.committed_updates,
-                    target_anomaly_domain=list(target.anomaly_domain),
-                    scope="Numerical continuation with the public strict checkpoint; original failed attempts/source history retained. Cold plans and dense adaptation-window reset are explicit.",
-                ),
+                    "target_anomaly_domain": list(target.anomaly_domain),
+                    "scope": "Numerical continuation with the public strict checkpoint; original failed attempts/source history retained. Cold plans and dense adaptation-window reset are explicit.",
+                },
             )
 
         def progress(event):
@@ -245,18 +245,18 @@ def _execute_historical_analytical_job(
                 )
             _write_json(directory / "committed-projection.json", projection)
             journal.flush()
-            payload = dict(
-                kind="ready" if kind == "start" else "committed",
-                projection=projection,
-                update=event.get("update", max(0, len(projection.get("q", [])) - 1)),
-                anomaly=projection["q"][-1],
-                phase=projection.get("phases", ["unknown"])[-1],
-            )
+            payload = {
+                "kind": "ready" if kind == "start" else "committed",
+                "projection": projection,
+                "update": event.get("update", max(0, len(projection.get("q", [])) - 1)),
+                "anomaly": projection["q"][-1],
+                "phase": projection.get("phases", ["unknown"])[-1],
+            }
             messages.put(payload)
             if not run_event.is_set():
-                messages.put(dict(kind="paused"))
+                messages.put({"kind": "paused"})
                 run_event.wait()
-                messages.put(dict(kind="running"))
+                messages.put({"kind": "running"})
 
         profile.scenario.progress_sink = progress
         runner = ADTMPCMissionRunner(scenario=profile.scenario)
@@ -272,19 +272,19 @@ def _execute_historical_analytical_job(
         projection = StudioDataset(approach).to_dict()
         _write_json(directory / "committed-projection.json", projection)
         messages.put(
-            dict(
-                kind="committed",
-                projection=projection,
-                update=len(approach.anom_history) - 1,
-                anomaly=approach.anom_history[-1],
-                phase=approach.sample_phase_history[-1],
-            )
+            {
+                "kind": "committed",
+                "projection": projection,
+                "update": len(approach.anom_history) - 1,
+                "anomaly": approach.anom_history[-1],
+                "phase": approach.sample_phase_history[-1],
+            }
         )
         store = CompleteMissionStore(directory / "completion")
 
         def stage_sink(stage, result):
             store.record(stage, result)
-            messages.put(dict(kind="stage", message="Physical completion: " + stage))
+            messages.put({"kind": "stage", "message": "Physical completion: " + stage})
 
         bound = max(
             abs(float(b[k])) for b in cfg.mpc.input_bounds for k in ("lower", "upper")
@@ -305,7 +305,7 @@ def _execute_historical_analytical_job(
                 producer_package_root=PACKAGE_ROOT,
             )
             messages.put(
-                dict(kind="stage", message="Verifying held-command propellant bounds")
+                {"kind": "stage", "message": "Verifying held-command propellant bounds"}
             )
         completion = design.completion_runner(
             input_component_bound=bound,
@@ -313,12 +313,12 @@ def _execute_historical_analytical_job(
             translation_accountant=accountant,
         ).complete(approach)
         store.finish(completion)
-        payload = dict(
-            kind="finished",
-            success=bool(completion.success),
-            message=completion.message,
-            projection=projection,
-        )
+        payload = {
+            "kind": "finished",
+            "success": bool(completion.success),
+            "message": completion.message,
+            "projection": projection,
+        }
         if completion.lifecycle is not None:
             from orbexa.visualization.renderers.lifecycle import LifecycleDataset
 

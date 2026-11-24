@@ -218,20 +218,20 @@ class RotatingCompositeBounds:
 
     def as_dict(self):
         _, geometry, identity = _geometry_context(self.geometry)
-        result = dict(
-            shape="composite_spacecraft",
-            geometry=geometry,
-            geometry_fingerprint=identity,
-            orientation_matrix_at_start=tuple(
+        result = {
+            "shape": "composite_spacecraft",
+            "geometry": geometry,
+            "geometry_fingerprint": identity,
+            "orientation_matrix_at_start": tuple(
                 tuple(map(str, row)) for row in self.orientation_matrix_at_start
             ),
-            orientation_matrix_error=str(self.orientation_matrix_error),
-            angular_rate_per_anomaly=str(self.angular_rate_per_anomaly),
-            center_at_start=self.center_at_start.as_dict(),
-            center_speed_per_anomaly=str(self.center_speed_per_anomaly),
-            frame=self.frame,
-            scope=self.scope,
-        )
+            "orientation_matrix_error": str(self.orientation_matrix_error),
+            "angular_rate_per_anomaly": str(self.angular_rate_per_anomaly),
+            "center_at_start": self.center_at_start.as_dict(),
+            "center_speed_per_anomaly": str(self.center_speed_per_anomaly),
+            "frame": self.frame,
+            "scope": self.scope,
+        }
         if self.rotation_rate_bounds is not None:
             result["rotation_rate_bounds"] = self.rotation_rate_bounds.as_dict()
         return result
@@ -287,13 +287,13 @@ class CompositeSweptCollisionGuard:
         fixed_normals = tuple(_point(value) for value in normals)
         if any(not any(value) for value in fixed_normals):
             raise ValueError("Candidate separating normals must be nonzero")
-        common = dict(
-            method=COMPOSITE_SWEEP_METHOD,
-            target_bounds=target.as_dict(),
-            body_radii=tuple(map(str, radii)),
-            clearance=str(clearance),
-            minimum_pair_center_distance=str(pair_distance),
-        )
+        common = {
+            "method": COMPOSITE_SWEEP_METHOD,
+            "target_bounds": target.as_dict(),
+            "body_radii": tuple(map(str, radii)),
+            "clearance": str(clearance),
+            "minimum_pair_center_distance": str(pair_distance),
+        }
         if any(
             not isinstance(flow, FlowCertificate)
             or not isinstance(flow.status, EnclosureStatus)
@@ -454,15 +454,15 @@ class CompositeSweptCollisionGuard:
                 ar.scalar(body_radius) + reserve
             )
             if margin.is_finite() and margin > 0:
-                return dict(
-                    offset=tuple(map(str, segment.offset)),
-                    normal=tuple(map(str, normal)),
-                    margin=ar.box((margin,)).as_dict(),
-                    exact_component_support=str(support),
-                    component_radius_squared_upper=str(radius_squared),
-                    rotation_norm_bound=str(rotation),
-                    rotation_and_translation_reserve=ar.box((reserve,)).as_dict(),
-                )
+                return {
+                    "offset": tuple(map(str, segment.offset)),
+                    "normal": tuple(map(str, normal)),
+                    "margin": ar.box((margin,)).as_dict(),
+                    "exact_component_support": str(support),
+                    "component_radius_squared_upper": str(radius_squared),
+                    "rotation_norm_bound": str(rotation),
+                    "rotation_and_translation_reserve": ar.box((reserve,)).as_dict(),
+                }
         return None
 
 
@@ -481,15 +481,15 @@ class CompositePointSeparation:
         return self.status == "PROVEN_OUTSIDE_EVERY_COMPONENT"
 
     def as_dict(self):
-        return dict(
-            status=self.status,
-            reason=self.reason,
-            distance_lower=str(self.distance_lower),
-            point_body=tuple(map(str, self.point_body)),
-            geometry_fingerprint=self.geometry_fingerprint,
-            evidence=self.evidence,
-            method=self.method,
-        )
+        return {
+            "status": self.status,
+            "reason": self.reason,
+            "distance_lower": str(self.distance_lower),
+            "point_body": tuple(map(str, self.point_body)),
+            "geometry_fingerprint": self.geometry_fingerprint,
+            "evidence": self.evidence,
+            "method": self.method,
+        }
 
 
 class CompositeTerminalGeometry:
@@ -554,15 +554,15 @@ class CompositeTerminalGeometry:
                     ):
                         best = (
                             distance.lower[0],
-                            dict(
-                                component_id=part.id,
-                                normal=tuple(map(str, normal)),
-                                exact_support=str(
+                            {
+                                "component_id": part.id,
+                                "normal": tuple(map(str, normal)),
+                                "exact_support": str(
                                     max(_dot(normal, vertex) for vertex in vertices)
                                 ),
-                                exact_projection_gap=str(gap),
-                                distance=distance.as_dict(),
-                            ),
+                                "exact_projection_gap": str(gap),
+                                "distance": distance.as_dict(),
+                            },
                         )
                 if best is None:
                     return CompositePointSeparation(

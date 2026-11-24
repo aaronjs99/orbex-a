@@ -187,16 +187,16 @@ class ApproachPropellantBudget:
     translation_force_limit_n: float
 
     def to_dict(self):
-        return dict(
-            clock=self.clock,
-            force_l1_upper_n=self.force_l1_upper_n,
-            translation_fuel_debit_kg=self.translation_fuel_debit_kg,
-            input_component_bound_m_per_rad2=self.input_component_bound,
-            specific_impulse_s=self.specific_impulse_s,
-            translation_nozzle_limit_n=self.translation_force_limit_n,
-            method="For any proper bus rotation: ||F_body||_1 <= 3*m_wet*(dq/dt)_max^2*U; fuel <= force_bound*duration_upper/(g0*Isp)",
-            scope="Conservative approach translation debit under declared held-input, continuously throttleable nozzle and exact-actuation assumptions; not measured consumption",
-        )
+        return {
+            "clock": self.clock,
+            "force_l1_upper_n": self.force_l1_upper_n,
+            "translation_fuel_debit_kg": self.translation_fuel_debit_kg,
+            "input_component_bound_m_per_rad2": self.input_component_bound,
+            "specific_impulse_s": self.specific_impulse_s,
+            "translation_nozzle_limit_n": self.translation_force_limit_n,
+            "method": "For any proper bus rotation: ||F_body||_1 <= 3*m_wet*(dq/dt)_max^2*U; fuel <= force_bound*duration_upper/(g0*Isp)",
+            "scope": "Conservative approach translation debit under declared held-input, continuously throttleable nozzle and exact-actuation assumptions; not measured consumption",
+        }
 
 
 @dataclass(frozen=True)
@@ -222,52 +222,52 @@ class CompleteMissionResult:
         failed_stage = (
             None if self.lifecycle is None else self.lifecycle.failure.get("stage")
         )
-        return dict(
-            success=self.success,
-            message=self.message,
-            stages=dict(
-                approach=bool(
+        return {
+            "success": self.success,
+            "message": self.message,
+            "stages": {
+                "approach": bool(
                     self.approach.success
                     and self.approach.metadata.get("mission_complete", False)
                 ),
-                terminal_tracking=None if self.terminal_handoff is None else True,
-                chaser_attitude=None
+                "terminal_tracking": None if self.terminal_handoff is None else True,
+                "chaser_attitude": None
                 if self.attitude is None
                 else self.attitude.success,
-                attachment=None
+                "attachment": None
                 if self.lifecycle is None
                 else self.lifecycle.capture.success,
-                detumbling=False
+                "detumbling": False
                 if failed_stage == "detumbling"
                 else None
                 if self.lifecycle is None or self.lifecycle.detumbling is None
                 else self.lifecycle.detumbling.success,
-                deorbit=False
+                "deorbit": False
                 if failed_stage == "deorbit"
                 else None
                 if self.lifecycle is None or self.lifecycle.deorbit is None
                 else self.lifecycle.deorbit.success,
-            ),
-            translation_budget=None
+            },
+            "translation_budget": None
             if self.translation_budget is None
             else self.translation_budget.to_dict(),
-            geometry_binding=self.geometry_binding,
-            completion_audit=self.completion_audit,
-            terminal_handoff=None
+            "geometry_binding": self.geometry_binding,
+            "completion_audit": self.completion_audit,
+            "terminal_handoff": None
             if self.terminal_handoff is None
             else self.terminal_handoff.as_dict(),
-            assumptions=list(self.assumptions),
-            records=dict(
-                approach="approach/mission_data.json",
-                chaser_attitude=None
+            "assumptions": list(self.assumptions),
+            "records": {
+                "approach": "approach/mission_data.json",
+                "chaser_attitude": None
                 if self.attitude is None
                 else "chaser_attitude.json",
-                terminal_handoff=None
+                "terminal_handoff": None
                 if self.terminal_handoff is None
                 else "terminal_handoff.json",
-                lifecycle=None if self.lifecycle is None else "lifecycle_data.json",
-            ),
-        )
+                "lifecycle": None if self.lifecycle is None else "lifecycle_data.json",
+            },
+        }
 
 
 class CompleteMissionRunner:
@@ -622,7 +622,7 @@ class CompleteMissionStore:
     def finish(self, result: CompleteMissionResult) -> Path:
         path = self.directory / self.filename
         if not save_data(
-            path, dict(schema=COMPLETE_MISSION_SCHEMA, result=result.to_dict())
+            path, {"schema": COMPLETE_MISSION_SCHEMA, "result": result.to_dict()}
         ):
             raise OSError("Could not save complete mission summary")
         return path

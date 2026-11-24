@@ -274,12 +274,12 @@ class PhysicalApproachScenario:
                 target_bounds=geometry,
                 record_sink=certificate_sink,
             )
-        dependencies = dict(
-            safety=self.safety,
-            initial_belief=self.prior,
-            adaptation_mode=adaptation_mode,
-            execution_guard=guard,
-        )
+        dependencies = {
+            "safety": self.safety,
+            "initial_belief": self.prior,
+            "adaptation_mode": adaptation_mode,
+            "execution_guard": guard,
+        }
         if controller_factory is not None:
             dependencies["controller_factory"] = controller_factory
         if vehicle_design is not None:

@@ -25,28 +25,28 @@ class ExecutionJournal:
         navigation_flows=None,
         successor_witnesses=None,
     ):
-        event = dict(
-            archive_event_kind=kind,
-            staged_identity=record.get("staged_identity"),
-            record=record,
-            target=target,
-            flows={} if flows is None else flows,
-            nominal={} if nominal is None else nominal,
-            navigation_flows={} if navigation_flows is None else navigation_flows,
-            successor_witnesses={}
+        event = {
+            "archive_event_kind": kind,
+            "staged_identity": record.get("staged_identity"),
+            "record": record,
+            "target": target,
+            "flows": {} if flows is None else flows,
+            "nominal": {} if nominal is None else nominal,
+            "navigation_flows": {} if navigation_flows is None else navigation_flows,
+            "successor_witnesses": {}
             if successor_witnesses is None
             else successor_witnesses,
-        )
+        }
         self.last_event = event
         # A supplied sink must finish its durable write before returning. With
         # no sink, the bounded current outcome owns the full in-memory events.
         if self.sink is not None:
             self.sink(event)
             outcome.archive_events.append(
-                dict(
-                    archive_event_kind=kind,
-                    staged_identity=record.get("staged_identity"),
-                )
+                {
+                    "archive_event_kind": kind,
+                    "staged_identity": record.get("staged_identity"),
+                }
             )
         else:
             outcome.archive_events.append(event)

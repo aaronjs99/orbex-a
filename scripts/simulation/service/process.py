@@ -152,8 +152,10 @@ def _run_job(settings, parameters, directory, messages, run_event, launch_event)
             import traceback
 
             traceback.print_exc()
-            payload = dict(
-                kind="error", success=False, message=f"{type(error).__name__}: {error}"
-            )
+            payload = {
+                "kind": "error",
+                "success": False,
+                "message": f"{type(error).__name__}: {error}",
+            }
             _write_json(directory / "worker-result.json", payload)
             messages.put(payload)

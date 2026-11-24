@@ -208,11 +208,11 @@ def terminal_contact_speed_record(
     gripper = vehicle_design["chaser"]["gripper_offset_m"]
     navigation_id = fingerprint(navigation)
     goal_id = fingerprint(
-        dict(
-            goal_bounds=recomputed,
-            observed_goal_states=observed_goal_states,
-            goal_bound_source_sha256=_GOAL_BOUNDS_SOURCE_SHA256,
-        )
+        {
+            "goal_bounds": recomputed,
+            "observed_goal_states": observed_goal_states,
+            "goal_bound_source_sha256": _GOAL_BOUNDS_SOURCE_SHA256,
+        }
     )
     certificates, reach_certificates, derived_bounds = {}, {}, {}
     clock_rate = clock.interval_bounds((q, q))["rate_s_inv"]
@@ -275,29 +275,31 @@ def terminal_contact_speed_record(
                 inputs.omega,
             )
         )
-        derived_bounds[key] = dict(
-            position_m=_outward_float(p + exact(support["position_error_norm_upper"])),
-            velocity_m_per_rad=_outward_float(
+        derived_bounds[key] = {
+            "position_m": _outward_float(
+                p + exact(support["position_error_norm_upper"])
+            ),
+            "velocity_m_per_rad": _outward_float(
                 v + exact(support["velocity_error_norm_upper"])
             ),
-        )
+        }
     _require(
         fingerprint(derived_bounds) == fingerprint(approach_bounds),
         "contact-speed nominal/tube inputs differ from the saved approach bounds",
     )
-    result = dict(
-        method="source-bound-terminal-contact-speed-reach-v1",
-        source_sha256=_CONTACT_ADAPTER_SOURCE_SHA256,
-        exact_q=str(q),
-        navigation_id=navigation_id,
-        goal_bound_id=goal_id,
-        goal_bound_source_sha256=_GOAL_BOUNDS_SOURCE_SHA256,
-        vehicle_design_id=fingerprint(vehicle_design),
-        certificates=certificates,
-        reach_certificates=reach_certificates,
-        admissible=all(value["admissible"] for value in certificates.values())
+    result = {
+        "method": "source-bound-terminal-contact-speed-reach-v1",
+        "source_sha256": _CONTACT_ADAPTER_SOURCE_SHA256,
+        "exact_q": str(q),
+        "navigation_id": navigation_id,
+        "goal_bound_id": goal_id,
+        "goal_bound_source_sha256": _GOAL_BOUNDS_SOURCE_SHA256,
+        "vehicle_design_id": fingerprint(vehicle_design),
+        "certificates": certificates,
+        "reach_certificates": reach_certificates,
+        "admissible": all(value["admissible"] for value in certificates.values())
         and all(value["admissible"] for value in reach_certificates.values()),
-    )
+    }
     result["identity"] = fingerprint(result)
     return result
 
@@ -572,18 +574,18 @@ def verify_nonlinear_arrival(approach, *, clock):
         first == entry and dwell == final_dwell and dwell >= dwell_required,
         "final whole-set dwell or first-entry lineage changed",
     )
-    return dict(
-        method="verified-fixed-deadline-whole-set-entry-v1",
-        exact_deadline=str(deadline),
-        first_admitted_exact_q=str(entry),
-        final_exact_q=str(exact_samples[-1]),
-        terminal_dwell_updates=dwell_required,
-        final_dwell=dwell,
-        checked_outer_endpoints=len(rows),
-        arrival_state_sha256=semantic_sha256(arrival),
-        terminal_history_sha256=semantic_sha256(rows),
-        scope="Rechecked retained whole-set endpoint bounds, exact clock and consecutive dwell; not a new flow proof",
-    )
+    return {
+        "method": "verified-fixed-deadline-whole-set-entry-v1",
+        "exact_deadline": str(deadline),
+        "first_admitted_exact_q": str(entry),
+        "final_exact_q": str(exact_samples[-1]),
+        "terminal_dwell_updates": dwell_required,
+        "final_dwell": dwell,
+        "checked_outer_endpoints": len(rows),
+        "arrival_state_sha256": semantic_sha256(arrival),
+        "terminal_history_sha256": semantic_sha256(rows),
+        "scope": "Rechecked retained whole-set endpoint bounds, exact clock and consecutive dwell; not a new flow proof",
+    }
 
 
 def capture_truth_from_nonlinear(approach, *, model, clock):

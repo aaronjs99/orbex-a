@@ -121,17 +121,17 @@ class TargetProximityRegion:
         return self.requested_radius_m == 30 and self.effective_radius_m == 30
 
     def as_dict(self):
-        return dict(
-            method="whole-occupied-envelope-com-proximity-v1",
-            geometry_id=self.geometry_id,
-            requested_radius_m=str(self.requested_radius_m),
-            target_vertex_radius_m=str(self.target_vertex_radius_m),
-            chaser_body_radius_m=str(self.body_radius_m),
-            target_clearance_m=str(self.target_clearance_m),
-            attachment_com_standoff_m=str(self.com_standoff_m),
-            refuge_position_support_m=str(self.position_support_m),
-            geometry_lower_bound_m=str(self.geometry_lower_bound_m),
-            effective_radius_m=str(self.effective_radius_m),
-            comparison_radius_m=self.comparison_radius_m,
-            scope="COM-based proposal selection: all close for near tracking, any close for observed-pose geometry; every original dynamics, sensing, geometry, force and fuel proof remains required",
-        )
+        return {
+            "method": "whole-occupied-envelope-com-proximity-v1",
+            "geometry_id": self.geometry_id,
+            "requested_radius_m": str(self.requested_radius_m),
+            "target_vertex_radius_m": str(self.target_vertex_radius_m),
+            "chaser_body_radius_m": str(self.body_radius_m),
+            "target_clearance_m": str(self.target_clearance_m),
+            "attachment_com_standoff_m": str(self.com_standoff_m),
+            "refuge_position_support_m": str(self.position_support_m),
+            "geometry_lower_bound_m": str(self.geometry_lower_bound_m),
+            "effective_radius_m": str(self.effective_radius_m),
+            "comparison_radius_m": self.comparison_radius_m,
+            "scope": "COM-based proposal selection: all close for near tracking, any close for observed-pose geometry; every original dynamics, sensing, geometry, force and fuel proof remains required",
+        }

@@ -110,7 +110,7 @@ class _LiveHandler(BaseHTTPRequestHandler):
                 "/state",
                 "/health",
             ):
-                return self._reply(404, dict(error="Unknown endpoint"))
+                return self._reply(404, {"error": "Unknown endpoint"})
             requested = {
                 x.strip().lower()
                 for x in self.headers.get("Access-Control-Request-Headers", "").split(
@@ -124,7 +124,7 @@ class _LiveHandler(BaseHTTPRequestHandler):
                 raise PermissionError("Unsupported preflight method or headers")
             self._reply(204, preflight=True)
         except PermissionError as error:
-            self._reply(403, dict(error=str(error)))
+            self._reply(403, {"error": str(error)})
 
     def do_GET(self):
         try:
@@ -134,22 +134,22 @@ class _LiveHandler(BaseHTTPRequestHandler):
                 state = self.server.service.state()
                 return self._reply(
                     200,
-                    dict(
-                        service=LIVE_SERVICE,
-                        status="ready",
-                        protocol_version=LIVE_PROTOCOL_VERSION,
-                        execution_model=state["execution_model"],
-                        bind="127.0.0.1",
-                        port=self.server.server_port,
-                        worker_alive=self.server.service.worker_alive,
-                        session_id=state["session_id"],
-                        parameter_limits=PARAMETER_LIMITS,
-                        maximum_updates=self.server.service.settings.maximum_updates,
-                        source="Maintained sensed nonlinear GEKKO/IPOPT with finite fleet admission and contact; explicit historical analytical resume available; outcomes may refuse",
-                    ),
+                    {
+                        "service": LIVE_SERVICE,
+                        "status": "ready",
+                        "protocol_version": LIVE_PROTOCOL_VERSION,
+                        "execution_model": state["execution_model"],
+                        "bind": "127.0.0.1",
+                        "port": self.server.server_port,
+                        "worker_alive": self.server.service.worker_alive,
+                        "session_id": state["session_id"],
+                        "parameter_limits": PARAMETER_LIMITS,
+                        "maximum_updates": self.server.service.settings.maximum_updates,
+                        "source": "Maintained sensed nonlinear GEKKO/IPOPT with finite fleet admission and contact; explicit historical analytical resume available; outcomes may refuse",
+                    },
                 )
             if url.path != "/state":
-                return self._reply(404, dict(error="Unknown endpoint"))
+                return self._reply(404, {"error": "Unknown endpoint"})
             query = parse_qs(url.query, keep_blank_values=True)
             if set(query) - {"after", "timeout"} or any(
                 len(v) != 1 for v in query.values()
@@ -161,9 +161,9 @@ class _LiveHandler(BaseHTTPRequestHandler):
             )
             self._reply(200, self.server.service.state(after=after, timeout=timeout))
         except PermissionError as error:
-            self._reply(403, dict(error=str(error)))
+            self._reply(403, {"error": str(error)})
         except (ValueError, TypeError) as error:
-            self._reply(400, dict(error=str(error)))
+            self._reply(400, {"error": str(error)})
         except (BrokenPipeError, ConnectionResetError):
             pass
 
@@ -196,15 +196,15 @@ class _LiveHandler(BaseHTTPRequestHandler):
                 if value:
                     raise ValueError("Reset does not accept parameters")
                 return self._reply(200, self.server.service.reset())
-            self._reply(404, dict(error="Unknown endpoint"))
+            self._reply(404, {"error": "Unknown endpoint"})
         except PermissionError as error:
-            self._reply(403, dict(error=str(error)))
+            self._reply(403, {"error": str(error)})
         except (BrokenPipeError, ConnectionResetError):
             pass
         except (ValueError, TypeError, OSError) as error:
-            self._reply(400, dict(error=str(error)))
+            self._reply(400, {"error": str(error)})
         except RuntimeError as error:
-            self._reply(409, dict(error=str(error)))
+            self._reply(409, {"error": str(error)})
 
 
 def make_server(service, *, port=8882, viewer_port=None):

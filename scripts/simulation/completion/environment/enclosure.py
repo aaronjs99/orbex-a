@@ -113,17 +113,17 @@ class NonlinearEnvironmentEnclosure:
         )
 
     def as_dict(self):
-        return dict(
-            method="typed-arb-j2-vector-drag-extra-acceleration-v1",
-            source_files=dict(_SOURCE),
-            point_environment_fingerprint=self.point_environment_fingerprint,
-            model=self.model.as_dict(),
-            dry_mass_kg={key: str(value) for key, value in self.dry_mass},
-            drag_area_m2_by_name=None
+        return {
+            "method": "typed-arb-j2-vector-drag-extra-acceleration-v1",
+            "source_files": dict(_SOURCE),
+            "point_environment_fingerprint": self.point_environment_fingerprint,
+            "model": self.model.as_dict(),
+            "dry_mass_kg": {key: str(value) for key, value in self.dry_mass},
+            "drag_area_m2_by_name": None
             if self.drag_area is None
             else {key: str(value) for key, value in self.drag_area},
-            intrinsic_extra_torque="exactly zero; central gravity gradient remains separate",
-        )
+            "intrinsic_extra_torque": "exactly zero; central gravity gradient remains separate",
+        }
 
     def force_parameters(self, ar):
         arithmetic = _ForceArithmetic(ar)

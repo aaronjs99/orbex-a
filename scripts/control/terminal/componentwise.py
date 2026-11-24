@@ -79,17 +79,17 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
             precision_bits=self.precision_bits,
         )
         scalar = tuple(point_radius * value for value in rotation_derivatives)
-        return jets.reference_norm_bounds, dict(
-            componentwise_euler_port_evidence=jets.evidence,
-            superseded_scalar_reference_bounds=dict(
-                reference_velocity_norm_upper=scalar[0],
-                reference_acceleration_norm_upper=scalar[1],
-                reference_jerk_norm_upper=scalar[2],
-            ),
-            held_policy=self.held_policy,
-            geometry_proof_reference=COMPOSITE_TERMINAL_METHOD,
-            two_clock_evaluation_error_terms_explicit=True,
-        )
+        return jets.reference_norm_bounds, {
+            "componentwise_euler_port_evidence": jets.evidence,
+            "superseded_scalar_reference_bounds": {
+                "reference_velocity_norm_upper": scalar[0],
+                "reference_acceleration_norm_upper": scalar[1],
+                "reference_jerk_norm_upper": scalar[2],
+            },
+            "held_policy": self.held_policy,
+            "geometry_proof_reference": COMPOSITE_TERMINAL_METHOD,
+            "two_clock_evaluation_error_terms_explicit": True,
+        }
 
     def _feedforward_range(self, ar, nominal, p2, reference_state, matrix_abs):
         magnitude = _add(

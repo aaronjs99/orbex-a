@@ -253,26 +253,26 @@ def _contact_projection(attachment, approach, approach_digest, assembly, first_s
             history, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode()
     ).hexdigest()
-    return dict(
-        schema="orbexa.finite-contact.studio.v1",
-        time_s=times.tolist(),
-        target=target,
-        chasers=bodies,
-        pads=pads,
-        display_rotation_eci_to_capture=display_rotation.tolist(),
-        approach_canonical_sha256=approach_digest,
-        source_history_sha256=history_digest,
-        approach_binding=dict(
-            final_anomaly=source_q,
-            physical_time_s=float(source_times[-1]),
-            positions_reference_m=endpoint,
-            target_rotation_reference=relative_rotation.tolist(),
-        ),
-        frame="Recorded ECI SI poses; display uses capture-fixed reference axes and the current target center as origin",
-        interpolation="None; every displayed body and tip pose is a retained physical sample",
-        latch_time_s=float(times[-1]),
-        success=True,
-    )
+    return {
+        "schema": "orbexa.finite-contact.studio.v1",
+        "time_s": times.tolist(),
+        "target": target,
+        "chasers": bodies,
+        "pads": pads,
+        "display_rotation_eci_to_capture": display_rotation.tolist(),
+        "approach_canonical_sha256": approach_digest,
+        "source_history_sha256": history_digest,
+        "approach_binding": {
+            "final_anomaly": source_q,
+            "physical_time_s": float(source_times[-1]),
+            "positions_reference_m": endpoint,
+            "target_rotation_reference": relative_rotation.tolist(),
+        },
+        "frame": "Recorded ECI SI poses; display uses capture-fixed reference axes and the current target center as origin",
+        "interpolation": "None; every displayed body and tip pose is a retained physical sample",
+        "latch_time_s": float(times[-1]),
+        "success": True,
+    }
 
 
 class LifecycleDataset:
@@ -384,7 +384,7 @@ class LifecycleDataset:
         surface_contacts = attachment.get("audit", {}).get("surface_contacts", {})
         if not surface_contacts and attachment.get("success"):
             surface_contacts = {
-                name: dict(surface_point_body_m=gate["surface_anchor_body_m"])
+                name: {"surface_point_body_m": gate["surface_anchor_body_m"]}
                 for name, gate in attachment.get("gates", {}).items()
                 if isinstance(gate, Mapping)
                 and gate.get("passed")
@@ -443,54 +443,57 @@ class LifecycleDataset:
                 if control is not None and control["time_s"] <= time + 1e-8
                 else [0.0, 0.0, 0.0]
             )
-        return dict(
-            schema="orbexa.lifecycle.studio.v1",
-            time_s=times.tolist(),
-            elapsed_s=(times - times[0]).tolist(),
-            positions_eci_m=positions.tolist(),
-            quaternions=rotations.tolist(),
-            angular_speed_rad_s=np.linalg.norm(rates, axis=1).tolist(),
-            mass_kg=masses.tolist(),
-            fuel_kg=fuel.tolist(),
-            center_of_mass_body_m=centers.tolist(),
-            phases=[x["phase"] for x in history],
-            altitude_m=(radius - earth_radius).tolist(),
-            applied_force_body_n=applied,
-            perigee_altitude_m=perigee.tolist(),
-            earth_radius_m=earth_radius,
-            components=assembly["elements"],
-            target=r.get("approach", {}).get("target", {}),
-            body_radius_m=default_radius,
-            body_radii_m=body_radii,
-            surface_contacts=surface_contacts,
-            attachment_success=bool(attachment.get("success")),
-            finite_contact=finite_contact,
-            terminal_handoff=r.get("terminal_handoff"),
-            approach_canonical_sha256=approach_digest,
-            lifecycle_canonical_sha256=lifecycle_digest,
-            stages=dict(
-                attachment=bool(attachment.get("success")),
-                detumbling=None
+        return {
+            "schema": "orbexa.lifecycle.studio.v1",
+            "time_s": times.tolist(),
+            "elapsed_s": (times - times[0]).tolist(),
+            "positions_eci_m": positions.tolist(),
+            "quaternions": rotations.tolist(),
+            "angular_speed_rad_s": np.linalg.norm(rates, axis=1).tolist(),
+            "mass_kg": masses.tolist(),
+            "fuel_kg": fuel.tolist(),
+            "center_of_mass_body_m": centers.tolist(),
+            "phases": [x["phase"] for x in history],
+            "altitude_m": (radius - earth_radius).tolist(),
+            "applied_force_body_n": applied,
+            "perigee_altitude_m": perigee.tolist(),
+            "earth_radius_m": earth_radius,
+            "components": assembly["elements"],
+            "target": r.get("approach", {}).get("target", {}),
+            "body_radius_m": default_radius,
+            "body_radii_m": body_radii,
+            "surface_contacts": surface_contacts,
+            "attachment_success": bool(attachment.get("success")),
+            "finite_contact": finite_contact,
+            "terminal_handoff": r.get("terminal_handoff"),
+            "approach_canonical_sha256": approach_digest,
+            "lifecycle_canonical_sha256": lifecycle_digest,
+            "stages": {
+                "attachment": bool(attachment.get("success")),
+                "detumbling": None
                 if r.get("detumbling") is None
                 else bool(r["detumbling"].get("success")),
-                deorbit=None
+                "deorbit": None
                 if r.get("deorbit") is None
                 else bool(r["deorbit"].get("success")),
-            ),
-            force_alignment="Applied force over the recorded hold ending at this node; the first node shows its following hold",
-            entry_interface_altitude_m=configuration.get(
+            },
+            "force_alignment": "Applied force over the recorded hold ending at this node; the first node shows its following hold",
+            "entry_interface_altitude_m": configuration.get(
                 "entry_interface_altitude_m", 120000.0
             ),
-            target_perigee_altitude_m=configuration.get(
+            "target_perigee_altitude_m": configuration.get(
                 "target_perigee_altitude_m", 80000.0
             ),
-            outcome=dict(success=bool(r.get("success")), message=r.get("message", "")),
-            provenance=provenance
+            "outcome": {
+                "success": bool(r.get("success")),
+                "message": r.get("message", ""),
+            },
+            "provenance": provenance
             or "Recorded physical approach and modeled post-capture stages",
-            synthetic=synthetic,
-            scope=r.get("scope", ""),
-            capture_assumptions=r.get("attachment", {}).get("assumptions", []),
-        )
+            "synthetic": synthetic,
+            "scope": r.get("scope", ""),
+            "capture_assumptions": r.get("attachment", {}).get("assumptions", []),
+        }
 
 
 class LifecycleRenderer:
@@ -601,10 +604,10 @@ class LifecycleRenderer:
                 self.output_dir / "mission-lifecycle.png", dpi=180, facecolor="#080d14"
             )
             plt.close(figure)
-        artifacts = dict(
-            data=self.output_dir / "replay-data.json",
-            plot=self.output_dir / "mission-lifecycle.png",
-        )
+        artifacts = {
+            "data": self.output_dir / "replay-data.json",
+            "plot": self.output_dir / "mission-lifecycle.png",
+        }
         if animate:
             artifacts.update(self._animation(data, fps))
         return artifacts

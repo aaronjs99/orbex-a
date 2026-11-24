@@ -36,7 +36,7 @@ class ApoapsisBurnWindow:
 
     def evaluate(self, position, velocity, mu):
         if self.half_angle_rad is None:
-            return dict(active=True, rule="continuous_requested_burn")
+            return {"active": True, "rule": "continuous_requested_burn"}
         r, v = (
             finite_vector(position, "Window position", 3),
             finite_vector(velocity, "Window velocity", 3),
@@ -58,29 +58,29 @@ class ApoapsisBurnWindow:
         eccentricity_vector = np.cross(v, angular_momentum) / mu - r / radius
         eccentricity = float(np.linalg.norm(eccentricity_vector))
         if eccentricity <= self.minimum_eccentricity:
-            return dict(
-                active=True,
-                rule="no_unique_apogee_for_near_circular_sensed_orbit",
-                eccentricity=eccentricity,
-            )
+            return {
+                "active": True,
+                "rule": "no_unique_apogee_for_near_circular_sensed_orbit",
+                "eccentricity": eccentricity,
+            }
         cosine = float(
             np.clip(np.dot(r / radius, eccentricity_vector / eccentricity), -1.0, 1.0)
         )
         threshold = -math.cos(self.half_angle_rad)
-        return dict(
-            active=cosine <= threshold,
-            eccentricity=eccentricity,
-            true_anomaly_cosine=cosine,
-            maximum_cosine=threshold,
-            rule="cos(nu) <= -cos(half_angle) about the sensed osculating apogee",
-        )
+        return {
+            "active": cosine <= threshold,
+            "eccentricity": eccentricity,
+            "true_anomaly_cosine": cosine,
+            "maximum_cosine": threshold,
+            "rule": "cos(nu) <= -cos(half_angle) about the sensed osculating apogee",
+        }
 
     def as_dict(self):
-        return dict(
-            half_angle_rad=self.half_angle_rad,
-            minimum_eccentricity=self.minimum_eccentricity,
-            scope="Numerical request schedule from the supplied sensed/planning state; each actual held wrench, load, fuel, state flow and entry event still requires independent admission",
-        )
+        return {
+            "half_angle_rad": self.half_angle_rad,
+            "minimum_eccentricity": self.minimum_eccentricity,
+            "scope": "Numerical request schedule from the supplied sensed/planning state; each actual held wrench, load, fuel, state flow and entry event still requires independent admission",
+        }
 
 
 def supported_planning_state(physical, sensed):

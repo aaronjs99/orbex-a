@@ -129,20 +129,22 @@ def recorded_outcome_evidence(metrics):
         marker = "F"
     if status == "COMPLETED" and not complete and marker == "C":
         marker = "?"
-    return dict(
-        termination_class=termination,
-        physical_feasibility="SIMULATED_COMPLETION_REPORTED" if complete else "UNKNOWN",
-        success_time_eligible=complete,
-        display_marker=marker,
-        execution_error_type=error.get("type", "UNKNOWN")
+    return {
+        "termination_class": termination,
+        "physical_feasibility": "SIMULATED_COMPLETION_REPORTED"
+        if complete
+        else "UNKNOWN",
+        "success_time_eligible": complete,
+        "display_marker": marker,
+        "execution_error_type": error.get("type", "UNKNOWN")
         if isinstance(error, dict)
         else "UNKNOWN"
         if error is not None
         else None,
-        recorded_gate_failures=failed_gates,
-        scope="Recorded evidence only; a failed/capped/error run is not a physical infeasibility certificate; "
+        "recorded_gate_failures": failed_gates,
+        "scope": "Recorded evidence only; a failed/capped/error run is not a physical infeasibility certificate; "
         "reported completion remains subject to existing full verification",
-    )
+    }
 
 
 class MatchedNonlinearComparison:
@@ -258,11 +260,12 @@ class MatchedNonlinearComparison:
                 or study.get("cases") != declaration["cases"]
                 or study.get("selected_case") != key[0]
                 or study.get("selected_arm")
-                != dict(adaptation=key[1], bandwidth=key[2])
+                != {"adaptation": key[1], "bandwidth": key[2]}
                 or study.get("factorial_axes")
-                != dict(
-                    adaptation=["adaptive", "frozen"], bandwidth=["dynamic", "fixed"]
-                )
+                != {
+                    "adaptation": ["adaptive", "frozen"],
+                    "bandwidth": ["dynamic", "fixed"],
+                }
                 or study.get("source_manifest_sha256") != _sha(source_path)
             ):
                 raise ValueError(
@@ -329,18 +332,18 @@ class MatchedNonlinearComparison:
             raise ValueError(
                 "An outcome claiming a physical prefix lacks its actual saved approach"
             )
-        return dict(
-            key=key,
-            directory=directory,
-            source=source,
-            study=study,
-            declaration=declaration,
-            metrics=metrics,
-            source_sha256=_sha(source_path),
-            metrics_sha256=_sha(directory / "study-metrics.json"),
-            study_sha256=None if study is None else _sha(study_path),
-            approach_binding_verified=binding_verified,
-        )
+        return {
+            "key": key,
+            "directory": directory,
+            "source": source,
+            "study": study,
+            "declaration": declaration,
+            "metrics": metrics,
+            "source_sha256": _sha(source_path),
+            "metrics_sha256": _sha(directory / "study-metrics.json"),
+            "study_sha256": None if study is None else _sha(study_path),
+            "approach_binding_verified": binding_verified,
+        }
 
     def verify(self):
         errors, loaded, records = [], [], {}
@@ -352,7 +355,7 @@ class MatchedNonlinearComparison:
                 records[row["key"]] = row
                 loaded.append(row)
             except (OSError, ValueError, TypeError, KeyError) as error:
-                errors.append(dict(directory=str(directory), reason=str(error)))
+                errors.append({"directory": str(directory), "reason": str(error)})
         reference = loaded[0] if loaded else None
         self.case_ids = (
             ()
@@ -370,33 +373,33 @@ class MatchedNonlinearComparison:
                     != reference["source"]["package_python_sha256"]
                 ):
                     errors.append(
-                        dict(
-                            directory=str(row["directory"]),
-                            reason="Python source hashes differ across arms",
-                        )
+                        {
+                            "directory": str(row["directory"]),
+                            "reason": "Python source hashes differ across arms",
+                        }
                     )
                 if row["source"].get("runtime_environment") != reference["source"].get(
                     "runtime_environment"
                 ):
                     errors.append(
-                        dict(
-                            directory=str(row["directory"]),
-                            reason="Installed runtime versions or native solver binary differ across arms",
-                        )
+                        {
+                            "directory": str(row["directory"]),
+                            "reason": "Installed runtime versions or native solver binary differ across arms",
+                        }
                     )
                 if source_inputs(row) != source_inputs(reference):
                     errors.append(
-                        dict(
-                            directory=str(row["directory"]),
-                            reason="Explicit config/spacecraft/study input hashes differ across arms",
-                        )
+                        {
+                            "directory": str(row["directory"]),
+                            "reason": "Explicit config/spacecraft/study input hashes differ across arms",
+                        }
                     )
                 if row["declaration"] != reference["declaration"]:
                     errors.append(
-                        dict(
-                            directory=str(row["directory"]),
-                            reason="Full case/profile/prior study declarations differ",
-                        )
+                        {
+                            "directory": str(row["directory"]),
+                            "reason": "Full case/profile/prior study declarations differ",
+                        }
                     )
             resolved = [row for row in loaded if row["study"] is not None]
             if resolved:
@@ -418,19 +421,21 @@ class MatchedNonlinearComparison:
                     for name in common:
                         if row["study"].get(name) != base.get(name):
                             errors.append(
-                                dict(
-                                    directory=str(row["directory"]),
-                                    reason="Resolved prospective " + name + " differs",
-                                )
+                                {
+                                    "directory": str(row["directory"]),
+                                    "reason": "Resolved prospective "
+                                    + name
+                                    + " differs",
+                                }
                             )
                     if case_normalized_options(row["study"]) != case_normalized_options(
                         base
                     ):
                         errors.append(
-                            dict(
-                                directory=str(row["directory"]),
-                                reason="Resolved options differ after removing only the validated case sensor seed",
-                            )
+                            {
+                                "directory": str(row["directory"]),
+                                "reason": "Resolved options differ after removing only the validated case sensor seed",
+                            }
                         )
                 for case in self.case_ids:
                     cohort = [row for row in resolved if row["key"][0] == case]
@@ -442,71 +447,71 @@ class MatchedNonlinearComparison:
                         ):
                             if row["study"].get(name) != cohort[0]["study"].get(name):
                                 errors.append(
-                                    dict(
-                                        directory=str(row["directory"]),
-                                        reason="Matched case " + name + " differs",
-                                    )
+                                    {
+                                        "directory": str(row["directory"]),
+                                        "reason": "Matched case " + name + " differs",
+                                    }
                                 )
         missing, extra = expected - set(records), set(records) - expected
         if missing:
             errors.append(
-                dict(
-                    reason="Required predeclared case/arm outcomes are missing",
-                    selections=sorted(missing),
-                )
+                {
+                    "reason": "Required predeclared case/arm outcomes are missing",
+                    "selections": sorted(missing),
+                }
             )
         if extra:
             errors.append(
-                dict(
-                    reason="Unexpected undeclared case/arm outcomes",
-                    selections=sorted(extra),
-                )
+                {
+                    "reason": "Unexpected undeclared case/arm outcomes",
+                    "selections": sorted(extra),
+                }
             )
         self.records = records
-        self.report = dict(
-            schema="orbexa.nonlinear-comparison-verification.v1",
-            matched=bool(reference is not None and not errors),
-            study_id=None
+        self.report = {
+            "schema": "orbexa.nonlinear-comparison-verification.v1",
+            "matched": bool(reference is not None and not errors),
+            "study_id": None
             if reference is None
             else reference["declaration"]["study_id"],
-            cases=list(self.case_ids),
-            required_arms=[dict(adaptation=a, bandwidth=b) for a, b in ARMS],
-            expected_outcomes=len(expected),
-            retained_outcomes=len(records),
-            errors=errors,
-            outcomes=[
-                dict(
-                    case=key[0],
-                    adaptation=key[1],
-                    bandwidth=key[2],
-                    status=row["metrics"]["status"],
-                    success=row["metrics"].get("success"),
-                    outcome_evidence=recorded_outcome_evidence(row["metrics"]),
-                    directory=str(row["directory"]),
-                    source_manifest_sha256=row["source_sha256"],
-                    study_manifest_sha256=row["study_sha256"],
-                    metrics_sha256=row["metrics_sha256"],
-                    resolved_manifest_available=row["study"] is not None,
-                    approach_binding_verified=row["approach_binding_verified"],
-                    recorded_physical_duration_s=row["metrics"].get(
+            "cases": list(self.case_ids),
+            "required_arms": [{"adaptation": a, "bandwidth": b} for a, b in ARMS],
+            "expected_outcomes": len(expected),
+            "retained_outcomes": len(records),
+            "errors": errors,
+            "outcomes": [
+                {
+                    "case": key[0],
+                    "adaptation": key[1],
+                    "bandwidth": key[2],
+                    "status": row["metrics"]["status"],
+                    "success": row["metrics"].get("success"),
+                    "outcome_evidence": recorded_outcome_evidence(row["metrics"]),
+                    "directory": str(row["directory"]),
+                    "source_manifest_sha256": row["source_sha256"],
+                    "study_manifest_sha256": row["study_sha256"],
+                    "metrics_sha256": row["metrics_sha256"],
+                    "resolved_manifest_available": row["study"] is not None,
+                    "approach_binding_verified": row["approach_binding_verified"],
+                    "recorded_physical_duration_s": row["metrics"].get(
                         "physical_elapsed_s"
                     ),
-                )
+                }
                 for key, row in sorted(records.items())
             ],
-            exposure_semantics="Each failed/capped metric has its own recorded prefix exposure; unequal-duration effort is not a method improvement; only completed full missions have a time-to-success",
-            case_seed_normalization=dict(
-                field="resolved_options.sensor.seed",
-                rule="Every seed equals its selected declared case.seed; complete resolved options match within each case; only this seed is removed for cross-case comparison",
-                declared_seeds={}
+            "exposure_semantics": "Each failed/capped metric has its own recorded prefix exposure; unequal-duration effort is not a method improvement; only completed full missions have a time-to-success",
+            "case_seed_normalization": {
+                "field": "resolved_options.sensor.seed",
+                "rule": "Every seed equals its selected declared case.seed; complete resolved options match within each case; only this seed is removed for cross-case comparison",
+                "declared_seeds": {}
                 if reference is None
                 else {
                     case["case_id"]: case["seed"]
                     for case in reference["declaration"]["cases"]
                 },
-            ),
-            scope="Complete predeclared case-by-four-arm source/input/declaration matching; all failures/caps retained; no superiority or full-mission claim",
-        )
+            },
+            "scope": "Complete predeclared case-by-four-arm source/input/declaration matching; all failures/caps retained; no superiority or full-mission claim",
+        }
         return self.report
 
     def _save(self, figure, filename, label):
@@ -536,11 +541,13 @@ class MatchedNonlinearComparison:
             self._metrics()
             self._widths()
             self._success_times()
-        manifest = dict(
-            verification_sha256=_sha(path),
-            artifacts=[dict(path=p.name, label=label) for p, label in self.artifacts],
-            scope="Descriptive matched comparisons; incomplete physical prefixes and unavailable values remain explicit; no case filtering or superiority threshold",
-        )
+        manifest = {
+            "verification_sha256": _sha(path),
+            "artifacts": [
+                {"path": p.name, "label": label} for p, label in self.artifacts
+            ],
+            "scope": "Descriptive matched comparisons; incomplete physical prefixes and unavailable values remain explicit; no case filtering or superiority threshold",
+        }
         (self.output_dir / "nonlinear-comparison-plots.json").write_text(
             json.dumps(manifest, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )

@@ -89,18 +89,18 @@ class FleetFallbackCertificate:
         # serializing thousands of exact swept records again for each suffix.
         # The original proofs remain available in as_dict for full evidence.
         return fingerprint(
-            dict(
-                start=self.start,
-                end=self.end,
-                controller_ids=self.controller_ids,
-                geometry_ids=tuple(proof.fingerprint for proof in self.geometry),
-                required_fuel=self.required_fuel,
-                terminal_holding_start=self.terminal_holding_start,
-                terminal_reference_ids=self.terminal_reference_ids,
-                reasons=self.reasons,
-                source_plan_id=self.source_plan_id,
-                method=self.method,
-            )
+            {
+                "start": self.start,
+                "end": self.end,
+                "controller_ids": self.controller_ids,
+                "geometry_ids": tuple(proof.fingerprint for proof in self.geometry),
+                "required_fuel": self.required_fuel,
+                "terminal_holding_start": self.terminal_holding_start,
+                "terminal_reference_ids": self.terminal_reference_ids,
+                "reasons": self.reasons,
+                "source_plan_id": self.source_plan_id,
+                "method": self.method,
+            }
         )
 
     def as_dict(self):

@@ -84,11 +84,11 @@ class FiniteBurnThrottlePlanner:
         rows, accepted = [], []
         for fraction in self.capacity_fractions:
             force = fraction * capacity
-            row = dict(
-                capacity_fraction=fraction,
-                commanded_force_n=force,
-                status="STATIC_ALLOCATION_REFUSED",
-            )
+            row = {
+                "capacity_fraction": fraction,
+                "commanded_force_n": force,
+                "status": "STATIC_ALLOCATION_REFUSED",
+            }
             rows.append(row)
             try:
                 allocation = propulsion.allocate(
@@ -256,23 +256,23 @@ class FiniteBurnThrottlePlanner:
             if predicted_goal:
                 accepted.append((total_flow * float(final[7]), elapsed, len(rows) - 1))
         index = min(accepted)[2] if accepted else None
-        return dict(
-            burn_window=burn_window.as_dict(),
-            installed_static_capacity_n=installed_capacity,
-            operational_force_reference_n=capacity,
-            fraction_reference="Each prospective throttle is a fraction of the operational requested wrench within the declared residual tolerance admitted at the planning state; installed LP capacity remains separate.",
-            status="FINITE_BURN_PREDICTED"
+        return {
+            "burn_window": burn_window.as_dict(),
+            "installed_static_capacity_n": installed_capacity,
+            "operational_force_reference_n": capacity,
+            "fraction_reference": "Each prospective throttle is a fraction of the operational requested wrench within the declared residual tolerance admitted at the planning state; installed LP capacity remains separate.",
+            "status": "FINITE_BURN_PREDICTED"
             if accepted
             else "NO_ADMITTED_FINITE_BURN_PREVIEW",
-            selected_candidate=index,
-            commanded_force_n=None
+            "selected_candidate": index,
+            "commanded_force_n": None
             if index is None
             else rows[index]["commanded_force_n"],
-            capacity_fraction=None
+            "capacity_fraction": None
             if index is None
             else rows[index]["capacity_fraction"],
-            candidates=rows,
-            prediction_start="Osculating apoapsis; this is a forecast, never an actual state reset",
-            predicted_initial_state=initial.tolist(),
-            scope="Numerical two-body retrograde-transverse preview with an optional sensed-osculating-apogee request window, changing total mass and static owner flows. Reserve is a planning margin, not a bound on omitted attitude, allocation or tank dynamics; actual mission gates decide success.",
-        )
+            "candidates": rows,
+            "prediction_start": "Osculating apoapsis; this is a forecast, never an actual state reset",
+            "predicted_initial_state": initial.tolist(),
+            "scope": "Numerical two-body retrograde-transverse preview with an optional sensed-osculating-apogee request window, changing total mass and static owner flows. Reserve is a planning margin, not a bound on omitted attitude, allocation or tank dynamics; actual mission gates decide success.",
+        }

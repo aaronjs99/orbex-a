@@ -429,15 +429,17 @@ class GekkoDynamicTube:
                 )
             with np.errstate(over="raise", invalid="raise"):
                 displacement = np.abs(supplied_state_guess - xguess)
-            state_seed_diagnostic = dict(
-                initialization="current_state_control_rollout",
-                policy="reference-corridor-current-state-rk4-control-rollout-v1",
-                supplied_state_hint=p.extra_params.get("state_initial_guess")
+            state_seed_diagnostic = {
+                "initialization": "current_state_control_rollout",
+                "policy": "reference-corridor-current-state-rk4-control-rollout-v1",
+                "supplied_state_hint": p.extra_params.get("state_initial_guess")
                 is not None,
-                maximum_supplied_state_displacement=displacement.max(axis=1).tolist(),
-                state_displacement_units=["m"] * 3 + ["m/rad"] * 3,
-                scope="Nominal held-input RK4 initialization only; all physical feasibility and admission checks remain separate",
-            )
+                "maximum_supplied_state_displacement": displacement.max(
+                    axis=1
+                ).tolist(),
+                "state_displacement_units": ["m"] * 3 + ["m/rad"] * 3,
+                "scope": "Nominal held-input RK4 initialization only; all physical feasibility and admission checks remain separate",
+            }
         else:
             xguess = supplied_state_guess
         xguess[:, 0] = p.initial_state
@@ -503,11 +505,11 @@ class GekkoDynamicTube:
                 phi_peak_guess[k] = np.maximum(phi_guess[k], phi_guess[k + 1])
                 omega_peak_guess[k] = np.maximum(omega_guess[k], omega_guess[k + 1])
                 self.seed_diagnostics.append(
-                    dict(
-                        stage=k,
-                        initialization="finite_uncoupled_initial_iterate",
-                        reason=str(error),
-                    )
+                    {
+                        "stage": k,
+                        "initialization": "finite_uncoupled_initial_iterate",
+                        "reason": str(error),
+                    }
                 )
         # These values are prescribed data, not optimization directions. In
         # particular, Omega0==0 together with its nonnegative variable bound
@@ -734,7 +736,7 @@ class GekkoDynamicTube:
                     if np.isfinite(upper):
                         self._ge(upper, u[i] + margin)
             self.reserve.append(reserve)
-            self.nominal_reset_forcings.append(dict(phi=reset_phi, omega=reset_omega))
+            self.nominal_reset_forcings.append({"phi": reset_phi, "omega": reset_omega})
         self.lambda_gain = lam
         self._constraints(contact_seeds=(xguess, phi_guess, omega_guess))
         for k in range(count):
@@ -1216,14 +1218,14 @@ class GekkoDynamicTube:
                 (dp / position_tolerance) ** 2 - 1.0,
                 (dv / velocity_tolerance) ** 2 - 1.0,
             )
-            row = dict(
-                index=k,
-                whole_position_bound_m=dp,
-                whole_velocity_bound_m_per_rad=dv,
-                planning_fraction=fraction,
-                position_tolerance_m=position_tolerance,
-                velocity_tolerance_m_per_rad=velocity_tolerance,
-            )
+            row = {
+                "index": k,
+                "whole_position_bound_m": dp,
+                "whole_velocity_bound_m_per_rad": dv,
+                "planning_fraction": fraction,
+                "position_tolerance_m": position_tolerance,
+                "velocity_tolerance_m_per_rad": velocity_tolerance,
+            }
             if region is not None:
                 node_region = region.scaled(fraction)
                 position, sliding = node_region.tube_margins(
@@ -1248,22 +1250,22 @@ class GekkoDynamicTube:
                 1.0 - self.terminal_solve_reserve if k > 0 else 1.0
             )
             nodes.append(row)
-        return dict(
-            start_index=int(self.terminal_start_index),
-            checked_nodes=nodes,
-            maximum_normalized_violation=violation,
-            planning_fraction=self.terminal_planning_fraction,
-            fixed_node_zero_policy="Unchanged outer admission; all future suffix nodes use the planning interior",
-            native_solve_reserve=dict(
-                value=self.terminal_solve_reserve,
-                future_only=True,
-                stricter_native_set=self.terminal_solve_reserve > 0.0,
-                original_readback_unchanged=True,
-                universal_serialization_guarantee=False,
-            ),
-            required_region=None if region is None else region.as_dict(),
-            scope="Numerical whole-tube suffix/entry screen; continuous flow and physical terminal certification are separate",
-        )
+        return {
+            "start_index": int(self.terminal_start_index),
+            "checked_nodes": nodes,
+            "maximum_normalized_violation": violation,
+            "planning_fraction": self.terminal_planning_fraction,
+            "fixed_node_zero_policy": "Unchanged outer admission; all future suffix nodes use the planning interior",
+            "native_solve_reserve": {
+                "value": self.terminal_solve_reserve,
+                "future_only": True,
+                "stricter_native_set": self.terminal_solve_reserve > 0.0,
+                "original_readback_unchanged": True,
+                "universal_serialization_guarantee": False,
+            },
+            "required_region": None if region is None else region.as_dict(),
+            "scope": "Numerical whole-tube suffix/entry screen; continuous flow and physical terminal certification are separate",
+        }
 
     def _contact_terminal_readback(self, states, tube):
         """Exact independent split-speed check, without native tolerance slack."""
@@ -1322,26 +1324,26 @@ class GekkoDynamicTube:
                 + tip
             )
             nodes.append(
-                dict(
-                    index=k,
-                    exact_q=record["nodes"][k]["exact_q"],
-                    goal_bound_id=record["nodes"][k]["goal_bound_id"],
-                    goal_speed_bound_id=bound.as_dict()["identity"],
-                    nominal_center=tuple(map(str, center)),
-                    phi=tuple(map(str, phi)),
-                    omega=tuple(map(str, omega)),
-                    nominal_position_norm_upper_m=str(pnorm),
-                    nominal_velocity_norm_upper_m_per_rad=str(vnorm),
-                    tube_position_norm_upper_m=str(onorm),
-                    tube_velocity_norm_upper_m_per_rad=str(tnorm),
-                    goal_speed_upper_m_s=str(bound.goal_speed_upper_m_s),
-                    tip_speed_upper_m_s=str(tip),
-                    speed_upper_m_s=str(speed),
-                    limit_m_s=str(maximum),
-                    exact_margin_m_s=str(maximum - speed),
-                    speed_admissible=speed <= maximum,
-                    admissible=speed <= maximum,
-                )
+                {
+                    "index": k,
+                    "exact_q": record["nodes"][k]["exact_q"],
+                    "goal_bound_id": record["nodes"][k]["goal_bound_id"],
+                    "goal_speed_bound_id": bound.as_dict()["identity"],
+                    "nominal_center": tuple(map(str, center)),
+                    "phi": tuple(map(str, phi)),
+                    "omega": tuple(map(str, omega)),
+                    "nominal_position_norm_upper_m": str(pnorm),
+                    "nominal_velocity_norm_upper_m_per_rad": str(vnorm),
+                    "tube_position_norm_upper_m": str(onorm),
+                    "tube_velocity_norm_upper_m_per_rad": str(tnorm),
+                    "goal_speed_upper_m_s": str(bound.goal_speed_upper_m_s),
+                    "tip_speed_upper_m_s": str(tip),
+                    "speed_upper_m_s": str(speed),
+                    "limit_m_s": str(maximum),
+                    "exact_margin_m_s": str(maximum - speed),
+                    "speed_admissible": speed <= maximum,
+                    "admissible": speed <= maximum,
+                }
             )
             if reach_policy is not None:
                 position = pnorm + onorm + bound.goal_position_error_norm_upper
@@ -1354,21 +1356,21 @@ class GekkoDynamicTube:
                 nodes[-1]["admissible"] = (
                     nodes[-1]["admissible"] and nodes[-1]["reach_admissible"]
                 )
-        return dict(
-            method="prospective-contact-split-speed-readback-v1",
-            constraint_id=record["identity"],
-            source=record["source"],
-            limits=limits,
-            lambda_gain_per_rad=tuple(map(str, lam)),
-            start_index=int(self.terminal_start_index),
-            checked_nodes=nodes,
-            admissible=bool(nodes) and all(node["admissible"] for node in nodes),
-            reach_policy=None if reach_policy is None else reach_policy.as_dict(),
-            numerical_residual_tolerance_applied=False,
-            native_norm_epigraphs_per_node=4,
-            scope="Pointwise sufficient speed and optional reach/gap screen under the current-navigation future forecast; "
+        return {
+            "method": "prospective-contact-split-speed-readback-v1",
+            "constraint_id": record["identity"],
+            "source": record["source"],
+            "limits": limits,
+            "lambda_gain_per_rad": tuple(map(str, lam)),
+            "start_index": int(self.terminal_start_index),
+            "checked_nodes": nodes,
+            "admissible": bool(nodes) and all(node["admissible"] for node in nodes),
+            "reach_policy": None if reach_policy is None else reach_policy.as_dict(),
+            "numerical_residual_tolerance_applied": False,
+            "native_norm_epigraphs_per_node": 4,
+            "scope": "Pointwise sufficient speed and optional reach/gap screen under the current-navigation future forecast; "
             "same-event contact, continuous safety, hardware and backup admission remain independent",
-        )
+        }
 
     def _solve_once(self):
         started = time.time()
@@ -1444,13 +1446,13 @@ class GekkoDynamicTube:
             )
             residual_details = sorted(
                 (
-                    dict(
-                        index=i,
-                        context=self.residual_descriptions[i],
-                        equality=equality,
-                        residual=value,
-                        violation=abs(value) if equality else max(0.0, -value),
-                    )
+                    {
+                        "index": i,
+                        "context": self.residual_descriptions[i],
+                        "equality": equality,
+                        "residual": value,
+                        "violation": abs(value) if equality else max(0.0, -value),
+                    }
                     for i, (value, equality) in enumerate(residuals)
                 ),
                 key=lambda x: x["violation"],
@@ -1537,10 +1539,10 @@ class GekkoDynamicTube:
                     "composite_geometry": geometry_info,
                     "residual_tolerance": tolerance,
                     "comparison_replay_tolerance": 1e-8,
-                    "initial_parameter_readback": dict(
-                        source="Retained fixed Param declarations; future optimization variables remain native readback",
-                        maximum_printed_export_difference=parameter_export_difference,
-                    ),
+                    "initial_parameter_readback": {
+                        "source": "Retained fixed Param declarations; future optimization variables remain native readback",
+                        "maximum_printed_export_difference": parameter_export_difference,
+                    },
                     "rtol": float(self.model.options.RTOL),
                     "otol": float(self.model.options.OTOL),
                     "native_solver_options": list(self.model.solver_options),
@@ -1559,17 +1561,19 @@ class GekkoDynamicTube:
                     ),
                     **(
                         {
-                            "applied_input_reserve_contract": dict(
-                                method="ancillary-plus-applied-actuator-support-v1",
-                                applied_actuator_input_error_abs=self.applied_actuator_input_error_abs.tolist(),
-                                ancillary_input_reserve=tube["input_reserve"].tolist(),
-                                total_applied_input_tightening=tube[
+                            "applied_input_reserve_contract": {
+                                "method": "ancillary-plus-applied-actuator-support-v1",
+                                "applied_actuator_input_error_abs": self.applied_actuator_input_error_abs.tolist(),
+                                "ancillary_input_reserve": tube[
+                                    "input_reserve"
+                                ].tolist(),
+                                "total_applied_input_tightening": tube[
                                     "applied_input_tightening"
                                 ].tolist(),
-                                units="same as input bounds",
-                                feedback_ratio_semantics="Ancillary feedback / input_reserve; actuator support is additional",
-                                legacy_profile_input_tightening_semantics="Maximum ancillary feedback reserve only",
-                            )
+                                "units": "same as input bounds",
+                                "feedback_ratio_semantics": "Ancillary feedback / input_reserve; actuator support is additional",
+                                "legacy_profile_input_tightening_semantics": "Maximum ancillary feedback reserve only",
+                            }
                         }
                         if np.any(self.applied_actuator_input_error_abs)
                         else {}
@@ -1607,22 +1611,22 @@ class GekkoDynamicTube:
 
         def record(result, initialization):
             attempts.append(
-                dict(
-                    initialization=initialization,
-                    success=bool(result.success),
-                    solve_time=float(result.solve_time),
-                    message=result.message,
-                    iterations=result.solver_info.get("iterations"),
-                    iteration_count_provenance=result.solver_info.get(
+                {
+                    "initialization": initialization,
+                    "success": bool(result.success),
+                    "solve_time": float(result.solve_time),
+                    "message": result.message,
+                    "iterations": result.solver_info.get("iterations"),
+                    "iteration_count_provenance": result.solver_info.get(
                         "iteration_count_provenance"
                     ),
-                    max_constraint_violation=result.solver_info.get(
+                    "max_constraint_violation": result.solver_info.get(
                         "max_constraint_violation"
                     ),
-                    largest_constraint_residuals=result.solver_info.get(
+                    "largest_constraint_residuals": result.solver_info.get(
                         "largest_constraint_residuals", []
                     ),
-                )
+                }
             )
 
         result = self._solve_once()
@@ -1650,13 +1654,13 @@ class GekkoDynamicTube:
                 result = retry
             except Exception as error:
                 attempts.append(
-                    dict(
-                        initialization="fresh_dynamics_rollout",
-                        success=False,
-                        solve_time=0.0,
-                        message="Alternate initialization failed: %s" % error,
-                        max_constraint_violation=None,
-                    )
+                    {
+                        "initialization": "fresh_dynamics_rollout",
+                        "success": False,
+                        "solve_time": 0.0,
+                        "message": "Alternate initialization failed: %s" % error,
+                        "max_constraint_violation": None,
+                    }
                 )
                 result.message += "; alternate initialization failed: %s" % error
         if (
@@ -1688,13 +1692,13 @@ class GekkoDynamicTube:
                 result = refined
             except Exception as error:
                 attempts.append(
-                    dict(
-                        initialization="strict_residual_refinement",
-                        success=False,
-                        solve_time=0.0,
-                        message=f"Residual refinement failed: {error}",
-                        max_constraint_violation=None,
-                    )
+                    {
+                        "initialization": "strict_residual_refinement",
+                        "success": False,
+                        "solve_time": 0.0,
+                        "message": f"Residual refinement failed: {error}",
+                        "max_constraint_violation": None,
+                    }
                 )
         result.solve_time = time.time() - started
         result.solver_info["attempts"] = attempts

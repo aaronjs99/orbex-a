@@ -82,7 +82,7 @@ class NonlinearMembershipContractor:
             if index >= self.max_boxes:
                 retained.append(model)
                 records.append(
-                    dict(candidate=model.fingerprint, status="UNRESOLVED_BUDGET")
+                    {"candidate": model.fingerprint, "status": "UNRESOLVED_BUDGET"}
                 )
                 continue
             rejected = False
@@ -95,12 +95,12 @@ class NonlinearMembershipContractor:
                     clock,
                     transition.physical_time_initial,
                 )
-                record = dict(
-                    candidate=model.fingerprint,
-                    observation_id=transition.observation_id,
-                    target_status=target.status.value,
-                    target_fingerprint=target.fingerprint,
-                )
+                record = {
+                    "candidate": model.fingerprint,
+                    "observation_id": transition.observation_id,
+                    "target_status": target.status.value,
+                    "target_fingerprint": target.fingerprint,
+                }
                 if not target.proven:
                     record.update(status="UNRESOLVED_RETAINED", reason=target.reason)
                     records.append(record)

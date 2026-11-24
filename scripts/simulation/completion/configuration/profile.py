@@ -82,12 +82,12 @@ class MissionCompletionProfile:
         return cls(**value)
 
     def as_dict(self):
-        return dict(
-            contact={
+        return {
+            "contact": {
                 key: value
                 for key, value in asdict(self.contact).items()
                 if key not in _CONTACT_HARDWARE
             },
-            detumbling=asdict(self.detumbling),
-            deorbit=asdict(self.deorbit),
-        )
+            "detumbling": asdict(self.detumbling),
+            "deorbit": asdict(self.deorbit),
+        }

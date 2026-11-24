@@ -24,13 +24,13 @@ class CommandActuationSupport:
     prior_fingerprint: str
 
     def as_dict(self):
-        return dict(
-            command=tuple(map(str, self.command)),
-            error_abs=tuple(map(str, self.error_abs)),
-            applied_input=self.applied_input.as_dict(),
-            prior_fingerprint=self.prior_fingerprint,
-            method="declared-gain-tilt-bias-command-support-v1",
-        )
+        return {
+            "command": tuple(map(str, self.command)),
+            "error_abs": tuple(map(str, self.error_abs)),
+            "applied_input": self.applied_input.as_dict(),
+            "prior_fingerprint": self.prior_fingerprint,
+            "method": "declared-gain-tilt-bias-command-support-v1",
+        }
 
     @cached_property
     def fingerprint(self):
@@ -163,29 +163,29 @@ class CommandDependentActuationPrior:
                     "Numerical actuator realization violates the declared command-dependent prior"
                 )
             rows.append(
-                dict(
-                    diagonal_proxy=str(diagonal[i]),
-                    residual_norm_upper=str(residual_norm),
-                    binary64_rounding_slope_upper=str(gamma * matrix_norm),
-                    slope_slack=str(allowed_slope - required_slope),
-                    constant_slack=str(
+                {
+                    "diagonal_proxy": str(diagonal[i]),
+                    "residual_norm_upper": str(residual_norm),
+                    "binary64_rounding_slope_upper": str(gamma * matrix_norm),
+                    "slope_slack": str(allowed_slope - required_slope),
+                    "constant_slack": str(
                         self.bias_abs + self.round_absolute - required_constant
                     ),
-                )
+                }
             )
-        record = dict(
-            status="EXACT_DECLARED_SUPPORT_CHECK_PASSED",
-            prior_fingerprint=self.fingerprint,
-            realization_fingerprint=realization.fingerprint,
-            rows=rows,
-            realization_matrix=tuple(
+        record = {
+            "status": "EXACT_DECLARED_SUPPORT_CHECK_PASSED",
+            "prior_fingerprint": self.fingerprint,
+            "realization_fingerprint": realization.fingerprint,
+            "rows": rows,
+            "realization_matrix": tuple(
                 tuple(map(str, row)) for row in realization.matrix
             ),
-            realization_bias=tuple(map(str, realization.bias)),
-            realization_declaration=realization.declaration,
-            method="exact-diagonal-residual-row-norm-plus-gamma16-binary64-v1",
-            scope="Independent realization containment check; controller bounds remain the declared prior",
-        )
+            "realization_bias": tuple(map(str, realization.bias)),
+            "realization_declaration": realization.declaration,
+            "method": "exact-diagonal-residual-row-norm-plus-gamma16-binary64-v1",
+            "scope": "Independent realization containment check; controller bounds remain the declared prior",
+        }
         record["identity"] = fingerprint(record)
         return record
 
@@ -214,11 +214,11 @@ class AffineActuatorRealization:
     @cached_property
     def fingerprint(self):
         return fingerprint(
-            dict(
-                matrix=tuple(tuple(map(str, row)) for row in self.matrix),
-                bias=tuple(map(str, self.bias)),
-                declaration=self.declaration,
-            )
+            {
+                "matrix": tuple(tuple(map(str, row)) for row in self.matrix),
+                "bias": tuple(map(str, self.bias)),
+                "declaration": self.declaration,
+            }
         )
 
     def apply(self, agent, command, q):

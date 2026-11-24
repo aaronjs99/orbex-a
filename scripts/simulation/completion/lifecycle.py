@@ -47,31 +47,37 @@ class MissionLifecycleResult:
             )
         if self.deorbit is not None:
             history.extend(copy.deepcopy(self.deorbit.history[1:]))
-        return dict(
-            success=self.success,
-            message=self.message,
-            approach=copy.deepcopy(self.approach),
-            configuration=copy.deepcopy(self.configuration),
-            terminal_handoff=copy.deepcopy(self.configuration.get("terminal_handoff")),
-            failure=copy.deepcopy(self.failure),
-            attachment=self.capture.to_dict(),
-            detumbling=None if self.detumbling is None else self.detumbling.to_dict(),
-            deorbit=None if self.deorbit is None else self.deorbit.to_dict(),
-            propulsion=None if self.propulsion is None else self.propulsion.to_dict(),
-            assembly_history=history,
-            units=dict(
-                time="s",
-                position="m ECI",
-                velocity="m/s ECI",
-                angular_velocity="rad/s body",
-                force="N body",
-                torque="N m body",
-                inertia="kg m^2 body",
-                mass="kg",
-                quaternion="xyzw body-to-ECI",
+        return {
+            "success": self.success,
+            "message": self.message,
+            "approach": copy.deepcopy(self.approach),
+            "configuration": copy.deepcopy(self.configuration),
+            "terminal_handoff": copy.deepcopy(
+                self.configuration.get("terminal_handoff")
             ),
-            scope="modeled physical capture and controlled orbital delivery to a descending entry interface; no flight qualification or atmospheric demise",
-        )
+            "failure": copy.deepcopy(self.failure),
+            "attachment": self.capture.to_dict(),
+            "detumbling": None
+            if self.detumbling is None
+            else self.detumbling.to_dict(),
+            "deorbit": None if self.deorbit is None else self.deorbit.to_dict(),
+            "propulsion": None
+            if self.propulsion is None
+            else self.propulsion.to_dict(),
+            "assembly_history": history,
+            "units": {
+                "time": "s",
+                "position": "m ECI",
+                "velocity": "m/s ECI",
+                "angular_velocity": "rad/s body",
+                "force": "N body",
+                "torque": "N m body",
+                "inertia": "kg m^2 body",
+                "mass": "kg",
+                "quaternion": "xyzw body-to-ECI",
+            },
+            "scope": "modeled physical capture and controlled orbital delivery to a descending entry interface; no flight qualification or atmospheric demise",
+        }
 
 
 class MissionLifecycle:
@@ -92,33 +98,33 @@ class MissionLifecycle:
 
     def configuration(self):
         def policy(value):
-            return dict(
-                implementation=f"{type(value).__module__}.{type(value).__qualname__}",
-                parameters=asdict(value)
+            return {
+                "implementation": f"{type(value).__module__}.{type(value).__qualname__}",
+                "parameters": asdict(value)
                 if is_dataclass(value)
                 else "injected policy; parameters supplied by caller",
-            )
+            }
 
-        configuration = dict(
-            capture=dict(
-                options=asdict(self.capture.options),
-                target_mass_kg=self.capture.target.mass_kg,
-                finite_contact_options=asdict(self.capture.contact_options),
-                target_inertia_kg_m2=self.capture.target.inertia_kg_m2.tolist(),
-                default_chaser=asdict(self.capture.default_chaser),
-                chasers={
+        configuration = {
+            "capture": {
+                "options": asdict(self.capture.options),
+                "target_mass_kg": self.capture.target.mass_kg,
+                "finite_contact_options": asdict(self.capture.contact_options),
+                "target_inertia_kg_m2": self.capture.target.inertia_kg_m2.tolist(),
+                "default_chaser": asdict(self.capture.default_chaser),
+                "chasers": {
                     key: asdict(value) for key, value in self.capture.chasers.items()
                 },
-            ),
-            detumbling=dict(
-                options=asdict(self.detumbling.options),
-                policy=policy(self.detumbling.policy),
-            ),
-            deorbit=dict(
-                options=asdict(self.deorbit.options),
-                pointing_policy=policy(self.deorbit.pointing_policy),
-            ),
-        )
+            },
+            "detumbling": {
+                "options": asdict(self.detumbling.options),
+                "policy": policy(self.detumbling.policy),
+            },
+            "deorbit": {
+                "options": asdict(self.deorbit.options),
+                "pointing_policy": policy(self.deorbit.pointing_policy),
+            },
+        }
         if self.deorbit.burn_axis_planner is not None:
             configuration["deorbit"]["burn_axis_planner"] = policy(
                 self.deorbit.burn_axis_planner
@@ -144,12 +150,12 @@ class MissionLifecycle:
         expected = (ValueError, RuntimeError, ArithmeticError, ImportError)
 
         def failure(stage, error):
-            return dict(
-                stage=stage,
-                exception_type=type(error).__name__,
-                message=str(error),
-                progress_scope="Completed preceding stages are retained; the throwing stage supplied no result or committed prefix",
-            )
+            return {
+                "stage": stage,
+                "exception_type": type(error).__name__,
+                "message": str(error),
+                "progress_scope": "Completed preceding stages are retained; the throwing stage supplied no result or committed prefix",
+            }
 
         try:
             if terminal_handoff is not None:
@@ -163,7 +169,7 @@ class MissionLifecycle:
                     )
                 terminal_handoff.verify_approach(approach)
                 configuration["terminal_handoff"] = terminal_handoff.as_dict()
-            arguments = dict(truth=capture_truth, chaser_attitudes=chaser_attitudes)
+            arguments = {"truth": capture_truth, "chaser_attitudes": chaser_attitudes}
             arguments["contact_feedback"] = contact_feedback
             arguments["contact_environment"] = contact_environment
             arguments["contact_initial_enclosure"] = contact_initial_enclosure
@@ -237,10 +243,10 @@ class MissionLifecycle:
                     detumbling,
                     propulsion=propulsion,
                     configuration=configuration,
-                    failure=dict(
-                        stage="detumbling",
-                        message="Actual allocated nozzle loads exceed a declared pad capacity",
-                    ),
+                    failure={
+                        "stage": "detumbling",
+                        "message": "Actual allocated nozzle loads exceed a declared pad capacity",
+                    },
                 )
         except expected as error:
             return MissionLifecycleResult(
@@ -283,10 +289,10 @@ class MissionLifecycle:
                     deorbit,
                     propulsion,
                     configuration,
-                    failure=dict(
-                        stage="deorbit",
-                        message="Actual allocated nozzle loads exceed a declared pad capacity",
-                    ),
+                    failure={
+                        "stage": "deorbit",
+                        "message": "Actual allocated nozzle loads exceed a declared pad capacity",
+                    },
                 )
         except expected as error:
             return MissionLifecycleResult(
@@ -318,7 +324,9 @@ class MissionLifecycleStore:
     def save(result: MissionLifecycleResult, output_dir: Path) -> Path:
         path = Path(output_dir) / MissionLifecycleStore.filename
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not save_data(path, dict(schema=LIFECYCLE_SCHEMA, result=result.to_dict())):
+        if not save_data(
+            path, {"schema": LIFECYCLE_SCHEMA, "result": result.to_dict()}
+        ):
             raise OSError(f"Could not save mission lifecycle to {path}")
         return path
 

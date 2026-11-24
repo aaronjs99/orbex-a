@@ -41,20 +41,20 @@ class TrainingRun:
                 raise ValueError(
                     "Parent checkpoint identity differs from its saved manifest"
                 )
-            parent = dict(
-                path=str(path),
-                sha256=digest,
-                manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
-            )
+            parent = {
+                "path": str(path),
+                "sha256": digest,
+                "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
+            }
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=False)
         self.parent_checkpoint = parent
-        record = dict(
-            schema="orbexa.proposal-training-run.v1",
-            utc=datetime.now(timezone.utc).isoformat(),
-            metadata={} if metadata is None else metadata,
-            parent_checkpoint=self.parent_checkpoint,
-        )
+        record = {
+            "schema": "orbexa.proposal-training-run.v1",
+            "utc": datetime.now(timezone.utc).isoformat(),
+            "metadata": {} if metadata is None else metadata,
+            "parent_checkpoint": self.parent_checkpoint,
+        }
         (self.directory / "run.json").write_text(
             json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )
@@ -169,14 +169,14 @@ def train_policy(policy, environment, run, *, episodes, max_steps):
                     "Intervention diagnostic must be finite and nonnegative"
                 )
             run.step(
-                dict(
-                    episode=episode,
-                    step=step,
-                    reward=float(reward),
-                    intervention_norm=intervention,
-                    terminated=terminated,
-                    truncated=truncated,
-                )
+                {
+                    "episode": episode,
+                    "step": step,
+                    "reward": float(reward),
+                    "intervention_norm": intervention,
+                    "terminated": terminated,
+                    "truncated": truncated,
+                }
             )
             total += reward
             observation = next_observation
@@ -184,16 +184,16 @@ def train_policy(policy, environment, run, *, episodes, max_steps):
                 break
         metrics = policy.update(records)
         policy.episodes_completed += 1
-        summary = dict(
-            episode=episode,
-            reward=float(total),
-            steps=step + 1,
-            terminated=terminated,
-            truncated=truncated,
-            learning_rate=metrics["learning_rate"],
-            entropy=metrics["entropy"],
-            value_loss=metrics["value_loss"],
-        )
+        summary = {
+            "episode": episode,
+            "reward": float(total),
+            "steps": step + 1,
+            "terminated": terminated,
+            "truncated": truncated,
+            "learning_rate": metrics["learning_rate"],
+            "entropy": metrics["entropy"],
+            "value_loss": metrics["value_loss"],
+        }
         run.episode(summary)
         summaries.append(summary)
         policy.save_checkpoint(

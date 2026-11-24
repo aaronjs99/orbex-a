@@ -296,47 +296,47 @@ class CompositePatchDeployment:
         )
 
     def scenario_metadata(self):
-        metadata = dict(
-            deployment=dict(
-                kind="compact_component_aware_patch_routes",
-                options=asdict(self.options),
-                geometry_id=self.target.geometry.geometry_id,
-                geometry_fingerprint=self.target.geometry.fingerprint,
-                count=self.count,
-                initial_anomaly=0.0,
-                release_center_body_m=self.release_center.tolist(),
-                common_direction_position=(
+        metadata = {
+            "deployment": {
+                "kind": "compact_component_aware_patch_routes",
+                "options": asdict(self.options),
+                "geometry_id": self.target.geometry.geometry_id,
+                "geometry_fingerprint": self.target.geometry.fingerprint,
+                "count": self.count,
+                "initial_anomaly": 0.0,
+                "release_center_body_m": self.release_center.tolist(),
+                "common_direction_position": (
                     self.rotation_kinematics(0.0)[0] @ self.release_center
                 ).tolist(),
-                initial_pitch_m=float(self.release_pitch),
-                staging_anomaly=self.staging_anomaly,
-                assignment_strategy="component_visibility_route_length_matching_then_sequential_fleet_screening",
-                route_order=[
+                "initial_pitch_m": float(self.release_pitch),
+                "staging_anomaly": self.staging_anomaly,
+                "assignment_strategy": "component_visibility_route_length_matching_then_sequential_fleet_screening",
+                "route_order": [
                     route.chaser_index
                     for route in sorted(
                         self.routes, key=lambda value: value.release_order
                     )
                 ],
-                routes=[
-                    dict(
-                        chaser_index=route.chaser_index,
-                        patch_id=route.patch_id,
-                        component_id=route.component_id,
-                        final_com_point_body_m=route.final_com_point_body_m.tolist(),
-                        staging_point_body_m=route.staging_point_body_m.tolist(),
-                        waypoints_body_m=route.waypoints_body_m.tolist(),
-                        length_m=route.length_m,
-                        schedule_anomaly=[
+                "routes": [
+                    {
+                        "chaser_index": route.chaser_index,
+                        "patch_id": route.patch_id,
+                        "component_id": route.component_id,
+                        "final_com_point_body_m": route.final_com_point_body_m.tolist(),
+                        "staging_point_body_m": route.staging_point_body_m.tolist(),
+                        "waypoints_body_m": route.waypoints_body_m.tolist(),
+                        "length_m": route.length_m,
+                        "schedule_anomaly": [
                             [row[0], row[1]]
                             for row in self.schedule[route.chaser_index]
                         ],
-                    )
+                    }
                     for route in self.routes
                 ],
-                reference_geometry_only=True,
-                scope="Numerically screened finite-bus reference routes around all declared components; no carrier/ejection model, actuator feasibility or swept-flow proof is implied",
-            )
-        )
+                "reference_geometry_only": True,
+                "scope": "Numerically screened finite-bus reference routes around all declared components; no carrier/ejection model, actuator feasibility or swept-flow proof is implied",
+            }
+        }
         if self.carrier_transfer is not None:
             metadata["deployment"].update(
                 kind="carrier_cluster_to_component_aware_patch_routes",
@@ -347,14 +347,14 @@ class CompositePatchDeployment:
                 ],
                 close_route_start_body_m=self.initial_body_positions.tolist(),
                 common_direction_position=list(self.carrier_transfer.center_lvlh_m),
-                carrier_context=dict(
-                    role="illustrative_release_vehicle",
-                    position_lvlh_m=(
+                carrier_context={
+                    "role": "illustrative_release_vehicle",
+                    "position_lvlh_m": (
                         np.asarray(self.carrier_transfer.center_lvlh_m)
                         + np.array([0.0, 0.0, 8.0])
                     ).tolist(),
-                    scope="Initial cleared dispenser context; carrier propulsion, launch and ejection dynamics are not simulated",
-                ),
+                    "scope": "Initial cleared dispenser context; carrier propulsion, launch and ejection dynamics are not simulated",
+                },
                 scope="Declared finite post-release cluster with a fixed LVLH centre and small rotating dispenser offsets; parallel far transfer followed by screened close routes. Actual nonlinear control and all-component swept admission remain mandatory. No carrier ascent or ejection dynamics are claimed.",
             )
         return metadata

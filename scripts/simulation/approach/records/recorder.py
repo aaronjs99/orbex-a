@@ -62,25 +62,25 @@ class MissionRecorder:
             self.profiles,
         ) = ({key: [] for key in self.ids} for _ in range(6))
         self.diagnostics = {
-            key: dict(
-                nominal_center=[],
-                phi=[],
-                omega=[],
-                bandwidth=[],
-                position_error=[],
-                sliding_error=[],
-                containment_margin=[],
-                terminal_position_bound=[],
-                terminal_velocity_bound=[],
-                max_dense_input_reserve_ratio=[],
-                nominal_control=[],
-                ancillary_control_rms=[],
-                applied_control_rms=[],
-                applied_control_effort=[],
-                dense_containment_margin=[],
-                dense_physical_clearance=[],
-                nominal_center_defect=[],
-            )
+            key: {
+                "nominal_center": [],
+                "phi": [],
+                "omega": [],
+                "bandwidth": [],
+                "position_error": [],
+                "sliding_error": [],
+                "containment_margin": [],
+                "terminal_position_bound": [],
+                "terminal_velocity_bound": [],
+                "max_dense_input_reserve_ratio": [],
+                "nominal_control": [],
+                "ancillary_control_rms": [],
+                "applied_control_rms": [],
+                "applied_control_effort": [],
+                "dense_containment_margin": [],
+                "dense_physical_clearance": [],
+                "nominal_center_defect": [],
+            }
             for key in self.ids
         }
         for key in self.ids:
@@ -158,12 +158,12 @@ class MissionRecorder:
                 source["nominal_trajectories"][key][:count]
             )
             recorder.profiles[key] = copy.deepcopy(source["tube_profiles"][key][:count])
-            archived[key] = dict(
-                nominal_trajectories=copy.deepcopy(
+            archived[key] = {
+                "nominal_trajectories": copy.deepcopy(
                     source["nominal_trajectories"][key][count:]
                 ),
-                tube_profiles=copy.deepcopy(source["tube_profiles"][key][count:]),
-            )
+                "tube_profiles": copy.deepcopy(source["tube_profiles"][key][count:]),
+            }
             if not preserve_source_stats:
                 for index, attempt in enumerate(recorder.stats[key]):
                     attempt.setdefault(
@@ -243,14 +243,14 @@ class MissionRecorder:
     def record_tube_sample(self, data, state, center, phi, omega, bandwidth) -> None:
         error = state - center
         sliding = error[3:] + np.asarray(self.config.tube.sliding_gains) * error[:3]
-        for key, value in dict(
-            nominal_center=center,
-            phi=phi,
-            omega=omega,
-            bandwidth=bandwidth,
-            position_error=error[:3],
-            sliding_error=sliding,
-        ).items():
+        for key, value in {
+            "nominal_center": center,
+            "phi": phi,
+            "omega": omega,
+            "bandwidth": bandwidth,
+            "position_error": error[:3],
+            "sliding_error": sliding,
+        }.items():
             data[key].append(np.asarray(value).tolist())
         data["containment_margin"].append(
             float(min(np.min(omega - np.abs(error[:3])), np.min(phi - np.abs(sliding))))
@@ -259,17 +259,17 @@ class MissionRecorder:
     def record_planning(self, planning: PlanningStep, anomaly: float) -> None:
         for key, result in planning.attempts.items():
             self.stats[key].append(
-                dict(
-                    anomaly=float(anomaly),
-                    success=bool(result.success),
-                    solve_time=float(result.solve_time),
-                    message=result.message,
-                    solver_info={
+                {
+                    "anomaly": float(anomaly),
+                    "success": bool(result.success),
+                    "solve_time": float(result.solve_time),
+                    "message": result.message,
+                    "solver_info": {
                         name: value
                         for name, value in result.solver_info.items()
                         if name != "dynamic_tube"
                     },
-                )
+                }
             )
             if not result.success and "dynamic_tube" in result.solver_info:
                 self.stats[key][-1]["failed_dynamic_tube"] = {
@@ -423,44 +423,46 @@ class MissionRecorder:
                 else np.asarray(kinematics["physical_time"], dtype=float).tolist()
             )
             cfg = self.config
-            record = dict(
-                anom_history=self.q_history,
-                actual_trajectories=self.actual,
-                sample_phase_history=self.sample_phases,
-                target=self.scenario.target.as_dict(),
-                target_attitude_history=self.attitudes,
-                target_angular_velocity_history=self.rates,
-                docking_points={
+            record = {
+                "anom_history": self.q_history,
+                "actual_trajectories": self.actual,
+                "sample_phase_history": self.sample_phases,
+                "target": self.scenario.target.as_dict(),
+                "target_attitude_history": self.attitudes,
+                "target_angular_velocity_history": self.rates,
+                "docking_points": {
                     c.chaser_id: c.docking_point_body.tolist() for c in self.chasers
                 },
-                tube_diagnostics=self.diagnostics,
-                success=False,
-                message="approach_in_progress",
-                metadata=dict(
-                    model_version=PHYSICAL_MODEL_ID,
-                    controller=COUPLED_CONTROLLER_ID,
-                    scenario=self.scenario.scenario_metadata(),
-                    target_kinematics=kinematics,
-                    elapsed_time_seconds=elapsed,
-                    mission_complete=False,
-                    lambda_gain=np.asarray(cfg.tube.sliding_gains).tolist(),
-                    docking_position_tolerance=cfg.mpc.docking_position_tolerance,
-                    min_chaser_separation=self.scenario.safety.min_chaser_separation,
-                    chaser_assignments=[c.assignment_metadata() for c in self.chasers],
-                ),
-            )
+                "tube_diagnostics": self.diagnostics,
+                "success": False,
+                "message": "approach_in_progress",
+                "metadata": {
+                    "model_version": PHYSICAL_MODEL_ID,
+                    "controller": COUPLED_CONTROLLER_ID,
+                    "scenario": self.scenario.scenario_metadata(),
+                    "target_kinematics": kinematics,
+                    "elapsed_time_seconds": elapsed,
+                    "mission_complete": False,
+                    "lambda_gain": np.asarray(cfg.tube.sliding_gains).tolist(),
+                    "docking_position_tolerance": cfg.mpc.docking_position_tolerance,
+                    "min_chaser_separation": self.scenario.safety.min_chaser_separation,
+                    "chaser_assignments": [
+                        c.assignment_metadata() for c in self.chasers
+                    ],
+                },
+            }
             projection = StudioDataset(record).to_dict()
             projection["outcome"]["label"] = "Computing approach"
         else:
             projection = StudioDataset(result).to_dict()
         sink(
             copy.deepcopy(
-                dict(
-                    kind=kind,
-                    update=len(self.q_history) - 1,
-                    anomaly=float(self.q_history[-1]),
-                    projection=projection,
-                )
+                {
+                    "kind": kind,
+                    "update": len(self.q_history) - 1,
+                    "anomaly": float(self.q_history[-1]),
+                    "projection": projection,
+                }
             )
         )
 
@@ -505,12 +507,12 @@ class MissionRecorder:
                 }
                 admissible &= all(entry.values())
                 self.arrival_runtime.events.append(
-                    dict(
-                        status="REQUIRED_ENDPOINT_REGION_SCREEN",
-                        exact_anomaly=str(exact_q),
-                        contained=entry,
-                        scope="Carried endpoint membership only; physical terminal certificate and fleet admission remain separate",
-                    )
+                    {
+                        "status": "REQUIRED_ENDPOINT_REGION_SCREEN",
+                        "exact_anomaly": str(exact_q),
+                        "contained": entry,
+                        "scope": "Carried endpoint membership only; physical terminal certificate and fleet admission remain separate",
+                    }
                 )
         return bool(admissible)
 
@@ -644,7 +646,7 @@ class MissionRecorder:
                 feedback_substeps=cfg.tube.feedback_substeps,
                 anom_step=cfg.anom_step,
                 input_bounds=[
-                    dict(lower=float(bound["lower"]), upper=float(bound["upper"]))
+                    {"lower": float(bound["lower"]), "upper": float(bound["upper"])}
                     for bound in cfg.mpc.input_bounds
                 ],
                 dense_anom_step=cfg.anom_step / cfg.tube.feedback_substeps,
@@ -677,14 +679,14 @@ class MissionRecorder:
                 nominal_center_defect_semantics="Dense RK4 center minus outer shooting center, components [m,m,m,m/rad,m/rad,m/rad]; reported without an enclosure transfer",
                 elapsed_time_seconds=self.elapsed,
                 membership_records=adaptation.membership_records,
-                units=dict(
-                    position="m",
-                    velocity="m/rad anomaly",
-                    input="m/rad^2 anomaly",
-                    physical_acceleration="qdot^2 times input",
-                    target_rates="Euler rad/rad anomaly",
-                    target_clearance="m; maximum of radial and axial length margins",
-                ),
+                units={
+                    "position": "m",
+                    "velocity": "m/rad anomaly",
+                    "input": "m/rad^2 anomaly",
+                    "physical_acceleration": "qdot^2 times input",
+                    "target_rates": "Euler rad/rad anomaly",
+                    "target_clearance": "m; maximum of radial and axial length margins",
+                },
                 target_attitude_model=target_metadata.get(
                     "attitude_model", "prescribed Euler angles in true anomaly"
                 ),

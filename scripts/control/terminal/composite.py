@@ -51,12 +51,12 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
             raise ValueError(
                 "Composite reference has no strictly positive proved distance to the complete occupied union"
             )
-        return distance, dict(
-            target_geometry=service.context,
-            target_geometry_fingerprint=service.fingerprint,
-            target_geometry_distance=certificate.as_dict(),
-            cylinder_geometry_used=False,
-        )
+        return distance, {
+            "target_geometry": service.context,
+            "target_geometry_fingerprint": service.fingerprint,
+            "target_geometry_distance": certificate.as_dict(),
+            "cylinder_geometry_used": False,
+        }
 
     def _geometry_proof_reference(self):
         return COMPOSITE_TERMINAL_METHOD
@@ -89,17 +89,17 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
             None,
             "energy_comparison",
         )
-        branch = dict(status="UNRESOLVED")
+        branch = {"status": "UNRESOLVED"}
         try:
             first_exit, first_discriminant, first_margin, _ = super()._spin_bound(
                 ar, entry_norm, duration, quadratic, constant, jmin
             )
-            branch = dict(
-                status="PROVEN",
-                spin_norm_upper=first_exit,
-                discriminant=first_discriminant,
-                self_inclusion_margin=first_margin,
-            )
+            branch = {
+                "status": "PROVEN",
+                "spin_norm_upper": first_exit,
+                "discriminant": first_discriminant,
+                "self_inclusion_margin": first_margin,
+            }
             if first_exit < spin:
                 spin, discriminant, margin, selected = (
                     first_exit,
@@ -113,18 +113,18 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
             spin,
             discriminant,
             margin,
-            dict(
-                spin_bound_method="minimum_of_energy_and_validated_scalar_first_exit",
-                entry_twice_energy_upper=quadratic_upper,
-                entry_energy_speed_upper=energy_speed,
-                energy_speed_rate_upper=constant,
-                energy_comparison_duration_upper=duration,
-                energy_spin_norm_upper=energy_spin,
-                selected_spin_bound=selected,
-                scalar_first_exit_comparison=branch,
-                zero_energy_scope="Positive regularization and its zero-limit; no division by zero energy",
-                first_exit_branch_required=selected == "scalar_first_exit",
-            ),
+            {
+                "spin_bound_method": "minimum_of_energy_and_validated_scalar_first_exit",
+                "entry_twice_energy_upper": quadratic_upper,
+                "entry_energy_speed_upper": energy_speed,
+                "energy_speed_rate_upper": constant,
+                "energy_comparison_duration_upper": duration,
+                "energy_spin_norm_upper": energy_spin,
+                "selected_spin_bound": selected,
+                "scalar_first_exit_comparison": branch,
+                "zero_energy_scope": "Positive regularization and its zero-limit; no division by zero energy",
+                "first_exit_branch_required": selected == "scalar_first_exit",
+            },
         )
 
     def build(self):

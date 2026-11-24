@@ -156,21 +156,21 @@ class SensorPacket:
         return fingerprint(self.as_dict())
 
     def as_dict(self):
-        return dict(
-            sequence=self.sequence,
-            agent_id=self.agent_id,
-            sensor_id=self.sensor_id,
-            acquired_q=tuple(map(str, self.acquired_q)),
-            acquisition_time_s=self.acquisition_time_s.as_dict(),
-            delivery_time_s=self.delivery_time_s.as_dict(),
-            measurement_kind=self.measurement_kind,
-            value=tuple(map(str, self.value)),
-            deterministic_error_box=self.deterministic_error_box.as_dict(),
-            frame_id=self.frame_id,
-            sensor_model_fingerprint=self.sensor_model_fingerprint,
-            quality_status=self.quality_status,
-            orientation_operator_error=str(self.orientation_operator_error),
-        )
+        return {
+            "sequence": self.sequence,
+            "agent_id": self.agent_id,
+            "sensor_id": self.sensor_id,
+            "acquired_q": tuple(map(str, self.acquired_q)),
+            "acquisition_time_s": self.acquisition_time_s.as_dict(),
+            "delivery_time_s": self.delivery_time_s.as_dict(),
+            "measurement_kind": self.measurement_kind,
+            "value": tuple(map(str, self.value)),
+            "deterministic_error_box": self.deterministic_error_box.as_dict(),
+            "frame_id": self.frame_id,
+            "sensor_model_fingerprint": self.sensor_model_fingerprint,
+            "quality_status": self.quality_status,
+            "orientation_operator_error": str(self.orientation_operator_error),
+        }
 
 
 @dataclass(frozen=True)

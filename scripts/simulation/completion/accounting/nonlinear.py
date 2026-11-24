@@ -124,35 +124,37 @@ class NonlinearTranslationAccountant:
                 peak[key] = max(peak[key], force)
         denominator = exact(STANDARD_GRAVITY) * exact(options.specific_impulse_s)
         fuel = {key: value / denominator for key, value in impulse.items()}
-        binding = dict(
-            source_approach_sha256=self.source_hash,
-            full_journal_sha256=self.journal_hash,
-            full_journal_archive=self.records.as_dict()
+        binding = {
+            "source_approach_sha256": self.source_hash,
+            "full_journal_sha256": self.journal_hash,
+            "full_journal_archive": self.records.as_dict()
             if isinstance(self.records, NonlinearHoldArchive)
             else None,
-            exact_start_anomaly=str(start),
-            exact_end_anomaly=str(end),
-            holds=len(self.records),
-            actuator_realization_id=self.actuator_id,
-            sensor_profile_id=self.sensor_id,
-            clock_fingerprint=self.clock.fingerprint,
-            physical_truth_fingerprint=self.model.fingerprint,
-            decision_identities_verified=True,
-            complete_committed_clock_verified=True,
-            exact_impulse_upper_n_s={key: str(value) for key, value in impulse.items()},
-            exact_fuel_upper_kg={key: str(value) for key, value in fuel.items()},
-            formula="F1 <= m_initial_wet*nu_hold_upper^2*sqrt(3*sum(max(abs(u_lo),abs(u_hi))^2)); sum(F1*dt_hold_upper)/(g0*Isp)",
-            proof_scope="Authenticated retained admission bookkeeping; independent interval witnesses are retained by the producer, not re-executed here",
-        )
+            "exact_start_anomaly": str(start),
+            "exact_end_anomaly": str(end),
+            "holds": len(self.records),
+            "actuator_realization_id": self.actuator_id,
+            "sensor_profile_id": self.sensor_id,
+            "clock_fingerprint": self.clock.fingerprint,
+            "physical_truth_fingerprint": self.model.fingerprint,
+            "decision_identities_verified": True,
+            "complete_committed_clock_verified": True,
+            "exact_impulse_upper_n_s": {
+                key: str(value) for key, value in impulse.items()
+            },
+            "exact_fuel_upper_kg": {key: str(value) for key, value in fuel.items()},
+            "formula": "F1 <= m_initial_wet*nu_hold_upper^2*sqrt(3*sum(max(abs(u_lo),abs(u_hi))^2)); sum(F1*dt_hold_upper)/(g0*Isp)",
+            "proof_scope": "Authenticated retained admission bookkeeping; independent interval witnesses are retained by the producer, not re-executed here",
+        }
         elapsed = self.clock.elapsed_bounds(start, end)
         return NonlinearPropellantBudget(
-            dict(
-                method="original-commanded-reference-clock-v1",
-                physical_duration_s=elapsed.as_dict(),
-                exact_start_anomaly=str(start),
-                exact_end_anomaly=str(end),
-                clock_fingerprint=self.clock.fingerprint,
-            ),
+            {
+                "method": "original-commanded-reference-clock-v1",
+                "physical_duration_s": elapsed.as_dict(),
+                "exact_start_anomaly": str(start),
+                "exact_end_anomaly": str(end),
+                "clock_fingerprint": self.clock.fingerprint,
+            },
             {key: _outward_float(value) for key, value in peak.items()},
             {key: _outward_float(value) for key, value in fuel.items()},
             float(options.input_component_bound),

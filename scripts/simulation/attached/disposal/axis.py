@@ -21,16 +21,16 @@ class AxialBurnPlan:
     candidates: tuple[dict, ...]
 
     def to_dict(self):
-        return dict(
-            direction_body=list(self.direction_body),
-            capacity_n=self.capacity_n,
-            commanded_force_n=self.commanded_force_n,
-            minimum_planned_fuel_flow_kg_s=self.minimum_planned_fuel_flow_kg_s,
-            capacity_commands_n=list(self.capacity_commands_n),
-            minimum_flow_commands_n=list(self.minimum_flow_commands_n),
-            candidates=list(self.candidates),
-            scope="Installed static LP capacity retained separately from the operational requested wrench within the declared residual tolerance admitted by the allocator at the declared planning state. Finite force candidates and their full held proofs are recorded; later actual allocation, fuel and orbital events remain authoritative.",
-        )
+        return {
+            "direction_body": list(self.direction_body),
+            "capacity_n": self.capacity_n,
+            "commanded_force_n": self.commanded_force_n,
+            "minimum_planned_fuel_flow_kg_s": self.minimum_planned_fuel_flow_kg_s,
+            "capacity_commands_n": list(self.capacity_commands_n),
+            "minimum_flow_commands_n": list(self.minimum_flow_commands_n),
+            "candidates": list(self.candidates),
+            "scope": "Installed static LP capacity retained separately from the operational requested wrench within the declared residual tolerance admitted by the allocator at the declared planning state. Finite force candidates and their full held proofs are recorded; later actual allocation, fuel and orbital events remain authoritative.",
+        }
 
 
 @dataclass(frozen=True)
@@ -123,11 +123,11 @@ class AxialBurnPlanner:
                 bounds=[*bounds, (0.0, None)],
                 method="highs",
             )
-            row = dict(
-                direction_body=direction.tolist(),
-                capacity_status=int(capacity.status),
-                accepted=False,
-            )
+            row = {
+                "direction_body": direction.tolist(),
+                "capacity_status": int(capacity.status),
+                "accepted": False,
+            }
             candidates.append(row)
             if not capacity.success or not np.all(np.isfinite(capacity.x)):
                 continue
@@ -157,12 +157,12 @@ class AxialBurnPlanner:
                     assembly, state, proposed * direction, np.zeros(3), duration
                 )
                 attempts.append(
-                    dict(
-                        scale=force_scale,
-                        requested_force_n=proposed,
-                        allocation=candidate.to_dict(),
-                        physical_motion_committed=False,
-                    )
+                    {
+                        "scale": force_scale,
+                        "requested_force_n": proposed,
+                        "allocation": candidate.to_dict(),
+                        "physical_motion_committed": False,
+                    }
                 )
                 actual = matrix @ candidate.commands_n
                 residuals = (

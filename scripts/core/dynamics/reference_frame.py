@@ -188,12 +188,12 @@ class ReferenceClockFrame:
         with _ARB_LOCK, flint.ctx.workprec(precision_bits):
             ar = _Arithmetic(flint)
             rotation, rate, kappa = self.evaluate(ar.interval(interval), ar)
-            return dict(
-                rotation=ar.box(tuple(v for row in rotation for v in row)),
-                rate_s_inv=ar.box((rate,)),
-                kappa=ar.box((kappa,)),
-                clock_fingerprint=self.fingerprint,
-            )
+            return {
+                "rotation": ar.box(tuple(v for row in rotation for v in row)),
+                "rate_s_inv": ar.box((rate,)),
+                "kappa": ar.box((kappa,)),
+                "clock_fingerprint": self.fingerprint,
+            }
 
     def elapsed_bounds(
         self,

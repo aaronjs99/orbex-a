@@ -30,7 +30,12 @@ class ControlFoundationsFigures:
 
         output = Path(directory)
         output.mkdir(parents=True, exist_ok=True)
-        colors = dict(ink="#142b45", teal="#078b87", red="#c44852", gold="#bc7b16")
+        colors = {
+            "ink": "#142b45",
+            "teal": "#078b87",
+            "red": "#c44852",
+            "gold": "#bc7b16",
+        }
         files = []
         with plt.rc_context(
             {
@@ -91,7 +96,7 @@ class ControlFoundationsFigures:
                 "",
                 xy=qp.command,
                 xytext=(0.9, 0.7),
-                arrowprops=dict(arrowstyle="->", color=colors["ink"]),
+                arrowprops={"arrowstyle": "->", "color": colors["ink"]},
             )
             axes[1].set(
                 xlabel=r"$u_x$ [m/s²]",
@@ -240,19 +245,21 @@ class ControlFoundationsFigures:
             plt.close(figure)
             files.append("tube.png")
 
-        record = dict(
-            schema="orbexa.control-foundations-figures.v1",
-            scope="Teaching examples and component calculations; no mission qualification",
-            consensus=dict(
-                iterations=consensus.iterations, optimum=consensus.consensus.tolist()
-            ),
-            files=[
-                dict(
-                    path=f, sha256=hashlib.sha256((output / f).read_bytes()).hexdigest()
-                )
+        record = {
+            "schema": "orbexa.control-foundations-figures.v1",
+            "scope": "Teaching examples and component calculations; no mission qualification",
+            "consensus": {
+                "iterations": consensus.iterations,
+                "optimum": consensus.consensus.tolist(),
+            },
+            "files": [
+                {
+                    "path": f,
+                    "sha256": hashlib.sha256((output / f).read_bytes()).hexdigest(),
+                }
                 for f in files
             ],
-        )
+        }
         (output / "figures.json").write_text(
             json.dumps(record, indent=2) + "\n", encoding="utf-8"
         )

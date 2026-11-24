@@ -122,27 +122,27 @@ class ChaserAttitudeActuators:
         flow = float(
             np.sum(np.abs(commands)) / (STANDARD_GRAVITY * self.specific_impulse_s)
         )
-        return dict(
-            requested_torque_body_nm=requested,
-            commands_n=commands,
-            force_body_n=np.sum(forces, axis=0),
-            torque_body_nm=torque,
-            fuel_flow_kg_s=flow,
-            saturated=bool(
+        return {
+            "requested_torque_body_nm": requested,
+            "commands_n": commands,
+            "force_body_n": np.sum(forces, axis=0),
+            "torque_body_nm": torque,
+            "fuel_flow_kg_s": flow,
+            "saturated": bool(
                 np.any(np.abs(requested_commands) > self.nozzle_force_limit_n)
             ),
-        )
+        }
 
     def to_dict(self):
-        return dict(
-            moment_arm_m=float(self.moment_arm_m),
-            nozzle_force_limit_n=float(self.nozzle_force_limit_n),
-            specific_impulse_s=float(self.specific_impulse_s),
-            torque_limit_nm=float(self.torque_limit_nm),
-            positions_body_m=self.positions_body_m.tolist(),
-            directions_body=self.directions_body.tolist(),
-            channel_semantics="six signed channels; each sign selects an opposed physical nozzle",
-        )
+        return {
+            "moment_arm_m": float(self.moment_arm_m),
+            "nozzle_force_limit_n": float(self.nozzle_force_limit_n),
+            "specific_impulse_s": float(self.specific_impulse_s),
+            "torque_limit_nm": float(self.torque_limit_nm),
+            "positions_body_m": self.positions_body_m.tolist(),
+            "directions_body": self.directions_body.tolist(),
+            "channel_semantics": "six signed channels; each sign selects an opposed physical nozzle",
+        }
 
 
 @dataclass(frozen=True)
@@ -309,14 +309,14 @@ class RecordedTargetAttitudeReference:
         return self.slerp(queries).as_matrix(), rates, acceleration
 
     def to_dict(self):
-        return dict(
-            pose_interpolation="shortest-arc SLERP of recorded body-to-ECI quaternions",
-            rate_interpolation="componentwise linear interpolation of recorded physical body rates",
-            acceleration_interpolation="componentwise linear interpolation of physical body acceleration",
-            acceleration_source=self.acceleration_source,
-            max_slerp_vs_known_rate_defect_rad_s=self.rate_interpolation_defect_rad_s,
-            certified_target_truth=False,
-        )
+        return {
+            "pose_interpolation": "shortest-arc SLERP of recorded body-to-ECI quaternions",
+            "rate_interpolation": "componentwise linear interpolation of recorded physical body rates",
+            "acceleration_interpolation": "componentwise linear interpolation of physical body acceleration",
+            "acceleration_source": self.acceleration_source,
+            "max_slerp_vs_known_rate_defect_rad_s": self.rate_interpolation_defect_rad_s,
+            "certified_target_truth": False,
+        }
 
 
 @dataclass(frozen=True)
@@ -345,28 +345,28 @@ class ChaserAttitudeResult:
         return {key: value.fuel_kg for key, value in self.capture_chasers.items()}
 
     def to_dict(self):
-        return dict(
-            success=bool(self.success),
-            message=self.message,
-            times_s=self.times_s.tolist(),
-            histories=self.histories,
-            audit=self.audit,
-            assumptions=list(self.assumptions),
-            final_attitudes={
+        return {
+            "success": bool(self.success),
+            "message": self.message,
+            "times_s": self.times_s.tolist(),
+            "histories": self.histories,
+            "audit": self.audit,
+            "assumptions": list(self.assumptions),
+            "final_attitudes": {
                 key: [q.tolist(), omega.tolist()]
                 for key, (q, omega) in self.final_attitudes.items()
             },
-            fuel_remaining_kg=self.fuel_remaining_kg,
-            capture_chasers={
-                key: dict(
-                    dry_mass_kg=float(value.dry_mass_kg),
-                    fuel_kg=float(value.fuel_kg),
-                    body_radius_m=float(value.body_radius_m),
-                    gripper_offset_m=float(value.gripper_offset_m),
-                )
+            "fuel_remaining_kg": self.fuel_remaining_kg,
+            "capture_chasers": {
+                key: {
+                    "dry_mass_kg": float(value.dry_mass_kg),
+                    "fuel_kg": float(value.fuel_kg),
+                    "body_radius_m": float(value.body_radius_m),
+                    "gripper_offset_m": float(value.gripper_offset_m),
+                }
                 for key, value in self.capture_chasers.items()
             },
-        )
+        }
 
 
 class ChaserAttitudeTracker:
@@ -637,21 +637,21 @@ class ChaserAttitudeTracker:
         message, committed = "approach_attitude_tracking_completed", 1
         for index, hold in enumerate(np.diff(times)):
             allocations = {}
-            observation = dict(
-                time_s=float(times[index]),
-                target_rotation_body_to_eci=rotations[index].copy(),
-                target_angular_velocity_body_rad_s=target_rates[index].copy(),
-                target_angular_acceleration_body_rad_s2=target_acceleration[
+            observation = {
+                "time_s": float(times[index]),
+                "target_rotation_body_to_eci": rotations[index].copy(),
+                "target_angular_velocity_body_rad_s": target_rates[index].copy(),
+                "target_angular_acceleration_body_rad_s2": target_acceleration[
                     index
                 ].copy(),
-                chasers={
-                    key: dict(
-                        quaternion_body_to_eci=states[key][0].copy(),
-                        angular_velocity_body_rad_s=states[key][1].copy(),
-                    )
+                "chasers": {
+                    key: {
+                        "quaternion_body_to_eci": states[key][0].copy(),
+                        "angular_velocity_body_rad_s": states[key][1].copy(),
+                    }
                     for key in ids
                 },
-            )
+            }
             if observation_callback is not None:
                 observation = observation_callback(float(times[index]), observation)
             if not np.isclose(
@@ -794,46 +794,48 @@ class ChaserAttitudeTracker:
                 and history["spin_error_rad_s"][-1]
                 <= self.options.max_final_spin_error_rad_s
             )
-            bus_audit[key] = dict(
-                passed=passed,
-                final_orientation_error_rad=history["orientation_error_rad"][-1],
-                final_spin_error_rad_s=history["spin_error_rad_s"][-1],
-                initial_orientation_error_rad=history["orientation_error_rad"][0],
-                initial_spin_error_rad_s=history["spin_error_rad_s"][0],
-                translation_fuel_debit_kg=translation[key],
-                attitude_fuel_consumed_kg=consumed,
-                fuel_remaining_kg=float(fuel[key]),
-                initial_wet_mass_kg=float(properties[key].mass_kg),
-                inertia_body_kg_m2=inertias[key].tolist(),
-                total_mass_debit_fraction=float(
+            bus_audit[key] = {
+                "passed": passed,
+                "final_orientation_error_rad": history["orientation_error_rad"][-1],
+                "final_spin_error_rad_s": history["spin_error_rad_s"][-1],
+                "initial_orientation_error_rad": history["orientation_error_rad"][0],
+                "initial_spin_error_rad_s": history["spin_error_rad_s"][0],
+                "translation_fuel_debit_kg": translation[key],
+                "attitude_fuel_consumed_kg": consumed,
+                "fuel_remaining_kg": float(fuel[key]),
+                "initial_wet_mass_kg": float(properties[key].mass_kg),
+                "inertia_body_kg_m2": inertias[key].tolist(),
+                "total_mass_debit_fraction": float(
                     (translation[key] + consumed) / properties[key].mass_kg
                 ),
-                fuel_balance_residual_kg=float(consumed - integrated_flow),
-                angular_impulse_eci_nm_s=impulse[key].tolist(),
-                angular_momentum_balance_residual_kg_m2_s=float(
+                "fuel_balance_residual_kg": float(consumed - integrated_flow),
+                "angular_impulse_eci_nm_s": impulse[key].tolist(),
+                "angular_momentum_balance_residual_kg_m2_s": float(
                     np.linalg.norm(
                         _rotation(q) @ inertias[key] @ omega
                         - initial_momentum[key]
                         - impulse[key]
                     )
                 ),
-                torque_work_j=float(work[key]),
-                rotational_energy_balance_residual_j=float(
+                "torque_work_j": float(work[key]),
+                "rotational_energy_balance_residual_j": float(
                     final_energy - initial_energy[key] - work[key]
                 ),
-                max_nozzle_force_n=float(np.max(np.abs(history["nozzle_commands_n"])))
+                "max_nozzle_force_n": float(
+                    np.max(np.abs(history["nozzle_commands_n"]))
+                )
                 if committed > 1
                 else 0.0,
-                max_net_force_n=float(
+                "max_net_force_n": float(
                     np.max(np.linalg.norm(history["net_force_body_n"], axis=1))
                 )
                 if committed > 1
                 else 0.0,
-                saturated_holds=int(np.sum(history["saturated"])),
-                bus_orientation_independent_spherical_envelope_radius_m=float(
+                "saturated_holds": int(np.sum(history["saturated"])),
+                "bus_orientation_independent_spherical_envelope_radius_m": float(
                     properties[key].body_radius_m
                 ),
-            )
+            }
         success = bool(
             complete and all(value["passed"] for value in bus_audit.values())
         )
@@ -853,37 +855,39 @@ class ChaserAttitudeTracker:
             "SLERP pose and separately interpolated target rates form a numerical tracking reference, not certified physical target truth",
             "numerical RK4 with normalized quaternions; no interval integration or general saturated tracking theorem",
         )
-        audit = dict(
-            model="held_geometric_bus_attitude_with_nozzle_couples_v1",
-            reference=reference.to_dict(),
-            actuators=self.actuators.to_dict(),
-            buses=bus_audit,
-            timeline_complete=complete,
-            requested_end_time_s=float(times[-1]),
-            committed_end_time_s=float(times[committed - 1]),
-            control_period_s=float(self.options.control_period_s),
-            max_integration_step_s=float(self.options.max_integration_step_s),
-            natural_frequency_rad_s=float(self.options.natural_frequency_rad_s),
-            damping_ratio=float(self.options.damping_ratio),
-            default_initial_misalignment_rotvec_rad=self.options.initial_misalignment_rotvec_rad.tolist(),
-            explicit_initial_states=initial_states is not None,
-            observation_scope="injected target/bus observations used by held feedback"
+        audit = {
+            "model": "held_geometric_bus_attitude_with_nozzle_couples_v1",
+            "reference": reference.to_dict(),
+            "actuators": self.actuators.to_dict(),
+            "buses": bus_audit,
+            "timeline_complete": complete,
+            "requested_end_time_s": float(times[-1]),
+            "committed_end_time_s": float(times[committed - 1]),
+            "control_period_s": float(self.options.control_period_s),
+            "max_integration_step_s": float(self.options.max_integration_step_s),
+            "natural_frequency_rad_s": float(self.options.natural_frequency_rad_s),
+            "damping_ratio": float(self.options.damping_ratio),
+            "default_initial_misalignment_rotvec_rad": self.options.initial_misalignment_rotvec_rad.tolist(),
+            "explicit_initial_states": initial_states is not None,
+            "observation_scope": "injected target/bus observations used by held feedback"
             if observation_callback
             else "exact bus feedback and recorded target reference",
-            inertia_model="constant initial wet-bus inertia with enforced maximum total mass debit",
-            max_final_orientation_error_rad=float(
+            "inertia_model": "constant initial wet-bus inertia with enforced maximum total mass debit",
+            "max_final_orientation_error_rad": float(
                 self.options.max_final_orientation_error_rad
             ),
-            max_final_spin_error_rad_s=float(self.options.max_final_spin_error_rad_s),
-            max_constant_inertia_mass_change_fraction=float(
+            "max_final_spin_error_rad_s": float(
+                self.options.max_final_spin_error_rad_s
+            ),
+            "max_constant_inertia_mass_change_fraction": float(
                 self.options.max_constant_inertia_mass_change_fraction
             ),
-            approach_node_indices=np.searchsorted(
+            "approach_node_indices": np.searchsorted(
                 times[:committed],
                 reference.times_s[reference.times_s <= times[committed - 1]],
             ).tolist(),
-            capture_requires_successful_attitude_result=True,
-        )
+            "capture_requires_successful_attitude_result": True,
+        }
         return ChaserAttitudeResult(
             success,
             message,

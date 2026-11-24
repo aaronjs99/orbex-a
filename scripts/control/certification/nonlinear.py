@@ -95,16 +95,16 @@ class NominalCoefficientBounds:
         )
 
     def as_dict(self):
-        return dict(
-            method="arb-commanded-CH-nominal-coefficients-v1",
-            backend_source_sha256=_SOURCE_SHA256,
-            q_interval=tuple(map(str, self.q_interval)),
-            nominal_model=self.nominal_model.as_dict(),
-            acceleration_matrix=self.acceleration_matrix.as_dict(),
-            acceleration_drift=self.acceleration_drift.as_dict(),
-            precision_bits=self.precision_bits,
-            role="Nominal CH surrogate coefficients; no nonlinear physical-frame admission",
-        )
+        return {
+            "method": "arb-commanded-CH-nominal-coefficients-v1",
+            "backend_source_sha256": _SOURCE_SHA256,
+            "q_interval": tuple(map(str, self.q_interval)),
+            "nominal_model": self.nominal_model.as_dict(),
+            "acceleration_matrix": self.acceleration_matrix.as_dict(),
+            "acceleration_drift": self.acceleration_drift.as_dict(),
+            "precision_bits": self.precision_bits,
+            "role": "Nominal CH surrogate coefficients; no nonlinear physical-frame admission",
+        }
 
     @property
     def fingerprint(self):
@@ -203,14 +203,14 @@ class RegionalResidualCertificate:
         return fingerprint(self.as_dict())
 
     def as_dict(self):
-        return dict(
-            status=self.status.value,
-            reason=self.reason,
-            component_bounds=None
+        return {
+            "status": self.status.value,
+            "reason": self.reason,
+            "component_bounds": None
             if self.component_bounds is None
             else self.component_bounds.as_dict(),
-            context=self.context,
-        )
+            "context": self.context,
+        }
 
 
 def _region(state_box, model):
@@ -278,29 +278,29 @@ class NonlinearFlowEncloser:
             raise ValueError(
                 "Target ephemeris needs six states, one time and nonnegative width"
             )
-        context = dict(
-            plant=model.as_dict(),
-            target_model_fingerprint=model.target_fingerprint,
-            clock=clock.as_dict(),
-            clock_fingerprint=clock.fingerprint,
-            backend_source_sha256=_SOURCE_SHA256,
-        )
-        request = dict(
-            initial_state=initial_state.as_dict(),
-            start_anomaly=tuple(map(str, start)),
-            hold_width=tuple(map(str, width)),
-            physical_time_initial=time.as_dict(),
-        )
-        common = dict(
-            start_anomaly=start,
-            hold_width=width,
-            initial_state=initial_state,
-            frame="inertial-cartesian-si-v1",
-            model="nonlinear-target-ephemeris-v1",
-            model_bounds=context,
-            request=request,
-            precision_bits=self.config.precision_bits,
-        )
+        context = {
+            "plant": model.as_dict(),
+            "target_model_fingerprint": model.target_fingerprint,
+            "clock": clock.as_dict(),
+            "clock_fingerprint": clock.fingerprint,
+            "backend_source_sha256": _SOURCE_SHA256,
+        }
+        request = {
+            "initial_state": initial_state.as_dict(),
+            "start_anomaly": tuple(map(str, start)),
+            "hold_width": tuple(map(str, width)),
+            "physical_time_initial": time.as_dict(),
+        }
+        common = {
+            "start_anomaly": start,
+            "hold_width": width,
+            "initial_state": initial_state,
+            "frame": "inertial-cartesian-si-v1",
+            "model": "nonlinear-target-ephemeris-v1",
+            "model_bounds": context,
+            "request": request,
+            "precision_bits": self.config.precision_bits,
+        }
 
         def field(q_bounds, state, ar):
             q = ar.interval(q_bounds)
@@ -326,26 +326,26 @@ class NonlinearFlowEncloser:
     def enclose_relative(self, request, target_flow, model, clock):
         if not isinstance(request, HeldInputRequest):
             raise TypeError("Use a HeldInputRequest for the six-state relative core")
-        context = dict(
-            plant=model.as_dict(),
-            plant_fingerprint=model.fingerprint,
-            backend_source_sha256=_SOURCE_SHA256,
-            target_model_fingerprint=model.target_fingerprint,
-            clock=clock.as_dict(),
-            clock_fingerprint=clock.fingerprint,
-            target_flow_fingerprint=target_flow.fingerprint,
-            actuation="held-q-command; inertial acceleration=nu_ref^2*C_ref*u; additive error in q acceleration",
-        )
-        common = dict(
-            start_anomaly=request.start_anomaly,
-            hold_width=request.hold_width,
-            initial_state=request.initial_state,
-            frame=FRAME,
-            model=MODEL,
-            model_bounds=context,
-            request=request.as_dict(),
-            precision_bits=self.config.precision_bits,
-        )
+        context = {
+            "plant": model.as_dict(),
+            "plant_fingerprint": model.fingerprint,
+            "backend_source_sha256": _SOURCE_SHA256,
+            "target_model_fingerprint": model.target_fingerprint,
+            "clock": clock.as_dict(),
+            "clock_fingerprint": clock.fingerprint,
+            "target_flow_fingerprint": target_flow.fingerprint,
+            "actuation": "held-q-command; inertial acceleration=nu_ref^2*C_ref*u; additive error in q acceleration",
+        }
+        common = {
+            "start_anomaly": request.start_anomaly,
+            "hold_width": request.hold_width,
+            "initial_state": request.initial_state,
+            "frame": FRAME,
+            "model": MODEL,
+            "model_bounds": context,
+            "request": request.as_dict(),
+            "precision_bits": self.config.precision_bits,
+        }
 
         def field(q_bounds, state, ar):
             _region(ar.box(state), model)
@@ -392,7 +392,7 @@ class NonlinearFlowEncloser:
         time_initial=None,
     ):
         certificate = TargetEphemerisCertificate if target else FlowCertificate
-        extra = dict(physical_time_initial=time_initial) if target else {}
+        extra = {"physical_time_initial": time_initial} if target else {}
         try:
             import flint
         except ImportError as error:
@@ -427,11 +427,11 @@ class NonlinearFlowEncloser:
             # Even a zero-width request must have a valid physical domain.
             field(start, ar.vector(initial), ar)
             extra = (
-                dict(
-                    physical_time_initial=time_initial,
-                    physical_time_endpoint=time_initial,
-                    physical_time_swept=time_initial,
-                )
+                {
+                    "physical_time_initial": time_initial,
+                    "physical_time_endpoint": time_initial,
+                    "physical_time_swept": time_initial,
+                }
                 if target
                 else {}
             )
@@ -516,10 +516,10 @@ class NonlinearFlowEncloser:
                 terminal_time = ar.box(current[6:7])
         cls = TargetEphemerisCertificate if target else FlowCertificate
         extras = (
-            dict(
-                physical_time_initial=time_initial,
-                physical_time_endpoint=terminal_time,
-                physical_time_swept=IntervalBox(
+            {
+                "physical_time_initial": time_initial,
+                "physical_time_endpoint": terminal_time,
+                "physical_time_swept": IntervalBox(
                     (
                         min(
                             time_initial.lower[0],
@@ -528,8 +528,8 @@ class NonlinearFlowEncloser:
                     ),
                     (max(b.upper[0] for b in time_segments),),
                 ),
-                segment_time_boxes=tuple(time_segments),
-            )
+                "segment_time_boxes": tuple(time_segments),
+            }
             if target
             else {}
         )
@@ -579,16 +579,16 @@ class NonlinearFlowEncloser:
         clock,
     ):
         interval = bounds(q_interval)
-        context = dict(
-            q_interval=tuple(map(str, interval)),
-            regional_state_box=regional_state_box.as_dict(),
-            backend_source_sha256=_SOURCE_SHA256,
-            input_box=input_box.as_dict(),
-            nominal_parameters={k: str(v) for k, v in nominal_parameters.items()},
-            plant_fingerprint=model.fingerprint,
-            clock_fingerprint=clock.fingerprint,
-            target_flow_fingerprint=target_flow.fingerprint,
-        )
+        context = {
+            "q_interval": tuple(map(str, interval)),
+            "regional_state_box": regional_state_box.as_dict(),
+            "backend_source_sha256": _SOURCE_SHA256,
+            "input_box": input_box.as_dict(),
+            "nominal_parameters": {k: str(v) for k, v in nominal_parameters.items()},
+            "plant_fingerprint": model.fingerprint,
+            "clock_fingerprint": clock.fingerprint,
+            "target_flow_fingerprint": target_flow.fingerprint,
+        }
         try:
             import flint
         except ImportError as error:

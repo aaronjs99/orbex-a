@@ -65,14 +65,14 @@ class DetumblingResult:
     audit: dict
 
     def to_dict(self):
-        return dict(
-            success=self.success,
-            message=self.message,
-            final_state=self.final_state.to_dict(),
-            history=self.history,
-            controls=self.controls,
-            audit=self.audit,
-        )
+        return {
+            "success": self.success,
+            "message": self.message,
+            "final_state": self.final_state.to_dict(),
+            "history": self.history,
+            "controls": self.controls,
+            "audit": self.audit,
+        }
 
 
 class DetumblingSimulator:
@@ -116,35 +116,35 @@ class DetumblingSimulator:
                 state,
                 history,
                 controls,
-                dict(
-                    elapsed_s=state.time_s - initial.time_s,
-                    observed_dwell_s=dwell,
-                    rate_tolerance_rad_s=options.rate_tolerance_rad_s,
-                    initial_rate_rad_s=float(
+                {
+                    "elapsed_s": state.time_s - initial.time_s,
+                    "observed_dwell_s": dwell,
+                    "rate_tolerance_rad_s": options.rate_tolerance_rad_s,
+                    "initial_rate_rad_s": float(
                         np.linalg.norm(initial.angular_velocity_body_rad_s)
                     ),
-                    final_rate_rad_s=float(
+                    "final_rate_rad_s": float(
                         np.linalg.norm(state.angular_velocity_body_rad_s)
                     ),
-                    fuel_used_kg=float(np.sum(initial.fuel_kg - state.fuel_kg)),
-                    authority=authority,
-                    external_angular_impulse_eci_kg_m2_s=impulse.tolist(),
-                    fuel_corotation_angular_impulse_eci_kg_m2_s=flux.tolist(),
-                    angular_momentum_balance_residual_kg_m2_s=float(
+                    "fuel_used_kg": float(np.sum(initial.fuel_kg - state.fuel_kg)),
+                    "authority": authority,
+                    "external_angular_impulse_eci_kg_m2_s": impulse.tolist(),
+                    "fuel_corotation_angular_impulse_eci_kg_m2_s": flux.tolist(),
+                    "angular_momentum_balance_residual_kg_m2_s": float(
                         np.linalg.norm(residual)
                     ),
-                    max_step_angular_balance_residual_kg_m2_s=max_balance_error,
-                    saturated_steps=saturated_steps,
-                    refused_allocations=refused_allocations,
-                    refused_holds=refused_holds,
-                    observations=observations,
-                    observer=None if observer is None else observer.as_dict(),
-                    dwell_scope=(
+                    "max_step_angular_balance_residual_kg_m2_s": max_balance_error,
+                    "saturated_steps": saturated_steps,
+                    "refused_allocations": refused_allocations,
+                    "refused_holds": refused_holds,
+                    "observations": observations,
+                    "observer": None if observer is None else observer.as_dict(),
+                    "dwell_scope": (
                         "complete carried angular-rate swept sets during consecutive held intervals"
                         if state.enclosure is not None
                         else "consecutive controlled integration endpoints; no continuous-time enclosure"
                     ),
-                ),
+                },
             )
 
         if authority["torque_rank"] < 3:
@@ -163,13 +163,13 @@ class DetumblingSimulator:
                     ImportError,
                 ) as error:
                     refused_holds.append(
-                        dict(
-                            time_s=state.time_s,
-                            applied=False,
-                            phase="observation",
-                            exception_type=type(error).__name__,
-                            message=str(error),
-                        )
+                        {
+                            "time_s": state.time_s,
+                            "applied": False,
+                            "phase": "observation",
+                            "exception_type": type(error).__name__,
+                            "message": str(error),
+                        }
                     )
                     return finish(
                         False, "detumbling_observation_refused: " + str(error)
@@ -190,25 +190,25 @@ class DetumblingSimulator:
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 refused_holds.append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        applied=False,
-                        phase="control_allocation",
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "applied": False,
+                        "phase": "control_allocation",
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                 )
                 return finish(False, "detumbling_control_refused: " + str(error))
             if not allocation.success:
                 refused_allocations.append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        requested_torque_body_nm=torque.tolist(),
-                        allocation=allocation.to_dict(),
-                        applied=False,
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "requested_torque_body_nm": torque.tolist(),
+                        "allocation": allocation.to_dict(),
+                        "applied": False,
+                    }
                 )
                 return finish(False, f"detumbling_{allocation.message}")
             try:
@@ -223,14 +223,14 @@ class DetumblingSimulator:
                 )
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as error:
                 refused_holds.append(
-                    dict(
-                        time_s=state.time_s,
-                        duration_s=duration,
-                        applied=False,
-                        allocation=allocation.to_dict(),
-                        exception_type=type(error).__name__,
-                        message=str(error),
-                    )
+                    {
+                        "time_s": state.time_s,
+                        "duration_s": duration,
+                        "applied": False,
+                        "allocation": allocation.to_dict(),
+                        "exception_type": type(error).__name__,
+                        "message": str(error),
+                    }
                 )
                 return finish(False, "detumbling_held_flow_refused: " + str(error))
             impulse += audit["external_angular_impulse_eci_kg_m2_s"]
@@ -240,13 +240,13 @@ class DetumblingSimulator:
             )
             saturated_steps += int(allocation.saturated)
             controls.append(
-                dict(
-                    time_s=state.time_s,
-                    duration_s=duration,
-                    requested_torque_body_nm=torque.tolist(),
-                    allocation=allocation.to_dict(),
-                    integration=audit,
-                )
+                {
+                    "time_s": state.time_s,
+                    "duration_s": duration,
+                    "requested_torque_body_nm": torque.tolist(),
+                    "allocation": allocation.to_dict(),
+                    "integration": audit,
+                }
             )
             state = next_state
             history.append(assembly.state_record(state))
@@ -262,13 +262,13 @@ class DetumblingSimulator:
                     ImportError,
                 ) as error:
                     refused_holds.append(
-                        dict(
-                            time_s=state.time_s,
-                            phase="accepted_endpoint_diagnostic",
-                            proposed_hold_applied=True,
-                            exception_type=type(error).__name__,
-                            message=str(error),
-                        )
+                        {
+                            "time_s": state.time_s,
+                            "phase": "accepted_endpoint_diagnostic",
+                            "proposed_hold_applied": True,
+                            "exception_type": type(error).__name__,
+                            "message": str(error),
+                        }
                     )
                     return finish(
                         False, "detumbling_endpoint_audit_refused: " + str(error)

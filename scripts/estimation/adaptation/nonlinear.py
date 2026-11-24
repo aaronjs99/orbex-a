@@ -180,16 +180,16 @@ class NonlinearMissionAdaptation:
             self.belief.feasible_sets["eccentricity"] = (lo[0], hi[0])
             self.belief.estimates["eccentricity"] = (lo[0] + hi[0]) / 2
             self.smid_records.append(
-                dict(
-                    method="initial-osculating-orbit-arb-image-v1",
-                    packet_id=packet.packet_id,
-                    acquired_q="0",
-                    eccentricity_box=ebox.as_dict(),
-                    retained_eccentricity=list(
+                {
+                    "method": "initial-osculating-orbit-arb-image-v1",
+                    "packet_id": packet.packet_id,
+                    "acquired_q": "0",
+                    "eccentricity_box": ebox.as_dict(),
+                    "retained_eccentricity": list(
                         self.belief.feasible_sets["eccentricity"]
                     ),
-                    scope="Initial orbit descriptor only; not a constant eccentricity model under J2",
-                )
+                    "scope": "Initial orbit descriptor only; not a constant eccentricity model under J2",
+                }
             )
 
     def retain_transitions(self, transitions):
@@ -205,9 +205,11 @@ class NonlinearMissionAdaptation:
     def contract(self, transitions=None, *, update):
         if self.mode == "frozen":
             self.membership_records.append(
-                dict(
-                    update=update, status="FROZEN", candidate_count=len(self.candidates)
-                )
+                {
+                    "update": update,
+                    "status": "FROZEN",
+                    "candidate_count": len(self.candidates),
+                }
             )
             return True
         if transitions is None:
@@ -220,14 +222,14 @@ class NonlinearMissionAdaptation:
             self.candidates, transitions, clock=self.clock
         )
         self.membership_records.append(
-            dict(
-                update=update,
-                status=result.status,
-                candidate_count_before=len(self.candidates),
-                candidate_count_after=len(result.retained_models),
-                discarded_fingerprints=list(result.discarded_fingerprints),
-                records=list(result.records),
-            )
+            {
+                "update": update,
+                "status": result.status,
+                "candidate_count_before": len(self.candidates),
+                "candidate_count_after": len(result.retained_models),
+                "discarded_fingerprints": list(result.discarded_fingerprints),
+                "records": list(result.records),
+            }
         )
         if not result.retained_models:
             return False
@@ -265,29 +267,29 @@ class NonlinearMissionAdaptation:
         return True
 
     def metadata(self):
-        result = dict(
-            mode=self.mode,
-            initial_orbit_packets=sorted(self.initial_packet_ids),
-            initial_orbit_conditioning=self.initial_orbit_conditioning,
-            initial_orbit_conditioning_enabled=self.initial_orbit_conditioning_enabled,
-            online_physical_membership_enabled=self.mode == "adaptive",
-            physical_prior=self.prior_model.as_dict(),
-            active_physical_hull=self.active_model.as_dict(),
-            retained_physical_candidates=[m.as_dict() for m in self.candidates],
-            semantics="Initial osculating eccentricity from own GNSS plus bounded relative observations; "
+        result = {
+            "mode": self.mode,
+            "initial_orbit_packets": sorted(self.initial_packet_ids),
+            "initial_orbit_conditioning": self.initial_orbit_conditioning,
+            "initial_orbit_conditioning_enabled": self.initial_orbit_conditioning_enabled,
+            "online_physical_membership_enabled": self.mode == "adaptive",
+            "physical_prior": self.prior_model.as_dict(),
+            "active_physical_hull": self.active_model.as_dict(),
+            "retained_physical_candidates": [m.as_dict() for m in self.candidates],
+            "semantics": "Initial osculating eccentricity from own GNSS plus bounded relative observations; "
             "Cartesian sigma=CdA/m membership uses actual held-input transitions; unresolved retained",
-        )
+        }
         if self.observation_window is not None:
-            result["linked_membership"] = dict(
-                method=self.membership_policy,
-                window_holds_per_agent=self.observation_window.holds_per_agent,
-                max_nuisance_cells_per_agent=self.contractor.max_nuisance_cells,
-                max_flow_evaluations_per_candidate=self.contractor.max_flow_evaluations_per_candidate,
-                retained_observation_counts={
+            result["linked_membership"] = {
+                "method": self.membership_policy,
+                "window_holds_per_agent": self.observation_window.holds_per_agent,
+                "max_nuisance_cells_per_agent": self.contractor.max_nuisance_cells,
+                "max_flow_evaluations_per_candidate": self.contractor.max_flow_evaluations_per_candidate,
+                "retained_observation_counts": {
                     key: len(value)
                     for key, value in self.observation_window.history.items()
                 },
-                nuisance_persistence="Fixed affine matrix and bias per agent; independent binary64 evaluation remainder",
-                scope="Finite covering branches and conditional state links; unresolved branches retained; no parameter convergence guarantee",
-            )
+                "nuisance_persistence": "Fixed affine matrix and bias per agent; independent binary64 evaluation remainder",
+                "scope": "Finite covering branches and conditional state links; unresolved branches retained; no parameter convergence guarantee",
+            }
         return result

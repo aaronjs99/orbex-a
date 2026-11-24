@@ -76,23 +76,27 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     }
     _write_json(
         directory / "source-inputs.json",
-        dict(
-            paths=inputs,
-            sha256={name: _sha(path) for name, path in inputs.items()},
-            runtime_python_sha256={
+        {
+            "paths": inputs,
+            "sha256": {name: _sha(path) for name, path in inputs.items()},
+            "runtime_python_sha256": {
                 str(path.relative_to(PACKAGE_ROOT)): _sha(path)
                 for path in PACKAGE_ROOT.rglob("*.py")
             },
-            parameters=parameters.as_dict(),
-            maximum_updates=settings.maximum_updates,
-            origin="fresh_nonlinear_parameters",
-            execution_model="sensed_nonlinear",
-            nonlinear_study_options=options.as_dict(),
-            independent_truth_case=asdict(case),
-            initial_spin_prior=prior.as_dict(),
-            historical_only_inputs=("prior_path", "admission_path", "deployment_path"),
-            scope="Shared declared nonlinear physics/sensor/safety profile; requested study knobs and nonzero observed spin prior; no flight qualification",
-        ),
+            "parameters": parameters.as_dict(),
+            "maximum_updates": settings.maximum_updates,
+            "origin": "fresh_nonlinear_parameters",
+            "execution_model": "sensed_nonlinear",
+            "nonlinear_study_options": options.as_dict(),
+            "independent_truth_case": asdict(case),
+            "initial_spin_prior": prior.as_dict(),
+            "historical_only_inputs": (
+                "prior_path",
+                "admission_path",
+                "deployment_path",
+            ),
+            "scope": "Shared declared nonlinear physics/sensor/safety profile; requested study knobs and nonzero observed spin prior; no flight qualification",
+        },
     )
     controller_factory = _native_controller(directory, messages)
     with NonlinearProofArchive(
@@ -110,21 +114,21 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
             _write_json(directory / "committed-projection.json", projection)
             archive.flush()
             messages.put(
-                dict(
-                    kind="ready" if event.get("kind") == "start" else "committed",
-                    projection=projection,
-                    update=event.get(
+                {
+                    "kind": "ready" if event.get("kind") == "start" else "committed",
+                    "projection": projection,
+                    "update": event.get(
                         "update", max(0, len(projection.get("q", [])) - 1)
                     ),
-                    anomaly=projection["q"][-1],
-                    phase=projection.get("phases", ["unknown"])[-1],
-                    message="Actual sensed nonlinear mission states",
-                )
+                    "anomaly": projection["q"][-1],
+                    "phase": projection.get("phases", ["unknown"])[-1],
+                    "message": "Actual sensed nonlinear mission states",
+                }
             )
             if not run_event.is_set():
-                messages.put(dict(kind="paused"))
+                messages.put({"kind": "paused"})
                 run_event.wait()
-                messages.put(dict(kind="running"))
+                messages.put({"kind": "running"})
 
         def checkpoint(update, runner, outcome):
             archive.flush()
@@ -139,18 +143,18 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
                 runner.executor.runtime.events.clear()
             _write_json(
                 directory / "archive-progress.json",
-                dict(
-                    update=update,
-                    entries=archive.entries,
-                    completed_holds=archive.holds,
-                    event_kinds=archive.kinds,
-                    retained_executor_holds=len(runner.executor.journal),
-                    retained_runtime_events=0
+                {
+                    "update": update,
+                    "entries": archive.entries,
+                    "completed_holds": archive.holds,
+                    "event_kinds": archive.kinds,
+                    "retained_executor_holds": len(runner.executor.journal),
+                    "retained_runtime_events": 0
                     if runner.executor.runtime is None
                     else len(runner.executor.runtime.events),
-                    execution_exact_q=str(runner.truth_target.current_q),
-                    proof_scope="Producer witnesses streamed before motion",
-                ),
+                    "execution_exact_q": str(runner.truth_target.current_q),
+                    "proof_scope": "Producer witnesses streamed before motion",
+                },
             )
 
         runner = NonlinearMissionRunner(
@@ -173,29 +177,29 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     approach.metadata["proof_archive"] = source.as_dict()
     approach.metadata["live_execution_route"] = "sensed_nonlinear"
     manifest = directory / "snapshot-manifest.json"
-    approach.metadata["live_source_binding"] = dict(
-        source_inputs_sha256=_sha(directory / "source-inputs.json"),
-        snapshot_manifest_sha256=_sha(manifest) if manifest.is_file() else None,
-        frozen_package=str(PACKAGE_ROOT),
-        scope="Closed archive receipt and immutable job source/input manifests; recorded after production to avoid self-reference",
-    )
+    approach.metadata["live_source_binding"] = {
+        "source_inputs_sha256": _sha(directory / "source-inputs.json"),
+        "snapshot_manifest_sha256": _sha(manifest) if manifest.is_file() else None,
+        "frozen_package": str(PACKAGE_ROOT),
+        "scope": "Closed archive receipt and immutable job source/input manifests; recorded after production to avoid self-reference",
+    }
     MissionResultStore.save(approach, directory / "approach")
     projection = StudioDataset(approach).to_dict()
     _write_json(directory / "committed-projection.json", projection)
     messages.put(
-        dict(
-            kind="committed",
-            projection=projection,
-            update=len(approach.anom_history) - 1,
-            anomaly=approach.anom_history[-1],
-            phase=approach.sample_phase_history[-1],
-        )
+        {
+            "kind": "committed",
+            "projection": projection,
+            "update": len(approach.anom_history) - 1,
+            "anomaly": approach.anom_history[-1],
+            "phase": approach.sample_phase_history[-1],
+        }
     )
     store = CompleteMissionStore(directory / "completion")
 
     def stage_sink(stage, result):
         store.record(stage, result)
-        messages.put(dict(kind="stage", message="Physical completion: " + stage))
+        messages.put({"kind": "stage", "message": "Physical completion: " + stage})
 
     completion = complete_nonlinear_mission(
         approach, nonlinear_runner=runner, hold_records=source, stage_sink=stage_sink
@@ -205,12 +209,12 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     if not approach.success or not approach.metadata.get("mission_complete", False):
         store.record("approach", approach)
     store.finish(completion)
-    payload = dict(
-        kind="finished",
-        success=bool(completion.success),
-        message=completion.message,
-        projection=projection,
-    )
+    payload = {
+        "kind": "finished",
+        "success": bool(completion.success),
+        "message": completion.message,
+        "projection": projection,
+    }
     if completion.lifecycle is not None:
         from orbexa.visualization.renderers.lifecycle import LifecycleDataset
 

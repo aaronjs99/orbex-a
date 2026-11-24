@@ -114,7 +114,7 @@ def project_command(
         # Objective convergence is distinct from the hard-row readback below.
         # Squaring a 1e-8 feasibility tolerance asks SLSQP for machine-epsilon
         # objective changes and can reject a valid constrained minimizer.
-        options=dict(maxiter=max_iterations, ftol=1.0e-12, disp=False),
+        options={"maxiter": max_iterations, "ftol": 1.0e-12, "disp": False},
     )
     if result.x is None or not np.all(np.isfinite(result.x)):
         return CommandProjection(False, None, None, None, str(result.message))

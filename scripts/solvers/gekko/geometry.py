@@ -252,29 +252,31 @@ class GekkoCompositeGeometry:
             if not np.isfinite(margin):
                 raise ValueError("Composite support-plane margin is not finite")
             margins.append(
-                dict(
-                    node=node,
-                    component_id=component.id,
-                    separation_margin_m=float(margin),
-                )
+                {
+                    "node": node,
+                    "component_id": component.id,
+                    "separation_margin_m": float(margin),
+                }
             )
         return margins
 
     def summary(self, margins):
-        return dict(
-            model="per-component-unit-support-plane-v1",
-            geometry_id=self.geometry.geometry_id,
-            mode="free",
-            stricter_reference_corridor=False,
-            geometry_fingerprint=self.geometry.fingerprint,
-            component_count=len(self.geometry.components),
-            checked_component_nodes=len(margins),
-            attachment_corridor_patch_id=None
+        return {
+            "model": "per-component-unit-support-plane-v1",
+            "geometry_id": self.geometry.geometry_id,
+            "mode": "free",
+            "stricter_reference_corridor": False,
+            "geometry_fingerprint": self.geometry.fingerprint,
+            "component_count": len(self.geometry.components),
+            "checked_component_nodes": len(margins),
+            "attachment_corridor_patch_id": None
             if self.corridor_patch is None
             else self.corridor_patch.id,
-            minimum_support_margin_m=min(row["separation_margin_m"] for row in margins),
-            scope="Nonlinear numerical node constraints for the complete declared OBB union; continuous admission is separate",
-        )
+            "minimum_support_margin_m": min(
+                row["separation_margin_m"] for row in margins
+            ),
+            "scope": "Nonlinear numerical node constraints for the complete declared OBB union; continuous admission is separate",
+        }
 
 
 class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
@@ -493,29 +495,29 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
             )
         self.normals.append((node, component, parameters))
         self.witnesses.append(
-            dict(
-                node=int(node),
-                component_id=component.id,
-                initial_iterate_position_m=reference.tolist(),
-                seed_tube_halfwidths_m=seed_omega.tolist(),
-                normal_world=normal.tolist(),
-                normal_squared_norm=float(normal @ normal),
-                local_projection=local.tolist(),
-                tube_support_coefficients=np.abs(normal).tolist(),
-                box_support=box,
-                uncertainty_support=uncertainty,
-                physical_and_pose_reserve=reserve,
-                initial_iterate_seed_tube_margin_m=reference_margin,
-            )
+            {
+                "node": int(node),
+                "component_id": component.id,
+                "initial_iterate_position_m": reference.tolist(),
+                "seed_tube_halfwidths_m": seed_omega.tolist(),
+                "normal_world": normal.tolist(),
+                "normal_squared_norm": float(normal @ normal),
+                "local_projection": local.tolist(),
+                "tube_support_coefficients": np.abs(normal).tolist(),
+                "box_support": box,
+                "uncertainty_support": uncertainty,
+                "physical_and_pose_reserve": reserve,
+                "initial_iterate_seed_tube_margin_m": reference_margin,
+            }
         )
 
     def summary(self, margins):
-        context = dict(
-            geometry_fingerprint=self.geometry.fingerprint,
-            target_center_m=self.center.tolist(),
-            target_rotations=self.rotations.tolist(),
-            witnesses=self.witnesses,
-        )
+        context = {
+            "geometry_fingerprint": self.geometry.fingerprint,
+            "target_center_m": self.center.tolist(),
+            "target_rotations": self.rotations.tolist(),
+            "witnesses": self.witnesses,
+        }
         fingerprint = hashlib.sha256(
             json.dumps(
                 context, sort_keys=True, separators=(",", ":"), allow_nan=False

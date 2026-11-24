@@ -72,8 +72,8 @@ class MissionInteractive:
                     z=positions[:, 2],
                     mode="lines+markers",
                     name=f"{identifier} actual",
-                    line=dict(color=color, width=4),
-                    marker=dict(color=color, size=2),
+                    line={"color": color, "width": 4},
+                    marker={"color": color, "size": 2},
                 )
             )
             if horizons:
@@ -89,7 +89,7 @@ class MissionInteractive:
                             name=f"{identifier} nominal horizons",
                             showlegend=horizon == 0,
                             opacity=0.22,
-                            line=dict(color=color, dash="dot"),
+                            line={"color": color, "dash": "dot"},
                         )
                     )
 
@@ -131,7 +131,7 @@ class MissionInteractive:
                     z=values[:, 2],
                     mode="markers",
                     name="docking points",
-                    marker=dict(size=5, color="#D55E00", symbol="diamond"),
+                    marker={"size": 5, "color": "#D55E00", "symbol": "diamond"},
                 )
             )
 
@@ -153,13 +153,13 @@ class MissionInteractive:
                     z=positions[:, 2],
                     mode="markers",
                     name="rendezvous-to-docking switch",
-                    marker=dict(size=6, color="#D55E00", symbol="x"),
+                    marker={"size": 6, "color": "#D55E00", "symbol": "x"},
                 )
             )
         fig.update_layout(
             title=f"ORBEX-A ADTMPC Mission ({self.result.mission}, {self.result.approximation})",
-            scene=dict(xaxis_title="x", yaxis_title="y", zaxis_title="z"),
-            margin=dict(l=0, r=0, t=40, b=0),
+            scene={"xaxis_title": "x", "yaxis_title": "y", "zaxis_title": "z"},
+            margin={"l": 0, "r": 0, "t": 40, "b": 0},
         )
         self._write(
             fig,
@@ -251,7 +251,7 @@ class MissionInteractive:
             title=f"ADTMPC diagnostics ({self.result.mission}, {self.result.approximation})",
             height=1050,
             hovermode="x unified",
-            margin=dict(l=40, r=20, t=70, b=40),
+            margin={"l": 40, "r": 20, "t": 70, "b": 40},
         )
         fig.update_xaxes(title_text="true anomaly", row=5, col=1)
         self._write(
@@ -286,7 +286,7 @@ class MissionInteractive:
                     z=centers[:, 2],
                     mode="lines",
                     name=f"{identifier} matched nominal center",
-                    line=dict(color=color, width=3, dash="dash"),
+                    line={"color": color, "width": 3, "dash": "dash"},
                 )
             )
             indices = self.samples.frame_indices(12)
@@ -323,8 +323,8 @@ class MissionInteractive:
         )
         fig.update_layout(
             title=f"ADTMPC tube trajectory ({self.result.mission}, {self.result.approximation})",
-            scene=dict(xaxis_title="x", yaxis_title="y", zaxis_title="z"),
-            margin=dict(l=0, r=0, t=40, b=50),
+            scene={"xaxis_title": "x", "yaxis_title": "y", "zaxis_title": "z"},
+            margin={"l": 0, "r": 0, "t": 40, "b": 50},
         )
         self._write(
             fig,

@@ -372,30 +372,30 @@ class NonlinearMissionRunner:
             "MISS" if full > upper else "WITHIN" if full <= lower else "UNKNOWN"
         )
         self.update_wall_timing.append(
-            dict(
-                update=row["update"],
-                status=status,
-                exact_start_q=str(row["q"]),
-                actual_end_exact_q=str(self.truth_target.current_q),
-                planning_and_proof_wall_s=ready,
-                execution_qualification_wall_s=None
+            {
+                "update": row["update"],
+                "status": status,
+                "exact_start_q": str(row["q"]),
+                "actual_end_exact_q": str(self.truth_target.current_q),
+                "planning_and_proof_wall_s": ready,
+                "execution_qualification_wall_s": None
                 if planned is None
                 else now - planned,
-                full_attempt_wall_s=full,
-                physical_outer_duration_s=(lower + upper) / 2,
-                physical_outer_duration_bounds_s=(lower, upper),
-                actual_committed_physical_duration_s=float(
+                "full_attempt_wall_s": full,
+                "physical_outer_duration_s": (lower + upper) / 2,
+                "physical_outer_duration_bounds_s": (lower, upper),
+                "actual_committed_physical_duration_s": float(
                     self.truth_target.physical_time_at(self.truth_target.current_q)
                     - row["physical_start"]
                 ),
-                used_fallback=used_fallback,
-                ready_within_physical_outer_period=None
+                "used_fallback": used_fallback,
+                "ready_within_physical_outer_period": None
                 if ready is None
                 else ready <= lower,
-                deadline_miss_full_update=classification == "MISS",
-                full_update_deadline_status=classification,
-                scope="Offline sequential attempted update through durable checkpoint; includes refused physical tails",
-            )
+                "deadline_miss_full_update": classification == "MISS",
+                "full_update_deadline_status": classification,
+                "scope": "Offline sequential attempted update through durable checkpoint; includes refused physical tails",
+            }
         )
         self._attempt_timing = None
 
@@ -404,25 +404,25 @@ class NonlinearMissionRunner:
         self._finish_attempt_timing(stage)
         from orbexa.control.fallback.refuge import exact_record
 
-        event = dict(
-            stage=stage,
-            error_type=type(error).__name__,
-            reason=str(error),
-            actual_exact_q=str(self.truth_target.current_q),
-            actual_truth_relative={
+        event = {
+            "stage": stage,
+            "error_type": type(error).__name__,
+            "reason": str(error),
+            "actual_exact_q": str(self.truth_target.current_q),
+            "actual_truth_relative": {
                 key: value.tolist()
                 for key, value in self.executor.truth_relative_by_agent.items()
             },
-            actual_target_state=self.truth_target._current_state.tolist(),
-            execution_event=exact_record(getattr(error, "event", None)),
-            recorded_outer_endpoint_q=self.recorder.arrays.q_history[-1],
-            remaining_safe_q=None
+            "actual_target_state": self.truth_target._current_state.tolist(),
+            "execution_event": exact_record(getattr(error, "event", None)),
+            "recorded_outer_endpoint_q": self.recorder.arrays.q_history[-1],
+            "remaining_safe_q": None
             if self.executor.runtime is None
             else str(
                 self.executor.runtime.active_fallback.certificate.end
                 - self.executor.runtime.q
             ),
-        )
+        }
         self.failure_events.append(event)
         self.recorder.all_certified = False
         return stage + ": " + str(error)
@@ -466,13 +466,13 @@ class NonlinearMissionRunner:
         serialized_bounds = {
             k: (str(v) if isinstance(v, Fraction) else v) for k, v in bounds.items()
         }
-        forecast_witness = dict(
-            kind="moving_goal_forecast",
-            exact_q=str(q),
-            target_flow=future.as_dict(),
-            attitude_flow=attitude.as_dict(),
-            preview_error=serialized_bounds,
-        )
+        forecast_witness = {
+            "kind": "moving_goal_forecast",
+            "exact_q": str(q),
+            "target_flow": future.as_dict(),
+            "attitude_flow": attitude.as_dict(),
+            "preview_error": serialized_bounds,
+        }
         forecast_witness["identity"] = fingerprint(forecast_witness)
         forecast_sink = getattr(self, "certificate_sink", None)
         if forecast_sink is not None:
@@ -576,21 +576,21 @@ class NonlinearMissionRunner:
                 )
             global_target_id = future.fingerprint
             attitude_id = attitude.fingerprint
-            source = dict(
-                kind="current-navigation-future-contact-forecast-v1",
-                exact_start_q=str(q),
-                exact_step_q=str(exact(cfg.anom_step)),
-                navigation_q=str(q),
-                navigation_fingerprint=navigation_id,
-                clock_fingerprint=self.clock.fingerprint,
-                global_model_fingerprint=self.model.fingerprint,
-                global_target_flow_fingerprint=global_target_id,
-                attitude_flow_fingerprint=attitude_id,
-                moving_goal_forecast_id=forecast_witness["identity"],
-                residual_model_fingerprint=model.fingerprint,
-                residual_target_flow_fingerprint=residual_target.fingerprint,
-                frame="reference-orbit-frame-v1",
-            )
+            source = {
+                "kind": "current-navigation-future-contact-forecast-v1",
+                "exact_start_q": str(q),
+                "exact_step_q": str(exact(cfg.anom_step)),
+                "navigation_q": str(q),
+                "navigation_fingerprint": navigation_id,
+                "clock_fingerprint": self.clock.fingerprint,
+                "global_model_fingerprint": self.model.fingerprint,
+                "global_target_flow_fingerprint": global_target_id,
+                "attitude_flow_fingerprint": attitude_id,
+                "moving_goal_forecast_id": forecast_witness["identity"],
+                "residual_model_fingerprint": model.fingerprint,
+                "residual_target_flow_fingerprint": residual_target.fingerprint,
+                "frame": "reference-orbit-frame-v1",
+            }
             contact_by_agent = {}
             for chaser in self.chasers:
                 key = chaser.chaser_id
@@ -610,14 +610,14 @@ class NonlinearMissionRunner:
                         )
                     )
                     goal_id = fingerprint(
-                        dict(
-                            kind="future-contact-goal-v1",
-                            agent_id=key,
-                            exact_q=str(node_q),
-                            moving_goal_forecast_id=forecast_witness["identity"],
-                            point_record_id=fingerprint(point_record),
-                            observed_goal=tuple(map(str, goal)),
-                        )
+                        {
+                            "kind": "future-contact-goal-v1",
+                            "agent_id": key,
+                            "exact_q": str(node_q),
+                            "moving_goal_forecast_id": forecast_witness["identity"],
+                            "point_record_id": fingerprint(point_record),
+                            "observed_goal": tuple(map(str, goal)),
+                        }
                     )
                     reference = ContactReferenceKinematics(
                         point_record["numerical_preview_rotation"],
@@ -638,12 +638,12 @@ class NonlinearMissionRunner:
                         reference_kinematics=reference,
                     )
                     nodes.append(
-                        dict(
-                            index=index,
-                            exact_q=str(node_q),
-                            goal_bound_id=goal_id,
-                            goal_speed_bound=speed.as_dict(),
-                        )
+                        {
+                            "index": index,
+                            "exact_q": str(node_q),
+                            "goal_bound_id": goal_id,
+                            "goal_speed_bound": speed.as_dict(),
+                        }
                     )
                 # These are the unchanged capture/vehicle declarations also
                 # used by the independent same-event and lifecycle gates.
@@ -651,17 +651,17 @@ class NonlinearMissionRunner:
                     chaser.docking_standoff, self.design.arm_reach_m, 0.01
                 )
                 contact_by_agent[key] = ProspectiveContactConstraint.from_dict(
-                    dict(
-                        schema="orbexa.prospective-contact-terminal.v1",
-                        source=dict(source, agent_id=key),
-                        nodes=nodes,
-                        limits=dict(
-                            max_spin_error_rad_s=0.001,
-                            gripper_offset_m=self.design.chaser.gripper_offset_m,
-                            max_relative_speed_m_s=0.01,
-                        ),
-                        reach_policy=reach_policy.as_dict(),
-                    )
+                    {
+                        "schema": "orbexa.prospective-contact-terminal.v1",
+                        "source": dict(source, agent_id=key),
+                        "nodes": nodes,
+                        "limits": {
+                            "max_spin_error_rad_s": 0.001,
+                            "gripper_offset_m": self.design.chaser.gripper_offset_m,
+                            "max_relative_speed_m_s": 0.01,
+                        },
+                        "reach_policy": reach_policy.as_dict(),
+                    }
                 )
             if (
                 future.fingerprint != global_target_id
@@ -671,15 +671,15 @@ class NonlinearMissionRunner:
                 raise ValueError(
                     "Prospective contact forecast sources changed during construction"
                 )
-            contact_forecast = dict(
-                kind="prospective_contact_forecast",
-                exact_q=str(q),
-                navigation_fingerprint=navigation_id,
-                moving_goal_forecast_id=forecast_witness["identity"],
-                constraints={
+            contact_forecast = {
+                "kind": "prospective_contact_forecast",
+                "exact_q": str(q),
+                "navigation_fingerprint": navigation_id,
+                "moving_goal_forecast_id": forecast_witness["identity"],
+                "constraints": {
                     key: value.as_dict() for key, value in contact_by_agent.items()
                 },
-            )
+            }
             contact_forecast["identity"] = fingerprint(contact_forecast)
             if forecast_sink is not None:
                 forecast_sink(contact_forecast)
@@ -707,19 +707,19 @@ class NonlinearMissionRunner:
             attitude_flow_fingerprint=attitude.fingerprint,
             observation_error_abs=observation.tolist(),
             actuator_error_abs=[300.0] * 3,
-            observation_planning_allowance=dict(
-                predicted_range_m=distance,
-                product_radius_m=product,
-                propagated_position_allowance_m=propagated,
-                scope="Prospective planning budget; per-hold navigation-support gate remains authoritative",
-            ),
+            observation_planning_allowance={
+                "predicted_range_m": distance,
+                "product_radius_m": product,
+                "propagated_position_allowance_m": propagated,
+                "scope": "Prospective planning budget; per-hold navigation-support gate remains authoritative",
+            },
             preview_error=retained_bounds,
             moving_goal_forecast_id=forecast_witness["identity"],
             moving_goal_forecast_archived=forecast_sink is not None,
             **(
                 {}
                 if forecast_sink is not None
-                else dict(moving_goal_forecast_witness=forecast_witness)
+                else {"moving_goal_forecast_witness": forecast_witness}
             ),
             angular_acceleration_check=acceleration,
         )
@@ -733,7 +733,7 @@ class NonlinearMissionRunner:
                 **(
                     {}
                     if forecast_sink is not None
-                    else dict(prospective_contact_forecast_witness=contact_forecast)
+                    else {"prospective_contact_forecast_witness": contact_forecast}
                 ),
             )
         return context, record
@@ -813,7 +813,7 @@ class NonlinearMissionRunner:
                 expected_model_fingerprint=self.model.fingerprint,
                 vehicle_design=self.design.as_dict(),
                 approach_bounds={
-                    key: dict(position_m=float(p), velocity_m_per_rad=float(v))
+                    key: {"position_m": float(p), "velocity_m_per_rad": float(v)}
                     for key, (p, v) in bounds.items()
                 },
             )
@@ -821,11 +821,11 @@ class NonlinearMissionRunner:
         if valid and self.first_terminal_entry_q is None:
             self.first_terminal_entry_q = exact_q
             self.arrival_events.append(
-                dict(
-                    status="WHOLE_SET_ENTRY",
-                    exact_q=str(exact_q),
-                    by_deadline=deadline is not None and exact_q <= deadline,
-                )
+                {
+                    "status": "WHOLE_SET_ENTRY",
+                    "exact_q": str(exact_q),
+                    "by_deadline": deadline is not None and exact_q <= deadline,
+                }
             )
         timely_entry = (
             deadline is not None
@@ -839,12 +839,12 @@ class NonlinearMissionRunner:
         ):
             self.arrival_deadline_missed = True
             self.arrival_events.append(
-                dict(
-                    status="DEADLINE_MISSED",
-                    exact_q=str(exact_q),
-                    exact_deadline=str(deadline),
-                    whole_set_admissible=bool(valid),
-                )
+                {
+                    "status": "DEADLINE_MISSED",
+                    "exact_q": str(exact_q),
+                    "exact_deadline": str(deadline),
+                    "whole_set_admissible": bool(valid),
+                }
             )
         valid &= not self.arrival_deadline_missed
         self.recorder.record_terminal(bounds, admissible=valid, phase=phase)
@@ -878,14 +878,14 @@ class NonlinearMissionRunner:
         self.recorder.emit_progress("start")
         for update in range(maximum):
             started = time.perf_counter()
-            self._attempt_timing = dict(
-                update=update,
-                started=started,
-                q=exact(self.truth_target.current_q),
-                physical_start=self.truth_target.physical_time_at(
+            self._attempt_timing = {
+                "update": update,
+                "started": started,
+                "q": exact(self.truth_target.current_q),
+                "physical_start": self.truth_target.physical_time_at(
                     self.truth_target.current_q
                 ),
-            )
+            }
             if self.executor.blackout_holds:
                 try:
                     self.executor.recover_navigation()
@@ -918,12 +918,12 @@ class NonlinearMissionRunner:
                         self.scenario.reference.horizon_steps_for_phase(phase) - 1
                     ) * exact(self.config.anom_step)
                     self.arrival_events.append(
-                        dict(
-                            status="ANCHORED",
-                            update=update,
-                            exact_deadline=str(self.planner.absolute_deadline_q),
-                            nominal_center_distance_to_preview_m=max(distances),
-                        )
+                        {
+                            "status": "ANCHORED",
+                            "update": update,
+                            "exact_deadline": str(self.planner.absolute_deadline_q),
+                            "nominal_center_distance_to_preview_m": max(distances),
+                        }
                     )
             try:
                 reused = False
@@ -940,11 +940,11 @@ class NonlinearMissionRunner:
                         reused = True
                     except (ValueError, ArithmeticError) as error:
                         self.recorder.install_records.append(
-                            dict(
-                                exact_start=str(estimate.exact_event_q),
-                                status="REUSE_REFUSED",
-                                reason=str(error),
-                            )
+                            {
+                                "exact_start": str(estimate.exact_event_q),
+                                "status": "REUSE_REFUSED",
+                                "reason": str(error),
+                            }
                         )
                 if not reused:
                     remaining = (
@@ -967,11 +967,11 @@ class NonlinearMissionRunner:
                     )
                     valid = False
                     break
-                refusal = dict(
-                    exact_start=str(estimate.exact_event_q),
-                    status="REPLACEMENT_REFUSED",
-                    reason=str(error),
-                )
+                refusal = {
+                    "exact_start": str(estimate.exact_event_q),
+                    "status": "REPLACEMENT_REFUSED",
+                    "reason": str(error),
+                }
                 if getattr(error, "event", None) is not None:
                     from orbexa.control.fallback.refuge import exact_record
 
@@ -1066,12 +1066,12 @@ class NonlinearMissionRunner:
             completed = self._terminal(estimate, phase)
             valid &= outcome.success
             if self.arrival_deadline_missed:
-                failure = dict(
-                    stage="ARRIVAL_DEADLINE_MISSED",
-                    actual_exact_q=str(estimate.exact_event_q),
-                    exact_deadline=str(self.planner.absolute_deadline_q),
-                    reason="Whole-set terminal entry or continuous endpoint dwell missed the fixed arrival requirement",
-                )
+                failure = {
+                    "stage": "ARRIVAL_DEADLINE_MISSED",
+                    "actual_exact_q": str(estimate.exact_event_q),
+                    "exact_deadline": str(self.planner.absolute_deadline_q),
+                    "reason": "Whole-set terminal entry or continuous endpoint dwell missed the fixed arrival requirement",
+                }
                 self.failure_events.append(failure)
                 messages.append(failure["stage"] + ": " + failure["reason"])
                 valid = False
@@ -1112,34 +1112,34 @@ class NonlinearMissionRunner:
                 for v in self.update_wall_timing
             ),
             attempted_updates=len(self.update_wall_timing),
-            planning_schedule=dict(
-                method=(
+            planning_schedule={
+                "method": (
                     "Jacobi-prior-fleet-preview-with-joint-admission"
                     if self.planner.planning_workers > 1
                     else "serial-Gauss-Seidel-with-joint-admission"
                 ),
-                native_gekko_workers=self.planner.planning_workers,
-            ),
+                "native_gekko_workers": self.planner.planning_workers,
+            },
             timing_scope="Offline sequential qualification through execution proofs and durable checkpoint, including refused attempts; no flight deadline claim",
-            arrival_state=dict(
-                method="fixed-deadline-whole-set-entry-v1",
-                exact_deadline=None
+            arrival_state={
+                "method": "fixed-deadline-whole-set-entry-v1",
+                "exact_deadline": None
                 if self.planner.absolute_deadline_q is None
                 else str(self.planner.absolute_deadline_q),
-                first_admitted_exact_q=None
+                "first_admitted_exact_q": None
                 if self.first_terminal_entry_q is None
                 else str(self.first_terminal_entry_q),
-                entry_by_deadline=bool(
+                "entry_by_deadline": bool(
                     self.planner.absolute_deadline_q is not None
                     and self.first_terminal_entry_q is not None
                     and self.first_terminal_entry_q <= self.planner.absolute_deadline_q
                 ),
-                deadline_missed=self.arrival_deadline_missed,
-                terminal_dwell_updates=self.config.mpc.terminal_dwell_updates,
-                final_dwell=self.recorder.dwell,
-                events=self.arrival_events,
-                deadline_never_reset=True,
-            ),
+                "deadline_missed": self.arrival_deadline_missed,
+                "terminal_dwell_updates": self.config.mpc.terminal_dwell_updates,
+                "final_dwell": self.recorder.dwell,
+                "events": self.arrival_events,
+                "deadline_never_reset": True,
+            },
             failure_events=self.failure_events,
             actual_physical_end_exact_q=str(self.truth_target.current_q),
             injected_solver_failure_updates=sorted(self.solver_failure_updates),

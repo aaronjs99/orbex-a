@@ -17,15 +17,15 @@ def native_ipopt_iteration_metadata(path, *, unavailable_reason=None):
     Counts describe optimizer work, including failed solves, not feasibility.
     """
     path = Path(path)
-    source = dict(
-        method="native-ipopt-final-summary-v1",
-        log_file=path.name,
-        status="UNAVAILABLE",
-        sha256=None,
-        native_exit=None,
-        semantics="Native iterations in this solve attempt; not accumulated retries or an acceptance decision",
-    )
-    result = dict(iterations=None, iteration_count_provenance=source)
+    source = {
+        "method": "native-ipopt-final-summary-v1",
+        "log_file": path.name,
+        "status": "UNAVAILABLE",
+        "sha256": None,
+        "native_exit": None,
+        "semantics": "Native iterations in this solve attempt; not accumulated retries or an acceptance decision",
+    }
+    result = {"iterations": None, "iteration_count_provenance": source}
     if unavailable_reason is not None:
         source["reason"] = unavailable_reason
         return result

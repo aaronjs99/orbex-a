@@ -387,7 +387,11 @@ def main(argv=None):
             journal.close()
     print(
         json.dumps(
-            dict(success=result.success, message=result.message, output=str(output)),
+            {
+                "success": result.success,
+                "message": result.message,
+                "output": str(output),
+            },
             indent=2,
         )
     )

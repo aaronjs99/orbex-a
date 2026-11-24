@@ -41,7 +41,7 @@ class MissionReplay:
                     y=points[:, 1],
                     z=points[:, 2],
                     mode="lines",
-                    line=dict(color=chaser_color(number), width=5),
+                    line={"color": chaser_color(number), "width": 5},
                     name=escape(chaser_label(identifier)),
                     hovertemplate="x %{x:.4g}<br>y %{y:.4g}<br>z %{z:.4g}<extra>%{fullData.name}</extra>",
                 )
@@ -53,9 +53,10 @@ class MissionReplay:
                 y=points[:, 1],
                 z=points[:, 2],
                 mode="markers",
-                marker=dict(
-                    size=6, color=[chaser_color(number) for number in range(len(s.ids))]
-                ),
+                marker={
+                    "size": 6,
+                    "color": [chaser_color(number) for number in range(len(s.ids))],
+                },
                 text=[escape(chaser_label(identifier)) for identifier in s.ids],
                 name="Recorded positions",
                 showlegend=False,
@@ -89,14 +90,14 @@ class MissionReplay:
                     z=goals[:, 2],
                     mode="markers",
                     name="Assigned docking points",
-                    marker=dict(
-                        size=4,
-                        color=[
+                    marker={
+                        "size": 4,
+                        "color": [
                             chaser_color(s.ids.index(identifier))
                             for identifier in identifiers
                         ],
-                        symbol="diamond",
-                    ),
+                        "symbol": "diamond",
+                    },
                     text=[
                         escape(chaser_label(identifier)) + " goal"
                         for identifier in identifiers
@@ -130,26 +131,29 @@ class MissionReplay:
                     go.Frame(
                         name=str(index),
                         data=self._traces(index),
-                        layout=dict(title=dict(text=self._title(index))),
+                        layout={"title": {"text": self._title(index)}},
                     )
                     for index in selected
                 ]
             center, limit = self.geometry.limits()
             fig.update_layout(
                 title=self._title(0),
-                scene=dict(
-                    xaxis=dict(
-                        title="LVLH x", range=[center[0] - limit, center[0] + limit]
-                    ),
-                    yaxis=dict(
-                        title="LVLH y", range=[center[1] - limit, center[1] + limit]
-                    ),
-                    zaxis=dict(
-                        title="LVLH z", range=[center[2] - limit, center[2] + limit]
-                    ),
-                    aspectmode="cube",
-                    camera=dict(eye=dict(x=1.45, y=1.45, z=0.9)),
-                ),
+                scene={
+                    "xaxis": {
+                        "title": "LVLH x",
+                        "range": [center[0] - limit, center[0] + limit],
+                    },
+                    "yaxis": {
+                        "title": "LVLH y",
+                        "range": [center[1] - limit, center[1] + limit],
+                    },
+                    "zaxis": {
+                        "title": "LVLH z",
+                        "range": [center[2] - limit, center[2] + limit],
+                    },
+                    "aspectmode": "cube",
+                    "camera": {"eye": {"x": 1.45, "y": 1.45, "z": 0.9}},
+                },
             )
         else:
             fig.update_layout(title="Recorded mission replay unavailable")
@@ -164,69 +168,69 @@ class MissionReplay:
         fig.update_layout(
             template="plotly_white",
             height=700,
-            margin=dict(l=10, r=10, t=100, b=70),
-            font=dict(family="Arial, sans-serif", color="#22303A"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+            margin={"l": 10, "r": 10, "t": 100, "b": 70},
+            font={"family": "Arial, sans-serif", "color": "#22303A"},
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "x": 0},
             uirevision="saved-mission-replay",
         )
         if count > 1:
-            immediate = dict(
-                mode="immediate",
-                frame=dict(duration=0, redraw=True),
-                transition=dict(duration=0),
-            )
+            immediate = {
+                "mode": "immediate",
+                "frame": {"duration": 0, "redraw": True},
+                "transition": {"duration": 0},
+            }
             fig.update_layout(
                 updatemenus=[
-                    dict(
-                        type="buttons",
-                        direction="left",
-                        x=0,
-                        y=-0.06,
-                        showactive=False,
-                        buttons=[
-                            dict(
-                                label="Play",
-                                method="animate",
-                                args=[
+                    {
+                        "type": "buttons",
+                        "direction": "left",
+                        "x": 0,
+                        "y": -0.06,
+                        "showactive": False,
+                        "buttons": [
+                            {
+                                "label": "Play",
+                                "method": "animate",
+                                "args": [
                                     None,
-                                    dict(
-                                        frame=dict(duration=100, redraw=True),
-                                        transition=dict(duration=0),
-                                        fromcurrent=True,
-                                        mode="immediate",
-                                    ),
+                                    {
+                                        "frame": {"duration": 100, "redraw": True},
+                                        "transition": {"duration": 0},
+                                        "fromcurrent": True,
+                                        "mode": "immediate",
+                                    },
                                 ],
-                            ),
-                            dict(
-                                label="Pause",
-                                method="animate",
-                                args=[
+                            },
+                            {
+                                "label": "Pause",
+                                "method": "animate",
+                                "args": [
                                     [None],
-                                    dict(
-                                        frame=dict(duration=0, redraw=False),
-                                        mode="immediate",
-                                    ),
+                                    {
+                                        "frame": {"duration": 0, "redraw": False},
+                                        "mode": "immediate",
+                                    },
                                 ],
-                            ),
+                            },
                         ],
-                    )
+                    }
                 ],
                 sliders=[
-                    dict(
-                        active=0,
-                        x=0.20,
-                        len=0.78,
-                        y=-0.05,
-                        currentvalue=dict(prefix="Recorded sample index "),
-                        steps=[
-                            dict(
-                                label=str(index),
-                                method="animate",
-                                args=[[str(index)], immediate],
-                            )
+                    {
+                        "active": 0,
+                        "x": 0.20,
+                        "len": 0.78,
+                        "y": -0.05,
+                        "currentvalue": {"prefix": "Recorded sample index "},
+                        "steps": [
+                            {
+                                "label": str(index),
+                                "method": "animate",
+                                "args": [[str(index)], immediate],
+                            }
                             for index in selected
                         ],
-                    )
+                    }
                 ],
             )
         status = (
@@ -249,7 +253,7 @@ class MissionReplay:
             full_html=True,
             include_plotlyjs=True,
             auto_play=False,
-            config=dict(responsive=True, displaylogo=False),
+            config={"responsive": True, "displaylogo": False},
         )
         banner = (
             '<div style="font:14px/1.5 system-ui,sans-serif;color:#526171;padding:16px 22px;background:#f2f5f8;border-bottom:1px solid #dce3e9">'

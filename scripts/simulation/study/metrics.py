@@ -51,7 +51,7 @@ def completion_progress_endpoint(lifecycle, approach_end_time_s):
 
 def native_attempt_metrics(directory):
     """Count every native attempt, including refused and unknown outcomes."""
-    native = dict(total=0, successful=0, refused=0, unknown=0)
+    native = {"total": 0, "successful": 0, "refused": 0, "unknown": 0}
     calls = set()
     path = directory / "native-attempts.jsonl"
     if path.is_file():
@@ -79,13 +79,13 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
     import numpy as np
     from orbexa.simulation.nonlinear.records.archive import HOLD_INDEX_SCHEMA
 
-    result = dict(
-        schema="orbexa.nonlinear-study-metrics.v1",
-        success=False,
-        native_attempts=native_attempt_metrics(directory),
-        error=error,
-        scope="Recorded simulated physical prefix and actual failures; no successful-case filtering or flight deadline claim",
-    )
+    result = {
+        "schema": "orbexa.nonlinear-study-metrics.v1",
+        "success": False,
+        "native_attempts": native_attempt_metrics(directory),
+        "error": error,
+        "scope": "Recorded simulated physical prefix and actual failures; no successful-case filtering or flight deadline claim",
+    }
     if approach is None:
         result.update(
             status="SETUP_FAILED",
@@ -131,48 +131,48 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
             approach.initial_belief["feasible_sets"][key],
             approach.final_belief["feasible_sets"][key],
         )
-        widths[key] = dict(
-            initial=float(first[1] - first[0]),
-            final=float(last[1] - last[0]),
-            history=history,
-        )
+        widths[key] = {
+            "initial": float(first[1] - first[0]),
+            "final": float(last[1] - last[0]),
+            "history": history,
+        }
     tubes, bandwidth, effort = {}, {}, {}
     for key, values in approach.tube_diagnostics.items():
         p, w, a = (
             np.asarray(values.get(name, []), dtype=float)
             for name in ("phi", "omega", "bandwidth")
         )
-        tubes[key] = dict(
-            max_position_radius_norm_m=float(np.max(np.linalg.norm(w, axis=1)))
+        tubes[key] = {
+            "max_position_radius_norm_m": float(np.max(np.linalg.norm(w, axis=1)))
             if w.size
             else None,
-            max_sliding_radius_norm=float(np.max(np.linalg.norm(p, axis=1)))
+            "max_sliding_radius_norm": float(np.max(np.linalg.norm(p, axis=1)))
             if p.size
             else None,
-            final_position_radius_m=None if not w.size else w[-1].tolist(),
-            final_sliding_radius=None if not p.size else p[-1].tolist(),
-        )
-        bandwidth[key] = dict(
-            minimum_per_rad=None if not a.size else np.min(a, axis=0).tolist(),
-            maximum_per_rad=None if not a.size else np.max(a, axis=0).tolist(),
-            history_per_rad=a.tolist(),
-        )
+            "final_position_radius_m": None if not w.size else w[-1].tolist(),
+            "final_sliding_radius": None if not p.size else p[-1].tolist(),
+        }
+        bandwidth[key] = {
+            "minimum_per_rad": None if not a.size else np.min(a, axis=0).tolist(),
+            "maximum_per_rad": None if not a.size else np.max(a, axis=0).tolist(),
+            "history_per_rad": a.tolist(),
+        }
         outer_effort = float(sum(values.get("applied_control_effort", [])))
-        effort[key] = dict(
-            applied_input_squared_integral_per_reference_anomaly=(
+        effort[key] = {
+            "applied_input_squared_integral_per_reference_anomaly": (
                 outer_effort if held_effort is None else held_effort[key]
             ),
-            complete_outer_applied_input_squared_integral_per_reference_anomaly=outer_effort,
-            applied_control_rms=values.get("applied_control_rms", []),
-            ancillary_control_rms=values.get("ancillary_control_rms", []),
-            semantics=(
+            "complete_outer_applied_input_squared_integral_per_reference_anomaly": outer_effort,
+            "applied_control_rms": values.get("applied_control_rms", []),
+            "ancillary_control_rms": values.get("ancillary_control_rms", []),
+            "semantics": (
                 "Complete-outer history only; acknowledged-hold accounting unavailable"
                 if accounting is None
                 else "Every acknowledged completed held input weighted by its exact reference-anomaly width; unconfirmed motion excluded"
             )
             + "; not physical force or measured fuel",
-            rms_scope="Complete outer updates only",
-        )
+            "rms_scope": "Complete outer updates only",
+        }
     sources = {}
     for row in metadata.get("fleet_hold_records", []):
         source = (
@@ -195,14 +195,14 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
             and message
             != "nonlinear_approach_not_complete_within_declared_update_budget"
         ):
-            failure.append(dict(stage="approach", message=message))
+            failure.append({"stage": "approach", "message": message})
     for name in (
         "active_target_margins_safe",
         "pairwise_spacing_safe",
         "sampled_tube_containment",
     ):
         if metadata.get(name) is False:
-            failure.append(dict(stage="approach_safety", gate=name, passed=False))
+            failure.append({"stage": "approach_safety", "gate": name, "passed": False})
     if (
         metadata.get("continuous_execution_certificate", {}).get(
             "all_intervals_certified"
@@ -210,7 +210,11 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
         is False
     ):
         failure.append(
-            dict(stage="approach_safety", gate="all_intervals_certified", passed=False)
+            {
+                "stage": "approach_safety",
+                "gate": "all_intervals_certified",
+                "passed": False,
+            }
         )
     approach_complete = bool(approach.success and metadata.get("mission_complete"))
     if (
@@ -219,7 +223,7 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
         and approach_complete
         and not failure
     ):
-        failure.append(dict(stage="completion", message=completion.message))
+        failure.append({"stage": "completion", "message": completion.message})
     if error is not None:
         failure.append(error)
     fuel_unavailable = directory / "fuel-bound-refused.json"
@@ -260,13 +264,13 @@ def collect_study_metrics(approach, completion, runner, directory, error=None):
         tubes=tubes,
         bandwidth=bandwidth,
         partial_execution_accounting=accounting,
-        sampled_diagnostics_scope=dict(
-            exact_end_q=None
+        sampled_diagnostics_scope={
+            "exact_end_q": None
             if accounting is None
             else accounting["complete_outer_end_exact_q"],
-            updates=len(approach.anom_history) - 1,
-            scope="Safety minima, tube/bandwidth histories and RMS arrays cover complete outer samples only",
-        ),
+            "updates": len(approach.anom_history) - 1,
+            "scope": "Safety minima, tube/bandwidth histories and RMS arrays cover complete outer samples only",
+        },
         set_width=widths,
         physical_adaptation=metadata.get("physical_adaptation"),
         effort=effort,

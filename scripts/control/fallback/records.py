@@ -91,15 +91,15 @@ class PerformanceProposal:
     @property
     def fingerprint(self):
         return fingerprint(
-            dict(
-                start=self.start,
-                hold_width=self.hold_width,
-                applied_inputs=self.applied_inputs,
-                successor=self.successor.fingerprint,
-                observation_ids=self.observation_ids,
-                context_ids=self.context_ids,
-                attempt=self.attempt,
-            )
+            {
+                "start": self.start,
+                "hold_width": self.hold_width,
+                "applied_inputs": self.applied_inputs,
+                "successor": self.successor.fingerprint,
+                "observation_ids": self.observation_ids,
+                "context_ids": self.context_ids,
+                "attempt": self.attempt,
+            }
         )
 
 

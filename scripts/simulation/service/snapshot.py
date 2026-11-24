@@ -52,11 +52,11 @@ def _freeze_job(settings, directory):
         if _sha(original) != expected or _sha(frozen) != expected:
             raise RuntimeError("An explicit input changed during job snapshot")
         changes[name] = frozen
-        input_records[name] = dict(
-            original=str(original),
-            frozen=str(frozen.relative_to(directory)),
-            sha256=expected,
-        )
+        input_records[name] = {
+            "original": str(original),
+            "frozen": str(frozen.relative_to(directory)),
+            "sha256": expected,
+        }
     if settings.resume_path is not None:
         _record, source_journal = _resume_source(settings.resume_path)
         for name, original, filename in (
@@ -70,18 +70,18 @@ def _freeze_job(settings, directory):
                 raise RuntimeError("A resume source changed during job snapshot")
             if name == "resume_path":
                 changes[name] = frozen
-            input_records[name] = dict(
-                original=str(original),
-                frozen=str(frozen.relative_to(directory)),
-                sha256=expected,
-            )
+            input_records[name] = {
+                "original": str(original),
+                "frozen": str(frozen.relative_to(directory)),
+                "sha256": expected,
+            }
     _write_json(
         directory / "snapshot-manifest.json",
-        dict(
-            package_files=before,
-            inputs=input_records,
-            package_scope="Python runtime; viewer assets are exported separately for the selected UI port",
-            scope="Per-job coherent Python/input snapshot; scientific modules execute only these frozen bytes",
-        ),
+        {
+            "package_files": before,
+            "inputs": input_records,
+            "package_scope": "Python runtime; viewer assets are exported separately for the selected UI port",
+            "scope": "Per-job coherent Python/input snapshot; scientific modules execute only these frozen bytes",
+        },
     )
     return replace(settings, **changes)

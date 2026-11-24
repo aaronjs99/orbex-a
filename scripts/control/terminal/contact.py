@@ -123,16 +123,16 @@ class ContactAdmissionSource:
             )
 
     def as_dict(self):
-        return dict(
-            agent_id=self.agent_id,
-            exact_q=str(self.exact_q),
-            clock_fingerprint=self.clock_fingerprint,
-            model_fingerprint=self.model_fingerprint,
-            navigation_fingerprint=self.navigation_fingerprint,
-            goal_bound_id=self.goal_bound_id,
-            frame=self.frame,
-            body_rate_frame=self.body_rate_frame,
-        )
+        return {
+            "agent_id": self.agent_id,
+            "exact_q": str(self.exact_q),
+            "clock_fingerprint": self.clock_fingerprint,
+            "model_fingerprint": self.model_fingerprint,
+            "navigation_fingerprint": self.navigation_fingerprint,
+            "goal_bound_id": self.goal_bound_id,
+            "frame": self.frame,
+            "body_rate_frame": self.body_rate_frame,
+        }
 
 
 @dataclass(frozen=True)
@@ -190,16 +190,18 @@ class ContactReferenceKinematics:
             )
 
     def as_dict(self):
-        return dict(
-            rotation_matrix=tuple(tuple(map(str, row)) for row in self.rotation_matrix),
-            body_rate_rad_s=tuple(map(str, self.body_rate_rad_s)),
-            rotation_operator_error_upper=str(self.rotation_operator_error_upper),
-            goal_bound_id=self.goal_bound_id,
-            clock_fingerprint=self.clock_fingerprint,
-            exact_q=str(self.exact_q),
-            frame=self.frame,
-            body_rate_frame=self.body_rate_frame,
-        )
+        return {
+            "rotation_matrix": tuple(
+                tuple(map(str, row)) for row in self.rotation_matrix
+            ),
+            "body_rate_rad_s": tuple(map(str, self.body_rate_rad_s)),
+            "rotation_operator_error_upper": str(self.rotation_operator_error_upper),
+            "goal_bound_id": self.goal_bound_id,
+            "clock_fingerprint": self.clock_fingerprint,
+            "exact_q": str(self.exact_q),
+            "frame": self.frame,
+            "body_rate_frame": self.body_rate_frame,
+        }
 
 
 @dataclass(frozen=True)
@@ -240,16 +242,16 @@ class ContactGoalSpeedBound:
             "goal_speed_upper_m_s",
         )
         boxes = {
-            name: dict(
-                exact_lower=tuple(map(str, getattr(self, name).lower)),
-                exact_upper=tuple(map(str, getattr(self, name).upper)),
-            )
+            name: {
+                "exact_lower": tuple(map(str, getattr(self, name).lower)),
+                "exact_upper": tuple(map(str, getattr(self, name).upper)),
+            }
             for name in ("clock_rate_s_inv", "target_body_rate_rad_s")
         }
-        result = dict(
-            method="rigid-goal-speed-constant-v1",
-            source_sha256=_SOURCE_SHA256,
-            inputs=dict(
+        result = {
+            "method": "rigid-goal-speed-constant-v1",
+            "source_sha256": _SOURCE_SHA256,
+            "inputs": dict(
                 observed_goal=tuple(map(str, self.observed_goal)),
                 goal_position_error_norm_upper=str(self.goal_position_error_norm_upper),
                 goal_velocity_error_norm_upper=str(self.goal_velocity_error_norm_upper),
@@ -258,28 +260,28 @@ class ContactGoalSpeedBound:
                 if self.reference_kinematics is None
                 else self.reference_kinematics.as_dict(),
             ),
-            exact_upper_bounds={
+            "exact_upper_bounds": {
                 name: None if getattr(self, name) is None else str(getattr(self, name))
                 for name in scalar_names
             },
-            kinematic_residual_endpoints=None
+            "kinematic_residual_endpoints": None
             if self.kinematic_residual_endpoints is None
             else tuple(
                 tuple(map(str, row)) for row in self.kinematic_residual_endpoints
             ),
-            formula="K=min(nu_up*Ev+(nu_up+Wup)*Ep, "
+            "formula": "K=min(nu_up*Ev+(nu_up+Wup)*Ep, "
             "(gamma*norm(w_hat)+norm(body_rate_box-w_hat)_up)*norm(g_p)"
             "+max_endpoint_norm(nu*(g_v+Z*g_p)-(Rhat*w_hat) cross g_p))",
-            units=dict(
-                goal_speed="m/s",
-                position="m",
-                anomaly_velocity="m/rad",
-                angular_rate="rad/s",
-                rotation_error="operator norm",
-            ),
-            assumption_scope="Physical target rotation is proper and lies in the declared operator support; "
+            "units": {
+                "goal_speed": "m/s",
+                "position": "m",
+                "anomaly_velocity": "m/rad",
+                "angular_rate": "rad/s",
+                "rotation_error": "operator norm",
+            },
+            "assumption_scope": "Physical target rotation is proper and lies in the declared operator support; "
             "body rate lies in its box; caller authenticates goal/clock/forecast linkage",
-        )
+        }
         result["identity"] = fingerprint(result)
         return result
 
@@ -507,10 +509,10 @@ class ContactAdmissionInputs:
             )
         }
         boxes = {
-            name: dict(
-                exact_lower=tuple(map(str, getattr(self, name).lower)),
-                exact_upper=tuple(map(str, getattr(self, name).upper)),
-            )
+            name: {
+                "exact_lower": tuple(map(str, getattr(self, name).lower)),
+                "exact_upper": tuple(map(str, getattr(self, name).upper)),
+            }
             for name in ("clock_rate_s_inv", "target_body_rate_rad_s")
         }
         return vectors | scalars | boxes
@@ -567,38 +569,38 @@ class ContactSpeedAdmission:
             "tip_speed_term_upper_m_s",
             "speed_upper_m_s",
         )
-        result = dict(
-            method=METHOD,
-            source_sha256=_SOURCE_SHA256,
-            status="SUFFICIENT" if self.admissible else "REFUSED",
-            admissible=self.admissible,
-            source=self.source.as_dict(),
-            inputs=self.inputs.as_dict(),
-            formula="nu_up*(||c_v-g_v||+||Phi+abs(Lambda)*Omega||+E_v)"
+        result = {
+            "method": METHOD,
+            "source_sha256": _SOURCE_SHA256,
+            "status": "SUFFICIENT" if self.admissible else "REFUSED",
+            "admissible": self.admissible,
+            "source": self.source.as_dict(),
+            "inputs": self.inputs.as_dict(),
+            "formula": "nu_up*(||c_v-g_v||+||Phi+abs(Lambda)*Omega||+E_v)"
             "+(nu_up+||body_rate_box||_up)*(||c_p-g_p||+||Omega||+E_p)"
             "+max_spin_error*gripper_offset",
-            goal_kinematic_identity="nu*(g_true_v+z_cross(g_true_p))"
+            "goal_kinematic_identity": "nu*(g_true_v+z_cross(g_true_p))"
             "-omega_reference_cross(g_true_p)=0",
-            units=dict(
-                position="m",
-                anomaly_velocity="m/rad",
-                clock_rate="rad/s",
-                body_rate="rad/s",
-                lambda_gain="1/rad",
-                speed="m/s",
-            ),
-            assumption_scope="Authenticated same-event rigid fixed-body-point goal, true proper rotations, "
+            "units": {
+                "position": "m",
+                "anomaly_velocity": "m/rad",
+                "clock_rate": "rad/s",
+                "body_rate": "rad/s",
+                "lambda_gain": "1/rad",
+                "speed": "m/s",
+            },
+            "assumption_scope": "Authenticated same-event rigid fixed-body-point goal, true proper rotations, "
             "and declared navigation/tube/hardware supports; pointwise speed only",
-            components={
+            "components": {
                 name: tuple(map(str, getattr(self, name))) for name in vector_names
             },
-            exact_upper_bounds={
+            "exact_upper_bounds": {
                 name: str(getattr(self, name)) for name in scalar_names
             },
-            exact_margin_m_s=str(self.margin_m_s),
-            speed_upper_m_s=_outward(self.speed_upper_m_s, upper=True),
-            margin_lower_m_s=_outward(self.margin_m_s, upper=False),
-        )
+            "exact_margin_m_s": str(self.margin_m_s),
+            "speed_upper_m_s": _outward(self.speed_upper_m_s, upper=True),
+            "margin_lower_m_s": _outward(self.margin_m_s, upper=False),
+        }
         if self.goal_speed_bounds is not None:
             result["formula"] = (
                 "nu_up*(||c_v-g_v||+||Phi+abs(Lambda)*Omega||)"
@@ -756,15 +758,15 @@ class ContactReachPolicy:
         return min(reach, gap)
 
     def as_dict(self):
-        result = dict(
-            method="assigned-physical-contact-reach-policy-v1",
-            source_sha256=_SOURCE_SHA256,
-            standoff_m=str(self.standoff_m),
-            arm_reach_m=str(self.arm_reach_m),
-            max_orientation_error_rad=str(self.max_orientation_error_rad),
-            units=dict(standoff="m", arm_reach="m", orientation_error="rad"),
-            mounting_convention="Expected proper bus gripper axis is the assigned outward patch normal",
-        )
+        result = {
+            "method": "assigned-physical-contact-reach-policy-v1",
+            "source_sha256": _SOURCE_SHA256,
+            "standoff_m": str(self.standoff_m),
+            "arm_reach_m": str(self.arm_reach_m),
+            "max_orientation_error_rad": str(self.max_orientation_error_rad),
+            "units": {"standoff": "m", "arm_reach": "m", "orientation_error": "rad"},
+            "mounting_convention": "Expected proper bus gripper axis is the assigned outward patch normal",
+        }
         result["identity"] = fingerprint(result)
         return result
 
@@ -836,41 +838,41 @@ class ContactReachAdmission:
             "reach_upper_m",
             "gap_lower_m",
         )
-        result = dict(
-            method="sensed-split-capture-reach-v1",
-            source_sha256=_SOURCE_SHA256,
-            status="SUFFICIENT" if self.admissible else "REFUSED",
-            admissible=self.admissible,
-            reach_admissible=self.reach_admissible,
-            nonpenetration_admissible=self.nonpenetration_admissible,
-            source=self.source.as_dict(),
-            inputs=self.inputs.as_dict(),
-            policy=self.policy.as_dict(),
-            formula="B=||c_p-g_p||+||Omega||+Ep; "
+        result = {
+            "method": "sensed-split-capture-reach-v1",
+            "source_sha256": _SOURCE_SHA256,
+            "status": "SUFFICIENT" if self.admissible else "REFUSED",
+            "admissible": self.admissible,
+            "reach_admissible": self.reach_admissible,
+            "nonpenetration_admissible": self.nonpenetration_admissible,
+            "source": self.source.as_dict(),
+            "inputs": self.inputs.as_dict(),
+            "policy": self.policy.as_dict(),
+            "formula": "B=||c_p-g_p||+||Omega||+Ep; "
             "reach=abs(standoff-offset)+offset*orientation_limit+B; gap=standoff-offset-B",
-            units=dict(
-                position="m",
-                standoff="m",
-                offset="m",
-                orientation_limit="rad",
-                reach="m",
-                gap="m",
-            ),
-            assumption_scope="Authenticated same-event rigid fixed-body-point COM goal and position support; "
+            "units": {
+                "position": "m",
+                "standoff": "m",
+                "offset": "m",
+                "orientation_limit": "rad",
+                "reach": "m",
+                "gap": "m",
+            },
+            "assumption_scope": "Authenticated same-event rigid fixed-body-point COM goal and position support; "
             "proper actual/expected mount rotations with the declared angular error; "
             "caller authenticates assigned standoff and unchanged vehicle/arm limits. "
             "Reach and nonpenetration only; other patch/body/peer geometry gates remain required.",
-            components=dict(
-                nominal_position_error_abs=tuple(
+            "components": {
+                "nominal_position_error_abs": tuple(
                     map(str, self.nominal_position_error_abs)
                 )
-            ),
-            exact_bounds={name: str(getattr(self, name)) for name in scalar_names},
-            exact_reach_margin_m=str(self.reach_margin_m),
-            reach_upper_m=_outward(self.reach_upper_m, upper=True),
-            reach_margin_lower_m=_outward(self.reach_margin_m, upper=False),
-            gap_lower_m=_outward(self.gap_lower_m, upper=False),
-        )
+            },
+            "exact_bounds": {name: str(getattr(self, name)) for name in scalar_names},
+            "exact_reach_margin_m": str(self.reach_margin_m),
+            "reach_upper_m": _outward(self.reach_upper_m, upper=True),
+            "reach_margin_lower_m": _outward(self.reach_margin_m, upper=False),
+            "gap_lower_m": _outward(self.gap_lower_m, upper=False),
+        }
         result["identity"] = fingerprint(result)
         return result
 

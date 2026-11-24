@@ -12,23 +12,23 @@ class ContactGuards:
         self.fleet = fleet
         self.options = options
         self.geometry = geometry
-        self.maxima = dict(
-            force_n=0.0,
-            moment_nm=0.0,
-            compression_m=0.0,
-            extension_m=0.0,
-            positioner_power_w=0.0,
-            internal_force_residual_n=0.0,
-            internal_torque_residual_nm=0.0,
-            quaternion_norm_error=0.0,
-        )
-        self.minima = dict(
-            bus_component_clearance_m=np.inf,
-            peer_bus_clearance_m=np.inf,
-            positioner_component_clearance_m=np.inf,
-            positioner_peer_clearance_m=np.inf,
-            patch_edge_margin_m=np.inf,
-        )
+        self.maxima = {
+            "force_n": 0.0,
+            "moment_nm": 0.0,
+            "compression_m": 0.0,
+            "extension_m": 0.0,
+            "positioner_power_w": 0.0,
+            "internal_force_residual_n": 0.0,
+            "internal_torque_residual_nm": 0.0,
+            "quaternion_norm_error": 0.0,
+        }
+        self.minima = {
+            "bus_component_clearance_m": np.inf,
+            "peer_bus_clearance_m": np.inf,
+            "positioner_component_clearance_m": np.inf,
+            "positioner_peer_clearance_m": np.inf,
+            "patch_edge_margin_m": np.inf,
+        }
 
     def cylinder_distance(self, point):
         geometry = self.geometry

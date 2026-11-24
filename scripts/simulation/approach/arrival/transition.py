@@ -127,27 +127,31 @@ class MissionPolicyTransition:
             new["source_fingerprints"],
         )
         changed_files = {
-            name: dict(source=old_files.get(name), destination=new_files.get(name))
+            name: {"source": old_files.get(name), "destination": new_files.get(name)}
             for name in sorted(set(old_files) | set(new_files))
             if old_files.get(name) != new_files.get(name)
         }
-        payload = dict(
-            schema="orbexa.mission_policy_transition.v1",
-            source_checkpoint_identity=source_checkpoint.identity,
-            source_record_sha256=source_checkpoint.source_record_sha256,
-            source_canonical_sha256=source_checkpoint.source_canonical_sha256,
-            source_reference=source_checkpoint.source_context.get("source_reference"),
-            committed_updates=source_checkpoint.committed_updates,
-            exact_start_anomaly=exact_start,
-            source_checkpoint_context=copy.deepcopy(source_context),
-            destination_checkpoint_context=new,
-            changed_source_files=changed_files,
-            allowed_policy_change=dict(
-                path="scenario.arrival_policy", before=None, after=added
+        payload = {
+            "schema": "orbexa.mission_policy_transition.v1",
+            "source_checkpoint_identity": source_checkpoint.identity,
+            "source_record_sha256": source_checkpoint.source_record_sha256,
+            "source_canonical_sha256": source_checkpoint.source_canonical_sha256,
+            "source_reference": source_checkpoint.source_context.get(
+                "source_reference"
             ),
-            status="PREPARED_FOR_PLANNING",
-            scope="New prospective arrival-policy cohort with literal retained prefix; not candidate admission, motion or a backup theorem",
-        )
+            "committed_updates": source_checkpoint.committed_updates,
+            "exact_start_anomaly": exact_start,
+            "source_checkpoint_context": copy.deepcopy(source_context),
+            "destination_checkpoint_context": new,
+            "changed_source_files": changed_files,
+            "allowed_policy_change": {
+                "path": "scenario.arrival_policy",
+                "before": None,
+                "after": added,
+            },
+            "status": "PREPARED_FOR_PLANNING",
+            "scope": "New prospective arrival-policy cohort with literal retained prefix; not candidate admission, motion or a backup theorem",
+        }
         record = dict(identity=digest(payload), **payload)
         return cls(
             source_checkpoint,

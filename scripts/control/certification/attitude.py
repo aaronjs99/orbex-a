@@ -206,28 +206,28 @@ class AttitudeFlowCertificate:
         return result
 
     def as_dict(self):
-        return dict(
-            status=self.status.value,
-            reason=self.reason,
-            initial_state=self.initial_state.as_dict(),
-            endpoint=None if self.endpoint is None else self.endpoint.as_dict(),
-            swept_state=None
+        return {
+            "status": self.status.value,
+            "reason": self.reason,
+            "initial_state": self.initial_state.as_dict(),
+            "endpoint": None if self.endpoint is None else self.endpoint.as_dict(),
+            "swept_state": None
             if self.swept_state is None
             else self.swept_state.as_dict(),
-            segments=tuple(segment.as_dict() for segment in self.segments),
-            reference_rotation_at_start=None
+            "segments": tuple(segment.as_dict() for segment in self.segments),
+            "reference_rotation_at_start": None
             if self.reference_rotation_at_start is None
             else tuple(
                 tuple(map(str, row)) for row in self.reference_rotation_at_start
             ),
-            initial_rotation_operator_error=None
+            "initial_rotation_operator_error": None
             if self.initial_rotation_operator_error is None
             else str(self.initial_rotation_operator_error),
-            relative_angular_rate_per_anomaly=None
+            "relative_angular_rate_per_anomaly": None
             if self.relative_angular_rate_per_anomaly is None
             else str(self.relative_angular_rate_per_anomaly),
-            context=self.context,
-        )
+            "context": self.context,
+        }
 
     def occupied_bounds(self, geometry):
         from orbexa.control.certification.geometry import RotatingCompositeBounds
@@ -273,24 +273,24 @@ class AttitudeFlowEncloser:
             initial_quaternion_box.lower + initial_body_rate_box.lower,
             initial_quaternion_box.upper + initial_body_rate_box.upper,
         )
-        context = dict(
-            model="nonlinear-ephemeris-quaternion-euler-v1",
-            frame=FRAME,
-            source_sha256=_SOURCE_SHA256,
-            plant_fingerprint=model.fingerprint,
-            target_model_fingerprint=model.target_fingerprint,
-            clock_fingerprint=clock.fingerprint,
-            target_flow_fingerprint=target_flow.fingerprint,
-            inertia=tuple(tuple(map(str, row)) for row in matrix),
-            gravity_gradient=bool(gravity_gradient),
-            quaternion_order="xyzw",
-            start_q=tuple(map(str, target_flow.start_anomaly)),
-            width_q=tuple(map(str, target_flow.hold_width)),
-            assumptions=[
+        context = {
+            "model": "nonlinear-ephemeris-quaternion-euler-v1",
+            "frame": FRAME,
+            "source_sha256": _SOURCE_SHA256,
+            "plant_fingerprint": model.fingerprint,
+            "target_model_fingerprint": model.target_fingerprint,
+            "clock_fingerprint": clock.fingerprint,
+            "target_flow_fingerprint": target_flow.fingerprint,
+            "inertia": tuple(tuple(map(str, row)) for row in matrix),
+            "gravity_gradient": bool(gravity_gradient),
+            "quaternion_order": "xyzw",
+            "start_q": tuple(map(str, target_flow.start_anomaly)),
+            "width_q": tuple(map(str, target_flow.hold_width)),
+            "assumptions": [
                 "Initial box contains a unit physical quaternion",
                 "Constant inertia and central spherical gravity-gradient torque only",
             ],
-        )
+        }
 
         def failure(status, reason):
             return AttitudeFlowCertificate(

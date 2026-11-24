@@ -70,12 +70,12 @@ class SharedAffineActuationCell:
         return cls(IntervalBox(tuple(lower), tuple(upper)), prior.fingerprint)
 
     def as_dict(self):
-        return dict(
-            parameters=self.parameters.as_dict(),
-            prior_fingerprint=self.prior_fingerprint,
-            coordinates="row-major 3x3 matrix, then three fixed biases",
-            persistence=PERSISTENCE,
-        )
+        return {
+            "parameters": self.parameters.as_dict(),
+            "prior_fingerprint": self.prior_fingerprint,
+            "coordinates": "row-major 3x3 matrix, then three fixed biases",
+            "persistence": PERSISTENCE,
+        }
 
     @property
     def fingerprint(self):
@@ -253,11 +253,11 @@ class LinkedNonlinearMembershipContractor:
                 initial_time = intersect(time_endpoint, initial_time)
                 if initial is None or initial_time is None:
                     records.append(
-                        dict(
-                            status="CERTIFIED_INCONSISTENT",
-                            observation_id=item.observation_id,
-                            reason="Linked target/time endpoint and next initial observation are disjoint",
-                        )
+                        {
+                            "status": "CERTIFIED_INCONSISTENT",
+                            "observation_id": item.observation_id,
+                            "reason": "Linked target/time endpoint and next initial observation are disjoint",
+                        }
                     )
                     return None, True
             if not budget.take():
@@ -265,13 +265,13 @@ class LinkedNonlinearMembershipContractor:
             flow = self.encloser.enclose_target(
                 initial, item.start_q, item.width_q, model, clock, initial_time
             )
-            record = dict(
-                observation_id=item.observation_id,
-                target_status=flow.status.value,
-                target_fingerprint=flow.fingerprint,
-                linked_target_initial=initial.as_dict(),
-                linked_time_initial=initial_time.as_dict(),
-            )
+            record = {
+                "observation_id": item.observation_id,
+                "target_status": flow.status.value,
+                "target_fingerprint": flow.fingerprint,
+                "linked_target_initial": initial.as_dict(),
+                "linked_time_initial": initial_time.as_dict(),
+            }
             endpoint = (
                 intersect(flow.endpoint, item.target_observed)
                 if (flow.proven and item.target_observed is not None)
@@ -305,23 +305,23 @@ class LinkedNonlinearMembershipContractor:
                 initial = intersect(endpoint, initial)
                 if initial is None:
                     records.append(
-                        dict(
-                            nuisance_cell=cell.fingerprint,
-                            observation_id=item.observation_id,
-                            status="CERTIFIED_INCONSISTENT",
-                            reason="Linked relative endpoint and next initial observation are disjoint",
-                        )
+                        {
+                            "nuisance_cell": cell.fingerprint,
+                            "observation_id": item.observation_id,
+                            "status": "CERTIFIED_INCONSISTENT",
+                            "reason": "Linked relative endpoint and next initial observation are disjoint",
+                        }
                     )
                     return True
             applied = cell.applied_input(item.commanded_input, item.held_input)
             if applied is None:
                 records.append(
-                    dict(
-                        nuisance_cell=cell.fingerprint,
-                        observation_id=item.observation_id,
-                        status="CERTIFIED_INCONSISTENT",
-                        reason="Shared actuator cell cannot produce admitted held-input support",
-                    )
+                    {
+                        "nuisance_cell": cell.fingerprint,
+                        "observation_id": item.observation_id,
+                        "status": "CERTIFIED_INCONSISTENT",
+                        "reason": "Shared actuator cell cannot produce admitted held-input support",
+                    }
                 )
                 return True
             previous_end = item.start_q[0] + item.width_q[0]
@@ -345,20 +345,20 @@ class LinkedNonlinearMembershipContractor:
             )
             rejected = flow.proven and endpoint is None
             records.append(
-                dict(
-                    nuisance_cell=cell.fingerprint,
-                    observation_id=item.observation_id,
-                    flow_status=flow.status.value,
-                    flow_fingerprint=flow.fingerprint,
-                    status="CERTIFIED_INCONSISTENT"
+                {
+                    "nuisance_cell": cell.fingerprint,
+                    "observation_id": item.observation_id,
+                    "flow_status": flow.status.value,
+                    "flow_fingerprint": flow.fingerprint,
+                    "status": "CERTIFIED_INCONSISTENT"
                     if rejected
                     else "CONSISTENT_OR_UNRESOLVED_RETAINED",
-                    linked_initial=initial.as_dict(),
-                    shared_input=applied.as_dict(),
-                    reason="Complete linked relative endpoint disjoint from observation"
+                    "linked_initial": initial.as_dict(),
+                    "shared_input": applied.as_dict(),
+                    "reason": "Complete linked relative endpoint disjoint from observation"
                     if rejected
                     else flow.reason,
-                )
+                }
             )
             if rejected:
                 return True
@@ -388,11 +388,11 @@ class LinkedNonlinearMembershipContractor:
                 legacy.retained_models,
                 legacy.discarded_fingerprints,
                 (
-                    dict(
-                        method=METHOD,
-                        status="INDEPENDENT_FALLBACK",
-                        reason="Missing exact clock, agent, command or explicit fixed affine declaration",
-                    ),
+                    {
+                        "method": METHOD,
+                        "status": "INDEPENDENT_FALLBACK",
+                        "reason": "Missing exact clock, agent, command or explicit fixed affine declaration",
+                    },
                 )
                 + legacy.records,
                 legacy.status,
@@ -414,13 +414,13 @@ class LinkedNonlinearMembershipContractor:
             )
         retained, discarded, records = [], [], []
         for index, model in enumerate(models):
-            candidate_record = dict(
-                method=METHOD,
-                candidate=model.fingerprint,
-                agents=[],
-                maximum_flow_evaluations=self.max_flow_evaluations_per_candidate,
-                maximum_nuisance_cells_per_agent=self.max_nuisance_cells,
-            )
+            candidate_record = {
+                "method": METHOD,
+                "candidate": model.fingerprint,
+                "agents": [],
+                "maximum_flow_evaluations": self.max_flow_evaluations_per_candidate,
+                "maximum_nuisance_cells_per_agent": self.max_nuisance_cells,
+            }
             records.append(candidate_record)
             if index >= self.max_boxes:
                 retained.append(model)
@@ -445,12 +445,12 @@ class LinkedNonlinearMembershipContractor:
                     key,
                     (SharedAffineActuationCell.from_prior(history[0].actuation_prior),),
                 )
-                entry = dict(
-                    agent_id=agent,
-                    observation_ids=[t.observation_id for t in history],
-                    nuisance_cells_before=[cell.as_dict() for cell in cells],
-                    records=[],
-                )
+                entry = {
+                    "agent_id": agent,
+                    "observation_ids": [t.observation_id for t in history],
+                    "nuisance_cells_before": [cell.as_dict() for cell in cells],
+                    "records": [],
+                }
                 candidate_record["agents"].append(entry)
                 targets, target_rejected = self._target_sequence(
                     model, history, clock, budget, entry["records"]

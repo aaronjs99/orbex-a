@@ -173,7 +173,7 @@ class QuadraticProximalModel:
             jac=lambda x: h @ x + g,
             method="SLSQP",
             constraints=[LinearConstraint(rows, -np.inf, bounds)],
-            options=dict(ftol=1.0e-12, maxiter=200),
+            options={"ftol": 1.0e-12, "maxiter": 200},
         )
         if (
             not result.success

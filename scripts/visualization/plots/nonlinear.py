@@ -138,15 +138,15 @@ class NonlinearMissionPlots:
                 raise ValueError("Unknown saved completion lifecycle schema")
             kwargs["lifecycle"] = value["result"]
         result = cls(MissionResultStore.load(path), output_dir, **kwargs)
-        result.source = dict(
-            path=str(path.resolve()),
-            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
-        )
+        result.source = {
+            "path": str(path.resolve()),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
         if loaded_lifecycle:
-            result.lifecycle_source = dict(
-                path=str(lifecycle_path.resolve()),
-                sha256=hashlib.sha256(lifecycle_path.read_bytes()).hexdigest(),
-            )
+            result.lifecycle_source = {
+                "path": str(lifecycle_path.resolve()),
+                "sha256": hashlib.sha256(lifecycle_path.read_bytes()).hexdigest(),
+            }
         return result
 
     def _save(self, figure, filename, label):
@@ -199,23 +199,23 @@ class NonlinearMissionPlots:
                     method()
                 except (ValueError, KeyError, TypeError, IndexError) as error:
                     self.skipped_artifacts[name] = str(error)
-        record = dict(
-            schema="orbexa.nonlinear-plot-manifest.v1",
-            source=self.source,
-            lifecycle_source=self.lifecycle_source,
-            model=self.metadata.get("model_version"),
-            clock_fingerprint=self.metadata.get("reference_clock_fingerprint"),
-            approach_complete=bool(
+        record = {
+            "schema": "orbexa.nonlinear-plot-manifest.v1",
+            "source": self.source,
+            "lifecycle_source": self.lifecycle_source,
+            "model": self.metadata.get("model_version"),
+            "clock_fingerprint": self.metadata.get("reference_clock_fingerprint"),
+            "approach_complete": bool(
                 _get(self.result, "success") and self.metadata.get("mission_complete")
             ),
-            recorded_nodes=len(self.q),
-            artifacts=[
-                dict(path=path.name, label=label) for path, label in self.artifacts
+            "recorded_nodes": len(self.q),
+            "artifacts": [
+                {"path": path.name, "label": label} for path, label in self.artifacts
             ],
-            skipped_artifacts=self.skipped_artifacts,
-            alignment=self.alignment,
-            scope="Numerical diagnostics from saved matched records; no missing data or completed lifecycle is synthesized",
-        )
+            "skipped_artifacts": self.skipped_artifacts,
+            "alignment": self.alignment,
+            "scope": "Numerical diagnostics from saved matched records; no missing data or completed lifecycle is synthesized",
+        }
         (self.output_dir / "nonlinear-plot-manifest.json").write_text(
             json.dumps(record, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )
@@ -272,11 +272,11 @@ class NonlinearMissionPlots:
             index = int(matches[0])
             if row.get("status") != "VALID":
                 refused.append(
-                    dict(
-                        exact_q=str(exact_q),
-                        status=row.get("status"),
-                        reason=row.get("reason"),
-                    )
+                    {
+                        "exact_q": str(exact_q),
+                        "status": row.get("status"),
+                        "reason": row.get("reason"),
+                    }
                 )
                 continue
             time_lower, time_upper = _box(
@@ -311,23 +311,23 @@ class NonlinearMissionPlots:
                     np.abs(error), radius, out=np.full(6, np.inf), where=radius > 0
                 )
                 ratio[(radius == 0) & (error == 0)] = 0
-                per_agent[key] = dict(
-                    position_error_m=float(np.linalg.norm(error[:3])),
-                    position_bound_m=float(np.linalg.norm(radius[:3])),
-                    velocity_error_m_s=float(rate * np.linalg.norm(error[3:] + zp)),
-                    velocity_bound_m_s=float(rate * np.linalg.norm(velocity_radius)),
-                    component_ratio=None
+                per_agent[key] = {
+                    "position_error_m": float(np.linalg.norm(error[:3])),
+                    "position_bound_m": float(np.linalg.norm(radius[:3])),
+                    "velocity_error_m_s": float(rate * np.linalg.norm(error[3:] + zp)),
+                    "velocity_bound_m_s": float(rate * np.linalg.norm(velocity_radius)),
+                    "component_ratio": None
                     if not np.all(np.isfinite(ratio))
                     else float(np.max(ratio)),
-                    zero_width_violation=bool(np.any(~np.isfinite(ratio))),
-                )
+                    "zero_width_violation": bool(np.any(~np.isfinite(ratio))),
+                }
             rows.append(
-                dict(
-                    index=index,
-                    exact_q=str(exact_q),
-                    time_s=float(self.time[index]),
-                    agents=per_agent,
-                )
+                {
+                    "index": index,
+                    "exact_q": str(exact_q),
+                    "time_s": float(self.time[index]),
+                    "agents": per_agent,
+                }
             )
         if not rows:
             raise ValueError("No VALID navigation row matches retained numerical truth")
@@ -335,14 +335,14 @@ class NonlinearMissionPlots:
             raise ValueError(
                 "Matched navigation records are not in strictly increasing node order"
             )
-        self.alignment["navigation"] = dict(
-            matched_nodes=len(rows),
-            saved_truth_nodes=len(self.q),
-            refused_statuses=refused,
-            exact_q=[row["exact_q"] for row in rows],
-            velocity_transform="nu(q)*(error_reference_derivative + Z*error_position); upper image nu*norm(rv+abs(Z)*rp)",
-            semantics="Bounds are numerical images of saved boxes, not a new outward interval proof",
-        )
+        self.alignment["navigation"] = {
+            "matched_nodes": len(rows),
+            "saved_truth_nodes": len(self.q),
+            "refused_statuses": refused,
+            "exact_q": [row["exact_q"] for row in rows],
+            "velocity_transform": "nu(q)*(error_reference_derivative + Z*error_position); upper image nu*norm(rv+abs(Z)*rp)",
+            "semantics": "Bounds are numerical images of saved boxes, not a new outward interval proof",
+        }
         return rows
 
     def _navigation(self):
@@ -455,11 +455,11 @@ class NonlinearMissionPlots:
             ),
         ):
             axis.set_ylabel(label)
-        self.alignment["tubes"] = dict(
-            nodes=len(self.q),
-            fleet=list(self.ids),
-            semantics="Each agent uses exactly its own saved node arrays",
-        )
+        self.alignment["tubes"] = {
+            "nodes": len(self.q),
+            "fleet": list(self.ids),
+            "semantics": "Each agent uses exactly its own saved node arrays",
+        }
         self._axes(axes)
         self._save(
             figure,
@@ -503,11 +503,11 @@ class NonlinearMissionPlots:
                 color="#0072B2",
             )
             axis.set_ylabel(label, fontsize=9)
-        self.alignment["physical_set_widths"] = dict(
-            nodes=len(self.q),
-            coefficient_per_sigma=coefficient,
-            semantics="Controller reference-density marginal intervals mapped with alpha/beta=(rho_reference*radius_reference/2)*sigma; not the volume of retained candidate sets",
-        )
+        self.alignment["physical_set_widths"] = {
+            "nodes": len(self.q),
+            "coefficient_per_sigma": coefficient,
+            "semantics": "Controller reference-density marginal intervals mapped with alpha/beta=(rho_reference*radius_reference/2)*sigma; not the volume of retained candidate sets",
+        }
         self._axes(axes)
         self._save(
             figure,
@@ -615,17 +615,17 @@ class NonlinearMissionPlots:
                 transform=axes[1].transAxes,
             )
             axes[1].set_axis_off()
-        self.alignment["execution"] = dict(
-            completed_holds=len(records),
-            exact_start=str(segments[0][0]),
-            exact_end=str(segments[-1][1]),
-            update_attempts=len(timing),
-            wall_timing_scope="full_attempt"
+        self.alignment["execution"] = {
+            "completed_holds": len(records),
+            "exact_start": str(segments[0][0]),
+            "exact_end": str(segments[-1][1]),
+            "update_attempts": len(timing),
+            "wall_timing_scope": "full_attempt"
             if full
             else "planner_only"
             if timing
             else "unavailable",
-            full_update_deadline_status_counts={
+            "full_update_deadline_status_counts": {
                 status: sum(
                     row.get("full_update_deadline_status") == status for row in timing
                 )
@@ -633,8 +633,8 @@ class NonlinearMissionPlots:
             }
             if full
             else None,
-            semantics="Actual shared fleet hold sources; timing is offline evidence, not a flight deadline guarantee",
-        )
+            "semantics": "Actual shared fleet hold sources; timing is offline evidence, not a flight deadline guarantee",
+        }
         for axis in axes:
             axis.grid(True, alpha=0.6)
         self._save(
@@ -700,28 +700,28 @@ class NonlinearMissionPlots:
                     "Finite-contact trace must name the exact plotted fleet"
                 )
         pads = {
-            key: dict(
-                gap=_array(
+            key: {
+                "gap": _array(
                     [row["pads"][key]["gap_m"] for row in history],
                     (count,),
                     key + " gap",
                 ),
-                force=_array(
+                "force": _array(
                     [row["pads"][key]["force_eci_n"] for row in history],
                     (count, 3),
                     key + " contact force",
                 ),
-                extension=_array(
+                "extension": _array(
                     [row["pads"][key]["extension_body_m"] for row in history],
                     (count, 3),
                     key + " extension",
                 ),
-                activation=_array(
+                "activation": _array(
                     [row["pads"][key]["activation"] for row in history],
                     (count,),
                     key + " bond activation",
                 ),
-            )
+            }
             for key in self.ids
         }
         if any(
@@ -810,17 +810,17 @@ class NonlinearMissionPlots:
             "Original translating nonrotating contact frame and fuel/work ledgers. Representative simulated pad model; no hardware/flight qualification.",
             fontsize=8,
         )
-        self.alignment["finite_contact"] = dict(
-            nodes=count,
-            physical_start_time_s=float(times[0]),
-            physical_end_time_s=float(times[-1]),
-            lifecycle_approach_sha256=semantic_sha256(approach),
-            contact_model=audit["model"],
-            contact_success=bool(contact.get("success")),
-            balance_frame=audit.get("balance_frame"),
-            ledger_semantics="v1 columns: external P, fuel P, external H, fuel H, external/fuel/positioner/engagement work, compression/friction/bond dissipation",
-            scope="Actual lifecycle trace only; no standalone contact qualification is imported",
-        )
+        self.alignment["finite_contact"] = {
+            "nodes": count,
+            "physical_start_time_s": float(times[0]),
+            "physical_end_time_s": float(times[-1]),
+            "lifecycle_approach_sha256": semantic_sha256(approach),
+            "contact_model": audit["model"],
+            "contact_success": bool(contact.get("success")),
+            "balance_frame": audit.get("balance_frame"),
+            "ledger_semantics": "v1 columns: external P, fuel P, external H, fuel H, external/fuel/positioner/engagement work, compression/friction/bond dissipation",
+            "scope": "Actual lifecycle trace only; no standalone contact qualification is imported",
+        }
         self._save(
             figure,
             "nonlinear_finite_contact.png",

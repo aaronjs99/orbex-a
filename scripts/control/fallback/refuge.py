@@ -69,9 +69,10 @@ def exact_record(value):
     if isinstance(value, Fraction):
         return str(value)
     if isinstance(value, IntervalBox):
-        return dict(
-            lower=tuple(map(str, value.lower)), upper=tuple(map(str, value.upper))
-        )
+        return {
+            "lower": tuple(map(str, value.lower)),
+            "upper": tuple(map(str, value.upper)),
+        }
     if is_dataclass(value):
         return {
             field.name: exact_record(getattr(value, field.name))

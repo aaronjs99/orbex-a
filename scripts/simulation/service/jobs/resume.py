@@ -201,10 +201,10 @@ def _append_resume_journal(checkpoint, path, destination):
         and all(previous[key] == box(guard["endpoint_boxes"][key], 6) for key in ids),
         "incomplete final clock/enclosures/count",
     )
-    return dict(
-        admitted_holds=observed,
-        committed_updates=checkpoint.committed_updates,
-        exact_start_anomaly=str(Fraction(record["anom_history"][0])),
-        exact_end_anomaly=str(q),
-        scope="Unchanged source journal prefix; clock/request/sample/endpoint linkage checked, not newly executed or relabeled",
-    )
+    return {
+        "admitted_holds": observed,
+        "committed_updates": checkpoint.committed_updates,
+        "exact_start_anomaly": str(Fraction(record["anom_history"][0])),
+        "exact_end_anomaly": str(q),
+        "scope": "Unchanged source journal prefix; clock/request/sample/endpoint linkage checked, not newly executed or relabeled",
+    }

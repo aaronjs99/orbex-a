@@ -183,20 +183,20 @@ def hold_index(record):
     from orbexa.control.fallback.refuge import fingerprint
 
     decision = record["decision"]
-    return dict(
-        schema=HOLD_INDEX_SCHEMA,
-        exact_start=record["exact_start"],
-        exact_end=record["exact_end"],
-        hold_width=decision["hold_width"],
-        decision_identity=decision["identity"],
-        full_record_sha256=semantic_sha256(record, fast=True),
-        command_source=decision["source"],
-        actuator_realization_id=record["actuator_realization_id"],
-        sensor_profile_id=record["sensor_profile_id"],
-        geometry_id=fingerprint(decision["geometry"]),
-        runtime_commit_status=record["runtime_commit"]["status"],
-        navigation_status=record["navigation_status"],
-    )
+    return {
+        "schema": HOLD_INDEX_SCHEMA,
+        "exact_start": record["exact_start"],
+        "exact_end": record["exact_end"],
+        "hold_width": decision["hold_width"],
+        "decision_identity": decision["identity"],
+        "full_record_sha256": semantic_sha256(record, fast=True),
+        "command_source": decision["source"],
+        "actuator_realization_id": record["actuator_realization_id"],
+        "sensor_profile_id": record["sensor_profile_id"],
+        "geometry_id": fingerprint(decision["geometry"]),
+        "runtime_commit_status": record["runtime_commit"]["status"],
+        "navigation_status": record["navigation_status"],
+    }
 
 
 class NonlinearProofArchive:
@@ -239,20 +239,20 @@ class NonlinearProofArchive:
             except BaseException:
                 self._raw.close()
                 raise
-            self._compression = dict(
-                codec="zstd",
-                python_zstandard=zstd.__version__,
-                libzstd=list(zstd.ZSTD_VERSION),
-                backend=zstd.backend,
-                level=3,
-                window_log=27,
-                window_bytes=ZSTD_WINDOW_BYTES,
-                long_distance_matching=True,
-                checksum=True,
-                content_size=False,
-                threads=0,
-                event_flush="FLUSH_BLOCK",
-            )
+            self._compression = {
+                "codec": "zstd",
+                "python_zstandard": zstd.__version__,
+                "libzstd": list(zstd.ZSTD_VERSION),
+                "backend": zstd.backend,
+                "level": 3,
+                "window_log": 27,
+                "window_bytes": ZSTD_WINDOW_BYTES,
+                "long_distance_matching": True,
+                "checksum": True,
+                "content_size": False,
+                "threads": 0,
+                "event_flush": "FLUSH_BLOCK",
+            }
         else:
             self.stream = gzip.open(self.path, "xt", encoding="utf-8", compresslevel=3)
         self.entries = self.holds = 0
@@ -284,12 +284,12 @@ class NonlinearProofArchive:
             raise ValueError(
                 "Completed hold archive event lacks its full admitted record"
             )
-        entry = dict(
-            schema=SCHEMA,
-            sequence=self.entries,
-            payload_sha256=identity,
-            payload=payload,
-        )
+        entry = {
+            "schema": SCHEMA,
+            "sequence": self.entries,
+            "payload_sha256": identity,
+            "payload": payload,
+        }
         encoder = _Encoder(separators=(",", ":"), allow_nan=False)
         chunks = tuple(encoder.iterencode(entry, _one_shot=True))
         # ensure_ascii=True (JSONEncoder's default) makes chunks ASCII bytes.
@@ -339,15 +339,15 @@ class NonlinearProofArchive:
                 durable.flush()
                 os.fsync(durable.fileno())
         self.closed = True
-        record = dict(
-            schema=SCHEMA,
-            raw_sha256=file_sha256(self.path),
-            entries=self.entries,
-            completed_holds=self.holds,
-            event_kinds=self.kinds,
-            payload_identities_sha256=self._rolling.hexdigest(),
-            scope="Exact streamed producer witnesses and actual hold/failure events; not a new proof or fabricated execution",
-        )
+        record = {
+            "schema": SCHEMA,
+            "raw_sha256": file_sha256(self.path),
+            "entries": self.entries,
+            "completed_holds": self.holds,
+            "event_kinds": self.kinds,
+            "payload_identities_sha256": self._rolling.hexdigest(),
+            "scope": "Exact streamed producer witnesses and actual hold/failure events; not a new proof or fabricated execution",
+        }
         if self._compression is not None:
             record["compression"] = self._compression
         manifest = self.path.with_name(self.path.name + ".manifest.json")
@@ -394,27 +394,27 @@ class NonlinearHoldArchive:
                 "Closed nonlinear archive source identity or count is invalid"
             )
         self.identity = semantic_sha256(
-            dict(
-                schema=SCHEMA,
-                raw_sha256=self.raw_sha256,
-                completed_holds=self.count,
-                entries=self.entries,
-                payload_ids_sha256=self.payload_ids_sha256,
-            )
+            {
+                "schema": SCHEMA,
+                "raw_sha256": self.raw_sha256,
+                "completed_holds": self.count,
+                "entries": self.entries,
+                "payload_ids_sha256": self.payload_ids_sha256,
+            }
         )
 
     def __len__(self):
         return self.count
 
     def as_dict(self):
-        return dict(
-            path=str(self.path),
-            raw_sha256=self.raw_sha256,
-            completed_holds=self.count,
-            entries=self.entries,
-            identity=self.identity,
-            method="source-bound-reiterable-streaming-full-hold-view-v1",
-        )
+        return {
+            "path": str(self.path),
+            "raw_sha256": self.raw_sha256,
+            "completed_holds": self.count,
+            "entries": self.entries,
+            "identity": self.identity,
+            "method": "source-bound-reiterable-streaming-full-hold-view-v1",
+        }
 
     def __iter__(self):
         if file_sha256(self.path) != self.raw_sha256:
