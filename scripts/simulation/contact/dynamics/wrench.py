@@ -52,7 +52,7 @@ def initial_wrench_boxes(model, time, combined, ar, supplied=None):
 
 def wrench_derivatives(model, diag, derivative):
     """Exact graph derivatives, enclosed on the positive principal log branch."""
-    ar, fleet, options = model.ar, model.fleet, model.o
+    ar = model.ar
     body, tips, rotations = diag["body"], diag["tips"], diag["rotations"]
     wt, alpha_t = body[0][10:13], tuple(derivative[16:19])
     result = []

@@ -120,7 +120,6 @@ def run_adaptor_op(
 
     w_0 = W[0]
     w_f = W[-1]
-    flag = False
 
     max_memory = gekko_memory_exponent(kwargs.get("max_memory", 4))
     solver = GEKKO(remote=kwargs.get("remote", False))
@@ -219,7 +218,6 @@ def run_adaptor_op(
             est_vals = [p_est[i].value[-1] for i in range(len(p_range))]
             output = False, est_vals
         except:
-            flag = True
             output = True, [0] * len(p_range)
 
     solver.cleanup()

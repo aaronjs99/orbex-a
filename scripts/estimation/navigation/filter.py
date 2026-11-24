@@ -475,9 +475,7 @@ class BoundedNavigationFilter:
                     return self.estimate()
                 if narrowed is None:
                     # Distinguish an empty replay intersection from unavailable replay.
-                    if reason.startswith(
-                        "Delayed observation replayed"
-                    ) or reason.startswith("Current"):
+                    if reason.startswith(("Delayed observation replayed", "Current")):
                         self.status, self.reason = (
                             "INCONSISTENT",
                             "Observation contradicts validated state enclosure",

@@ -302,9 +302,11 @@ class ParameterPredictor:
             return (
                 refined,
                 rms_error,
-                f"ok:nfev={result.nfev}:optimizer_cost={result.cost:.3e}:"
-                f"fit_rms={rms_error:.6e}:observable_rank={basis.shape[1]}:"
-                f"held={held_text}:unique={score_text}",
+                (
+                    f"ok:nfev={result.nfev}:optimizer_cost={result.cost:.3e}:"
+                    f"fit_rms={rms_error:.6e}:observable_rank={basis.shape[1]}:"
+                    f"held={held_text}:unique={score_text}"
+                ),
             )
         except Exception as exc:
             logger.debug("SMID time-series estimate failed: %s", exc)
