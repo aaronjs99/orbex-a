@@ -202,12 +202,12 @@ class ProspectiveFleetEndpoint:
             )
         ):
             raise ValueError("Prospective target physical-time chain is incomplete")
-        expected_target_request = dict(
-            initial_state=target.initial_state.as_dict(),
-            start_anomaly=tuple(map(str, target.start_anomaly)),
-            hold_width=tuple(map(str, target.hold_width)),
-            physical_time_initial=target.physical_time_initial.as_dict(),
-        )
+        expected_target_request = {
+            "initial_state": target.initial_state.as_dict(),
+            "start_anomaly": tuple(map(str, target.start_anomaly)),
+            "hold_width": tuple(map(str, target.hold_width)),
+            "physical_time_initial": target.physical_time_initial.as_dict(),
+        }
         if target.request != expected_target_request:
             raise ValueError(
                 "Prospective target request differs from its proved initial/time boxes"
@@ -337,30 +337,32 @@ class ProspectiveFleetEndpoint:
             )
 
     def as_dict(self, *, include_flows=True, include_identity=True):
-        result = dict(
-            method="complete-global-held-flow-projection-v1",
-            exact_start_q=str(self.start_q),
-            exact_end_q=str(self.end_q),
-            hold_width=str(self.hold_width),
-            plant_fingerprint=self.plant_fingerprint,
-            target_model_fingerprint=self.target_model_fingerprint,
-            clock_fingerprint=self.clock_fingerprint,
-            frame_id=self.frame_id,
-            flow_ids=self._flow_ids,
-            target_flow_id=self._target_id,
-            observation_ids=tuple(
+        result = {
+            "method": "complete-global-held-flow-projection-v1",
+            "exact_start_q": str(self.start_q),
+            "exact_end_q": str(self.end_q),
+            "hold_width": str(self.hold_width),
+            "plant_fingerprint": self.plant_fingerprint,
+            "target_model_fingerprint": self.target_model_fingerprint,
+            "clock_fingerprint": self.clock_fingerprint,
+            "frame_id": self.frame_id,
+            "flow_ids": self._flow_ids,
+            "target_flow_id": self._target_id,
+            "observation_ids": tuple(
                 (key, value.fingerprint) for key, value in self.observations
             ),
-            context_ids=tuple((key, value.fingerprint) for key, value in self.contexts),
-            endpoint_boxes={
+            "context_ids": tuple(
+                (key, value.fingerprint) for key, value in self.contexts
+            ),
+            "endpoint_boxes": {
                 key: box.as_dict() for key, box in self.endpoint_boxes.items()
             },
-            target_endpoint=self.target_flow.endpoint.as_dict(),
-            physical_time_endpoint=self.target_flow.physical_time_endpoint.as_dict(),
-            acceleration_disturbance=self.acceleration_disturbance.as_dict(),
-            global_actuator_error_abs=("300",) * 3,
-            scope="Prospective proved endpoint sets; no future sensor packet or navigation observation is asserted",
-        )
+            "target_endpoint": self.target_flow.endpoint.as_dict(),
+            "physical_time_endpoint": self.target_flow.physical_time_endpoint.as_dict(),
+            "acceleration_disturbance": self.acceleration_disturbance.as_dict(),
+            "global_actuator_error_abs": ("300",) * 3,
+            "scope": "Prospective proved endpoint sets; no future sensor packet or navigation observation is asserted",
+        }
         if self.fuel_budget is not None:
             result.update(
                 fuel_budget=self.fuel_budget.as_dict(),
@@ -620,18 +622,18 @@ class NonlinearSafetyPlanner:
             tuple(float(b["upper"]) for b in self.scenario.config.mpc.input_bounds),
         )
         actuator = tuple(map(exact, self.actuator_error_abs))
-        expected = dict(
-            model_id="nonlinear-reference-relative-v1",
-            nominal_model_id=ZERO_NOMINAL_ID,
-            parameter_set_id=self.model.fingerprint,
-            target_model_id=self.model.target_fingerprint,
-            frame=estimate.frame_id,
-            clock_id=self.clock.fingerprint,
-            sensor_id=self.sensor_id,
-            actuator_id=self.actuator_id,
-            geometry_id=self.design.geometry.fingerprint,
-            fuel_domain_id=self.propulsion.fingerprint,
-        )
+        expected = {
+            "model_id": "nonlinear-reference-relative-v1",
+            "nominal_model_id": ZERO_NOMINAL_ID,
+            "parameter_set_id": self.model.fingerprint,
+            "target_model_id": self.model.target_fingerprint,
+            "frame": estimate.frame_id,
+            "clock_id": self.clock.fingerprint,
+            "sensor_id": self.sensor_id,
+            "actuator_id": self.actuator_id,
+            "geometry_id": self.design.geometry.fingerprint,
+            "fuel_domain_id": self.propulsion.fingerprint,
+        }
         extra = tuple(
             max(abs(a), abs(b))
             for a, b in zip(
@@ -676,15 +678,15 @@ class NonlinearSafetyPlanner:
                         "Reusable runtime nonlinear target source is incomplete"
                     )
                 source = fingerprint(
-                    dict(
-                        target=adapter._identities.identity(target),
-                        model=adapter.model.fingerprint,
-                        clock=adapter.clock.fingerprint,
-                        region=exact_record(cert.state_box),
-                        scope=(str(spec.start), str(spec.end)),
-                        extra=exact_record(adapter.extra_acceleration_abs),
-                        precision=adapter.precision_bits,
-                    )
+                    {
+                        "target": adapter._identities.identity(target),
+                        "model": adapter.model.fingerprint,
+                        "clock": adapter.clock.fingerprint,
+                        "region": exact_record(cert.state_box),
+                        "scope": (str(spec.start), str(spec.end)),
+                        "extra": exact_record(adapter.extra_acceleration_abs),
+                        "precision": adapter.precision_bits,
+                    }
                 )
                 if (
                     cert.drift_bounds.proof_reference
@@ -705,22 +707,22 @@ class NonlinearSafetyPlanner:
         observations = self.observations(estimate)
         for key, controller in plan.segment_at(q).controllers:
             controller.observation_box(observations[key], q)
-        record = dict(
-            kind="fallback_reuse",
-            status="REUSED",
-            exact_start=str(q),
-            exact_required_end=str(q + h),
-            coverage_end=str(plan.certificate.end),
-            active_plan_id=plan.fingerprint,
-            source_plan_id=plan.certificate.source_plan_id,
-            navigation_id=fingerprint(self._prior_record(estimate)),
-            model_id=self.model.fingerprint,
-            clock_id=self.clock.fingerprint,
-            remaining_fuel=exact_record(runtime.remaining_fuel),
-            required_remaining_fuel=exact_record(needed),
-            new_installation=False,
-            full_witness_archived=False,
-        )
+        record = {
+            "kind": "fallback_reuse",
+            "status": "REUSED",
+            "exact_start": str(q),
+            "exact_required_end": str(q + h),
+            "coverage_end": str(plan.certificate.end),
+            "active_plan_id": plan.fingerprint,
+            "source_plan_id": plan.certificate.source_plan_id,
+            "navigation_id": fingerprint(self._prior_record(estimate)),
+            "model_id": self.model.fingerprint,
+            "clock_id": self.clock.fingerprint,
+            "remaining_fuel": exact_record(runtime.remaining_fuel),
+            "required_remaining_fuel": exact_record(needed),
+            "new_installation": False,
+            "full_witness_archived": False,
+        }
         identity = fingerprint(record)
         if certificate_sink is not None:
             if not callable(certificate_sink):
@@ -762,26 +764,28 @@ class NonlinearSafetyPlanner:
 
     @staticmethod
     def _prior_record(estimate):
-        return dict(
-            exact_event_q=str(estimate.exact_event_q),
-            physical_time_box=estimate.physical_time_box.as_dict(),
-            relative_state_boxes={
+        return {
+            "exact_event_q": str(estimate.exact_event_q),
+            "physical_time_box": estimate.physical_time_box.as_dict(),
+            "relative_state_boxes": {
                 key: box.as_dict()
                 for key, box in estimate.relative_state_box_by_agent.items()
             },
-            target_ephemeris_box=estimate.target_ephemeris_box.as_dict(),
-            target_orientation_matrix=exact_record(estimate.target_orientation_matrix),
-            target_orientation_operator_error=exact_record(
+            "target_ephemeris_box": estimate.target_ephemeris_box.as_dict(),
+            "target_orientation_matrix": exact_record(
+                estimate.target_orientation_matrix
+            ),
+            "target_orientation_operator_error": exact_record(
                 estimate.target_orientation_operator_error
             ),
-            target_angular_velocity_box=estimate.target_angular_velocity_box.as_dict(),
-            packet_ids=tuple(estimate.packet_ids),
-            sensor_fingerprints=tuple(estimate.sensor_fingerprints),
-            model_fingerprint=estimate.model_fingerprint,
-            clock_fingerprint=estimate.clock_fingerprint,
-            frame_id=estimate.frame_id,
-            status=estimate.status,
-        )
+            "target_angular_velocity_box": estimate.target_angular_velocity_box.as_dict(),
+            "packet_ids": tuple(estimate.packet_ids),
+            "sensor_fingerprints": tuple(estimate.sensor_fingerprints),
+            "model_fingerprint": estimate.model_fingerprint,
+            "clock_fingerprint": estimate.clock_fingerprint,
+            "frame_id": estimate.frame_id,
+            "status": estimate.status,
+        }
 
     def prepare_successor(self, projection, *, sensing_prior, certificate_sink=None):
         """Certify a future backup from full proved endpoints without installing it.
@@ -848,13 +852,13 @@ class NonlinearSafetyPlanner:
             # An optional proposal must not suppress the shorter, previously
             # available finite search merely by enlarging its common forecast.
             # No motion or witness publication has occurred at this point.
-            abandoned_forecast = dict(
-                status="REFUSED",
-                reason=str(error),
-                forecast_width_q=str(error.extended_width),
-                legacy_forecast_width_q=str(error.legacy_width),
-                scope="Optional acceleration-prefix forecast; no plan installed",
-            )
+            abandoned_forecast = {
+                "status": "REFUSED",
+                "reason": str(error),
+                "forecast_width_q": str(error.extended_width),
+                "legacy_forecast_width_q": str(error.legacy_width),
+                "scope": "Optional acceleration-prefix forecast; no plan installed",
+            }
             plan, record, witness = self._build_plan(
                 initial,
                 sensing_prior=sensing_prior,
@@ -1248,20 +1252,20 @@ class NonlinearSafetyPlanner:
                 )
             ),
         )
-        tracking = dict(
-            omega=position,
-            phi=phi,
-            lambda_gain=(gain,) * 3,
-            maximum_hold=dense / self.near_feedback_subdivisions if near else dense,
-            input_limits=IntervalBox(
+        tracking = {
+            "omega": position,
+            "phi": phi,
+            "lambda_gain": (gain,) * 3,
+            "maximum_hold": dense / self.near_feedback_subdivisions if near else dense,
+            "input_limits": IntervalBox(
                 tuple(float(b["lower"]) for b in self.scenario.config.mpc.input_bounds),
                 tuple(float(b["upper"]) for b in self.scenario.config.mpc.input_bounds),
             ),
-            sensing_error_abs=tuple(sensing),
-            actuator_error_abs=self.actuator_error_abs,
-            command_rounding_abs=(1e-9,) * 3,
-            maximum_window=(6 if near else 64) * dense,
-        )
+            "sensing_error_abs": tuple(sensing),
+            "actuator_error_abs": self.actuator_error_abs,
+            "command_rounding_abs": (1e-9,) * 3,
+            "maximum_window": (6 if near else 64) * dense,
+        }
         attempts = []
         refused_candidates = []
         far_profile = near_profile = None
@@ -1339,15 +1343,15 @@ class NonlinearSafetyPlanner:
                     **candidate_tracking,
                 )
                 attempts.append(
-                    dict(
-                        profile=label,
-                        omega=omega,
-                        phi=sliding,
-                        lambda_gain=near_gain,
-                        beta=beta,
-                        acceleration_bound=acceleration,
-                        attempts=exact_record(search.attempts),
-                    )
+                    {
+                        "profile": label,
+                        "omega": omega,
+                        "phi": sliding,
+                        "lambda_gain": near_gain,
+                        "beta": beta,
+                        "acceleration_bound": acceleration,
+                        "attempts": exact_record(search.attempts),
+                    }
                 )
                 if search.early_refusals:
                     attempts[-1]["early_target_refusals"] = exact_record(
@@ -1356,16 +1360,18 @@ class NonlinearSafetyPlanner:
                 if search.admissible:
                     plan = search.plan
                     retreat_width = search.attempts[-1].retreat_duration
-                    near_profile = dict(
-                        profile=label,
-                        omega=omega,
-                        phi=sliding,
-                        lambda_gain=near_gain,
-                        beta=beta,
-                        acceleration_bound=acceleration,
-                        tangent_offset=exact_record(search.attempts[-1].tangent_offset),
-                        maximum_hold_q=str(candidate_tracking["maximum_hold"]),
-                    )
+                    near_profile = {
+                        "profile": label,
+                        "omega": omega,
+                        "phi": sliding,
+                        "lambda_gain": near_gain,
+                        "beta": beta,
+                        "acceleration_bound": acceleration,
+                        "tangent_offset": exact_record(
+                            search.attempts[-1].tangent_offset
+                        ),
+                        "maximum_hold_q": str(candidate_tracking["maximum_hold"]),
+                    }
                     break
             if plan is None:
                 if not _extended_near and self.options.near_refuge_extra_holds:
@@ -1387,16 +1393,16 @@ class NonlinearSafetyPlanner:
                             )
                         )
                     except Exception as error:
-                        event = dict(
-                            kind="ADDITIONAL_NEAR_REFUGE_REFUSED",
-                            exact_q=str(q),
-                            initial_set_source_id=estimate.source_id,
-                            preceding_near_candidate_search=prior,
-                            additional_near_retreat_holds=self.options.near_refuge_extra_holds,
-                            error_type=type(error).__name__,
-                            reason=str(error),
-                            causal_event=getattr(error, "event", None),
-                        )
+                        event = {
+                            "kind": "ADDITIONAL_NEAR_REFUGE_REFUSED",
+                            "exact_q": str(q),
+                            "initial_set_source_id": estimate.source_id,
+                            "preceding_near_candidate_search": prior,
+                            "additional_near_retreat_holds": self.options.near_refuge_extra_holds,
+                            "error_type": type(error).__name__,
+                            "reason": str(error),
+                            "causal_event": getattr(error, "event", None),
+                        }
                         event = exact_record(event)
                         error.event = dict(identity=fingerprint(event), **event)
                         raise
@@ -1429,13 +1435,13 @@ class NonlinearSafetyPlanner:
                 candidate_width = candidate_widths[label]
                 if q + candidate_width + hold_width > self.clock.q_domain[1]:
                     attempts.append(
-                        dict(
-                            profile=label,
-                            status="REFUSED",
-                            retreat_duration_q=str(candidate_width),
-                            holding_duration_q=str(hold_width),
-                            reason="Complete candidate exceeds the declared clock domain",
-                        )
+                        {
+                            "profile": label,
+                            "status": "REFUSED",
+                            "retreat_duration_q": str(candidate_width),
+                            "holding_duration_q": str(hold_width),
+                            "reason": "Complete candidate exceeds the declared clock domain",
+                        }
                     )
                     continue
                 candidate_relative_width = relative_width
@@ -1465,16 +1471,16 @@ class NonlinearSafetyPlanner:
                         if norm > 1e-12
                         else np.asarray(next(iter(directions.values())))
                     )
-                    reference_arguments = dict(
-                        initial_states=points,
-                        start=q,
-                        common_duration=braking_width,
-                        relative_duration=candidate_relative_width,
-                        holding_duration=hold_width,
-                        outward_displacement=tuple(2 * outward),
-                        frame=estimate.frame_id,
-                        clock_id=self.clock.fingerprint,
-                    )
+                    reference_arguments = {
+                        "initial_states": points,
+                        "start": q,
+                        "common_duration": braking_width,
+                        "relative_duration": candidate_relative_width,
+                        "holding_duration": hold_width,
+                        "outward_displacement": tuple(2 * outward),
+                        "frame": estimate.frame_id,
+                        "clock_id": self.clock.fingerprint,
+                    }
                     if label == "acceleration-prefix":
                         limit = exact(prefix.acceleration_limit_m_per_rad2)
                         proposal_accelerations = {
@@ -1527,21 +1533,21 @@ class NonlinearSafetyPlanner:
                         candidate_contexts[key] = replace(
                             contexts[key], reference_id=reference.reference_id
                         )
-                profile = dict(
-                    profile=label,
-                    omega=omega,
-                    phi=sliding,
-                    lambda_gain=gain,
-                    beta=22000.0,
-                    acceleration_bound=120000.0,
-                    reference_acceleration_target=reference_acceleration,
-                    retreat_duration_q=str(candidate_width),
-                    holding_duration_q=str(hold_width),
-                    reference_ids={
+                profile = {
+                    "profile": label,
+                    "omega": omega,
+                    "phi": sliding,
+                    "lambda_gain": gain,
+                    "beta": 22000.0,
+                    "acceleration_bound": 120000.0,
+                    "reference_acceleration_target": reference_acceleration,
+                    "retreat_duration_q": str(candidate_width),
+                    "holding_duration_q": str(hold_width),
+                    "reference_ids": {
                         key: value.reference_id
                         for key, value in candidate_references.items()
                     },
-                )
+                }
                 if coordinated:
                     profile.update(
                         common_duration_q=str(braking_width),
@@ -1611,22 +1617,22 @@ class NonlinearSafetyPlanner:
                         )
                     if make_witness:
                         refused_candidates.append(
-                            dict(
-                                attempt=attempts[-1],
-                                references={
-                                    key: dict(
-                                        reference_id=value.reference_id,
-                                        frame=value.frame,
-                                        clock_id=value.clock_id,
-                                        pieces=exact_record(value.pieces),
-                                    )
+                            {
+                                "attempt": attempts[-1],
+                                "references": {
+                                    key: {
+                                        "reference_id": value.reference_id,
+                                        "frame": value.frame,
+                                        "clock_id": value.clock_id,
+                                        "pieces": exact_record(value.pieces),
+                                    }
                                     for key, value in candidate_references.items()
                                 },
-                                contexts=exact_record(candidate_contexts),
-                                plan=None
+                                "contexts": exact_record(candidate_contexts),
+                                "plan": None
                                 if candidate is None
                                 else candidate.certificate.as_dict(),
-                            )
+                            }
                         )
                     continue
                 plan = candidate
@@ -1663,20 +1669,20 @@ class NonlinearSafetyPlanner:
             )
         if fuel_budget is not None:
             fuel_budget.require(plan.remaining_fuel(q))
-        summary = dict(
-            status="CONDITIONAL_PROVEN",
-            identity=plan.certificate.fingerprint,
-            start=str(plan.certificate.start),
-            end=str(plan.certificate.end),
-            required_fuel=exact_record(plan.certificate.required_fuel),
-            controller_ids=plan.certificate.controller_ids,
-            geometry_ids=tuple(
+        summary = {
+            "status": "CONDITIONAL_PROVEN",
+            "identity": plan.certificate.fingerprint,
+            "start": str(plan.certificate.start),
+            "end": str(plan.certificate.end),
+            "required_fuel": exact_record(plan.certificate.required_fuel),
+            "controller_ids": plan.certificate.controller_ids,
+            "geometry_ids": tuple(
                 value.fingerprint for value in plan.certificate.geometry
             ),
-            terminal_holding_start=str(plan.certificate.terminal_holding_start),
-            terminal_reference_ids=plan.certificate.terminal_reference_ids,
-            method=plan.certificate.method,
-        )
+            "terminal_holding_start": str(plan.certificate.terminal_holding_start),
+            "terminal_reference_ids": plan.certificate.terminal_reference_ids,
+            "method": plan.certificate.method,
+        }
         witness = None
         if make_witness:
             certificates = {}
@@ -1686,67 +1692,69 @@ class NonlinearSafetyPlanner:
                     proof = controller.certificate
                     certificates[proof.fingerprint] = proof.as_dict()
                     reference = controller.builder.reference_provider
-                    providers[reference.reference_id] = dict(
-                        reference_id=reference.reference_id,
-                        frame=reference.frame,
-                        clock_id=reference.clock_id,
-                        pieces=exact_record(reference.pieces),
-                    )
-            witness = dict(
-                exact_start=str(q),
-                plan=plan.certificate.as_dict(),
-                controllers=certificates,
-                references=providers,
-                target=target_flow.as_dict(),
-                attitude=None if attitude is None else attitude.as_dict(),
-                attitude_target=None if pose_target is None else pose_target.as_dict(),
-                model=self.model.as_dict(),
-                clock=self.clock.as_dict(),
-                geometry=self.design.geometry.as_dict(),
-                initial_set=dict(
-                    source_kind=estimate.source_kind,
-                    source_id=estimate.source_id,
-                    exact_q=str(q),
-                    relative_state_boxes={
+                    providers[reference.reference_id] = {
+                        "reference_id": reference.reference_id,
+                        "frame": reference.frame,
+                        "clock_id": reference.clock_id,
+                        "pieces": exact_record(reference.pieces),
+                    }
+            witness = {
+                "exact_start": str(q),
+                "plan": plan.certificate.as_dict(),
+                "controllers": certificates,
+                "references": providers,
+                "target": target_flow.as_dict(),
+                "attitude": None if attitude is None else attitude.as_dict(),
+                "attitude_target": None
+                if pose_target is None
+                else pose_target.as_dict(),
+                "model": self.model.as_dict(),
+                "clock": self.clock.as_dict(),
+                "geometry": self.design.geometry.as_dict(),
+                "initial_set": {
+                    "source_kind": estimate.source_kind,
+                    "source_id": estimate.source_id,
+                    "exact_q": str(q),
+                    "relative_state_boxes": {
                         key: box.as_dict()
                         for key, box in estimate.relative_state_box_by_agent.items()
                     },
-                    target_box=estimate.target_ephemeris_box.as_dict(),
-                    physical_time_box=estimate.physical_time_box.as_dict(),
-                ),
-                current_navigation_prior=self._prior_record(sensing_prior),
-                endpoint_projection_id=None
+                    "target_box": estimate.target_ephemeris_box.as_dict(),
+                    "physical_time_box": estimate.physical_time_box.as_dict(),
+                },
+                "current_navigation_prior": self._prior_record(sensing_prior),
+                "endpoint_projection_id": None
                 if projection is None
                 else projection.fingerprint,
-                finite_candidate_search=attempts,
-                refused_candidates=refused_candidates,
-            )
-        record = dict(
-            exact_start=str(q),
-            near_target=near,
-            pose_conditioned_geometry=pose_conditioned_geometry,
-            plan=summary,
-            feedback_maximum_hold_q=str(tracking["maximum_hold"]),
-            near_feedback_subdivisions=self.near_feedback_subdivisions,
-            retreat_duration_q=str(retreat_width),
-            holding_duration_q=str(hold_width),
-            refuge_policy="finite-patch-candidates"
+                "finite_candidate_search": attempts,
+                "refused_candidates": refused_candidates,
+            }
+        record = {
+            "exact_start": str(q),
+            "near_target": near,
+            "pose_conditioned_geometry": pose_conditioned_geometry,
+            "plan": summary,
+            "feedback_maximum_hold_q": str(tracking["maximum_hold"]),
+            "near_feedback_subdivisions": self.near_feedback_subdivisions,
+            "retreat_duration_q": str(retreat_width),
+            "holding_duration_q": str(hold_width),
+            "refuge_policy": "finite-patch-candidates"
             if near
             else "finite-fleet-braking-candidates",
-            far_candidate_profile=far_profile,
-            near_candidate_profile=near_profile,
-            target_flow_fingerprint=target_flow.fingerprint,
-            attitude_flow_fingerprint=None
+            "far_candidate_profile": far_profile,
+            "near_candidate_profile": near_profile,
+            "target_flow_fingerprint": target_flow.fingerprint,
+            "attitude_flow_fingerprint": None
             if attitude is None
             else attitude.fingerprint,
-            observation_packet_ids=list(sensing_prior.packet_ids[-32:]),
-            sensing_error_abs=sensing.tolist(),
-            initial_set_source_kind=estimate.source_kind,
-            initial_set_source_id=estimate.source_id,
-            finite_candidate_search=attempts,
-            archived_witness_id=None,
-            full_witness_archived=False,
-        )
+            "observation_packet_ids": list(sensing_prior.packet_ids[-32:]),
+            "sensing_error_abs": sensing.tolist(),
+            "initial_set_source_kind": estimate.source_kind,
+            "initial_set_source_id": estimate.source_id,
+            "finite_candidate_search": attempts,
+            "archived_witness_id": None,
+            "full_witness_archived": False,
+        }
         if fuel_budget is not None:
             record["fuel_budget"] = fuel_budget.as_dict()
             if witness is not None:

@@ -67,9 +67,11 @@ def finite_contact_source_identity():
     digest = hashlib.sha256(
         json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return dict(
-        schema="orbexa.finite_contact_source_bundle.v1", sha256=digest, files=files
-    )
+    return {
+        "schema": "orbexa.finite_contact_source_bundle.v1",
+        "sha256": digest,
+        "files": files,
+    }
 
 
 class FiniteContactSimulator:
@@ -156,18 +158,18 @@ class FiniteContactSimulator:
         strain_enclosures = [None for _ in fleet.members]
         wrench_enclosures = [None for _ in fleet.members]
         proven_preload = [Fraction(0) for _ in fleet.members]
-        recorder.continuous_enclosure = dict(
-            method="arb-compliant-contact-held-flow-v1",
-            initial_scope="caller_supplied_state_set"
+        recorder.continuous_enclosure = {
+            "method": "arb-compliant-contact-held-flow-v1",
+            "initial_scope": "caller_supplied_state_set"
             if initial_enclosure is not None
             else "declared_numerical_start_with_unit_quaternion_interpretation",
-            accepted_steps=0,
-            accepted_duration_s=0.0,
-            proof_chain_sha256=None,
-            last_refusal=None,
-            step_records=[],
-            bond_events=[],
-        )
+            "accepted_steps": 0,
+            "accepted_duration_s": 0.0,
+            "proof_chain_sha256": None,
+            "last_refusal": None,
+            "step_records": [],
+            "bond_events": [],
+        }
 
         def finish(success, message, diag):
             return recorder.finish(
@@ -285,17 +287,17 @@ class FiniteContactSimulator:
                         # their propagated strain; they are never reset here.
                         strain_enclosures[k] = IntervalBox.point((0, 0, 0, 0, 0, 0, 1))
                         recorder.continuous_enclosure["bond_events"].append(
-                            dict(
-                                member_id=fleet.members[k].id,
-                                time_s=t,
-                                proved_preload_dwell_s=float(proven_preload[k]),
-                                exact_event_time_s=str(proof_time),
-                                exact_proved_preload_dwell_s=str(proven_preload[k]),
-                                rest={
+                            {
+                                "member_id": fleet.members[k].id,
+                                "time_s": t,
+                                "proved_preload_dwell_s": float(proven_preload[k]),
+                                "exact_event_time_s": str(proof_time),
+                                "exact_proved_preload_dwell_s": str(proven_preload[k]),
+                                "rest": {
                                     key: box.as_dict()
                                     for key, box in rest_enclosures[k].items()
                                 },
-                            )
+                            }
                         )
                 if conditioning is not None and np.any(np.isfinite(bonds.engagement)):
                     from orbexa.simulation.contact.sensing.strain_observation import (
@@ -508,26 +510,26 @@ class FiniteContactSimulator:
                 )
                 recorder.continuous_enclosure["final_set"] = enclosure.as_dict()
                 recorder.continuous_enclosure["step_records"].append(
-                    dict(
-                        time_s=committed_time,
-                        duration_s=dt,
-                        exact_start_time_s=str(exact_start_time),
-                        exact_end_time_s=str(proof_time),
-                        controls_body=actuation.controls.tolist(),
-                        extension_acceleration_body_m_s2=actuation.extension_acceleration.tolist(),
-                        numerical_endpoint=y[: fleet.ledger_start].tolist(),
-                        numerical_integration=dict(
-                            method="held-command-subdivided-rk4",
-                            substeps=numerical_count,
-                            substep_s=numerical_dt,
-                            declared_relaxation_scale_s_inverse=relaxation,
-                            scope="Representative integration choice; its error is enclosed by the carried exact-flow endpoint and representative hull",
-                        ),
-                        numerical_endpoint_defect=defect.as_dict(),
-                        proof_sha256=proof_hash,
-                        proof=proof,
-                        checks=certificate.checks,
-                    )
+                    {
+                        "time_s": committed_time,
+                        "duration_s": dt,
+                        "exact_start_time_s": str(exact_start_time),
+                        "exact_end_time_s": str(proof_time),
+                        "controls_body": actuation.controls.tolist(),
+                        "extension_acceleration_body_m_s2": actuation.extension_acceleration.tolist(),
+                        "numerical_endpoint": y[: fleet.ledger_start].tolist(),
+                        "numerical_integration": {
+                            "method": "held-command-subdivided-rk4",
+                            "substeps": numerical_count,
+                            "substep_s": numerical_dt,
+                            "declared_relaxation_scale_s_inverse": relaxation,
+                            "scope": "Representative integration choice; its error is enclosed by the carried exact-flow endpoint and representative hull",
+                        },
+                        "numerical_endpoint_defect": defect.as_dict(),
+                        "proof_sha256": proof_hash,
+                        "proof": proof,
+                        "checks": certificate.checks,
+                    }
                 )
                 if conditioning is not None:
                     recorder.continuous_enclosure["step_records"][-1][

@@ -462,12 +462,12 @@ class CertifiedExecutionGuard:
         ):
             raise ValueError("Invalid continuous restoration history")
         restoration_history = list(history) + [
-            dict(
-                checkpoint_identity=checkpoint_identity,
-                exact_end_anomaly=None if exact is None else str(exact),
-                source_reference=context.get("source_reference"),
-                policy="Restore exact committed boxes and clock; no numerical-point replacement",
-            )
+            {
+                "checkpoint_identity": checkpoint_identity,
+                "exact_end_anomaly": None if exact is None else str(exact),
+                "source_reference": context.get("source_reference"),
+                "policy": "Restore exact committed boxes and clock; no numerical-point replacement",
+            }
         ]
         # All compatibility decisions above precede the atomic restoration.
         self.endpoints, self.exact_end, self.last_end = endpoints, exact, last
@@ -484,32 +484,36 @@ class CertifiedExecutionGuard:
         self.restoration_history = restoration_history
 
     def as_metadata(self):
-        return dict(
-            method="arb-picard-continuous-v1",
-            admitted_holds=self.admitted_holds,
-            rejected_holds=self.rejected_holds,
-            last_rejection=self.last_rejection,
-            start_anomaly=self.clock_start,
-            last_committed_anomaly=self.last_end,
-            exact_end_anomaly=None if self.exact_end is None else str(self.exact_end),
-            max_reported_clock_difference_rad=self.max_reported_clock_difference,
-            model_bounds=self.model.as_dict(),
-            measurement_radius=self.measurement_radius.tolist(),
-            acceleration_radius=self.acceleration_radius.tolist(),
-            body_radius_m=self.body_radius,
-            input_lower=self.lower.tolist(),
-            input_upper=self.upper.tolist(),
-            last_hold_width=self.last_hold_width,
-            target_bound_context=self.target_bound_context,
-            restoration_history=list(self.restoration_history),
-            minimum_pair_separation_m=self.pair_separation,
-            endpoint_boxes={key: box.as_dict() for key, box in self.endpoints.items()},
-            assumptions=[
+        return {
+            "method": "arb-picard-continuous-v1",
+            "admitted_holds": self.admitted_holds,
+            "rejected_holds": self.rejected_holds,
+            "last_rejection": self.last_rejection,
+            "start_anomaly": self.clock_start,
+            "last_committed_anomaly": self.last_end,
+            "exact_end_anomaly": None
+            if self.exact_end is None
+            else str(self.exact_end),
+            "max_reported_clock_difference_rad": self.max_reported_clock_difference,
+            "model_bounds": self.model.as_dict(),
+            "measurement_radius": self.measurement_radius.tolist(),
+            "acceleration_radius": self.acceleration_radius.tolist(),
+            "body_radius_m": self.body_radius,
+            "input_lower": self.lower.tolist(),
+            "input_upper": self.upper.tolist(),
+            "last_hold_width": self.last_hold_width,
+            "target_bound_context": self.target_bound_context,
+            "restoration_history": list(self.restoration_history),
+            "minimum_pair_separation_m": self.pair_separation,
+            "endpoint_boxes": {
+                key: box.as_dict() for key, box in self.endpoints.items()
+            },
+            "assumptions": [
                 "Every measurement box contains the continuous physical state at the canonical shared hold event",
                 "All spacecraft start and stop each hold at the same physical events; proof clock is the exact sum of binary hold widths",
                 "Initial prior contains fixed physical parameters; no controller contraction is used to narrow this guard",
                 "Target pose, rotation-rate and occupied-shape bounds are valid over each complete hold",
                 "Command is held exactly; additive acceleration obeys its declared bound",
             ],
-            scope="Continuous collision exclusion for admitted holds; this guard alone does not guarantee a feasible successor command",
-        )
+            "scope": "Continuous collision exclusion for admitted holds; this guard alone does not guarantee a feasible successor command",
+        }

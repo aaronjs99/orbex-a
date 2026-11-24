@@ -138,13 +138,13 @@ class NavigationReward:
                 "Reward inputs must be finite observations and explicit outcome events"
             )
         potential_next = 0.0 if terminated else -distance
-        parts = dict(
-            progress=self.progress_weight
+        parts = {
+            "progress": self.progress_weight
             * (self.gamma * potential_next + previous_distance),
-            effort=-self.effort_weight * float(applied @ applied),
-            intervention=-self.intervention_weight
+            "effort": -self.effort_weight * float(applied @ applied),
+            "intervention": -self.intervention_weight
             * float((applied - proposal) @ (applied - proposal)),
-            success=self.success_bonus * success,
-            collision=-self.collision_penalty * collision,
-        )
+            "success": self.success_bonus * success,
+            "collision": -self.collision_penalty * collision,
+        }
         return float(sum(parts.values())), parts

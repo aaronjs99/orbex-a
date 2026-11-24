@@ -176,14 +176,14 @@ class FiniteContactResult:
     audit: dict
 
     def to_dict(self):
-        return dict(
-            success=self.success,
-            message=self.message,
-            final_target=self.final_target.to_dict(),
-            final_chasers={
+        return {
+            "success": self.success,
+            "message": self.message,
+            "final_target": self.final_target.to_dict(),
+            "final_chasers": {
                 name: state.to_dict() for name, state in self.final_chasers.items()
             },
-            history=list(self.history),
-            surface_contacts=dict(self.surface_contacts),
-            audit=self.audit,
-        )
+            "history": list(self.history),
+            "surface_contacts": dict(self.surface_contacts),
+            "audit": self.audit,
+        }

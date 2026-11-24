@@ -160,7 +160,11 @@ def input_limits(problem):
 
 
 def hint_identity(states, controls, method):
-    payload = dict(method=method, states=states.tolist(), controls=controls.tolist())
+    payload = {
+        "method": method,
+        "states": states.tolist(),
+        "controls": controls.tolist(),
+    }
     return sha256(
         json.dumps(
             payload, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -227,11 +231,11 @@ class TrackingHint:
         return TrajectoryHint(
             states,
             u,
-            dict(
-                method=method,
-                identity=hint_identity(states, u, method),
-                role="Numerical initial guess only; no physical admission authority",
-            ),
+            {
+                "method": method,
+                "identity": hint_identity(states, u, method),
+                "role": "Numerical initial guess only; no physical admission authority",
+            },
         )
 
 
@@ -386,7 +390,7 @@ class ConvexTrajectoryHint:
             method="SLSQP",
             bounds=Bounds(lower, upper),
             constraints=constraints,
-            options=dict(maxiter=self.max_iterations, ftol=1.0e-12, disp=False),
+            options={"maxiter": self.max_iterations, "ftol": 1.0e-12, "disp": False},
         )
         if not result.success or not np.all(np.isfinite(result.x)):
             raise ValueError(f"Convex proposal solver refused: {result.message}")
@@ -408,12 +412,12 @@ class ConvexTrajectoryHint:
         return TrajectoryHint(
             states,
             controls,
-            dict(
-                method=method,
-                maximum_violation=violation,
-                identity=hint_identity(states, controls, method),
-                role="Initial guess; nonlinear native planning still required",
-            ),
+            {
+                "method": method,
+                "maximum_violation": violation,
+                "identity": hint_identity(states, controls, method),
+                "role": "Initial guess; nonlinear native planning still required",
+            },
         )
 
 
@@ -458,13 +462,13 @@ class ConsensusInitialGuess:
         return TrajectoryHint(
             states,
             controls,
-            dict(
-                method=method,
-                iterations=result.iterations,
-                primal_residual=result.primal_residual,
-                dual_residual=result.dual_residual,
-                agent_index=self.agent_index,
-                identity=hint_identity(states, controls, method),
-                role="Numerical joint proposal only; native planning and physical admission still required",
-            ),
+            {
+                "method": method,
+                "iterations": result.iterations,
+                "primal_residual": result.primal_residual,
+                "dual_residual": result.dual_residual,
+                "agent_index": self.agent_index,
+                "identity": hint_identity(states, controls, method),
+                "role": "Numerical joint proposal only; native planning and physical admission still required",
+            },
         )

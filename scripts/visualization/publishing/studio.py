@@ -84,7 +84,7 @@ class MissionStudio:
         ]
         figures = {
             entry.key: [
-                dict(title=str(figure["title"]), href=self._link(figure["href"]))
+                {"title": str(figure["title"]), "href": self._link(figure["href"])}
                 for figure in entry.figures
             ]
             for entry in entries

@@ -117,14 +117,14 @@ class MassElement:
         return self.dry_mass_kg + self.initial_fuel_kg
 
     def to_dict(self):
-        return dict(
-            name=self.name,
-            dry_mass_kg=float(self.dry_mass_kg),
-            initial_fuel_kg=float(self.initial_fuel_kg),
-            inertia_per_kg_m2=self.inertia_per_kg_m2.tolist(),
-            position_body_m=self.position_body_m.tolist(),
-            rotation_element_to_assembly=self.rotation_element_to_assembly.tolist(),
-        )
+        return {
+            "name": self.name,
+            "dry_mass_kg": float(self.dry_mass_kg),
+            "initial_fuel_kg": float(self.initial_fuel_kg),
+            "inertia_per_kg_m2": self.inertia_per_kg_m2.tolist(),
+            "position_body_m": self.position_body_m.tolist(),
+            "rotation_element_to_assembly": self.rotation_element_to_assembly.tolist(),
+        }
 
 
 @dataclass(frozen=True)
@@ -230,11 +230,11 @@ class AttachedAssembly:
         if self.parameter_enclosure is not None:
             from orbexa.control.certification.reachability import IntervalBox
 
-            fields = dict(
-                position_body_m=("position_body_m", 3),
-                inertia_per_kg_m2=("inertia_per_kg_m2", 9),
-                rotation_element_to_assembly=("rotation_element_to_assembly", 9),
-            )
+            fields = {
+                "position_body_m": ("position_body_m", 3),
+                "inertia_per_kg_m2": ("inertia_per_kg_m2", 9),
+                "rotation_element_to_assembly": ("rotation_element_to_assembly", 9),
+            }
             parameters = {
                 key: tuple(value) for key, value in self.parameter_enclosure.items()
             }
@@ -344,21 +344,23 @@ class AttachedAssembly:
         result = {}
         for element in self.elements:
             offset = element.position_body_m - center
-            result[element.name] = dict(
-                position_eci_m=(state.position_eci_m + rotation.apply(offset)).tolist(),
-                velocity_eci_m_s=(
+            result[element.name] = {
+                "position_eci_m": (
+                    state.position_eci_m + rotation.apply(offset)
+                ).tolist(),
+                "velocity_eci_m_s": (
                     state.velocity_eci_m_s
                     + rotation.apply(
                         np.cross(state.angular_velocity_body_rad_s, offset)
                     )
                 ).tolist(),
-                quaternion_body_to_eci=(
+                "quaternion_body_to_eci": (
                     rotation
                     * Rotation.from_matrix(element.rotation_element_to_assembly)
                 )
                 .as_quat()
                 .tolist(),
-            )
+            }
         return result
 
     def gravity_gradient_torque_body(self, state):
@@ -430,9 +432,10 @@ class AttachedAssembly:
                 np.cross(element.position_body_m - center, local_force)
                 + element.rotation_element_to_assembly @ moment
             )
-            normalized[element.name] = dict(
-                acceleration_eci_m_s2=acceleration, torque_body_nm=moment
-            )
+            normalized[element.name] = {
+                "acceleration_eci_m_s2": acceleration,
+                "torque_body_nm": moment,
+            }
         return force, torque, normalized
 
     def derivative(
@@ -671,32 +674,34 @@ class AttachedAssembly:
             - impulse
             - flux
         )
-        audit = dict(
-            external_angular_impulse_eci_kg_m2_s=impulse.tolist(),
-            fuel_corotation_angular_impulse_eci_kg_m2_s=flux.tolist(),
-            angular_momentum_balance_residual_kg_m2_s=float(np.linalg.norm(residual)),
-        )
+        audit = {
+            "external_angular_impulse_eci_kg_m2_s": impulse.tolist(),
+            "fuel_corotation_angular_impulse_eci_kg_m2_s": flux.tolist(),
+            "angular_momentum_balance_residual_kg_m2_s": float(
+                np.linalg.norm(residual)
+            ),
+        }
         if flow_audit is not None:
             audit["continuous_state_flow"] = flow_audit
             audit["carried_endpoint"] = final.enclosure.as_dict()
         return final, audit
 
     def to_dict(self):
-        result = dict(
-            elements=[element.to_dict() for element in self.elements],
-            mu_m3_s2=self.mu_m3_s2,
-            earth_radius_m=self.earth_radius_m,
-            gravity_gradient=self.gravity_gradient,
-            max_integration_step_s=self.max_integration_step_s,
-            attachment_limits=[dict(value) for value in self.attachment_limits],
-            environment="injected per-component extra ECI acceleration and intrinsic body torque"
+        result = {
+            "elements": [element.to_dict() for element in self.elements],
+            "mu_m3_s2": self.mu_m3_s2,
+            "earth_radius_m": self.earth_radius_m,
+            "gravity_gradient": self.gravity_gradient,
+            "max_integration_step_s": self.max_integration_step_s,
+            "attachment_limits": [dict(value) for value in self.attachment_limits],
+            "environment": "injected per-component extra ECI acceleration and intrinsic body torque"
             if self.environment
             else "central gravity and configured gravity gradient only",
-            environment_contract=self.environment.as_dict()
+            "environment_contract": self.environment.as_dict()
             if callable(getattr(self.environment, "as_dict", None))
             else None,
-            mass_model="component-proportional fuel distribution; symmetric depletion splitting",
-        )
+            "mass_model": "component-proportional fuel distribution; symmetric depletion splitting",
+        }
         if self.parameter_enclosure is not None:
             result["parameter_enclosure"] = {
                 key: [box.as_dict() for box in value]
@@ -711,7 +716,7 @@ class AttachedAssembly:
         No bond strength is inferred from the target's collision geometry.
         """
         if not self.attachment_limits:
-            return dict(passed=True, maximum_capacity_ratio=0.0, members={})
+            return {"passed": True, "maximum_capacity_ratio": 0.0, "members": {}}
         commands = np.asarray(commands_n, dtype=float)
         if commands.shape != (len(propulsion.thrusters),) or np.any(
             ~np.isfinite(commands)
@@ -799,27 +804,27 @@ class AttachedAssembly:
             normal = np.asarray(limit["normal_body"])
             fn = float(reaction @ normal)
             shear = float(np.linalg.norm(reaction - fn * normal))
-            ratios = dict(
-                tensile=max(0.0, -fn) / limit["tensile_limit_n"],
-                compression=max(0.0, fn) / limit["compression_limit_n"],
-                shear=shear / limit["shear_limit_n"],
-                moment=float(np.linalg.norm(moment)) / limit["moment_limit_nm"],
-            )
-            result[element.name] = dict(
-                force_body_n=reaction.tolist(),
-                moment_at_pad_body_nm=moment.tolist(),
-                capacity_ratios=ratios,
-                maximum_capacity_ratio=max(ratios.values()),
-            )
+            ratios = {
+                "tensile": max(0.0, -fn) / limit["tensile_limit_n"],
+                "compression": max(0.0, fn) / limit["compression_limit_n"],
+                "shear": shear / limit["shear_limit_n"],
+                "moment": float(np.linalg.norm(moment)) / limit["moment_limit_nm"],
+            }
+            result[element.name] = {
+                "force_body_n": reaction.tolist(),
+                "moment_at_pad_body_nm": moment.tolist(),
+                "capacity_ratios": ratios,
+                "maximum_capacity_ratio": max(ratios.values()),
+            }
         maximum = max(
             [0.0] + [value["maximum_capacity_ratio"] for value in result.values()]
         )
-        return dict(
-            passed=maximum <= 1.0,
-            maximum_capacity_ratio=maximum,
-            members=result,
-            scope="Newton-Euler attachment loads at recorded controlled states; representative declared bond capacities",
-        )
+        return {
+            "passed": maximum <= 1.0,
+            "maximum_capacity_ratio": maximum,
+            "members": result,
+            "scope": "Newton-Euler attachment loads at recorded controlled states; representative declared bond capacities",
+        }
 
     def attachment_load_enclosure(
         self, state, propulsion, commands_n, duration_s, **initial_sets
@@ -855,12 +860,12 @@ class AttachedAssembly:
     def attachment_history_audit(self, propulsion, controls, history):
         """Check actual component loads at every recorded control endpoint."""
         if not self.attachment_limits:
-            return dict(
-                passed=True,
-                maximum_capacity_ratio=0.0,
-                checked_states=0,
-                scope="No physical bond capacities declared by the explicit idealized reproduction model",
-            )
+            return {
+                "passed": True,
+                "maximum_capacity_ratio": 0.0,
+                "checked_states": 0,
+                "scope": "No physical bond capacities declared by the explicit idealized reproduction model",
+            }
         by_time = {float(record["time_s"]): record for record in history}
         maximum, checked, first = 0.0, 0, None
         checked_times = set()
@@ -921,11 +926,11 @@ class AttachedAssembly:
                 )
             if not audit["passed"] and (first is None or time_s < first["time_s"]):
                 first = dict(time_s=time_s, **audit)
-        return dict(
-            passed=first is None,
-            maximum_capacity_ratio=maximum,
-            member_maximum_capacity_ratios=member_maxima,
-            checked_states=checked,
-            first_violation=first,
-            scope="Every actual control start/end and recorded zero-thrust coast state; no continuous load enclosure between recorded states",
-        )
+        return {
+            "passed": first is None,
+            "maximum_capacity_ratio": maximum,
+            "member_maximum_capacity_ratios": member_maxima,
+            "checked_states": checked,
+            "first_violation": first,
+            "scope": "Every actual control start/end and recorded zero-thrust coast state; no continuous load enclosure between recorded states",
+        }

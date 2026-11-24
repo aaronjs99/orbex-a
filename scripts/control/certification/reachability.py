@@ -551,16 +551,16 @@ class ValidatedFlowEncloser:
     def _enclose(
         self, initial, start, hold, coefficients, frame, model, bounds, request
     ):
-        common = dict(
-            start_anomaly=start,
-            hold_width=hold,
-            initial_state=initial,
-            precision_bits=self.config.precision_bits,
-            frame=frame,
-            model=model,
-            model_bounds=bounds,
-            request=request,
-        )
+        common = {
+            "start_anomaly": start,
+            "hold_width": hold,
+            "initial_state": initial,
+            "precision_bits": self.config.precision_bits,
+            "frame": frame,
+            "model": model,
+            "model_bounds": bounds,
+            "request": request,
+        }
         try:
             import flint
         except ImportError as error:
@@ -884,12 +884,12 @@ class SweptCollisionGuard:
             raise ValueError(
                 "A nonnegative physical radius is required per flow, with nonnegative clearance"
             )
-        common = dict(
-            target_bounds=target.as_dict() if target else None,
-            body_radii=tuple(map(str, radii)),
-            clearance=str(clearance),
-            minimum_pair_center_distance=str(pair_distance),
-        )
+        common = {
+            "target_bounds": target.as_dict() if target else None,
+            "body_radii": tuple(map(str, radii)),
+            "clearance": str(clearance),
+            "minimum_pair_center_distance": str(pair_distance),
+        }
         if any(not isinstance(flow, FlowCertificate) for flow in flows):
             return CollisionCertificate(
                 GuardStatus.UNRESOLVED, "Every flow must be a FlowCertificate", **common

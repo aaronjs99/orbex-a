@@ -86,24 +86,24 @@ class DenseFeedbackExecutor:
             raise ValueError(
                 f"{key}: execution feedback hold exceeds the planned maximum"
             )
-        shapes = dict(
-            phi=(count, 3),
-            omega=(count, 3),
-            alpha=(count - 1, 3),
-            phi_peak=(count - 1, 3),
-            omega_peak=(count - 1, 3),
-            input_reserve=(count - 1, 3),
-            nominal_enclosure=(count - 1, 6),
-            base_forcing=(count - 1, 3),
-            hold_forcing=(count - 1, 3),
-            disturbance_bound=(count - 1, 3),
-            velocity_peak=(count - 1, 3),
-            error_peak=(count - 1, 6),
-            velocity_derivative_bound=(count - 1, 3),
-            error_derivative_bound=(count - 1, 6),
-            sliding_derivative_bound=(count - 1, 3),
-            A_variation=(count - 1, 3, 6),
-        )
+        shapes = {
+            "phi": (count, 3),
+            "omega": (count, 3),
+            "alpha": (count - 1, 3),
+            "phi_peak": (count - 1, 3),
+            "omega_peak": (count - 1, 3),
+            "input_reserve": (count - 1, 3),
+            "nominal_enclosure": (count - 1, 6),
+            "base_forcing": (count - 1, 3),
+            "hold_forcing": (count - 1, 3),
+            "disturbance_bound": (count - 1, 3),
+            "velocity_peak": (count - 1, 3),
+            "error_peak": (count - 1, 6),
+            "velocity_derivative_bound": (count - 1, 3),
+            "error_derivative_bound": (count - 1, 6),
+            "sliding_derivative_bound": (count - 1, 3),
+            "A_variation": (count - 1, 3, 6),
+        }
         data = {}
         for name, shape in shapes.items():
             value = np.asarray(tube[name], dtype=float)

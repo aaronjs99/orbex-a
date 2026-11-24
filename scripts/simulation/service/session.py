@@ -30,26 +30,26 @@ class LiveSimulationService:
         self._operation = threading.Lock()
         self._process = self._tree = self._messages = self._run_event = None
         self._resume_pending = settings.resume_path is not None
-        self._state = dict(
-            revision=0,
-            session_id=uuid.uuid4().hex,
-            job_id=None,
-            status="idle",
-            parameters=None,
-            projection=None,
-            lifecycle=None,
-            progress={},
-            message="Ready for a new bounded simulation",
-            paused=False,
-            scope="Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification",
-            execution_model="historical_analytical_resume"
+        self._state = {
+            "revision": 0,
+            "session_id": uuid.uuid4().hex,
+            "job_id": None,
+            "status": "idle",
+            "parameters": None,
+            "projection": None,
+            "lifecycle": None,
+            "progress": {},
+            "message": "Ready for a new bounded simulation",
+            "paused": False,
+            "scope": "Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification",
+            "execution_model": "historical_analytical_resume"
             if self._resume_pending
             else "sensed_nonlinear",
-            resume_pending=self._resume_pending,
-            resume_source=None
+            "resume_pending": self._resume_pending,
+            "resume_source": None
             if settings.resume_path is None
             else str(settings.resume_path),
-        )
+        }
 
     @property
     def worker_alive(self):
@@ -137,12 +137,12 @@ class LiveSimulationService:
             except (OSError, RuntimeError) as error:
                 _write_json(
                     directory / "job-status.json",
-                    dict(
-                        job_id=job_id,
-                        status="failed",
-                        message=str(error),
-                        worker_started=False,
-                    ),
+                    {
+                        "job_id": job_id,
+                        "status": "failed",
+                        "message": str(error),
+                        "worker_started": False,
+                    },
                 )
                 raise
             context = mp.get_context("spawn")

@@ -299,12 +299,12 @@ def bound_componentwise_terminal_jets(
             )
             margins = tuple(width - value for width, value in zip(widths, needed))
             history.append(
-                dict(
-                    iteration=iteration,
-                    widths=widths,
-                    needed=needed,
-                    strict_margins=margins,
-                )
+                {
+                    "iteration": iteration,
+                    "widths": widths,
+                    "needed": needed,
+                    "strict_margins": margins,
+                }
             )
             if min(margins) > 0:
                 break
@@ -344,33 +344,33 @@ def bound_componentwise_terminal_jets(
         x3 = (j + 3 * prime * a + 2 * prime * prime * v) / nu**3 + double * v / nu**2
         p0 = _sqrt_upper(ar, sum(value * value for value in point))
         p1, p2, p3 = p0 + x1, p0 + 2 * x1 + x2, p0 + 3 * x1 + 3 * x2 + x3
-        evidence = dict(
-            method=RIGID_BODY_TERMINAL_METHOD,
-            physical_duration_upper=duration,
-            entry_spin=entry_spin,
-            component_omega_box=box,
-            component_omega_dot_box=fbox,
-            component_omega_ddot_box=ar.box(fd),
-            exact_inertia_inverse=inverse,
-            expanded_port_polynomial_coefficients=port_polynomials,
-            polynomial_coefficients=tuple(
+        evidence = {
+            "method": RIGID_BODY_TERMINAL_METHOD,
+            "physical_duration_upper": duration,
+            "entry_spin": entry_spin,
+            "component_omega_box": box,
+            "component_omega_dot_box": fbox,
+            "component_omega_ddot_box": ar.box(fd),
+            "exact_inertia_inverse": inverse,
+            "expanded_port_polynomial_coefficients": port_polynomials,
+            "polynomial_coefficients": tuple(
                 {str(key): value for key, value in row.items()} for row in coefficients
             ),
-            strict_self_inclusion_history=history,
-            torque_norm_upper=torque_norm,
-            torque_derivative_norm_upper=torque_dot_norm,
-            omega_norm_upper=spin_norm,
-            omega_dot_norm_upper=f_norm,
-            omega_ddot_norm_upper=_norm(ar, fd),
-            body_port_velocity_box=ar.box(velocity),
-            body_port_acceleration_box=ar.box(acceleration),
-            body_port_jerk_box=ar.box(jerk),
-            physical_port_derivative_norm_bounds=(v, a, j),
-            inertial_anomaly_derivative_norm_bounds=(x1, x2, x3),
-            lvlh_anomaly_derivative_norm_bounds=(p1, p2, p3),
-            rotation_scope="Body-to-inertial rotation preserves norms; planar LVLH generator has operator norm one",
-            torque_scope="Fixed full inertia; central spherical gravity-gradient torque only",
-            precision_bits=int(precision_bits),
-            sampled_maxima_used=False,
-        )
+            "strict_self_inclusion_history": history,
+            "torque_norm_upper": torque_norm,
+            "torque_derivative_norm_upper": torque_dot_norm,
+            "omega_norm_upper": spin_norm,
+            "omega_dot_norm_upper": f_norm,
+            "omega_ddot_norm_upper": _norm(ar, fd),
+            "body_port_velocity_box": ar.box(velocity),
+            "body_port_acceleration_box": ar.box(acceleration),
+            "body_port_jerk_box": ar.box(jerk),
+            "physical_port_derivative_norm_bounds": (v, a, j),
+            "inertial_anomaly_derivative_norm_bounds": (x1, x2, x3),
+            "lvlh_anomaly_derivative_norm_bounds": (p1, p2, p3),
+            "rotation_scope": "Body-to-inertial rotation preserves norms; planar LVLH generator has operator norm one",
+            "torque_scope": "Fixed full inertia; central spherical gravity-gradient torque only",
+            "precision_bits": int(precision_bits),
+            "sampled_maxima_used": False,
+        }
         return ComponentwiseTerminalJetBounds((p0, p1, p2, p3), evidence)

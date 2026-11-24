@@ -123,18 +123,18 @@ def main(argv=None):
     try:
         approach = MissionResultStore.load(path)
         design = None
-        defaults = dict(
-            target_mass_kg=1000.0,
-            chaser_dry_mass_kg=8.0,
-            chaser_fuel_kg=4.0,
-            chaser_body_radius_m=0.15,
-            gripper_offset_m=0.16,
-            capture_reach_m=0.01,
-            translation_force_n=10.0,
-            attitude_force_n=0.2,
-            attitude_moment_arm_m=0.1,
-            specific_impulse_s=300.0,
-        )
+        defaults = {
+            "target_mass_kg": 1000.0,
+            "chaser_dry_mass_kg": 8.0,
+            "chaser_fuel_kg": 4.0,
+            "chaser_body_radius_m": 0.15,
+            "gripper_offset_m": 0.16,
+            "capture_reach_m": 0.01,
+            "translation_force_n": 10.0,
+            "attitude_force_n": 0.2,
+            "attitude_moment_arm_m": 0.1,
+            "specific_impulse_s": 300.0,
+        }
         if approach.target.get("shape") == "composite_spacecraft":
             from orbexa.core.geometry.composite import SpacecraftGeometry
             from orbexa.simulation.completion.configuration.design import (
@@ -284,7 +284,11 @@ def main(argv=None):
         parser.error(str(error))
     print(
         json.dumps(
-            dict(success=result.success, message=result.message, output=str(output)),
+            {
+                "success": result.success,
+                "message": result.message,
+                "output": str(output),
+            },
             indent=2,
         )
     )

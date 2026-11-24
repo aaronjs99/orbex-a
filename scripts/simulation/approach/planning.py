@@ -267,21 +267,21 @@ class CoupledMissionPlanner:
                     )
                     rad = np.full(count, np.linalg.norm(state.omega[other]))
                 pairwise.append(
-                    dict(
-                        other_chaser=other,
-                        reference_positions=path,
-                        tube_radius=rad,
-                        min_separation=scenario.safety.min_chaser_separation,
-                    )
+                    {
+                        "other_chaser": other,
+                        "reference_positions": path,
+                        "tube_radius": rad,
+                        "min_separation": scenario.safety.min_chaser_separation,
+                    }
                 )
-            kwargs = dict(
-                mean_motion=params["mean_motion"],
-                state_cost_matrix=scenario.reference.phase_state_weights(phase),
-                input_cost_matrix=cfg.mpc.R,
-                dynamic_tube=spec.to_extra_params(),
-                target_params=target,
-                pairwise_constraints=pairwise,
-            )
+            kwargs = {
+                "mean_motion": params["mean_motion"],
+                "state_cost_matrix": scenario.reference.phase_state_weights(phase),
+                "input_cost_matrix": cfg.mpc.R,
+                "dynamic_tube": spec.to_extra_params(),
+                "target_params": target,
+                "pairwise_constraints": pairwise,
+            }
             prior = previous_plans.get(key)
             if prior is not None:
                 path = np.asarray(prior.result.state_trajectory)
@@ -326,10 +326,10 @@ class CoupledMissionPlanner:
                     success=False,
                     solve_time=time.perf_counter() - solve_started,
                     message=f"Coupled MPC numeric setup failed: {error}",
-                    solver_info=dict(
-                        failure_stage="numeric_problem_setup",
-                        exception_type=type(error).__name__,
-                    ),
+                    solver_info={
+                        "failure_stage": "numeric_problem_setup",
+                        "exception_type": type(error).__name__,
+                    },
                 )
             outcome.attempts[key] = result
             if not result.success:
@@ -375,19 +375,19 @@ class CoupledMissionPlanner:
             )
             arrival_context = None
             if arrival_step is not None:
-                arrival_context = dict(
-                    reference_states=references,
-                    reference_inputs=feedforward,
-                    target_params=target,
-                    pairwise_constraints=pairwise,
-                    bounds=problem_bounds,
-                    state_cost_matrix=kwargs["state_cost_matrix"],
-                    input_cost_matrix=cfg.mpc.R,
-                    terminal_cost_matrix=kwargs.get("terminal_cost_matrix"),
-                    solver_options=cfg.solver.options(),
-                    start_anomaly=q,
-                    anomaly_step=cfg.anom_step,
-                )
+                arrival_context = {
+                    "reference_states": references,
+                    "reference_inputs": feedforward,
+                    "target_params": target,
+                    "pairwise_constraints": pairwise,
+                    "bounds": problem_bounds,
+                    "state_cost_matrix": kwargs["state_cost_matrix"],
+                    "input_cost_matrix": cfg.mpc.R,
+                    "terminal_cost_matrix": kwargs.get("terminal_cost_matrix"),
+                    "solver_options": cfg.solver.options(),
+                    "start_anomaly": q,
+                    "anomaly_step": cfg.anom_step,
+                }
             outcome.plans[key] = ChaserPlan(
                 result=result,
                 profile=profile,

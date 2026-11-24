@@ -39,15 +39,15 @@ class PreparedFleetReplacement:
     proof_identity: str
 
     def _record(self):
-        return dict(
-            start=self.start,
-            hold_width=self.hold_width,
-            parent_fallback_id=self.parent_fallback_id,
-            acceleration_disturbance=self.acceleration_disturbance,
-            successor_id=self.successor.fingerprint,
-            entry_proof=self.entry_proof,
-            required_fuel=self.required_fuel,
-        )
+        return {
+            "start": self.start,
+            "hold_width": self.hold_width,
+            "parent_fallback_id": self.parent_fallback_id,
+            "acceleration_disturbance": self.acceleration_disturbance,
+            "successor_id": self.successor.fingerprint,
+            "entry_proof": self.entry_proof,
+            "required_fuel": self.required_fuel,
+        }
 
     def verify_integrity(self):
         if fingerprint(self._record()) != self.proof_identity:
@@ -148,23 +148,23 @@ def prepare_fleet_replacement(runtime, candidate, *, hold_width):
         entry.append(
             (
                 key,
-                dict(
-                    old_controller_id=old_controller.certificate.fingerprint,
-                    new_controller_id=controller.certificate.fingerprint,
-                    old_reference=exact_record(left),
-                    new_reference=exact_record(right),
-                    old_omega=a.omega,
-                    old_phi=a.phi,
-                    old_lambda=a.lambda_gain,
-                    new_omega=b.omega,
-                    new_phi=b.phi,
-                    new_lambda=b.lambda_gain,
-                    old_reference_error_abs=a.reference_error_abs,
-                    new_reference_error_abs=b.reference_error_abs,
-                    position_required=tuple(position),
-                    sliding_required=tuple(sliding),
-                    method="exact-relational-error-and-sliding-entry-v1",
-                ),
+                {
+                    "old_controller_id": old_controller.certificate.fingerprint,
+                    "new_controller_id": controller.certificate.fingerprint,
+                    "old_reference": exact_record(left),
+                    "new_reference": exact_record(right),
+                    "old_omega": a.omega,
+                    "old_phi": a.phi,
+                    "old_lambda": a.lambda_gain,
+                    "new_omega": b.omega,
+                    "new_phi": b.phi,
+                    "new_lambda": b.lambda_gain,
+                    "old_reference_error_abs": a.reference_error_abs,
+                    "new_reference_error_abs": b.reference_error_abs,
+                    "position_required": tuple(position),
+                    "sliding_required": tuple(sliding),
+                    "method": "exact-relational-error-and-sliding-entry-v1",
+                },
             )
         )
     required = tuple(candidate.remaining_fuel(q).items())

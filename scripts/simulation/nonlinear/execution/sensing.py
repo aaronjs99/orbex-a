@@ -37,11 +37,11 @@ class SensorAcquisitionAudit:
         if sink is not None and not callable(sink):
             raise TypeError("Sensor audit sink must be callable or None")
         self.sensors, self.sink = sensors, sink
-        self.context = dict(
-            clock_fingerprint=str(clock_fingerprint),
-            model_fingerprint=str(model_fingerprint),
-            truth_model_fingerprint=str(truth_model_fingerprint),
-        )
+        self.context = {
+            "clock_fingerprint": str(clock_fingerprint),
+            "model_fingerprint": str(model_fingerprint),
+            "truth_model_fingerprint": str(truth_model_fingerprint),
+        }
         self.last_event = self.unconfirmed_event = None
         self.unarchived_events = 0
 
@@ -66,12 +66,12 @@ class SensorAcquisitionAudit:
 
     def acquired(self, packets, *, q=None, time_s=None, origin="GENERATED"):
         profile = self.sensors.profile
-        field = dict(
-            policy=profile.randomness_policy,
-            profile=profile.as_dict(),
-            physical_slot=None,
-            scope="Noise field declaration, not an enforced observation schedule",
-        )
+        field = {
+            "policy": profile.randomness_policy,
+            "profile": profile.as_dict(),
+            "physical_slot": None,
+            "scope": "Noise field declaration, not an enforced observation schedule",
+        }
         if self.sensors.noise is not None and time_s is not None:
             field["physical_slot"] = self.sensors.noise.slot_at(time_s)
         rows = []
@@ -86,11 +86,11 @@ class SensorAcquisitionAudit:
                 else None
             )
             rows.append(
-                dict(
-                    packet_id=packet.packet_id,
-                    packet=packet.as_dict(),
-                    physical_slot=slot,
-                )
+                {
+                    "packet_id": packet.packet_id,
+                    "packet": packet.as_dict(),
+                    "physical_slot": slot,
+                }
             )
         self._publish(
             dict(
@@ -100,7 +100,10 @@ class SensorAcquisitionAudit:
                 acquisition_event=(
                     None
                     if origin == "INITIAL_SUPPLIED"
-                    else dict(exact_q=str(exact(q)), physical_time_s=str(exact(time_s)))
+                    else {
+                        "exact_q": str(exact(q)),
+                        "physical_time_s": str(exact(time_s)),
+                    }
                 ),
                 packet_count=len(rows),
                 packets=rows,

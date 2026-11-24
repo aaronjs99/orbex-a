@@ -99,31 +99,31 @@ class ContactStepCertificate:
         return self.status == "PROVEN"
 
     def as_dict(self):
-        return dict(
-            method="arb-compliant-contact-held-flow-v1",
-            status=self.status,
-            passed=self.passed,
-            reason=self.reason,
-            source_files=dict(_SOURCE),
-            context=copy.deepcopy(self.context),
-            initial=self.initial.as_dict(),
-            endpoint=None if self.endpoint is None else self.endpoint.as_dict(),
-            swept=None if self.swept is None else self.swept.as_dict(),
-            checks=copy.deepcopy(self.checks or {}),
-            refinement_attempts=copy.deepcopy(list(self.refinement_attempts)),
-            rotation_endpoint=[box.as_dict() for box in self.rotation_endpoint],
-            rotation_swept=[box.as_dict() for box in self.rotation_swept],
-            gap_endpoint=[box.as_dict() for box in self.gap_endpoint],
-            gap_swept=[box.as_dict() for box in self.gap_swept],
-            strain_endpoint=[box.as_dict() for box in self.strain_endpoint],
-            strain_swept=[box.as_dict() for box in self.strain_swept],
-            endpoint_potential=None
+        return {
+            "method": "arb-compliant-contact-held-flow-v1",
+            "status": self.status,
+            "passed": self.passed,
+            "reason": self.reason,
+            "source_files": dict(_SOURCE),
+            "context": copy.deepcopy(self.context),
+            "initial": self.initial.as_dict(),
+            "endpoint": None if self.endpoint is None else self.endpoint.as_dict(),
+            "swept": None if self.swept is None else self.swept.as_dict(),
+            "checks": copy.deepcopy(self.checks or {}),
+            "refinement_attempts": copy.deepcopy(list(self.refinement_attempts)),
+            "rotation_endpoint": [box.as_dict() for box in self.rotation_endpoint],
+            "rotation_swept": [box.as_dict() for box in self.rotation_swept],
+            "gap_endpoint": [box.as_dict() for box in self.gap_endpoint],
+            "gap_swept": [box.as_dict() for box in self.gap_swept],
+            "strain_endpoint": [box.as_dict() for box in self.strain_endpoint],
+            "strain_swept": [box.as_dict() for box in self.strain_swept],
+            "endpoint_potential": None
             if self.endpoint_potential is None
             else self.endpoint_potential.as_dict(),
-            wrench_endpoint=[box.as_dict() for box in self.wrench_endpoint],
-            wrench_swept=[box.as_dict() for box in self.wrench_swept],
-            scope="Declared unit-quaternion rigid ODE, unilateral compliant pads and fixed held commands/bond parameters; conditional initial set, exact specified geometry and the maintained typed J2/drag environment when supplied",
-        )
+            "wrench_endpoint": [box.as_dict() for box in self.wrench_endpoint],
+            "wrench_swept": [box.as_dict() for box in self.wrench_swept],
+            "scope": "Declared unit-quaternion rigid ODE, unilateral compliant pads and fixed held commands/bond parameters; conditional initial set, exact specified geometry and the maintained typed J2/drag environment when supplied",
+        }
 
 
 class _ContactField:
@@ -511,26 +511,26 @@ class _ContactField:
             )
             power = -_dot(force, matvec(rj, tips[k][3:]))
             rows.append(
-                dict(
-                    e=e,
-                    u=u,
-                    gap=gap,
-                    compression=compression,
-                    normal_force=normal_force,
-                    force=force,
-                    force_patch=force_patch,
-                    couple=couple,
-                    spin=spin,
-                    unbonded_force_patch=unbonded_force_patch,
-                    activation=activation,
-                    bond_force_unscaled=bond_force,
-                    couple_unscaled=couple_unscaled,
-                    deformation=deformation,
-                    strain_angle=angle,
-                    power=power,
-                    tip=tip,
-                    tip_velocity=tip_velocity,
-                )
+                {
+                    "e": e,
+                    "u": u,
+                    "gap": gap,
+                    "compression": compression,
+                    "normal_force": normal_force,
+                    "force": force,
+                    "force_patch": force_patch,
+                    "couple": couple,
+                    "spin": spin,
+                    "unbonded_force_patch": unbonded_force_patch,
+                    "activation": activation,
+                    "bond_force_unscaled": bond_force,
+                    "couple_unscaled": couple_unscaled,
+                    "deformation": deformation,
+                    "strain_angle": angle,
+                    "power": power,
+                    "tip": tip,
+                    "tip_velocity": tip_velocity,
+                }
             )
         derivative = [ar.scalar(0) for _ in values]
         target_acceleration = scale(1 / masses[0], forces[0])
@@ -595,14 +595,14 @@ class _ContactField:
                             ),
                         ),
                     )
-        diag = dict(
-            body=body,
-            tips=tips,
-            rotations=rotations,
-            spins=spins,
-            masses=masses,
-            rows=rows,
-        )
+        diag = {
+            "body": body,
+            "tips": tips,
+            "rotations": rotations,
+            "spins": spins,
+            "masses": masses,
+            "rows": rows,
+        }
         if wrenched:
             derivative[wrench_start:] = wrench_derivatives(self, diag, derivative)
         return tuple(derivative), diag
@@ -685,11 +685,11 @@ class ContactStepEncloser:
         while True:
             certificate = engine.bound(**request)
             attempts.append(
-                dict(
-                    max_step_s=engine.max_step_s,
-                    status=certificate.status,
-                    reason=certificate.reason,
-                )
+                {
+                    "max_step_s": engine.max_step_s,
+                    "status": certificate.status,
+                    "reason": certificate.reason,
+                }
             )
             if certificate.passed or certificate.status != "UNRESOLVED":
                 break
@@ -746,13 +746,13 @@ class ContactStepEncloser:
                     quaternion_conjugate(body[0][6:10]), body[k + 1][6:10]
                 )
                 result.append(
-                    dict(
-                        position=ar.box(row["e"]),
-                        quaternion=ar.box(q),
-                        preload_supported=comp.lower[0] > 0
+                    {
+                        "position": ar.box(row["e"]),
+                        "quaternion": ar.box(q),
+                        "preload_supported": comp.lower[0] > 0
                         and force.lower[0] >= Fraction(0.8 * options.preload_n)
                         and gap.upper[0] <= Fraction(options.range_error_bound_m),
-                    )
+                    }
                 )
             return result
 
@@ -788,40 +788,40 @@ class ContactStepEncloser:
             raise ValueError(
                 "Contact held-flow source is off the declared actual-target-COM chart"
             )
-        context = dict(
-            time_s=str(time),
-            duration_s=str(h),
-            options=asdict(options),
-            translation_chart="actual-target-COM-following nonrotating ECI axes; common ephemeris in six leading coordinates",
-            controls_body=actuation.controls.tolist(),
-            extension_acceleration_body_m_s2=actuation.extension_acceleration.tolist(),
-            engagement_s=bonds.engagement.tolist(),
-            bond_rest_body_m=bonds.bond_rest.tolist(),
-            rotation_rest=bonds.rotation_rest.tolist(),
-            exact_engagement_times_s=None
+        context = {
+            "time_s": str(time),
+            "duration_s": str(h),
+            "options": asdict(options),
+            "translation_chart": "actual-target-COM-following nonrotating ECI axes; common ephemeris in six leading coordinates",
+            "controls_body": actuation.controls.tolist(),
+            "extension_acceleration_body_m_s2": actuation.extension_acceleration.tolist(),
+            "engagement_s": bonds.engagement.tolist(),
+            "bond_rest_body_m": bonds.bond_rest.tolist(),
+            "rotation_rest": bonds.rotation_rest.tolist(),
+            "exact_engagement_times_s": None
             if engagement_times is None
             else [None if value is None else str(value) for value in engagement_times],
-            geometry_fingerprint=getattr(geometry, "fingerprint", None),
-            precision_bits=self.precision_bits,
-            max_substeps=self.max_substeps,
-            max_step_s=self.max_step_s,
-            dry_mass_kg=fleet.dry.tolist(),
-            specific_inertia_m2=fleet.specific.tolist(),
-            mounts_body_m=fleet.mounts.tolist(),
-            anchors_body_m=fleet.anchors.tolist(),
-            normals_body=fleet.normals.tolist(),
-            mu_m3_s2=fleet.mu,
-            gravity_gradient=fleet.gravity_gradient,
-            members=[
-                dict(
-                    id=member.id,
-                    patch_id=member.patch_id,
-                    arm_reach_m=member.arm_reach_m,
-                    bus_radius_m=member.properties.body_radius_m,
-                )
+            "geometry_fingerprint": getattr(geometry, "fingerprint", None),
+            "precision_bits": self.precision_bits,
+            "max_substeps": self.max_substeps,
+            "max_step_s": self.max_step_s,
+            "dry_mass_kg": fleet.dry.tolist(),
+            "specific_inertia_m2": fleet.specific.tolist(),
+            "mounts_body_m": fleet.mounts.tolist(),
+            "anchors_body_m": fleet.anchors.tolist(),
+            "normals_body": fleet.normals.tolist(),
+            "mu_m3_s2": fleet.mu,
+            "gravity_gradient": fleet.gravity_gradient,
+            "members": [
+                {
+                    "id": member.id,
+                    "patch_id": member.patch_id,
+                    "arm_reach_m": member.arm_reach_m,
+                    "bus_radius_m": member.properties.body_radius_m,
+                }
                 for member in fleet.members
             ],
-            rest_enclosures=None
+            "rest_enclosures": None
             if rest_enclosures is None
             else [
                 None
@@ -829,7 +829,7 @@ class ContactStepEncloser:
                 else {key: box.as_dict() for key, box in rest.items()}
                 for rest in rest_enclosures
             ],
-        )
+        }
         # Infinite means not yet engaged and has a stable JSON-safe representation.
         context["engagement_s"] = [
             None if not np.isfinite(value) else float(value)
@@ -1010,17 +1010,19 @@ class ContactStepEncloser:
                     initial,
                     endpoint.slice(0, fleet.ledger_start),
                     swept.slice(0, fleet.ledger_start),
-                    dict(
-                        substeps=checks,
-                        preload_supported=[
+                    {
+                        "substeps": checks,
+                        "preload_supported": [
                             all(item["preload_supported"][k] for item in checks)
                             for k in range(fleet.chaser_count)
                         ],
-                        quiet_supported=all(item["quiet_supported"] for item in checks),
-                        finite_lock_ready=all(
+                        "quiet_supported": all(
+                            item["quiet_supported"] for item in checks
+                        ),
+                        "finite_lock_ready": all(
                             item["finite_lock_ready"] for item in checks
                         ),
-                    ),
+                    },
                     rotation_endpoint=tuple(
                         endpoint.slice(
                             fleet.ledger_start + 9 * k, fleet.ledger_start + 9 * (k + 1)
@@ -1143,14 +1145,14 @@ class ContactStepEncloser:
                 raise _ProofUnresolved(
                     member.id + ": whole-step positioner speed not proven"
                 )
-            quantities = dict(
-                compression_m=upper(row["compression"]),
-                force_n=normup(row["force"]),
-                moment_nm=normup(row["couple"]),
-                positioner_power_w=max(
+            quantities = {
+                "compression_m": upper(row["compression"]),
+                "force_n": normup(row["force"]),
+                "moment_nm": normup(row["couple"]),
+                "positioner_power_w": max(
                     abs(lower(row["power"])), abs(upper(row["power"]))
                 ),
-            )
+            }
             maxima[member.id] = {name: str(value) for name, value in quantities.items()}
             if (
                 quantities["compression_m"] > Fraction(o.max_compression_m)
@@ -1336,12 +1338,12 @@ class ContactStepEncloser:
                 and 2 * energy * inverse_norm <= Fraction(o.settling_spin_rad_s) ** 2
             )
         finite_lock_ready = all(lower(row["activation"]) >= 1 for row in rows)
-        return dict(
-            member_upper=maxima,
-            minimum_geometry_margin_m=str(min(margins)),
-            preload_supported=preload,
-            quiet_supported=bool(quiet),
-            finite_lock_ready=bool(finite_lock_ready),
-            active_lock_admission="Eligibility only; complete immutable finite-lock load/travel/power/work preflight must pass before any lock motion. The instantaneous projection-energy cap applies only to settled_passive.",
-            rigidization_energy_upper_j=str(energy),
-        )
+        return {
+            "member_upper": maxima,
+            "minimum_geometry_margin_m": str(min(margins)),
+            "preload_supported": preload,
+            "quiet_supported": bool(quiet),
+            "finite_lock_ready": bool(finite_lock_ready),
+            "active_lock_admission": "Eligibility only; complete immutable finite-lock load/travel/power/work preflight must pass before any lock motion. The instantaneous projection-energy cap applies only to settled_passive.",
+            "rigidization_energy_upper_j": str(energy),
+        }

@@ -171,7 +171,8 @@ Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` 
 
 - [x] Formatting-only pull request: `ruff format` across the tree. Confirm the AST is unchanged for every file.
 - [x] Safe `ruff check --fix` across the tree. The hash-masked proof journal and run records of a capped run are unchanged.
-- [ ] Fix the remaining 907 manual `ruff check` findings by hand, one package per pull request.
+- [x] Rewrite the 695 C408 `dict()`/`list()`/`tuple()` calls as literals. Each file's AST must equal the old AST with only those calls replaced.
+- [ ] Fix the remaining 212 manual `ruff check` findings, one package per pull request.
 - [ ] Classes and callables: convert module-level behavior to classes or callable objects package by package. Keep math helpers as functions.
 - [ ] Headers and docstrings: add the file header ending in `Copyright: Aaron John Sabu` and factual docstrings, package by package.
 - [ ] Folder READMEs with File Structure tables. Restructure the root README into the standard sections.

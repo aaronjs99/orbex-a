@@ -194,17 +194,17 @@ class CaptureResult:
     state: AssemblyState | None = None
 
     def to_dict(self):
-        return dict(
-            success=self.success,
-            message=self.message,
-            gates=self.gates,
-            audit=self.audit,
-            assumptions=list(self.assumptions),
-            assembly=None if self.assembly is None else self.assembly.to_dict(),
-            final_state=None
+        return {
+            "success": self.success,
+            "message": self.message,
+            "gates": self.gates,
+            "audit": self.audit,
+            "assumptions": list(self.assumptions),
+            "assembly": None if self.assembly is None else self.assembly.to_dict(),
+            "final_state": None
             if self.state is None
             else self.assembly.state_record(self.state),
-        )
+        }
 
 
 class CaptureModel:
@@ -724,35 +724,37 @@ class CaptureModel:
                     np.dot(nominal_body + tip_offset - surface, normal)
                     - position_radius
                 )
-                gate = dict(
-                    actual_latch_length_m=actual_latch_length,
-                    whole_tube_latch_length_bound_m=tube_latch_bound,
-                    arm_reach_m=self.options.arm_reach_m,
-                    actual_relative_speed_m_s=float(np.linalg.norm(relative_velocity)),
-                    whole_tube_relative_speed_bound_m_s=speed_bound,
-                    max_relative_speed_m_s=self.options.max_relative_speed_m_s,
-                    orientation_error_rad=orientation_error,
-                    spin_error_rad_s=spin_error,
-                    current_tube_membership_margin=tube_membership,
-                    whole_tube_tip_surface_gap_lower_bound_m=tip_gap_lower,
-                    actual_bus_surface_clearance_lower_bound_m=actual_bus_clearance,
-                    whole_tube_bus_surface_clearance_lower_bound_m=bus_clearance,
-                    conservative_bus_surface_clearance_m=bus_clearance,
-                    capture_reference_body_m=actual_body.tolist(),
-                    actual_center_of_mass_body_m=actual_com_body.tolist(),
-                    nominal_center_of_mass_body_m=nominal_com_body.tolist(),
-                    gripper_tip_body_m=(actual_body + tip_offset).tolist(),
-                    chaser_rotation_in_assembly=(
+                gate = {
+                    "actual_latch_length_m": actual_latch_length,
+                    "whole_tube_latch_length_bound_m": tube_latch_bound,
+                    "arm_reach_m": self.options.arm_reach_m,
+                    "actual_relative_speed_m_s": float(
+                        np.linalg.norm(relative_velocity)
+                    ),
+                    "whole_tube_relative_speed_bound_m_s": speed_bound,
+                    "max_relative_speed_m_s": self.options.max_relative_speed_m_s,
+                    "orientation_error_rad": orientation_error,
+                    "spin_error_rad_s": spin_error,
+                    "current_tube_membership_margin": tube_membership,
+                    "whole_tube_tip_surface_gap_lower_bound_m": tip_gap_lower,
+                    "actual_bus_surface_clearance_lower_bound_m": actual_bus_clearance,
+                    "whole_tube_bus_surface_clearance_lower_bound_m": bus_clearance,
+                    "conservative_bus_surface_clearance_m": bus_clearance,
+                    "capture_reference_body_m": actual_body.tolist(),
+                    "actual_center_of_mass_body_m": actual_com_body.tolist(),
+                    "nominal_center_of_mass_body_m": nominal_com_body.tolist(),
+                    "gripper_tip_body_m": (actual_body + tip_offset).tolist(),
+                    "chaser_rotation_in_assembly": (
                         target_rotation.T @ chaser_rotation
                     ).tolist(),
-                    chaser_body_radius_m=properties.body_radius_m,
-                    surface_anchor_body_m=surface.tolist(),
-                    approach_position_semantics=(
+                    "chaser_body_radius_m": properties.body_radius_m,
+                    "surface_anchor_body_m": surface.tolist(),
+                    "approach_position_semantics": (
                         "capture_reference_explicit_opt_in"
                         if self.options.assume_approach_point_is_capture_reference
                         else "chaser_center_of_mass"
                     ),
-                )
+                }
                 gate["passed"] = bool(
                     actual_latch_length <= self.options.arm_reach_m
                     and tube_latch_bound <= self.options.arm_reach_m
@@ -815,26 +817,28 @@ class CaptureModel:
                     )
                 tip_before = actual_body + tip_offset
                 correction = surface - tip_before
-                surface_contacts[key] = dict(
-                    event="surface_contact_and_rigid_attachment",
-                    time_s=truth.time_s,
-                    anomaly=truth.anomaly,
-                    target_docking_fixture_required=False,
-                    surface_point_body_m=surface.tolist(),
-                    tip_before_contact_body_m=tip_before.tolist(),
-                    tip_at_contact_body_m=surface.tolist(),
-                    tip_correction_body_m=correction.tolist(),
-                    correction_length_m=actual_latch_length,
-                    whole_tube_reach_bound_m=tube_latch_bound,
-                    available_tip_reach_m=self.options.arm_reach_m,
-                    initial_outward_gap_m=float(np.dot(tip_before - surface, normal)),
-                    whole_tube_initial_outward_gap_lower_bound_m=tip_gap_lower,
-                    contact_residual_m=float(
+                surface_contacts[key] = {
+                    "event": "surface_contact_and_rigid_attachment",
+                    "time_s": truth.time_s,
+                    "anomaly": truth.anomaly,
+                    "target_docking_fixture_required": False,
+                    "surface_point_body_m": surface.tolist(),
+                    "tip_before_contact_body_m": tip_before.tolist(),
+                    "tip_at_contact_body_m": surface.tolist(),
+                    "tip_correction_body_m": correction.tolist(),
+                    "correction_length_m": actual_latch_length,
+                    "whole_tube_reach_bound_m": tube_latch_bound,
+                    "available_tip_reach_m": self.options.arm_reach_m,
+                    "initial_outward_gap_m": float(
+                        np.dot(tip_before - surface, normal)
+                    ),
+                    "whole_tube_initial_outward_gap_lower_bound_m": tip_gap_lower,
+                    "contact_residual_m": float(
                         np.linalg.norm(tip_before + correction - surface)
                     ),
-                    path_model="Straight articulating-tip segment to the selected hull point; supporting-plane gap remains nonnegative",
-                    time_model="Contact and inelastic attachment are coincident idealized events; no finite arm deployment dynamics",
-                )
+                    "path_model": "Straight articulating-tip segment to the selected hull point; supporting-plane gap remains nonnegative",
+                    "time_model": "Contact and inelastic attachment are coincident idealized events; no finite arm deployment dynamics",
+                }
                 offset_eci = target_rotation @ com_offset
                 com_body = actual_com_body
                 bus_envelopes[key] = (
@@ -930,7 +934,7 @@ class CaptureModel:
                     members=contact_members,
                     geometry=composite
                     if composite is not None
-                    else dict(radius=radius, half_length=half_length),
+                    else {"radius": radius, "half_length": half_length},
                     mu_m3_s2=truth.mu_m3_s2,
                     gravity_gradient=gravity_gradient,
                     feedback=contact_feedback,
@@ -1115,15 +1119,15 @@ class CaptureModel:
                     for lo, hi in zip(anchor_box.lower, anchor_box.upper)
                 ]
                 limits.append(
-                    dict(
-                        name=name,
-                        normal_body=member.normal_body.tolist(),
-                        surface_anchor_body_m=anchor,
-                        tensile_limit_n=self.contact_options.tensile_limit_n,
-                        shear_limit_n=self.contact_options.shear_limit_n,
-                        moment_limit_nm=self.contact_options.moment_limit_nm,
-                        compression_limit_n=self.contact_options.positioner_force_limit_n,
-                    )
+                    {
+                        "name": name,
+                        "normal_body": member.normal_body.tolist(),
+                        "surface_anchor_body_m": anchor,
+                        "tensile_limit_n": self.contact_options.tensile_limit_n,
+                        "shear_limit_n": self.contact_options.shear_limit_n,
+                        "moment_limit_nm": self.contact_options.moment_limit_nm,
+                        "compression_limit_n": self.contact_options.positioner_force_limit_n,
+                    }
                 )
             elements.append(
                 MassElement(
@@ -1174,15 +1178,17 @@ class CaptureModel:
             lock.state.hull(IntervalBox.point(packed_state(state))),
             exact_time,
             assembly_parameter_fingerprint(assembly),
-            dict(
-                kind="carried_contact_through_finite_load_bounded_lock",
-                contact_proof_chain_sha256=continuous["proof_chain_sha256"],
-                finite_lock_proof_chain_sha256=lock.audit["proof_chain_sha256"],
-                terminal_boundary_transfer=continuous.get("boundary_transfer", {}).get(
-                    "identity"
-                ),
-                retained_locked_pad_energy_j=contact.audit["final_contact_potential_j"],
-            ),
+            {
+                "kind": "carried_contact_through_finite_load_bounded_lock",
+                "contact_proof_chain_sha256": continuous["proof_chain_sha256"],
+                "finite_lock_proof_chain_sha256": lock.audit["proof_chain_sha256"],
+                "terminal_boundary_transfer": continuous.get(
+                    "boundary_transfer", {}
+                ).get("identity"),
+                "retained_locked_pad_energy_j": contact.audit[
+                    "final_contact_potential_j"
+                ],
+            },
         )
         carried = replace(
             carried,
@@ -1234,11 +1240,11 @@ class CaptureModel:
             post_latch_rotational_energy_j=lock.audit[
                 "final_com_frame_kinetic_energy_j"
             ],
-            lock_projection=dict(
-                method="finite_internal_braking_then_coordinate_change",
-                residual_linear_impulse_kg_m_s=0.0,
-                residual_angular_impulse_kg_m2_s=0.0,
-            ),
+            lock_projection={
+                "method": "finite_internal_braking_then_coordinate_change",
+                "residual_linear_impulse_kg_m_s": 0.0,
+                "residual_angular_impulse_kg_m2_s": 0.0,
+            },
             carried_assembly_boundary=carried.as_dict(),
             target_interface="Finite compliant carried adhesive pads and finite load-bounded active positioner lock on bare-hull patches",
         )

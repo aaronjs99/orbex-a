@@ -86,26 +86,26 @@ class StudyTelemetry:
             )
             for chaser in runner.chasers
         )
-        progress = dict(
-            update=update,
-            exact_q=str(runner.truth_target.current_q),
-            physical_time_s=runner.truth_target.physical_time_at(
+        progress = {
+            "update": update,
+            "exact_q": str(runner.truth_target.current_q),
+            "physical_time_s": runner.truth_target.physical_time_at(
                 runner.truth_target.current_q
             ),
-            phase=phase,
-            maximum_nominal_goal_distance_m=distance,
-            performance_holds=sum(
+            "phase": phase,
+            "maximum_nominal_goal_distance_m": distance,
+            "performance_holds": sum(
                 source == "PERFORMANCE" for source in outcome.control_sources
             ),
-            fallback_holds=sum(
+            "fallback_holds": sum(
                 source != "PERFORMANCE" for source in outcome.control_sources
             ),
-            elapsed_wall_s=time.perf_counter() - self.started,
-            completed_holds=archive.holds,
-            archive_entries=archive.entries,
-            retained_full_journal_holds=len(runner.executor.journal),
-            retained_runtime_events=len(runner.executor.runtime.events),
-        )
+            "elapsed_wall_s": time.perf_counter() - self.started,
+            "completed_holds": archive.holds,
+            "archive_entries": archive.entries,
+            "retained_full_journal_holds": len(runner.executor.journal),
+            "retained_runtime_events": len(runner.executor.runtime.events),
+        }
         self.put(
             {
                 "kind": "checkpoint",
@@ -119,5 +119,5 @@ class StudyTelemetry:
         store.record(stage, result)
         write_record(
             self.directory / "stage-progress.json",
-            dict(stage=stage, elapsed_wall_s=time.perf_counter() - self.started),
+            {"stage": stage, "elapsed_wall_s": time.perf_counter() - self.started},
         )

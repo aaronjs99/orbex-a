@@ -84,10 +84,10 @@ class NominalTubePropagator:
         # constants. This is solely the CH nominal surrogate, never a physical
         # nonlinear/frame certificate. Exact source checks remain in prove().
         source_id = fingerprint(
-            dict(
-                role="nominal-CH-surrogate-in-commanded-coordinates",
-                model=model.as_dict(),
-            )
+            {
+                "role": "nominal-CH-surrogate-in-commanded-coordinates",
+                "model": model.as_dict(),
+            }
         )
         service_key = (source_id, nominal_config)
         if service_key not in self.services:
@@ -129,17 +129,17 @@ class NominalTubePropagator:
                 "Initial physical tube exceeds declared stage peaks; maximum excess="
                 + repr(float(excess))
             )
-            error.execution_details = dict(
-                gate="INITIAL_PHYSICAL_TUBE_PEAK",
-                exact_start=str(q),
-                exact_hold_width=str(h),
-                initial_phi=np.asarray(phi).tolist(),
-                initial_omega=np.asarray(omega).tolist(),
-                phi_peak=stage["phi_peak"].tolist(),
-                omega_peak=stage["omega_peak"].tolist(),
-                exact_maximum_excess=str(excess),
-                exact_stage_id=stage["proof_record"]["identity"],
-            )
+            error.execution_details = {
+                "gate": "INITIAL_PHYSICAL_TUBE_PEAK",
+                "exact_start": str(q),
+                "exact_hold_width": str(h),
+                "initial_phi": np.asarray(phi).tolist(),
+                "initial_omega": np.asarray(omega).tolist(),
+                "phi_peak": stage["phi_peak"].tolist(),
+                "omega_peak": stage["omega_peak"].tolist(),
+                "exact_maximum_excess": str(excess),
+                "exact_stage_id": stage["proof_record"]["identity"],
+            }
             raise error
         next_phi, next_omega, phi_box, omega_box = _outward_tube_endpoint(
             phi,
@@ -174,47 +174,47 @@ class NominalTubePropagator:
                 "Certified nominal endpoint transfer exceeds solved tube peaks; maximum excess="
                 + repr(excess)
             )
-            error.execution_details = dict(
-                gate="TRANSFERRED_PHYSICAL_TUBE_PEAK",
-                exact_start=str(q),
-                exact_hold_width=str(h),
-                transferred_phi=next_phi.tolist(),
-                transferred_omega=next_omega.tolist(),
-                nominal_defect_abs=defect.tolist(),
-                phi_peak=stage["phi_peak"].tolist(),
-                omega_peak=stage["omega_peak"].tolist(),
-                maximum_excess=excess,
-                exact_stage_id=stage["proof_record"]["identity"],
-            )
+            error.execution_details = {
+                "gate": "TRANSFERRED_PHYSICAL_TUBE_PEAK",
+                "exact_start": str(q),
+                "exact_hold_width": str(h),
+                "transferred_phi": next_phi.tolist(),
+                "transferred_omega": next_omega.tolist(),
+                "nominal_defect_abs": defect.tolist(),
+                "phi_peak": stage["phi_peak"].tolist(),
+                "omega_peak": stage["omega_peak"].tolist(),
+                "maximum_excess": excess,
+                "exact_stage_id": stage["proof_record"]["identity"],
+            }
             raise error
-        transfer = dict(
-            method="arb-positive-comparison-plus-certified-nominal-transfer-v1",
-            exact_start=str(q),
-            exact_hold_width=str(h),
-            initial_phi=tuple(map(str, map(exact, phi))),
-            initial_omega=tuple(map(str, map(exact, omega))),
-            comparison_phi=phi_box.as_dict(),
-            comparison_omega=omega_box.as_dict(),
-            chosen_center=tuple(map(str, map(exact, chosen))),
-            nominal_defect_abs=tuple(map(str, map(exact, defect))),
-            transferred_phi=tuple(map(str, map(exact, next_phi))),
-            transferred_omega=tuple(map(str, map(exact, next_omega))),
-            exact_stage_id=stage["proof_record"]["identity"],
-            nominal_flow_id=certificate.fingerprint,
-            nominal_endpoint_id=certificate.endpoint_certificate.fingerprint,
-            nominal_endpoint_error_abs=None
+        transfer = {
+            "method": "arb-positive-comparison-plus-certified-nominal-transfer-v1",
+            "exact_start": str(q),
+            "exact_hold_width": str(h),
+            "initial_phi": tuple(map(str, map(exact, phi))),
+            "initial_omega": tuple(map(str, map(exact, omega))),
+            "comparison_phi": phi_box.as_dict(),
+            "comparison_omega": omega_box.as_dict(),
+            "chosen_center": tuple(map(str, map(exact, chosen))),
+            "nominal_defect_abs": tuple(map(str, map(exact, defect))),
+            "transferred_phi": tuple(map(str, map(exact, next_phi))),
+            "transferred_omega": tuple(map(str, map(exact, next_omega))),
+            "exact_stage_id": stage["proof_record"]["identity"],
+            "nominal_flow_id": certificate.fingerprint,
+            "nominal_endpoint_id": certificate.endpoint_certificate.fingerprint,
+            "nominal_endpoint_error_abs": None
             if budget is None
             else tuple(map(str, budget)),
-            nominal_endpoint_budget_hold=None if budget is None else str(h),
-            precision_bits=precision_bits,
-        )
+            "nominal_endpoint_budget_hold": None if budget is None else str(h),
+            "precision_bits": precision_bits,
+        }
         if budget is not None and h < prospective_hold:
-            transfer["nominal_endpoint_budget_origin"] = dict(
-                method="exact-positive-comparison-short-hold-scaling-v1",
-                prospective_hold=str(prospective_hold),
-                prospective_error_abs=tuple(map(str, prospective_budget)),
-                scale=str(h / prospective_hold),
-            )
+            transfer["nominal_endpoint_budget_origin"] = {
+                "method": "exact-positive-comparison-short-hold-scaling-v1",
+                "prospective_hold": str(prospective_hold),
+                "prospective_error_abs": tuple(map(str, prospective_budget)),
+                "scale": str(h / prospective_hold),
+            }
         transfer["identity"] = fingerprint(transfer)
         stage["last_transfer"] = transfer
         return chosen, next_phi, next_omega, certificate, defect

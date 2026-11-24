@@ -59,33 +59,33 @@ class NonlinearMissionRecorder:
 
     def record_navigation(self, estimate):
         self.navigation.append(
-            dict(
-                exact_q=str(estimate.exact_event_q),
-                status=estimate.status,
-                reason=estimate.reason,
-                physical_time_box=estimate.physical_time_box.as_dict(),
-                relative_state_boxes={
+            {
+                "exact_q": str(estimate.exact_event_q),
+                "status": estimate.status,
+                "reason": estimate.reason,
+                "physical_time_box": estimate.physical_time_box.as_dict(),
+                "relative_state_boxes": {
                     k: v.as_dict()
                     for k, v in estimate.relative_state_box_by_agent.items()
                 },
-                point_relative_by_agent={
+                "point_relative_by_agent": {
                     k: list(v) for k, v in estimate.point_relative_by_agent.items()
                 },
-                target_ephemeris_box=estimate.target_ephemeris_box.as_dict(),
-                target_orientation_matrix=[
+                "target_ephemeris_box": estimate.target_ephemeris_box.as_dict(),
+                "target_orientation_matrix": [
                     list(map(float, row)) for row in estimate.target_orientation_matrix
                 ],
-                target_orientation_operator_error=float(
+                "target_orientation_operator_error": float(
                     estimate.target_orientation_operator_error
                 ),
-                target_angular_velocity_box=estimate.target_angular_velocity_box.as_dict(),
-                packet_ids=list(estimate.packet_ids[self._last_packet_count :]),
-                accepted_packet_count=len(estimate.packet_ids),
-                sensor_fingerprints=list(estimate.sensor_fingerprints),
-                model_fingerprint=estimate.model_fingerprint,
-                clock_fingerprint=estimate.clock_fingerprint,
-                frame=estimate.frame_id,
-            )
+                "target_angular_velocity_box": estimate.target_angular_velocity_box.as_dict(),
+                "packet_ids": list(estimate.packet_ids[self._last_packet_count :]),
+                "accepted_packet_count": len(estimate.packet_ids),
+                "sensor_fingerprints": list(estimate.sensor_fingerprints),
+                "model_fingerprint": estimate.model_fingerprint,
+                "clock_fingerprint": estimate.clock_fingerprint,
+                "frame": estimate.frame_id,
+            }
         )
         self._last_packet_count = len(estimate.packet_ids)
 
@@ -284,15 +284,15 @@ class NonlinearMissionRecorder:
             self.dwell + 1 if admissible and phase.operation == "docking" else 0
         )
         self.terminal_records.append(
-            dict(
-                anomaly=self.arrays.q_history[-1],
-                bounds={
-                    k: dict(position_m=float(v[0]), velocity_m_per_rad=float(v[1]))
+            {
+                "anomaly": self.arrays.q_history[-1],
+                "bounds": {
+                    k: {"position_m": float(v[0]), "velocity_m_per_rad": float(v[1])}
                     for k, v in bounds.items()
                 },
-                admitted=bool(admissible),
-                dwell=self.dwell,
-            )
+                "admitted": bool(admissible),
+                "dwell": self.dwell,
+            }
         )
 
     def emit_progress(self, kind, result=None):
@@ -306,12 +306,12 @@ class NonlinearMissionRecorder:
         if result is None:
             projection["outcome"]["label"] = "Computing nonlinear mission"
         sink(
-            dict(
-                kind=kind,
-                update=len(self.arrays.q_history) - 1,
-                anomaly=self.arrays.q_history[-1],
-                projection=projection,
-            )
+            {
+                "kind": kind,
+                "update": len(self.arrays.q_history) - 1,
+                "anomaly": self.arrays.q_history[-1],
+                "projection": projection,
+            }
         )
 
     def _record(self, valid, completed, messages, adaptation):
@@ -343,111 +343,111 @@ class NonlinearMissionRecorder:
         )
         sampled_end = self._complete_outer_end
         physical_end = exact(self.truth_target.current_q)
-        accounting = dict(
-            schema="orbexa.nonlinear-completed-prefix.v1",
-            acknowledged_completed_holds=len(self.hold_records),
-            exact_start_q=str(held_start),
-            exact_end_q=str(held_end),
-            physical_end_exact_q=str(physical_end),
-            complete_outer_end_exact_q=str(sampled_end),
-            complete_outer_updates=len(a.q_history) - 1,
-            complete_outer_sampled_holds=self._complete_outer_holds,
-            acknowledged_holds_outside_complete_outer_updates=len(self.hold_records)
+        accounting = {
+            "schema": "orbexa.nonlinear-completed-prefix.v1",
+            "acknowledged_completed_holds": len(self.hold_records),
+            "exact_start_q": str(held_start),
+            "exact_end_q": str(held_end),
+            "physical_end_exact_q": str(physical_end),
+            "complete_outer_end_exact_q": str(sampled_end),
+            "complete_outer_updates": len(a.q_history) - 1,
+            "complete_outer_sampled_holds": self._complete_outer_holds,
+            "acknowledged_holds_outside_complete_outer_updates": len(self.hold_records)
             - self._complete_outer_holds,
-            unconfirmed_physical_tail=physical_end > held_end,
-            unconfirmed_physical_tail_interval=None
+            "unconfirmed_physical_tail": physical_end > held_end,
+            "unconfirmed_physical_tail_interval": None
             if physical_end <= held_end
             else (str(held_end), str(physical_end)),
-            applied_input_squared_integral_per_reference_anomaly={
+            "applied_input_squared_integral_per_reference_anomaly": {
                 key: float(value) for key, value in self._held_input_effort.items()
             },
-            scope="Only acknowledged completed holds enter the ledger and effort; sampled diagnostics end at the separate complete-outer clock; unconfirmed physical motion is not counted",
-        )
-        metadata = dict(
-            model_version="nonlinear-reference-relative-v1",
-            controller="coupled-dynamic-tube-gekko",
-            state_frame="reference-orbit-frame-v1",
-            reference_clock=self.clock.as_dict(),
-            reference_clock_fingerprint=self.clock.fingerprint,
-            nonlinear_physical_bounds=self.model_bounds.as_dict(),
-            nonlinear_truth=self.truth_model.as_dict(),
-            numerical_truth_integration=dict(
-                method="DOP853",
-                relative_rtol=1e-11,
-                relative_atol=1e-10,
-                relative_max_step="min(exact physical hold q width,0.0001)",
-                scope="Numerical truth path; continuous admission remains independently enclosed with Arb",
-            ),
-            study_options=self.study_options.as_dict(),
-            study_fingerprint=self.study_options.fingerprint,
-            independent_case=vars(self.case),
-            scenario=self.scenario.scenario_metadata(),
-            target_kinematics=kinematics,
-            navigation_history=self.navigation,
-            planning_contexts=self.planning_contexts,
-            fleet_hold_records=self.hold_records,
-            fallback_installations=self.install_records,
-            partial_execution_accounting=accounting,
-            continuous_execution_certificate=dict(
-                method="nonlinear-sensed-fleet-admission-v1",
-                body_radius_m=safety.chaser_body_radius,
-                start_anomaly=a.q_history[0],
-                exact_end_anomaly=str(held_end),
-                admitted_fleet_holds=len(self.hold_records),
-                all_intervals_certified=bool(valid and self.all_certified),
-                input_lower=[b["lower"] for b in cfg.mpc.input_bounds],
-                input_upper=[b["upper"] for b in cfg.mpc.input_bounds],
-                scope="Arb nonlinear physical flows and whole-component fleet sweeps for performance; "
+            "scope": "Only acknowledged completed holds enter the ledger and effort; sampled diagnostics end at the separate complete-outer clock; unconfirmed physical motion is not counted",
+        }
+        metadata = {
+            "model_version": "nonlinear-reference-relative-v1",
+            "controller": "coupled-dynamic-tube-gekko",
+            "state_frame": "reference-orbit-frame-v1",
+            "reference_clock": self.clock.as_dict(),
+            "reference_clock_fingerprint": self.clock.fingerprint,
+            "nonlinear_physical_bounds": self.model_bounds.as_dict(),
+            "nonlinear_truth": self.truth_model.as_dict(),
+            "numerical_truth_integration": {
+                "method": "DOP853",
+                "relative_rtol": 1e-11,
+                "relative_atol": 1e-10,
+                "relative_max_step": "min(exact physical hold q width,0.0001)",
+                "scope": "Numerical truth path; continuous admission remains independently enclosed with Arb",
+            },
+            "study_options": self.study_options.as_dict(),
+            "study_fingerprint": self.study_options.fingerprint,
+            "independent_case": vars(self.case),
+            "scenario": self.scenario.scenario_metadata(),
+            "target_kinematics": kinematics,
+            "navigation_history": self.navigation,
+            "planning_contexts": self.planning_contexts,
+            "fleet_hold_records": self.hold_records,
+            "fallback_installations": self.install_records,
+            "partial_execution_accounting": accounting,
+            "continuous_execution_certificate": {
+                "method": "nonlinear-sensed-fleet-admission-v1",
+                "body_radius_m": safety.chaser_body_radius,
+                "start_anomaly": a.q_history[0],
+                "exact_end_anomaly": str(held_end),
+                "admitted_fleet_holds": len(self.hold_records),
+                "all_intervals_certified": bool(valid and self.all_certified),
+                "input_lower": [b["lower"] for b in cfg.mpc.input_bounds],
+                "input_upper": [b["upper"] for b in cfg.mpc.input_bounds],
+                "scope": "Arb nonlinear physical flows and whole-component fleet sweeps for performance; "
                 "stored finite feedback invariant certificates for fallback; declared sensor and actuation supports",
-            ),
-            tube_model_version=SENSED_TUBE_MODEL_VERSION,
-            lambda_gain=np.asarray(cfg.tube.sliding_gains).tolist(),
-            horizon_steps=self.scenario.reference.configured_horizon_metadata(),
-            feedback_substeps=cfg.tube.feedback_substeps,
-            anom_step=cfg.anom_step,
-            dense_anom_step=cfg.anom_step / cfg.tube.feedback_substeps,
-            docking_position_tolerance=cfg.mpc.docking_position_tolerance,
-            docking_velocity_tolerance=cfg.mpc.docking_velocity_tolerance,
-            terminal_dwell_updates=cfg.mpc.terminal_dwell_updates,
-            terminal_dwell_observed=self.dwell,
-            terminal_bound_records=self.terminal_records,
-            mission_complete=bool(completed),
-            active_target_margins_safe=bool(target_safe),
-            pairwise_spacing_safe=bool(pair_safe),
-            min_chaser_separation=safety.min_chaser_separation,
-            sampled_tube_containment=bool(a.contained),
-            dense_min_containment_margin=None
+            },
+            "tube_model_version": SENSED_TUBE_MODEL_VERSION,
+            "lambda_gain": np.asarray(cfg.tube.sliding_gains).tolist(),
+            "horizon_steps": self.scenario.reference.configured_horizon_metadata(),
+            "feedback_substeps": cfg.tube.feedback_substeps,
+            "anom_step": cfg.anom_step,
+            "dense_anom_step": cfg.anom_step / cfg.tube.feedback_substeps,
+            "docking_position_tolerance": cfg.mpc.docking_position_tolerance,
+            "docking_velocity_tolerance": cfg.mpc.docking_velocity_tolerance,
+            "terminal_dwell_updates": cfg.mpc.terminal_dwell_updates,
+            "terminal_dwell_observed": self.dwell,
+            "terminal_bound_records": self.terminal_records,
+            "mission_complete": bool(completed),
+            "active_target_margins_safe": bool(target_safe),
+            "pairwise_spacing_safe": bool(pair_safe),
+            "min_chaser_separation": safety.min_chaser_separation,
+            "sampled_tube_containment": bool(a.contained),
+            "dense_min_containment_margin": None
             if not np.isfinite(a.dense_min_containment)
             else float(a.dense_min_containment),
-            dense_min_physical_clearance=None
+            "dense_min_physical_clearance": None
             if not np.isfinite(a.dense_min_clearance)
             else float(a.dense_min_clearance),
-            dense_min_spacing=None
+            "dense_min_spacing": None
             if not np.isfinite(a.dense_min_spacing)
             else float(a.dense_min_spacing),
-            max_nominal_discretization_residual=a.max_nominal_discretization_residual,
-            elapsed_time_seconds=a.elapsed,
-            chaser_assignments=[c.assignment_metadata() for c in self.chasers],
-            membership_records=[]
+            "max_nominal_discretization_residual": a.max_nominal_discretization_residual,
+            "elapsed_time_seconds": a.elapsed,
+            "chaser_assignments": [c.assignment_metadata() for c in self.chasers],
+            "membership_records": []
             if adaptation is None
             else adaptation.membership_records,
-            physical_adaptation={} if adaptation is None else adaptation.metadata(),
-            input_bounds=cfg.mpc.input_bounds,
-            units=dict(
-                position="m",
-                velocity="m/rad scheduled reference anomaly",
-                input="m/rad^2 scheduled reference anomaly",
-                physical_acceleration="nu_ref(q)^2*C_ref(q)*u",
-                physical_time="s",
-            ),
-            guarantee_scope="Conditional simulated-domain evidence: observation-driven ADTMPC, declared central/J2/vector-drag "
+            "physical_adaptation": {} if adaptation is None else adaptation.metadata(),
+            "input_bounds": cfg.mpc.input_bounds,
+            "units": {
+                "position": "m",
+                "velocity": "m/rad scheduled reference anomaly",
+                "input": "m/rad^2 scheduled reference anomaly",
+                "physical_acceleration": "nu_ref(q)^2*C_ref(q)*u",
+                "physical_time": "s",
+            },
+            "guarantee_scope": "Conditional simulated-domain evidence: observation-driven ADTMPC, declared central/J2/vector-drag "
             "plant and actuation supports, continuous physical swept admission and finite operational refuge policies. "
             "Whole-tube endpoint acceptance includes moving-goal preview error; flight, raw-image perception, "
             "global NLP feasibility and arbitrary-duration fuel-backed safety are not established.",
-            controls_semantics="Recorded applied outer means; exact commands, supports and source retained per hold",
-            nominal_center_defect_semantics="Validated nominal-flow endpoint radius transferred into Phi/Omega at every hold",
-            terminal_dwell_semantics="Consecutive observed whole-tube endpoint bounds including target preview error; no success from one center sample",
-        )
+            "controls_semantics": "Recorded applied outer means; exact commands, supports and source retained per hold",
+            "nominal_center_defect_semantics": "Validated nominal-flow endpoint radius transferred into Phi/Omega at every hold",
+            "terminal_dwell_semantics": "Consecutive observed whole-tube endpoint bounds including target preview error; no success from one center sample",
+        }
         truth = self.scenario.truth.as_dict()
         coefficient = float(
             self.truth_model.atmosphere.rho0_kg_m3[0]

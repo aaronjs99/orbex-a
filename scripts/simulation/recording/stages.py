@@ -26,20 +26,22 @@ class StageRecordRetainer:
         if channel not in ("controls", "coast_history"):
             raise ValueError("Unknown stage record channel")
         identity = fingerprint(record)
-        payload = dict(
-            channel=channel,
-            sequence=self.count,
-            record_identity=identity,
-            previous_chain_identity=self.chain,
-        )
+        payload = {
+            "channel": channel,
+            "sequence": self.count,
+            "record_identity": identity,
+            "previous_chain_identity": self.chain,
+        }
         chain = fingerprint(payload)
         reference = dict(
             schema="orbexa.stage-record-reference.v1", **payload, chain_identity=chain
         )
         reference_identity = fingerprint(reference)
-        envelope = dict(
-            schema="orbexa.stage-record-envelope.v1", reference=reference, record=record
-        )
+        envelope = {
+            "schema": "orbexa.stage-record-envelope.v1",
+            "reference": reference,
+            "record": record,
+        }
         self.sink(envelope)
         if (
             fingerprint(record) != identity
@@ -57,12 +59,12 @@ class StageRecordRetainer:
         return retained
 
     def as_dict(self):
-        return dict(
-            mode="full_in_memory"
+        return {
+            "mode": "full_in_memory"
             if self.sink is None
             else "external_full_record_archive",
-            archived_records=self.count,
-            final_chain_identity=self.chain,
-            channels=dict(self.channels),
-            scope="Archived mode requires every complete, ordered source-bound record and a closed archive; compact references alone establish no physical claim",
-        )
+            "archived_records": self.count,
+            "final_chain_identity": self.chain,
+            "channels": dict(self.channels),
+            "scope": "Archived mode requires every complete, ordered source-bound record and a closed archive; compact references alone establish no physical claim",
+        }

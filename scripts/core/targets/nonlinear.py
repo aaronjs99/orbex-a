@@ -278,18 +278,21 @@ class _NonlinearTargetQueries:
             clock_fingerprint=self.reference_clock.fingerprint,
             physical_plant=self.model.as_dict(),
             nonlinear_target_role=self.role,
-            integration=dict(
-                method="DOP853", rtol=1e-11, atol=1e-12, max_anomaly_step=0.002
-            ),
+            integration={
+                "method": "DOP853",
+                "rtol": 1e-11,
+                "atol": 1e-12,
+                "max_anomaly_step": 0.002,
+            },
             inertial_reference="Declared fixed initial-reference axes; no absolute Earth-orientation epoch claim",
             lvlh_frame_rotation="Commanded reference C(q), not actual perturbed LVLH",
-            clock_parameters=dict(
-                eccentricity=self.eccentricity,
-                alpha=self.alpha,
-                mu=self.mu,
-                semi_major_axis=self.semi_major_axis,
-                theta0=float(self.reference_clock.phase),
-            ),
+            clock_parameters={
+                "eccentricity": self.eccentricity,
+                "alpha": self.alpha,
+                "mu": self.mu,
+                "semi_major_axis": self.semi_major_axis,
+                "theta0": float(self.reference_clock.phase),
+            },
             initial_q=str(self.initial_q),
             current_q=str(self.current_q),
             assumptions=[

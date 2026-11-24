@@ -129,9 +129,13 @@ def _orbit_series(flint, ar, domain, parameters):
         raise ValueError(
             "Radius and dq/dt must be proved strictly positive on the entire domain"
         )
-    return dict(
-        radius=radius, radius_log_derivative=k, rate=rate, matrix=matrix, affine=affine
-    )
+    return {
+        "radius": radius,
+        "radius_log_derivative": k,
+        "rate": rate,
+        "matrix": matrix,
+        "affine": affine,
+    }
 
 
 @dataclass(frozen=True)
@@ -850,49 +854,51 @@ class PhysicalTerminalBoundsBuilder:
                 "The actual scheduled held controller and authoritative reference satisfy the documented evaluation contract",
             ),
         )
-        derived = dict(
-            expanded_query_domain=domain,
-            radius=radius,
-            anomaly_rate=rate,
-            anomaly_rate_prime_abs=rate_prime,
-            anomaly_rate_double_prime_abs=rate_double,
-            physical_duration_upper=duration,
-            inertia=inertia,
-            inertia_eigenvalue_lower=jmin,
-            inertia_eigenvalue_upper=jmax,
-            inertia_spectral_spread_upper=spread,
-            entry_spin_norm_upper=entry_norm,
-            spin_norm_upper=spin,
-            spin_quadratic_coefficient=quadratic,
-            spin_constant_coefficient=constant,
-            spin_discriminant=discriminant,
-            spin_first_exit_margin=spin_margin,
-            spin_dot_norm_upper=spin_dot,
-            spin_double_dot_norm_upper=spin_double,
-            torque_factor_upper=torque_factor,
-            torque_dot_norm_upper=torque_dot,
-            body_anomaly_spin_derivatives=(k0, k1, k2),
-            rotation_derivative_operator_bounds=rotation_derivatives,
-            reference_position_norm_upper=p0,
-            reference_velocity_norm_upper=p1,
-            reference_acceleration_norm_upper=p2,
-            reference_jerk_norm_upper=p3,
-            effective_reference_state_error_abs=reference_error,
-            effective_reference_acceleration_error_abs=acceleration_error,
-            effective_nominal_matrix_error_abs=matrix_error,
-            effective_nominal_affine_error_abs=affine_error,
-            nominal_affine_abs=tuple(_abs(ar, value[0]) for value in nominal["affine"]),
-            evaluation_input_error_abs=evaluation_input_error,
-            physical_sensing_error_abs=self.errors.sensing_error_abs,
-            physical_actuator_error_abs=self.errors.actuator_error_abs,
-            nominal_matrix_prime_abs=matrix_prime,
-            nominal_affine_prime_abs=affine_prime,
-            target_reference_distance_lower=target_distance,
-            peer_position_radius_squared_upper=peer_radius_squared,
-            precision_bits=int(self.precision_bits),
-            backend_version=getattr(flint, "__version__", "unknown"),
-            sampled_maxima_used=False,
-        )
+        derived = {
+            "expanded_query_domain": domain,
+            "radius": radius,
+            "anomaly_rate": rate,
+            "anomaly_rate_prime_abs": rate_prime,
+            "anomaly_rate_double_prime_abs": rate_double,
+            "physical_duration_upper": duration,
+            "inertia": inertia,
+            "inertia_eigenvalue_lower": jmin,
+            "inertia_eigenvalue_upper": jmax,
+            "inertia_spectral_spread_upper": spread,
+            "entry_spin_norm_upper": entry_norm,
+            "spin_norm_upper": spin,
+            "spin_quadratic_coefficient": quadratic,
+            "spin_constant_coefficient": constant,
+            "spin_discriminant": discriminant,
+            "spin_first_exit_margin": spin_margin,
+            "spin_dot_norm_upper": spin_dot,
+            "spin_double_dot_norm_upper": spin_double,
+            "torque_factor_upper": torque_factor,
+            "torque_dot_norm_upper": torque_dot,
+            "body_anomaly_spin_derivatives": (k0, k1, k2),
+            "rotation_derivative_operator_bounds": rotation_derivatives,
+            "reference_position_norm_upper": p0,
+            "reference_velocity_norm_upper": p1,
+            "reference_acceleration_norm_upper": p2,
+            "reference_jerk_norm_upper": p3,
+            "effective_reference_state_error_abs": reference_error,
+            "effective_reference_acceleration_error_abs": acceleration_error,
+            "effective_nominal_matrix_error_abs": matrix_error,
+            "effective_nominal_affine_error_abs": affine_error,
+            "nominal_affine_abs": tuple(
+                _abs(ar, value[0]) for value in nominal["affine"]
+            ),
+            "evaluation_input_error_abs": evaluation_input_error,
+            "physical_sensing_error_abs": self.errors.sensing_error_abs,
+            "physical_actuator_error_abs": self.errors.actuator_error_abs,
+            "nominal_matrix_prime_abs": matrix_prime,
+            "nominal_affine_prime_abs": affine_prime,
+            "target_reference_distance_lower": target_distance,
+            "peer_position_radius_squared_upper": peer_radius_squared,
+            "precision_bits": int(self.precision_bits),
+            "backend_version": getattr(flint, "__version__", "unknown"),
+            "sampled_maxima_used": False,
+        }
         derived.update(geometry_evidence)
         derived.update(spin_evidence)
         derived.update(reference_evidence)
@@ -932,14 +938,14 @@ class PhysicalTerminalBoundsBuilder:
             )
             last = certify_terminal_tracking(bounds, policy=self._terminal_policy())
             attempts.append(
-                dict(
-                    bandwidth=bandwidth,
-                    admissible=last.admissible,
-                    reasons=last.reasons,
-                    sliding_inward_margin=last.quantities["sliding_inward_margin"],
-                    lower_input_margin=last.quantities["lower_input_margin"],
-                    upper_input_margin=last.quantities["upper_input_margin"],
-                )
+                {
+                    "bandwidth": bandwidth,
+                    "admissible": last.admissible,
+                    "reasons": last.reasons,
+                    "sliding_inward_margin": last.quantities["sliding_inward_margin"],
+                    "lower_input_margin": last.quantities["lower_input_margin"],
+                    "upper_input_margin": last.quantities["upper_input_margin"],
+                }
             )
             if last.admissible:
                 return PhysicalTerminalResult(

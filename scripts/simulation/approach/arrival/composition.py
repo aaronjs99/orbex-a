@@ -30,7 +30,7 @@ def _arrival_policy(profile, prior, admission, directory):
     index = max(
         range(len(ports)), key=lambda i: sum(Fraction(float(v)) ** 2 for v in ports[i])
     )
-    common = dict(mu=target.mu, semi_major_axis=target.semi_major_axis)
+    common = {"mu": target.mu, "semi_major_axis": target.semi_major_axis}
     orbit = OrbitalModelBounds(
         eccentricity=(target.eccentricity,) * 2,
         alpha=(target.alpha,) * 2,
@@ -87,34 +87,34 @@ def _arrival_policy(profile, prior, admission, directory):
         if not math.isfinite(number) or Fraction(number) < value:
             raise ValueError("Cannot represent the outward reference-error bound")
         rounded.append(number)
-    payload = dict(
-        mode="deadline_terminal_suffix",
-        planning_fraction=0.8,
-        required_terminal_region=dict(
-            omega=[0.00115] * 3,
-            phi=[0.02] * 3,
-            lambda_gain=[20] * 3,
-            reference_state_error_abs=rounded,
-            maximum_query_displacement=1e-10,
-            anomaly_domain=list(target.anomaly_domain),
-            frame="physical-lvlh-v1",
-            error_source=errors.declaration
+    payload = {
+        "mode": "deadline_terminal_suffix",
+        "planning_fraction": 0.8,
+        "required_terminal_region": {
+            "omega": [0.00115] * 3,
+            "phi": [0.02] * 3,
+            "lambda_gain": [20] * 3,
+            "reference_state_error_abs": rounded,
+            "maximum_query_displacement": 1e-10,
+            "anomaly_domain": list(target.anomaly_domain),
+            "frame": "physical-lvlh-v1",
+            "error_source": errors.declaration
             + " Full-domain rigid-body energy/orbital Arb bounds at the longest exact-norm final COM port dominate all eight port query jets; the global physical-controller certificate is not claimed.",
-        ),
-    )
+        },
+    }
     _write_json(directory / "arrival-policy.json", payload)
     with gzip.open(
         directory / "reference-error-derivation.json.gz", "wt", encoding="utf-8"
     ) as stream:
         json.dump(
             _encode(
-                dict(
-                    builder=vars(builder),
-                    result=result.as_dict(),
-                    selected_port=index,
-                    all_ports=ports,
-                    scope="Global final-port planning error bound only; controller refusal retained",
-                )
+                {
+                    "builder": vars(builder),
+                    "result": result.as_dict(),
+                    "selected_port": index,
+                    "all_ports": ports,
+                    "scope": "Global final-port planning error bound only; controller refusal retained",
+                }
             ),
             stream,
             allow_nan=False,

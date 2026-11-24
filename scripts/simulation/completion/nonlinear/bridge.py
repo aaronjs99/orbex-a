@@ -121,18 +121,20 @@ class VerifiedClosedApproachBoundary:
                     "old source or its runtime package changed: " + relative,
                 )
                 guards.append((str(path), expected))
-        record = dict(
-            method="verified-old-source-approach-to-new-completion-v1",
-            original_arm=str(root),
-            old_auditor_sha256=report["auditor_sha256"],
-            old_source_manifest_sha256=report["source_inputs"][
+        record = {
+            "method": "verified-old-source-approach-to-new-completion-v1",
+            "original_arm": str(root),
+            "old_auditor_sha256": report["auditor_sha256"],
+            "old_source_manifest_sha256": report["source_inputs"][
                 "source_manifest_sha256"
             ],
-            old_study_manifest_sha256=report["source_inputs"]["study_manifest_sha256"],
-            old_archive_identity=report["archive_ledger"]["identity"],
-            boundary=boundary,
-            scope="Unchanged actual endpoint/model/clock/design and complete old-source arrival; later contact/assembly implementation is separately source-bound",
-        )
+            "old_study_manifest_sha256": report["source_inputs"][
+                "study_manifest_sha256"
+            ],
+            "old_archive_identity": report["archive_ledger"]["identity"],
+            "boundary": boundary,
+            "scope": "Unchanged actual endpoint/model/clock/design and complete old-source arrival; later contact/assembly implementation is separately source-bound",
+        }
         return cls(record, tuple(guards), fingerprint(record), _issuer=_ISSUER)
 
     def verify(self, approach, *, model, clock, design, hold_records):
@@ -174,11 +176,11 @@ class VerifiedClosedApproachBoundary:
             fingerprint(plain(actual)) == boundary["capture_truth_fingerprint"],
             "actual physical endpoint changed",
         )
-        return dict(
-            method=self.record["method"],
-            bridge_identity=self.record_identity,
-            old_source_arrival=copy.deepcopy(boundary["arrival_verification"]),
-            old_source_manifest_sha256=self.record["old_source_manifest_sha256"],
-            old_auditor_sha256=self.record["old_auditor_sha256"],
-            scope=self.record["scope"],
-        )
+        return {
+            "method": self.record["method"],
+            "bridge_identity": self.record_identity,
+            "old_source_arrival": copy.deepcopy(boundary["arrival_verification"]),
+            "old_source_manifest_sha256": self.record["old_source_manifest_sha256"],
+            "old_auditor_sha256": self.record["old_auditor_sha256"],
+            "scope": self.record["scope"],
+        }

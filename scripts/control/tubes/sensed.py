@@ -83,40 +83,40 @@ def _exact_sensed_stage(spec, stage):
         )
     )
     total = tuple(b + r for b, r in zip(base, rho))
-    terms = dict(
-        base_forcing=base,
-        hold_forcing=rho,
-        disturbance_bound=total,
-        velocity_peak=velocity,
-        error_peak=error,
-        input_reserve=reserve,
-        velocity_derivative_bound=dv,
-        error_derivative_bound=de,
-        sliding_derivative_bound=ds,
-        measurement_forcing=sensed,
-    )
-    source = dict(
-        A_abs=a,
-        delta_A=delta,
-        A_variation=variation,
-        lambda_gain=lam,
-        phi_peak=phi,
-        omega_peak=omega,
-        alpha=alpha,
-        measurement_error_abs=observation,
-        nominal_enclosure=vector(stage["nominal_enclosure"]),
-        delta_d=vector(spec.delta_d[0]),
-        eta=vector(spec.eta),
-        hold_width=tau,
-    )
+    terms = {
+        "base_forcing": base,
+        "hold_forcing": rho,
+        "disturbance_bound": total,
+        "velocity_peak": velocity,
+        "error_peak": error,
+        "input_reserve": reserve,
+        "velocity_derivative_bound": dv,
+        "error_derivative_bound": de,
+        "sliding_derivative_bound": ds,
+        "measurement_forcing": sensed,
+    }
+    source = {
+        "A_abs": a,
+        "delta_A": delta,
+        "A_variation": variation,
+        "lambda_gain": lam,
+        "phi_peak": phi,
+        "omega_peak": omega,
+        "alpha": alpha,
+        "measurement_error_abs": observation,
+        "nominal_enclosure": vector(stage["nominal_enclosure"]),
+        "delta_d": vector(spec.delta_d[0]),
+        "eta": vector(spec.eta),
+        "hold_width": tau,
+    }
     from orbexa.control.fallback.refuge import exact_record
 
-    record = dict(
-        method="exact-rational-sensed-v2-stage-v1",
-        source_sha256=_TUBE_SOURCE_SHA256,
-        inputs=exact_record(source),
-        exact_terms=exact_record(terms),
-    )
+    record = {
+        "method": "exact-rational-sensed-v2-stage-v1",
+        "source_sha256": _TUBE_SOURCE_SHA256,
+        "inputs": exact_record(source),
+        "exact_terms": exact_record(terms),
+    }
     record["identity"] = fingerprint(record)
     return terms, record
 
@@ -168,19 +168,19 @@ class PhysicalTubeWitness:
     source: tuple
 
     def as_dict(self):
-        return dict(
-            method="conditional-sensed-physical-tube-induction-v1",
-            agent=self.agent,
-            exact_q=str(self.exact_q),
-            center=tuple(map(str, self.center)),
-            phi=tuple(map(str, self.phi)),
-            omega=tuple(map(str, self.omega)),
-            lambda_gain=tuple(map(str, self.lambda_gain)),
-            model_fingerprint=self.model_fingerprint,
-            clock_fingerprint=self.clock_fingerprint,
-            source=dict(self.source),
-            scope="Physical relational tube carried by admitted v2 first-exit and continuous nominal endpoint transfer",
-        )
+        return {
+            "method": "conditional-sensed-physical-tube-induction-v1",
+            "agent": self.agent,
+            "exact_q": str(self.exact_q),
+            "center": tuple(map(str, self.center)),
+            "phi": tuple(map(str, self.phi)),
+            "omega": tuple(map(str, self.omega)),
+            "lambda_gain": tuple(map(str, self.lambda_gain)),
+            "model_fingerprint": self.model_fingerprint,
+            "clock_fingerprint": self.clock_fingerprint,
+            "source": dict(self.source),
+            "scope": "Physical relational tube carried by admitted v2 first-exit and continuous nominal endpoint transfer",
+        }
 
     @cached_property
     def fingerprint(self):
@@ -332,21 +332,21 @@ def feedback_evaluation(
             "Held feedback evaluation exceeds declared numerical reserve; maximum excess="
             + str(max(defect) - reserve)
         )
-    record = dict(
-        method="exact-sensed-command-evaluation-against-Arb-nominal-matrix-v1",
-        coefficients_id=coefficients.fingerprint,
-        measured_state=tuple(map(str, map(exact, measurement))),
-        nominal_center=tuple(map(str, map(exact, center))),
-        phi=tuple(map(str, map(exact, phi))),
-        alpha=tuple(map(str, map(exact, alpha))),
-        lambda_gain=tuple(map(str, map(exact, lam))),
-        nominal_command=tuple(map(str, map(exact, u_nom))),
-        executed_command=tuple(map(str, map(exact, command))),
-        ideal_command=ideal.as_dict(),
-        evaluation_defect_abs=tuple(map(str, defect)),
-        numerical_reserve=str(reserve),
-        scope="Known held-command evaluation only; no truth state or environmental sample bound",
-    )
+    record = {
+        "method": "exact-sensed-command-evaluation-against-Arb-nominal-matrix-v1",
+        "coefficients_id": coefficients.fingerprint,
+        "measured_state": tuple(map(str, map(exact, measurement))),
+        "nominal_center": tuple(map(str, map(exact, center))),
+        "phi": tuple(map(str, map(exact, phi))),
+        "alpha": tuple(map(str, map(exact, alpha))),
+        "lambda_gain": tuple(map(str, map(exact, lam))),
+        "nominal_command": tuple(map(str, map(exact, u_nom))),
+        "executed_command": tuple(map(str, map(exact, command))),
+        "ideal_command": ideal.as_dict(),
+        "evaluation_defect_abs": tuple(map(str, defect)),
+        "numerical_reserve": str(reserve),
+        "scope": "Known held-command evaluation only; no truth state or environmental sample bound",
+    }
     record["identity"] = fingerprint(record)
     return record
 

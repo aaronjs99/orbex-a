@@ -90,13 +90,13 @@ class ArrivalPolicyConfig:
             )
 
     def as_dict(self):
-        return dict(
-            mode=self.mode,
-            planning_fraction=self.planning_fraction,
-            required_terminal_region=None
+        return {
+            "mode": self.mode,
+            "planning_fraction": self.planning_fraction,
+            "required_terminal_region": None
             if self.required_terminal_region is None
             else self.required_terminal_region.as_dict(),
-        )
+        }
 
     @classmethod
     def from_dict(cls, value):
@@ -205,15 +205,15 @@ class ArrivalPlanningStep:
             )
 
     def as_dict(self):
-        return dict(
-            current_update=self.current_update,
-            exact_anomaly=str(self.exact_anomaly),
-            deadline_update=self.deadline_update,
-            exact_deadline_anomaly=str(self.exact_deadline_anomaly),
-            exact_outer_step=str(self.exact_outer_step),
-            terminal_start_index=self.terminal_start_index,
-            policy_fingerprint=self.policy.fingerprint,
-        )
+        return {
+            "current_update": self.current_update,
+            "exact_anomaly": str(self.exact_anomaly),
+            "deadline_update": self.deadline_update,
+            "exact_deadline_anomaly": str(self.exact_deadline_anomaly),
+            "exact_outer_step": str(self.exact_outer_step),
+            "terminal_start_index": self.terminal_start_index,
+            "policy_fingerprint": self.policy.fingerprint,
+        }
 
 
 class ArrivalRuntime:
@@ -314,32 +314,32 @@ class ArrivalRuntime:
                     "Arrival candidate is missing the requested native whole-suffix readback"
                 )
         payload = plain(
-            dict(
-                step=step.as_dict(),
-                parameters=planning.parameters,
-                plans={
-                    key: dict(
-                        state_trajectory=plan.result.state_trajectory,
-                        control_trajectory=plan.result.control_trajectory,
-                        dynamic_tube=plan.tube,
-                        specification=plan.spec.to_extra_params(),
-                        planning_context=plan.arrival_context,
-                        solver_acceptance={
+            {
+                "step": step.as_dict(),
+                "parameters": planning.parameters,
+                "plans": {
+                    key: {
+                        "state_trajectory": plan.result.state_trajectory,
+                        "control_trajectory": plan.result.control_trajectory,
+                        "dynamic_tube": plan.tube,
+                        "specification": plan.spec.to_extra_params(),
+                        "planning_context": plan.arrival_context,
+                        "solver_acceptance": {
                             name: value
                             for name, value in plan.result.solver_info.items()
                             if name != "dynamic_tube"
                         },
-                    )
+                    }
                     for key, plan in planning.plans.items()
                 },
-            )
+            }
         )
         fingerprint = _fingerprint(payload)  # rejects nonfinite retained data
-        artifact = dict(
-            fingerprint=fingerprint,
-            payload=payload,
-            scope="Retained numerical fleet candidate only; not an admitted held-feedback backup",
-        )
+        artifact = {
+            "fingerprint": fingerprint,
+            "payload": payload,
+            "scope": "Retained numerical fleet candidate only; not an admitted held-feedback backup",
+        }
         if self.commitment is None:
             self.commitment = ArrivalCommitment(
                 self.policy.fingerprint,
@@ -389,29 +389,31 @@ class ArrivalRuntime:
         )
 
     def as_metadata(self):
-        return dict(
-            schema="orbexa.arrival_state.v1",
-            policy_fingerprint=self.policy.fingerprint,
-            transition_identity=self.transition_identity,
-            commitment=None if self.commitment is None else self.commitment.as_dict(),
-            committed_candidate=copy.deepcopy(self.committed_candidate),
-            latest_candidate=copy.deepcopy(self.latest_candidate),
-            events=copy.deepcopy(self.events),
-            scope="Fixed numerical arrival deadline; every actual hold still needs continuous admission; no retained backup theorem",
-        )
+        return {
+            "schema": "orbexa.arrival_state.v1",
+            "policy_fingerprint": self.policy.fingerprint,
+            "transition_identity": self.transition_identity,
+            "commitment": None
+            if self.commitment is None
+            else self.commitment.as_dict(),
+            "committed_candidate": copy.deepcopy(self.committed_candidate),
+            "latest_candidate": copy.deepcopy(self.latest_candidate),
+            "events": copy.deepcopy(self.events),
+            "scope": "Fixed numerical arrival deadline; every actual hold still needs continuous admission; no retained backup theorem",
+        }
 
     def activation_marker(self):
         """Separate durable origin/first-acceptance binding for checkpoint reload."""
-        return dict(
-            schema="orbexa.arrival_activation.v1",
-            policy_fingerprint=self.policy.fingerprint,
-            enabled_at_update=self.enabled_at_update,
-            exact_enabled_anomaly=str(self.exact_enabled_anomaly),
-            transition_identity=self.transition_identity,
-            commitment_fingerprint=None
+        return {
+            "schema": "orbexa.arrival_activation.v1",
+            "policy_fingerprint": self.policy.fingerprint,
+            "enabled_at_update": self.enabled_at_update,
+            "exact_enabled_anomaly": str(self.exact_enabled_anomaly),
+            "transition_identity": self.transition_identity,
+            "commitment_fingerprint": None
             if self.commitment is None
             else _fingerprint(self.commitment.as_dict()),
-        )
+        }
 
     @classmethod
     def from_metadata(cls, policy, value, *, activation_marker=None):

@@ -229,13 +229,13 @@ class IntervalAffineRow:
     @property
     def fingerprint(self):
         return fingerprint(
-            dict(
-                parameter_names=self.parameter_names,
-                coefficients=_serial_intervals(self.coefficients),
-                observed=tuple(map(str, self.observed)),
-                source_ids=self.source_ids,
-                context_id=self.context_id,
-            )
+            {
+                "parameter_names": self.parameter_names,
+                "coefficients": _serial_intervals(self.coefficients),
+                "observed": tuple(map(str, self.observed)),
+                "source_ids": self.source_ids,
+                "context_id": self.context_id,
+            }
         )
 
 
@@ -258,11 +258,11 @@ class IntegralMomentLedger:
         for name in ("lower_zero", "upper_zero", "lower_first", "upper_first"):
             setattr(self, name, [Fraction(0)] * self.width)
         self.chain_id = fingerprint(
-            dict(
-                context_id=self.context_id,
-                start=str(self.q),
-                method="exact-tent-position-moments-v1",
-            )
+            {
+                "context_id": self.context_id,
+                "start": str(self.q),
+                "method": "exact-tent-position-moments-v1",
+            }
         )
 
     def append(self, segment):
@@ -282,7 +282,7 @@ class IntegralMomentLedger:
             self.lower_first[i] += first * lo
             self.upper_first[i] += first * hi
         self.chain_id = fingerprint(
-            dict(previous=self.chain_id, segment=segment.fingerprint)
+            {"previous": self.chain_id, "segment": segment.fingerprint}
         )
         self.q, self.count = segment.end, self.count + 1
 
@@ -450,12 +450,12 @@ class IntegralParameterSet:
     @property
     def fingerprint(self):
         return fingerprint(
-            dict(
-                context_id=self.context_id,
-                parameter_names=self.parameter_names,
-                prior=_serial_intervals(self.prior),
-                rows=tuple(row.fingerprint for row in self._rows),
-            )
+            {
+                "context_id": self.context_id,
+                "parameter_names": self.parameter_names,
+                "prior": _serial_intervals(self.prior),
+                "rows": tuple(row.fingerprint for row in self._rows),
+            }
         )
 
     def add_rows(self, rows):

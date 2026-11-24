@@ -268,12 +268,12 @@ class SpacecraftMissionDesign:
             geometry_id=self.geometry.geometry_id,
             geometry_fingerprint=self.geometry.fingerprint,
             target_mass_kg=self.target_mass_kg,
-            chaser=dict(
-                dry_mass_kg=self.chaser.dry_mass_kg,
-                fuel_kg=self.chaser.fuel_kg,
-                body_radius_m=self.chaser.body_radius_m,
-                gripper_offset_m=self.chaser.gripper_offset_m,
-            ),
+            chaser={
+                "dry_mass_kg": self.chaser.dry_mass_kg,
+                "fuel_kg": self.chaser.fuel_kg,
+                "body_radius_m": self.chaser.body_radius_m,
+                "gripper_offset_m": self.chaser.gripper_offset_m,
+            },
             **{
                 name: getattr(self, name)
                 for name in (

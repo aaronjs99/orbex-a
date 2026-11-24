@@ -221,18 +221,18 @@ def main(argv=None):
         ui_thread.start()
         print(
             json.dumps(
-                dict(
-                    service=LIVE_SERVICE,
-                    url=f"http://127.0.0.1:{server.server_port}",
-                    ui_url=f"http://127.0.0.1:{ui_server.server_port}/studio/",
-                    ui_output_dir=str(ui_root),
-                    theory_documents=theory_count,
-                    output_dir=str(settings.output_dir),
-                    maximum_updates=settings.maximum_updates,
-                    resume_source=None
+                {
+                    "service": LIVE_SERVICE,
+                    "url": f"http://127.0.0.1:{server.server_port}",
+                    "ui_url": f"http://127.0.0.1:{ui_server.server_port}/studio/",
+                    "ui_output_dir": str(ui_root),
+                    "theory_documents": theory_count,
+                    "output_dir": str(settings.output_dir),
+                    "maximum_updates": settings.maximum_updates,
+                    "resume_source": None
                     if settings.resume_path is None
                     else str(settings.resume_path),
-                )
+                }
             ),
             flush=True,
         )

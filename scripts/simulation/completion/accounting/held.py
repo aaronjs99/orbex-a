@@ -329,14 +329,16 @@ class HeldInputPropellantAccountant:
             )
             for path, expected in zip(paths, hashes):
                 _require(_sha(path) == expected, "guard journal identity changed")
-            binding = dict(
-                approach_path=str(approach_path),
-                approach_sha256=expected_approach_sha256,
-                approach_semantic_sha256=digest(record),
-                journals=[dict(path=str(p), sha256=h) for p, h in zip(paths, hashes)],
-                producer_package_root=str(producer),
-                producer_source_sha256=dict(sources),
-            )
+            binding = {
+                "approach_path": str(approach_path),
+                "approach_sha256": expected_approach_sha256,
+                "approach_semantic_sha256": digest(record),
+                "journals": [
+                    {"path": str(p), "sha256": h} for p, h in zip(paths, hashes)
+                ],
+                "producer_package_root": str(producer),
+                "producer_source_sha256": dict(sources),
+            }
             result = object.__new__(cls)
             result._binding, result._integrity = binding, digest(binding)
             return result
@@ -506,13 +508,13 @@ class HeldInputPropellantAccountant:
                 q1 > q0 and set(boxes) == set(ids), "invalid or incomplete shared hold"
             )
             clock = bound_orbital_clock(q0, q1, model)
-            row = dict(
-                start=str(q0),
-                end=str(q1),
-                clock=clock.as_dict(),
-                inputs={},
-                force_upper={},
-            )
+            row = {
+                "start": str(q0),
+                "end": str(q1),
+                "clock": clock.as_dict(),
+                "inputs": {},
+                "force_upper": {},
+            }
             for key in ids:
                 box = boxes[key]
                 _require(

@@ -43,20 +43,20 @@ def native_controller(directory, messages):
             return result
         finally:
             folder = Path(problem.model.path)
-            record = dict(
-                attempt=number,
-                controller_call=getattr(current_call, "number", None),
-                working_directory=str(folder.relative_to(directory)),
-                success=None if result is None else bool(result.success),
-                message=None if result is None else result.message,
-                solver_info=None if result is None else plain(result.solver_info),
-                files={
+            record = {
+                "attempt": number,
+                "controller_call": getattr(current_call, "number", None),
+                "working_directory": str(folder.relative_to(directory)),
+                "success": None if result is None else bool(result.success),
+                "message": None if result is None else result.message,
+                "solver_info": None if result is None else plain(result.solver_info),
+                "files": {
                     str(p.relative_to(folder)): _sha(p)
                     for p in folder.rglob("*")
                     if p.is_file()
                 },
-                scope="Unchanged native problem/acceptance; only transcript output and directory lifetime instrumented",
-            )
+                "scope": "Unchanged native problem/acceptance; only transcript output and directory lifetime instrumented",
+            }
             with (
                 counter_lock,
                 (directory / "native-attempts.jsonl").open(
@@ -80,27 +80,27 @@ def native_controller(directory, messages):
                 number = calls
             current_call.number = number
             messages.put(
-                dict(
-                    kind="native",
-                    message=f"Actual nonlinear controller call {number}: solving fleet member",
-                    native=dict(
-                        controller_call=number,
-                        anomaly=float(kwargs["start_anom"]),
-                        status="solving",
-                    ),
-                )
+                {
+                    "kind": "native",
+                    "message": f"Actual nonlinear controller call {number}: solving fleet member",
+                    "native": {
+                        "controller_call": number,
+                        "anomaly": float(kwargs["start_anom"]),
+                        "status": "solving",
+                    },
+                }
             )
             result = self.inner.solve_step(**kwargs)
             messages.put(
-                dict(
-                    kind="native",
-                    message=f"Nonlinear controller call {number}: " + result.message,
-                    native=dict(
-                        controller_call=number,
-                        anomaly=float(kwargs["start_anom"]),
-                        status="accepted" if result.success else "refused",
-                    ),
-                )
+                {
+                    "kind": "native",
+                    "message": f"Nonlinear controller call {number}: " + result.message,
+                    "native": {
+                        "controller_call": number,
+                        "anomaly": float(kwargs["start_anom"]),
+                        "status": "accepted" if result.success else "refused",
+                    },
+                }
             )
             return result
 

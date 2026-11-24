@@ -116,11 +116,11 @@ class FeedbackPreparationSnapshot:
     @property
     def context_id(self):
         return fingerprint(
-            dict(
-                source_id=self.source_id,
-                active_fallback_id=self.plan.fingerprint,
-                acceleration_disturbance=self.acceleration_disturbance,
-            )
+            {
+                "source_id": self.source_id,
+                "active_fallback_id": self.plan.fingerprint,
+                "acceleration_disturbance": self.acceleration_disturbance,
+            }
         )
 
     def runtime_view(self):

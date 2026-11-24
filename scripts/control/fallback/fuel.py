@@ -83,12 +83,12 @@ class FleetFuelBudget:
             )
 
     def as_dict(self):
-        return dict(
-            method="exact-finite-fleet-fuel-budget-v1",
-            exact_q=str(self.exact_q),
-            available_kg={key: str(value) for key, value in self.available_kg},
-            fuel_domain_id=self.fuel_domain_id,
-        )
+        return {
+            "method": "exact-finite-fleet-fuel-budget-v1",
+            "exact_q": str(self.exact_q),
+            "available_kg": {key: str(value) for key, value in self.available_kg},
+            "fuel_domain_id": self.fuel_domain_id,
+        }
 
     @property
     def fingerprint(self):

@@ -61,14 +61,14 @@ class Thruster:
         )
 
     def to_dict(self):
-        return dict(
-            name=self.name,
-            owner_index=self.owner_index,
-            position_body_m=self.position_body_m.tolist(),
-            direction_body=self.direction_body.tolist(),
-            max_force_n=float(self.max_force_n),
-            specific_impulse_s=float(self.specific_impulse_s),
-        )
+        return {
+            "name": self.name,
+            "owner_index": self.owner_index,
+            "position_body_m": self.position_body_m.tolist(),
+            "direction_body": self.direction_body.tolist(),
+            "max_force_n": float(self.max_force_n),
+            "specific_impulse_s": float(self.specific_impulse_s),
+        }
 
 
 @dataclass(frozen=True)
@@ -225,14 +225,14 @@ class ThrusterSystem:
             [fuel_kg[thruster.owner_index] > 1e-10 for thruster in self.thrusters]
         )
         usable = matrix[:, active]
-        return dict(
-            wrench_rank=int(np.linalg.matrix_rank(usable)) if usable.size else 0,
-            torque_rank=int(np.linalg.matrix_rank(usable[3:])) if usable.size else 0,
-            active_actuators=int(np.sum(active)),
-            component_force_limits_n=[
+        return {
+            "wrench_rank": int(np.linalg.matrix_rank(usable)) if usable.size else 0,
+            "torque_rank": int(np.linalg.matrix_rank(usable[3:])) if usable.size else 0,
+            "active_actuators": int(np.sum(active)),
+            "component_force_limits_n": [
                 thruster.max_force_n for thruster in self.thrusters
             ],
-        )
+        }
 
     def _attachment_preflight(self, assembly, state, commands):
         """Dilate a bounded candidate before motion using actual joint loads.
@@ -248,16 +248,16 @@ class ThrusterSystem:
         baseline = assembly.attachment_load_audit(state, self, zero)
         candidate = assembly.attachment_load_audit(state, self, commands)
         fraction = self.attachment_capacity_fraction
-        record = dict(
-            method="affine-joint-wrench-common-command-dilation-v1",
-            time_s=state.time_s,
-            capacity_fraction=fraction,
-            capacities_unchanged=True,
-            candidate_commands_n=commands.tolist(),
-            zero_command_loads=baseline,
-            candidate_loads=candidate,
-            scope="Pre-motion numerical loads at the current state; actual endpoint/history audits remain required",
-        )
+        record = {
+            "method": "affine-joint-wrench-common-command-dilation-v1",
+            "time_s": state.time_s,
+            "capacity_fraction": fraction,
+            "capacities_unchanged": True,
+            "candidate_commands_n": commands.tolist(),
+            "zero_command_loads": baseline,
+            "candidate_loads": candidate,
+            "scope": "Pre-motion numerical loads at the current state; actual endpoint/history audits remain required",
+        }
 
         def finite(loads):
             return np.isfinite(loads["maximum_capacity_ratio"]) and all(
@@ -362,40 +362,40 @@ class ThrusterSystem:
             )
             proof = certificate.as_dict()
             candidates.append(
-                dict(
-                    command_scale=fraction,
-                    commands_n=candidate.tolist(),
-                    passed=certificate.passed,
-                    reason=certificate.reason,
-                    proof=proof,
-                )
+                {
+                    "command_scale": fraction,
+                    "commands_n": candidate.tolist(),
+                    "passed": certificate.passed,
+                    "reason": certificate.reason,
+                    "proof": proof,
+                }
             )
             if certificate.passed:
                 return (
                     candidate,
                     True,
-                    dict(
-                        method="finite-common-command-whole-hold-backoff-v1",
-                        declared_scales=list(self.attachment_backoff_scales),
-                        candidates=candidates,
-                        selected_scale=fraction,
-                        selected_proof=proof,
-                        physical_motion_committed=False,
-                        scope="Finite pre-motion proof search; each selected held command retains the original physical loads, fuel and uncertainty limits",
-                    ),
+                    {
+                        "method": "finite-common-command-whole-hold-backoff-v1",
+                        "declared_scales": list(self.attachment_backoff_scales),
+                        "candidates": candidates,
+                        "selected_scale": fraction,
+                        "selected_proof": proof,
+                        "physical_motion_committed": False,
+                        "scope": "Finite pre-motion proof search; each selected held command retains the original physical loads, fuel and uncertainty limits",
+                    },
                 )
         return (
             np.zeros_like(commands),
             False,
-            dict(
-                method="finite-common-command-whole-hold-backoff-v1",
-                declared_scales=list(self.attachment_backoff_scales),
-                candidates=candidates,
-                selected_scale=None,
-                selected_proof=None,
-                physical_motion_committed=False,
-                scope="Every declared whole-hold candidate refused, including the unforced hold; no motion admitted",
-            ),
+            {
+                "method": "finite-common-command-whole-hold-backoff-v1",
+                "declared_scales": list(self.attachment_backoff_scales),
+                "candidates": candidates,
+                "selected_scale": None,
+                "selected_proof": None,
+                "physical_motion_committed": False,
+                "scope": "Every declared whole-hold candidate refused, including the unforced hold; no motion admitted",
+            },
         )
 
     def allocate(self, assembly, state, force_body_n, torque_body_nm, duration_s):
@@ -517,15 +517,15 @@ class ThrusterSystem:
         )
 
     def to_dict(self):
-        return dict(
-            thrusters=[thruster.to_dict() for thruster in self.thrusters],
-            torque_weight_per_m=self.torque_weight_per_m,
-            attachment_capacity_fraction=self.attachment_capacity_fraction,
-            attachment_backoff_scales=list(self.attachment_backoff_scales),
-            assumptions=[
+        return {
+            "thrusters": [thruster.to_dict() for thruster in self.thrusters],
+            "torque_weight_per_m": self.torque_weight_per_m,
+            "attachment_capacity_fraction": self.attachment_capacity_fraction,
+            "attachment_backoff_scales": list(self.attachment_backoff_scales),
+            "assumptions": [
                 "signed channels are opposed nozzle pairs",
                 "continuous throttling",
                 "unobstructed exhaust; no plume-structure interaction",
                 "no power or thermal model",
             ],
-        )
+        }

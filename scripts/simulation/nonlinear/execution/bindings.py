@@ -61,28 +61,28 @@ class PerformanceStageBindings:
                 raise ValueError(
                     "Planning target proof object changed during the source-check batch"
                 )
-        return dict(
-            spec=exact_record(fields),
-            nominal_parameters={k: str(v) for k, v in planning.parameters.items()},
-            nominal_control=np.asarray(planning.plans[key].result.control_trajectory)[
-                :, 0
-            ].tolist(),
-            context=dict(
-                exact_q=str(context.exact_q),
-                model=context.model.fingerprint,
-                clock=context.clock.fingerprint,
-                target=target_identity,
-                observation_error_abs=context.observation_error_abs.tolist(),
-                acceleration_error_abs=context.acceleration_error_abs.tolist(),
-            ),
-            numerical_reserve=str(exact(self.config.tube.numerical_reserve)),
-            actuator_error_abs=tuple(
+        return {
+            "spec": exact_record(fields),
+            "nominal_parameters": {k: str(v) for k, v in planning.parameters.items()},
+            "nominal_control": np.asarray(
+                planning.plans[key].result.control_trajectory
+            )[:, 0].tolist(),
+            "context": {
+                "exact_q": str(context.exact_q),
+                "model": context.model.fingerprint,
+                "clock": context.clock.fingerprint,
+                "target": target_identity,
+                "observation_error_abs": context.observation_error_abs.tolist(),
+                "acceleration_error_abs": context.acceleration_error_abs.tolist(),
+            },
+            "numerical_reserve": str(exact(self.config.tube.numerical_reserve)),
+            "actuator_error_abs": tuple(
                 map(str, controller.certificate.spec.actuator_error_abs)
             ),
-            acceleration_disturbance=self.runtime.acceleration_disturbance.as_dict(),
-            region=planner.regions[key].as_dict(),
-            residual=copy.deepcopy(planner.residuals[key][0]),
-        )
+            "acceleration_disturbance": self.runtime.acceleration_disturbance.as_dict(),
+            "region": planner.regions[key].as_dict(),
+            "residual": copy.deepcopy(planner.residuals[key][0]),
+        }
 
     def bind(self, planning, planner, q0, stage):
         from orbexa.control.certification.nonlinear import (
@@ -204,15 +204,15 @@ class PerformanceStageBindings:
                 raise ValueError(
                     "Effective stage coefficients or forcing do not dominate their independent source bounds"
                 )
-            proof = dict(
-                method="strict-nonlinear-first-stage-source-binding-v1",
-                snapshot=snapshot,
-                nominal_matrix_generator="orbexa.core.dynamics.orbital_ellp_drag",
-                nominal_coefficients=coefficients.as_dict(),
-                nominal_coefficients_id=coefficients.fingerprint,
-                eta_required=tuple(map(str, eta_required)),
-                precision_bits=self.precision_bits,
-            )
+            proof = {
+                "method": "strict-nonlinear-first-stage-source-binding-v1",
+                "snapshot": snapshot,
+                "nominal_matrix_generator": "orbexa.core.dynamics.orbital_ellp_drag",
+                "nominal_coefficients": coefficients.as_dict(),
+                "nominal_coefficients_id": coefficients.fingerprint,
+                "eta_required": tuple(map(str, eta_required)),
+                "precision_bits": self.precision_bits,
+            }
             proof["identity"] = fingerprint(proof)
             data["source_binding"] = proof
             data["proof_record"]["source_binding_id"] = proof["identity"]

@@ -443,26 +443,26 @@ def certify_terminal_tracking(
             or excess * excess <= 4 * radius_squared * peer_radius_squared
         ):
             reasons.append("Strict whole-set peer separation is not established")
-    quantities = dict(
-        velocity_peak=velocity,
-        error_peak=error,
-        sensing_forcing=sensing,
-        base_forcing=base,
-        hold_forcing=rho,
-        total_forcing=total,
-        input_reserve=reserve,
-        actuator_reserve=actuator_reserve,
-        velocity_derivative_bound=dv,
-        error_derivative_bound=de,
-        sliding_derivative_bound=ds,
-        sliding_inward_margin=sliding_margin,
-        position_inward_margin=position_margin,
-        lower_input_margin=lower_margin,
-        upper_input_margin=upper_margin,
-        position_radius_squared=radius_squared,
-        anomaly_velocity_radius_squared=speed_squared,
-        target_distance_after_body_and_clearance=target_gap,
-    )
+    quantities = {
+        "velocity_peak": velocity,
+        "error_peak": error,
+        "sensing_forcing": sensing,
+        "base_forcing": base,
+        "hold_forcing": rho,
+        "total_forcing": total,
+        "input_reserve": reserve,
+        "actuator_reserve": actuator_reserve,
+        "velocity_derivative_bound": dv,
+        "error_derivative_bound": de,
+        "sliding_derivative_bound": ds,
+        "sliding_inward_margin": sliding_margin,
+        "position_inward_margin": position_margin,
+        "lower_input_margin": lower_margin,
+        "upper_input_margin": upper_margin,
+        "position_radius_squared": radius_squared,
+        "anomaly_velocity_radius_squared": speed_squared,
+        "target_distance_after_body_and_clearance": target_gap,
+    }
     if policy is not TerminalFeedforwardPolicy.START_V1:
         quantities.update(
             actual_feedforward_lipschitz=b.feedforward_lipschitz,
@@ -604,20 +604,20 @@ class TerminalHoldReferences:
         return True
 
     def as_dict(self):
-        return dict(
-            held_policy=self.policy.value,
-            feedback=self.feedback.as_dict(),
-            feedforward=self.feedforward.as_dict(),
-            feedback_query_anomaly=str(self.feedback_query_anomaly),
-            feedforward_query_anomaly=str(self.feedforward_query_anomaly),
-            maximum_query_displacement=str(self.maximum_query_displacement),
-            feedback_query_displacement=str(
+        return {
+            "held_policy": self.policy.value,
+            "feedback": self.feedback.as_dict(),
+            "feedforward": self.feedforward.as_dict(),
+            "feedback_query_anomaly": str(self.feedback_query_anomaly),
+            "feedforward_query_anomaly": str(self.feedforward_query_anomaly),
+            "maximum_query_displacement": str(self.maximum_query_displacement),
+            "feedback_query_displacement": str(
                 abs(self.feedback_query_anomaly - self.feedback.anomaly)
             ),
-            feedforward_query_displacement=str(
+            "feedforward_query_displacement": str(
                 abs(self.feedforward_query_anomaly - self.feedforward.anomaly)
             ),
-        )
+        }
 
 
 @dataclass(frozen=True)

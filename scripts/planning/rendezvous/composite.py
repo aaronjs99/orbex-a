@@ -47,16 +47,18 @@ def assign_composite_docking_targets(target, initial_states):
     for row, col in sorted(zip(rows, cols)):
         patch = patches[col]
         result.append(
-            dict(
-                body_position=goals[col].copy(),
-                body_normal=np.asarray(patch.normal_body).copy(),
-                azimuth=float(np.arctan2(patch.normal_body[1], patch.normal_body[0])),
-                surface="attachment_patch",
-                standoff=float(target.docking_standoff),
-                candidate_index=int(col),
-                attachment_patch_id=patch.id,
-                attachment_component_id=patch.component_id,
-                assignment_scope="geometric_point_matching_only",
-            )
+            {
+                "body_position": goals[col].copy(),
+                "body_normal": np.asarray(patch.normal_body).copy(),
+                "azimuth": float(
+                    np.arctan2(patch.normal_body[1], patch.normal_body[0])
+                ),
+                "surface": "attachment_patch",
+                "standoff": float(target.docking_standoff),
+                "candidate_index": int(col),
+                "attachment_patch_id": patch.id,
+                "attachment_component_id": patch.component_id,
+                "assignment_scope": "geometric_point_matching_only",
+            }
         )
     return result

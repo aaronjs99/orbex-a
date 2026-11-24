@@ -297,23 +297,23 @@ class CompactArcDeployment:
             ]
         )
         return {
-            "deployment": dict(
-                kind="compact_target_centered_arc",
-                options=asdict(self.options),
-                count=self.count,
-                initial_anomaly=0.0,
-                launch_radius=self.launch_radius,
-                launch_azimuth=self.launch_azimuth,
-                common_direction_position=center.tolist(),
-                initial_pitch=self.pitch,
-                initial_spacing=self.initial_spacing,
-                final_spacing=self.final_spacing,
-                arc_span=(self.count - 1) * self.initial_spacing,
-                assignment_strategy="explicit_cyclic_arc_order",
-                rotation="supported_prescribed_target",
-                scope="post_release_free_flight; no carrier, ejection, contact, finite body or thruster model",
-                reference_geometry_only=True,
-            )
+            "deployment": {
+                "kind": "compact_target_centered_arc",
+                "options": asdict(self.options),
+                "count": self.count,
+                "initial_anomaly": 0.0,
+                "launch_radius": self.launch_radius,
+                "launch_azimuth": self.launch_azimuth,
+                "common_direction_position": center.tolist(),
+                "initial_pitch": self.pitch,
+                "initial_spacing": self.initial_spacing,
+                "final_spacing": self.final_spacing,
+                "arc_span": (self.count - 1) * self.initial_spacing,
+                "assignment_strategy": "explicit_cyclic_arc_order",
+                "rotation": "supported_prescribed_target",
+                "scope": "post_release_free_flight; no carrier, ejection, contact, finite body or thruster model",
+                "reference_geometry_only": True,
+            }
         }
 
     def create_scenario(

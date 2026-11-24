@@ -169,26 +169,26 @@ class PastNavigationAttitudeObserver:
             )
             state = solved.y[:, -1]
         self._cached = (index, time_s, state.copy())
-        result = dict(
-            time_s=float(time_s),
-            target_rotation_body_to_eci=Rotation.from_quat(state[6:10]).as_matrix(),
-            target_angular_velocity_body_rad_s=state[10:13],
-            target_angular_acceleration_body_rad_s2=self._rhs(time_s, state)[10:13],
-            chasers={},
-        )
+        result = {
+            "time_s": float(time_s),
+            "target_rotation_body_to_eci": Rotation.from_quat(state[6:10]).as_matrix(),
+            "target_angular_velocity_body_rad_s": state[10:13],
+            "target_angular_acceleration_body_rad_s2": self._rhs(time_s, state)[10:13],
+            "chasers": {},
+        }
         for number, (key, sensed) in enumerate(snapshot["chasers"].items()):
             phase = 0.7 * number + 0.03 * time_s
             direction = np.array((np.cos(phase), np.sin(phase), 0.0))
             rotation = Rotation.from_quat(
                 sensed["quaternion_body_to_eci"]
             ) * Rotation.from_rotvec(0.0003 * direction)
-            result["chasers"][key] = dict(
-                quaternion_body_to_eci=rotation.as_quat(),
-                angular_velocity_body_rad_s=np.asarray(
+            result["chasers"][key] = {
+                "quaternion_body_to_eci": rotation.as_quat(),
+                "angular_velocity_body_rad_s": np.asarray(
                     sensed["angular_velocity_body_rad_s"]
                 )
                 + 1e-5 * direction,
-            )
+            }
         self.calls += 1
         self.prior_calls += int(packets == 0)
         self.max_age_s = max(self.max_age_s, time_s - self.records[index][1])
@@ -196,22 +196,22 @@ class PastNavigationAttitudeObserver:
         return result
 
     def as_dict(self):
-        return dict(
-            method="past-accepted-navigation-rigid-body-extrapolation-v1",
-            rule="latest VALID navigation record whose physical-time upper endpoint is no later than the replay query",
-            future_truth_or_interpolation_used=False,
-            own_bus_orientation_error_norm_rad=0.0003,
-            own_bus_rate_error_norm_rad_s=1e-5,
-            calls=self.calls,
-            maximum_prediction_age_s=self.max_age_s,
-            initial_declared_prior_calls=self.prior_calls,
-            prediction_model="midpoint of public declared nonlinear bounds, independent of selected truth",
-            public_model_fingerprint=self.public_model_id,
-            prediction_model_fingerprint=self.model.fingerprint,
-            used_navigation_records=len(self.used_indices),
-            source_navigation_sha256=digest(self.records),
-            scope="Observed-center rigid-body/GG prediction; decoupled replay, no coupled translational-attitude flight claim",
-        )
+        return {
+            "method": "past-accepted-navigation-rigid-body-extrapolation-v1",
+            "rule": "latest VALID navigation record whose physical-time upper endpoint is no later than the replay query",
+            "future_truth_or_interpolation_used": False,
+            "own_bus_orientation_error_norm_rad": 0.0003,
+            "own_bus_rate_error_norm_rad_s": 1e-5,
+            "calls": self.calls,
+            "maximum_prediction_age_s": self.max_age_s,
+            "initial_declared_prior_calls": self.prior_calls,
+            "prediction_model": "midpoint of public declared nonlinear bounds, independent of selected truth",
+            "public_model_fingerprint": self.public_model_id,
+            "prediction_model_fingerprint": self.model.fingerprint,
+            "used_navigation_records": len(self.used_indices),
+            "source_navigation_sha256": digest(self.records),
+            "scope": "Observed-center rigid-body/GG prediction; decoupled replay, no coupled translational-attitude flight claim",
+        }
 
 
 class BiasedContactObserver:
@@ -226,8 +226,8 @@ class BiasedContactObserver:
         target_rotation = Rotation.from_quat(
             target.quaternion_body_to_eci
         ) * Rotation.from_rotvec((0.001, 0.0, 0.0))
-        measured = dict(
-            target=ContactBodyState(
+        measured = {
+            "target": ContactBodyState(
                 time_s,
                 target.position_eci_m + common_p,
                 target.velocity_eci_m_s + common_v,
@@ -235,13 +235,13 @@ class BiasedContactObserver:
                 target.angular_velocity_body_rad_s + np.array((0.0, 1e-4, 0.0)),
                 target.fuel_kg,
             ),
-            chasers={},
-            contact_gaps_m={
+            "chasers": {},
+            "contact_gaps_m": {
                 key: value + 0.001 for key, value in snapshot["contact_gaps_m"].items()
             },
-            contact_wrenches_eci={},
-            positioner_encoders={},
-        )
+            "contact_wrenches_eci": {},
+            "positioner_encoders": {},
+        }
         for number, (key, state) in enumerate(snapshot["chasers"].items()):
             sign = (-1.0) ** number
             direction = np.array((np.cos(0.7 * number), np.sin(0.7 * number), 0.0))
@@ -258,46 +258,46 @@ class BiasedContactObserver:
                 state.fuel_kg,
             )
             encoder = snapshot["positioner_encoders"][key]
-            measured["positioner_encoders"][key] = dict(
-                extension_body_m=(
+            measured["positioner_encoders"][key] = {
+                "extension_body_m": (
                     np.asarray(encoder["extension_body_m"])
                     + np.array((1e-6, -1e-6, 1e-6))
                 ).tolist(),
-                extension_velocity_body_m_s=(
+                "extension_velocity_body_m_s": (
                     np.asarray(encoder["extension_velocity_body_m_s"])
                     + 1e-7 * direction
                 ).tolist(),
-            )
+            }
             wrench = snapshot["contact_wrenches_eci"][key]
-            measured["contact_wrenches_eci"][key] = dict(
-                force_n=np.asarray(wrench["force_n"])
+            measured["contact_wrenches_eci"][key] = {
+                "force_n": np.asarray(wrench["force_n"])
                 + np.array((0.003, -0.002, 0.003)),
-                couple_nm=np.asarray(wrench["couple_nm"])
+                "couple_nm": np.asarray(wrench["couple_nm"])
                 + np.array((0.0001, -0.0001, 0.0001)),
-            )
+            }
         self.calls += 1
         return measured
 
     def as_dict(self):
-        return dict(
-            method="declared-biased-synthetic-contact-observations-v1",
-            calls=self.calls,
-            common_gnss_position_bias_eci_m=(0.35, -0.4, 0.2),
-            common_gnss_velocity_bias_eci_m_s=(0.001, -0.001, 0.0),
-            individual_camera_position_bias_norm_upper_m=0.003,
-            target_pose_error_rad=0.001,
-            individual_relative_velocity_bias_norm_upper_m_s=0.0001,
-            target_rate_error_norm_rad_s=1e-4,
-            own_bus_pose_error_norm_rad=0.0003,
-            own_bus_rate_error_norm_rad_s=1e-5,
-            local_range_bias_m=0.001,
-            wrench_force_bias_eci_n=(0.003, -0.002, 0.003),
-            wrench_couple_bias_eci_nm=(0.0001, -0.0001, 0.0001),
-            encoder_position_bias_body_m=(1e-6, -1e-6, 1e-6),
-            encoder_velocity_bias_norm_m_s=1e-7,
-            deterministic_support=self.observation_support().as_dict(),
-            scope="Synthetic bounded processed products; no raw perception, calibrated material sensing or hardware claim",
-        )
+        return {
+            "method": "declared-biased-synthetic-contact-observations-v1",
+            "calls": self.calls,
+            "common_gnss_position_bias_eci_m": (0.35, -0.4, 0.2),
+            "common_gnss_velocity_bias_eci_m_s": (0.001, -0.001, 0.0),
+            "individual_camera_position_bias_norm_upper_m": 0.003,
+            "target_pose_error_rad": 0.001,
+            "individual_relative_velocity_bias_norm_upper_m_s": 0.0001,
+            "target_rate_error_norm_rad_s": 1e-4,
+            "own_bus_pose_error_norm_rad": 0.0003,
+            "own_bus_rate_error_norm_rad_s": 1e-5,
+            "local_range_bias_m": 0.001,
+            "wrench_force_bias_eci_n": (0.003, -0.002, 0.003),
+            "wrench_couple_bias_eci_nm": (0.0001, -0.0001, 0.0001),
+            "encoder_position_bias_body_m": (1e-6, -1e-6, 1e-6),
+            "encoder_velocity_bias_norm_m_s": 1e-7,
+            "deterministic_support": self.observation_support().as_dict(),
+            "scope": "Synthetic bounded processed products; no raw perception, calibrated material sensing or hardware claim",
+        }
 
     def observation_support(self):
         from orbexa.simulation.contact.sensing.observation import (

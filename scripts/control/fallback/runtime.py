@@ -194,12 +194,12 @@ class FleetAdmissionRuntime:
                         cost = min(uniform, resource.fuel_upper_kg)
                         if cost < uniform:
                             resources.append(
-                                dict(
-                                    agent_id=key,
-                                    uniform_fuel_upper_kg=uniform,
-                                    charged_fuel_kg=cost,
-                                    command_resource_bound=exact_record(resource),
-                                )
+                                {
+                                    "agent_id": key,
+                                    "uniform_fuel_upper_kg": uniform,
+                                    "charged_fuel_kg": cost,
+                                    "command_resource_bound": exact_record(resource),
+                                }
                             )
                 except Exception:
                     cost = uniform
@@ -216,9 +216,10 @@ class FleetAdmissionRuntime:
                 attempt.status,
                 attempt.message,
                 attempt.solver_id,
-                dict(
-                    original_attempt=exact_record(attempt), fallback_resources=resources
-                ),
+                {
+                    "original_attempt": exact_record(attempt),
+                    "fallback_resources": resources,
+                },
             )
         geometry = next(
             p for s, p in zip(plan.segments, plan.certificate.geometry) if s is segment
@@ -293,19 +294,19 @@ class FleetAdmissionRuntime:
                 "ADMISSION_REFUSED",
                 str(error),
                 attempt.solver_id,
-                dict(
-                    original_attempt=exact_record(attempt),
-                    proposal_id=proposal.fingerprint
+                {
+                    "original_attempt": exact_record(attempt),
+                    "proposal_id": proposal.fingerprint
                     if isinstance(proposal, PerformanceProposal)
                     else None,
-                    successor_id=proposal.successor.fingerprint
+                    "successor_id": proposal.successor.fingerprint
                     if isinstance(proposal, PerformanceProposal)
                     else None,
-                    exception_type=type(error).__name__,
-                    q=q,
-                    hold_width=h,
-                    admission_details=getattr(error, "admission_details", ()),
-                ),
+                    "exception_type": type(error).__name__,
+                    "q": q,
+                    "hold_width": h,
+                    "admission_details": getattr(error, "admission_details", ()),
+                },
             )
             fallback = self._fallback(
                 observations,
@@ -485,18 +486,18 @@ class FleetAdmissionRuntime:
                     a - r for a, r in zip(b.omega, position_required)
                 )
                 sliding_margin = tuple(a - r for a, r in zip(b.phi, sliding_required))
-                entry[key] = dict(
-                    endpoint_box=exact_record(box),
-                    reference=exact_record(reference),
-                    omega=b.omega,
-                    phi=b.phi,
-                    lambda_gain=b.lambda_gain,
-                    reference_error_abs=b.reference_error_abs,
-                    position_required=tuple(position_required),
-                    sliding_required=tuple(sliding_required),
-                    position_margin=position_margin,
-                    sliding_margin=sliding_margin,
-                )
+                entry[key] = {
+                    "endpoint_box": exact_record(box),
+                    "reference": exact_record(reference),
+                    "omega": b.omega,
+                    "phi": b.phi,
+                    "lambda_gain": b.lambda_gain,
+                    "reference_error_abs": b.reference_error_abs,
+                    "position_required": tuple(position_required),
+                    "sliding_required": tuple(sliding_required),
+                    "position_margin": position_margin,
+                    "sliding_margin": sliding_margin,
+                }
                 summary.append(
                     f"{key} p_margin={tuple(float(v) for v in position_margin)} "
                     f"s_margin={tuple(float(v) for v in sliding_margin)}"
@@ -504,11 +505,11 @@ class FleetAdmissionRuntime:
             raise PerformanceAdmissionRefusal(
                 "Complete performance endpoint is outside successor fallback entry; "
                 + "; ".join(summary),
-                details=dict(
-                    endpoint_q=q + h,
-                    per_agent=entry,
-                    display_scope="Float margins are display only; exact rational evidence is retained",
-                ),
+                details={
+                    "endpoint_q": q + h,
+                    "per_agent": entry,
+                    "display_scope": "Float margins are display only; exact rational evidence is retained",
+                },
             )
         needed = successor.remaining_fuel(q + h)
         if any(
@@ -568,20 +569,20 @@ class FleetAdmissionRuntime:
             raise ValueError("Committed command exceeds reserved fuel")
         self.active_fallback, self.q, self.remaining_fuel = successor, q, remaining
         self._pending = None
-        record = dict(
-            decision=decision.as_dict(),
-            exact_end=str(q),
-            endpoint_observations={
+        record = {
+            "decision": decision.as_dict(),
+            "exact_end": str(q),
+            "endpoint_observations": {
                 key: exact_record(value) for key, value in observations.items()
             },
-            contracted_beliefs={
+            "contracted_beliefs": {
                 key: exact_record(value) for key, value in contracted.items()
             },
-            remaining_fuel=exact_record(remaining),
-            remaining_safe_q=str(successor.certificate.end - q),
-            status="FINITE_SAFE_WINDOW_ENDED"
+            "remaining_fuel": exact_record(remaining),
+            "remaining_safe_q": str(successor.certificate.end - q),
+            "status": "FINITE_SAFE_WINDOW_ENDED"
             if q == successor.certificate.end
             else "COMMITTED",
-        )
+        }
         self.events.append(record)
         return record

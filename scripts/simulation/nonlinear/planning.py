@@ -243,10 +243,10 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
                         chaser.chaser_id: SolverResult(
                             success=False,
                             message=message,
-                            solver_info=dict(
-                                failure_stage="nonlinear_setup",
-                                exception_type=type(error).__name__,
-                            ),
+                            solver_info={
+                                "failure_stage": "nonlinear_setup",
+                                "exception_type": type(error).__name__,
+                            },
                         )
                     },
                 )
@@ -451,10 +451,10 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         bounds = []
         for lo, hi, base in zip(lower, upper, self.config.mpc.state_bounds):
             bounds.append(
-                dict(
-                    lower=max(lo, float(base.get("lower", -np.inf))),
-                    upper=min(hi, float(base.get("upper", np.inf))),
-                )
+                {
+                    "lower": max(lo, float(base.get("lower", -np.inf))),
+                    "upper": min(hi, float(base.get("upper", np.inf))),
+                }
             )
         return bounds, self.config.mpc.input_bounds
 

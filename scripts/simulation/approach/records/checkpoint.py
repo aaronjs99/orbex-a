@@ -63,15 +63,15 @@ def source_fingerprints():
 
 
 def scenario_checkpoint_context(scenario):
-    return dict(
-        configuration=plain(scenario.config),
-        truth=scenario.truth.as_dict(),
-        target=scenario.target.as_dict(),
-        policy=scenario.scenario_metadata(),
-        body_radius=scenario.safety.chaser_body_radius,
-        adaptation_mode=scenario.adaptation_mode,
-        source_fingerprints=source_fingerprints(),
-    )
+    return {
+        "configuration": plain(scenario.config),
+        "truth": scenario.truth.as_dict(),
+        "target": scenario.target.as_dict(),
+        "policy": scenario.scenario_metadata(),
+        "body_radius": scenario.safety.chaser_body_radius,
+        "adaptation_mode": scenario.adaptation_mode,
+        "source_fingerprints": source_fingerprints(),
+    }
 
 
 def _configuration_signature(configuration):
@@ -246,12 +246,12 @@ class MissionCheckpoint:
         canonical = digest(record)
         context = plain(source_context or {})
         source_sha = source_record_sha256 or canonical
-        payload = dict(
-            schema=CHECKPOINT_SCHEMA,
-            source_record_sha256=source_sha,
-            source_canonical_sha256=canonical,
-            source_context=context,
-        )
+        payload = {
+            "schema": CHECKPOINT_SCHEMA,
+            "source_record_sha256": source_sha,
+            "source_canonical_sha256": canonical,
+            "source_context": context,
+        }
         checkpoint = cls(digest(payload), record, source_sha, canonical, context)
         checkpoint._validate_record()
         return checkpoint
@@ -293,12 +293,12 @@ class MissionCheckpoint:
             raise ValueError(
                 "Checkpoint schema or source semantic digest does not match"
             )
-        payload = dict(
-            schema=self.schema,
-            source_record_sha256=self.source_record_sha256,
-            source_canonical_sha256=self.source_canonical_sha256,
-            source_context=self.source_context,
-        )
+        payload = {
+            "schema": self.schema,
+            "source_record_sha256": self.source_record_sha256,
+            "source_canonical_sha256": self.source_canonical_sha256,
+            "source_context": self.source_context,
+        }
         if self.identity != digest(payload):
             raise ValueError(
                 "Checkpoint identity does not match its source and context"
@@ -831,23 +831,25 @@ class MissionCheckpoint:
         old = self.source_record["metadata"].get(
             "checkpoint_context"
         ) or self.source_context.get("checkpoint_context", {})
-        return dict(
-            checkpoint_schema=self.schema,
-            checkpoint_identity=self.identity,
-            source_record_sha256=self.source_record_sha256,
-            source_reference=self.source_context.get("source_reference"),
-            source_success=self.source_record["success"],
-            source_message=self.source_record["message"],
-            committed_updates=self.committed_updates,
-            anomaly=self.anomaly,
-            adaptation_window="Reset to the saved current primary state; mean outer inputs cannot recover the exact dense window",
-            planning_warm_starts="Cold start; unavailable complete control horizons are not reconstructed",
-            source_solver_options=plain(old.get("configuration", {}).get("solver", {})),
-            resumed_solver_options=plain(scenario.config.solver),
-            source_fingerprints=old.get("source_fingerprints", {}),
-            resumed_source_fingerprints=source_fingerprints(),
-            scope="Numerical continuation of a retained prefix; not a matched statistical trial or a formal safe-backup theorem",
-        )
+        return {
+            "checkpoint_schema": self.schema,
+            "checkpoint_identity": self.identity,
+            "source_record_sha256": self.source_record_sha256,
+            "source_reference": self.source_context.get("source_reference"),
+            "source_success": self.source_record["success"],
+            "source_message": self.source_record["message"],
+            "committed_updates": self.committed_updates,
+            "anomaly": self.anomaly,
+            "adaptation_window": "Reset to the saved current primary state; mean outer inputs cannot recover the exact dense window",
+            "planning_warm_starts": "Cold start; unavailable complete control horizons are not reconstructed",
+            "source_solver_options": plain(
+                old.get("configuration", {}).get("solver", {})
+            ),
+            "resumed_solver_options": plain(scenario.config.solver),
+            "source_fingerprints": old.get("source_fingerprints", {}),
+            "resumed_source_fingerprints": source_fingerprints(),
+            "scope": "Numerical continuation of a retained prefix; not a matched statistical trial or a formal safe-backup theorem",
+        }
 
     def as_dict(self):
         return plain(asdict(self))

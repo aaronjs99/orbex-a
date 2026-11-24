@@ -145,13 +145,13 @@ class BoundedNavigationFilter:
             raise ValueError("Navigation fleet clocks must be simultaneous")
         old_time, old_q = self.time, self.q
         self.history.append(
-            dict(
-                start=self.q,
-                end=end,
-                initial=dict(self.boxes),
-                flows=dict(flows_by_agent),
-                target_flow=target_flow,
-            )
+            {
+                "start": self.q,
+                "end": end,
+                "initial": dict(self.boxes),
+                "flows": dict(flows_by_agent),
+                "target_flow": target_flow,
+            }
         )
         self.boxes = {key: flow.endpoint for key, flow in flows_by_agent.items()}
         new_time = target_flow.physical_time_endpoint
@@ -436,7 +436,10 @@ class BoundedNavigationFilter:
                 or packet.quality_status != "VALID"
             ):
                 self.events.append(
-                    dict(packet_id=packet.packet_id, status="NOT_READY_OR_UNSUPPORTED")
+                    {
+                        "packet_id": packet.packet_id,
+                        "status": "NOT_READY_OR_UNSUPPORTED",
+                    }
                 )
                 continue
             if not self.allowed_sensor_ids:
@@ -481,11 +484,11 @@ class BoundedNavigationFilter:
                         )
                         return self.estimate()
                     self.events.append(
-                        dict(
-                            packet_id=packet.packet_id,
-                            status="UNRESOLVED",
-                            reason=reason,
-                        )
+                        {
+                            "packet_id": packet.packet_id,
+                            "status": "UNRESOLVED",
+                            "reason": reason,
+                        }
                     )
                     continue
                 self.boxes[packet.agent_id] = narrowed
@@ -503,9 +506,10 @@ class BoundedNavigationFilter:
                 inferred = self._gnss(packet)
                 if inferred is None:
                     self.events.append(
-                        dict(
-                            packet_id=packet.packet_id, status="UNRESOLVED_GNSS_REPLAY"
-                        )
+                        {
+                            "packet_id": packet.packet_id,
+                            "status": "UNRESOLVED_GNSS_REPLAY",
+                        }
                     )
                     continue
                 narrowed = (
@@ -571,7 +575,7 @@ class BoundedNavigationFilter:
             self.sensor_ids.add(packet.sensor_model_fingerprint)
             self.reason = reason
             self.events.append(
-                dict(packet_id=packet.packet_id, status="ACCEPTED", reason=reason)
+                {"packet_id": packet.packet_id, "status": "ACCEPTED", "reason": reason}
             )
         return self.estimate()
 
@@ -614,11 +618,11 @@ class BoundedNavigationFilter:
                 raise ValueError("Admitted invariant contradicts navigation")
         self.boxes = updated
         self.events.append(
-            dict(
-                status="CONDITIONED_ON_ADMITTED_INVARIANT",
-                q=str(self.q),
-                fallback_id=plan.fingerprint,
-            )
+            {
+                "status": "CONDITIONED_ON_ADMITTED_INVARIANT",
+                "q": str(self.q),
+                "fallback_id": plan.fingerprint,
+            }
         )
         return self.estimate()
 
@@ -671,11 +675,11 @@ class BoundedNavigationFilter:
             refuse(
                 "Declared target angular-acceleration bound is smaller than the admitted physical attitude inclusion"
             )
-        record = dict(
-            status="ANGULAR_ACCELERATION_BOUND_VERIFIED",
-            attitude_flow_id=attitude_certificate.fingerprint,
-            physical_acceleration_upper_rad_s2=str(maximum),
-            declared_bound_rad_s2=str(self.acceleration_bound),
-        )
+        record = {
+            "status": "ANGULAR_ACCELERATION_BOUND_VERIFIED",
+            "attitude_flow_id": attitude_certificate.fingerprint,
+            "physical_acceleration_upper_rad_s2": str(maximum),
+            "declared_bound_rad_s2": str(self.acceleration_bound),
+        }
         self.events.append(record)
         return record

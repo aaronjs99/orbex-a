@@ -148,42 +148,48 @@ class StudyArmExecution:
             self.approach = self.runner.run(mission="multi", steps=self.cap)
             self.source = archive.close()
         self.approach.metadata["proof_archive"] = self.source.as_dict()
-        self.approach.metadata["study_source_binding"] = dict(
-            source_manifest_sha256=hash_file(self.directory / "source-manifest.json"),
-            study_manifest_sha256=hash_file(self.directory / "study-manifest.json"),
-            study_id=self.declaration["study_id"],
-            selected_case=self.case,
-            adaptation=self.adaptation,
-            bandwidth=self.bandwidth,
-        )
+        self.approach.metadata["study_source_binding"] = {
+            "source_manifest_sha256": hash_file(
+                self.directory / "source-manifest.json"
+            ),
+            "study_manifest_sha256": hash_file(self.directory / "study-manifest.json"),
+            "study_id": self.declaration["study_id"],
+            "selected_case": self.case,
+            "adaptation": self.adaptation,
+            "bandwidth": self.bandwidth,
+        }
         MissionResultStore.save(self.approach, self.directory / "approach")
 
     def _write_manifest(self):
         write_record(
             self.directory / "study-manifest.json",
-            dict(
-                schema=STUDY_SCHEMA,
-                study_id=self.declaration["study_id"],
-                cases=self.declaration["cases"],
-                selected_case=self.case,
-                selected_arm=dict(adaptation=self.adaptation, bandwidth=self.bandwidth),
-                factorial_axes=dict(
-                    adaptation=("adaptive", "frozen"), bandwidth=("dynamic", "fixed")
-                ),
-                resolved_options=self.runner.options.as_dict(),
-                design=self.design.as_dict(),
-                fleet_count=self.config.num_chasers,
-                initial_belief=self.runner.adaptation.belief.as_metadata(),
-                initial_target_spin_prior=self.prior.as_dict(),
-                model_bounds=self.runner.model.as_dict(),
-                point_truth=self.runner.truth_model.as_dict(),
-                reference_clock=self.runner.clock.as_dict(),
-                source_manifest_sha256=hash_file(
+            {
+                "schema": STUDY_SCHEMA,
+                "study_id": self.declaration["study_id"],
+                "cases": self.declaration["cases"],
+                "selected_case": self.case,
+                "selected_arm": {
+                    "adaptation": self.adaptation,
+                    "bandwidth": self.bandwidth,
+                },
+                "factorial_axes": {
+                    "adaptation": ("adaptive", "frozen"),
+                    "bandwidth": ("dynamic", "fixed"),
+                },
+                "resolved_options": self.runner.options.as_dict(),
+                "design": self.design.as_dict(),
+                "fleet_count": self.config.num_chasers,
+                "initial_belief": self.runner.adaptation.belief.as_metadata(),
+                "initial_target_spin_prior": self.prior.as_dict(),
+                "model_bounds": self.runner.model.as_dict(),
+                "point_truth": self.runner.truth_model.as_dict(),
+                "reference_clock": self.runner.clock.as_dict(),
+                "source_manifest_sha256": hash_file(
                     self.directory / "source-manifest.json"
                 ),
-                execution_cap_updates=self.cap,
-                scope="Prospective declaration before any actual motion; one selected arm, no winner selection",
-            ),
+                "execution_cap_updates": self.cap,
+                "scope": "Prospective declaration before any actual motion; one selected arm, no winner selection",
+            },
         )
 
     def _complete(self):
@@ -237,11 +243,11 @@ class StudyArmExecution:
             except (ValueError, RuntimeError, ArithmeticError, ImportError) as refused:
                 write_record(
                     self.directory / "fuel-bound-refused.json",
-                    dict(
-                        status="UNAVAILABLE",
-                        reason=str(refused),
-                        scope="No zero consumption or successful whole-prefix accounting inferred",
-                    ),
+                    {
+                        "status": "UNAVAILABLE",
+                        "reason": str(refused),
+                        "scope": "No zero consumption or successful whole-prefix accounting inferred",
+                    },
                 )
         if not self.approach.success or not self.approach.metadata.get(
             "mission_complete"
@@ -250,7 +256,7 @@ class StudyArmExecution:
         self.store.finish(self.completion)
 
     def _retain_failure(self, exception):
-        self.error = dict(type=type(exception).__name__, message=str(exception))
+        self.error = {"type": type(exception).__name__, "message": str(exception)}
         (self.directory / "execution-error.txt").write_text(
             traceback.format_exc(), encoding="utf-8"
         )
@@ -300,31 +306,32 @@ class StudyArmExecution:
                 self.approach, self.completion, self.runner, self.directory, self.error
             )
         except Exception as metrics_error:
-            metrics = dict(
-                schema="orbexa.nonlinear-study-metrics.v1",
-                success=False,
-                status="METRICS_REFUSED",
-                error=self.error,
-                metrics_error=dict(
-                    type=type(metrics_error).__name__, message=str(metrics_error)
-                ),
-                scope="Source artifacts retained; unavailable metrics are not zero or success",
-            )
+            metrics = {
+                "schema": "orbexa.nonlinear-study-metrics.v1",
+                "success": False,
+                "status": "METRICS_REFUSED",
+                "error": self.error,
+                "metrics_error": {
+                    "type": type(metrics_error).__name__,
+                    "message": str(metrics_error),
+                },
+                "scope": "Source artifacts retained; unavailable metrics are not zero or success",
+            }
         metrics["wall_time_s"] = time.perf_counter() - self.started
         write_record(self.directory / "study-metrics.json", metrics)
-        summary = dict(
-            success=bool(metrics.get("success")),
-            status=metrics.get("status"),
-            message=metrics.get("message", self.error),
-            case=self.case,
-            adaptation=self.adaptation,
-            bandwidth=self.bandwidth,
-            output_dir=str(self.directory),
-            metrics="study-metrics.json",
-            source_manifest="source-manifest.json",
-            study_manifest="study-manifest.json"
+        summary = {
+            "success": bool(metrics.get("success")),
+            "status": metrics.get("status"),
+            "message": metrics.get("message", self.error),
+            "case": self.case,
+            "adaptation": self.adaptation,
+            "bandwidth": self.bandwidth,
+            "output_dir": str(self.directory),
+            "metrics": "study-metrics.json",
+            "source_manifest": "source-manifest.json",
+            "study_manifest": "study-manifest.json"
             if (self.directory / "study-manifest.json").is_file()
             else None,
-        )
+        }
         write_record(self.directory / "run-result.json", summary)
         return summary

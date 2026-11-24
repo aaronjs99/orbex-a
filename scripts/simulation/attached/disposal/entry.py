@@ -21,14 +21,14 @@ def radial_status(box, radius_m):
             box.lower[:3], box.upper[:3], box.lower[3:6], box.upper[3:6]
         )
     )
-    return dict(
-        entirely_above=lower > radius_squared,
-        entirely_at_or_below=upper <= radius_squared,
-        position_norm_squared_lower=str(lower),
-        position_norm_squared_upper=str(upper),
-        radial_product_upper_m2_s=str(radial_velocity_upper),
-        descending=radial_velocity_upper < 0,
-    )
+    return {
+        "entirely_above": lower > radius_squared,
+        "entirely_at_or_below": upper <= radius_squared,
+        "position_norm_squared_lower": str(lower),
+        "position_norm_squared_upper": str(upper),
+        "radial_product_upper_m2_s": str(radial_velocity_upper),
+        "descending": radial_velocity_upper < 0,
+    }
 
 
 class EntryInterfaceMonitor:
@@ -93,24 +93,24 @@ class EntryInterfaceMonitor:
         finish = radial_status(end.enclosure.box, self.radius_m)
         swept = radial_status(end.enclosure.last_swept, self.radius_m)
         if begin["entirely_above"]:
-            self.anchor = dict(
-                exact_time_s=str(q0),
-                state=start.enclosure.box.as_dict(),
-                radial_status=begin,
-                carried_chain_sha256=start.enclosure.proof_chain_sha256,
-            )
+            self.anchor = {
+                "exact_time_s": str(q0),
+                "state": start.enclosure.box.as_dict(),
+                "radial_status": begin,
+                "carried_chain_sha256": start.enclosure.proof_chain_sha256,
+            }
             self.intervals = []
         if not swept["descending"]:
             self.anchor, self.intervals = None, []
         elif self.anchor is not None:
             self.intervals.append(
-                dict(
-                    exact_start_time_s=str(q0),
-                    exact_end_time_s=str(q1),
-                    radial_product_upper_m2_s=swept["radial_product_upper_m2_s"],
-                    end_state_fingerprint=fingerprint(end.enclosure.box.as_dict()),
-                    carried_chain_sha256=end.enclosure.proof_chain_sha256,
-                )
+                {
+                    "exact_start_time_s": str(q0),
+                    "exact_end_time_s": str(q1),
+                    "radial_product_upper_m2_s": swept["radial_product_upper_m2_s"],
+                    "end_state_fingerprint": fingerprint(end.enclosure.box.as_dict()),
+                    "carried_chain_sha256": end.enclosure.proof_chain_sha256,
+                }
             )
         self.last_end = q1
         self.last_box = end.enclosure.box
@@ -120,22 +120,22 @@ class EntryInterfaceMonitor:
             and finish["entirely_at_or_below"]
             and self.intervals
         ):
-            result = dict(
-                method="continuous-whole-set-descending-interface-bracket-v1",
-                status="PROVEN",
-                entry_radius_m=self.radius_m,
-                above=self.anchor,
-                below=dict(
-                    exact_time_s=str(q1),
-                    state=end.enclosure.box.as_dict(),
-                    radial_status=finish,
-                ),
-                intervals=copy.deepcopy(self.intervals),
-                checked_holds=len(self.intervals),
-                parameter_fingerprint=end.enclosure.parameter_fingerprint,
-                fuel_depletion="zero throughout every bracketed held flow; no split COM coordinate jump",
-                scope="Every realization consistent with the declared carried dynamics and bounded observations crosses the interface downward inside this finite bracket; below-interface propagation is only a numerical event bracket, not atmospheric flight",
-            )
+            result = {
+                "method": "continuous-whole-set-descending-interface-bracket-v1",
+                "status": "PROVEN",
+                "entry_radius_m": self.radius_m,
+                "above": self.anchor,
+                "below": {
+                    "exact_time_s": str(q1),
+                    "state": end.enclosure.box.as_dict(),
+                    "radial_status": finish,
+                },
+                "intervals": copy.deepcopy(self.intervals),
+                "checked_holds": len(self.intervals),
+                "parameter_fingerprint": end.enclosure.parameter_fingerprint,
+                "fuel_depletion": "zero throughout every bracketed held flow; no split COM coordinate jump",
+                "scope": "Every realization consistent with the declared carried dynamics and bounded observations crosses the interface downward inside this finite bracket; below-interface propagation is only a numerical event bracket, not atmospheric flight",
+            }
             result["identity"] = fingerprint(result)
             self.certificate = result
         return self.certificate

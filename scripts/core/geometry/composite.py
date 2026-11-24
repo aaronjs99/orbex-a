@@ -222,21 +222,23 @@ class OBBComponent:
         )
 
     def as_dict(self):
-        return dict(
-            id=self.id,
-            center_m=list(self.center_m),
-            half_extents_m=list(self.half_extents_m),
-            rotation_component_to_body=[
+        return {
+            "id": self.id,
+            "center_m": list(self.center_m),
+            "half_extents_m": list(self.half_extents_m),
+            "rotation_component_to_body": [
                 list(row) for row in self.rotation_component_to_body
             ],
-            uncertainty_m=self.uncertainty_m,
-            role=self.role,
-            provenance=_plain(self.provenance),
-            nominal_vertices_body_m=[list(row) for row in self.nominal_vertices_body_m],
-            exact_vertices_body_m=[
+            "uncertainty_m": self.uncertainty_m,
+            "role": self.role,
+            "provenance": _plain(self.provenance),
+            "nominal_vertices_body_m": [
+                list(row) for row in self.nominal_vertices_body_m
+            ],
+            "exact_vertices_body_m": [
                 [str(v) for v in row] for row in self.vertices_body_m
             ],
-        )
+        }
 
     @classmethod
     def from_dict(cls, value):
@@ -341,17 +343,17 @@ class AttachmentPatch:
         )
 
     def as_dict(self):
-        return dict(
-            id=self.id,
-            component_id=self.component_id,
-            point_body_m=list(self.point_body_m),
-            normal_body=list(self.normal_body),
-            tangent_u_body=list(self.tangent_u_body),
-            tangent_v_body=list(self.tangent_v_body),
-            half_extents_m=list(self.half_extents_m),
-            margin_m=self.margin_m,
-            provenance=_plain(self.provenance),
-        )
+        return {
+            "id": self.id,
+            "component_id": self.component_id,
+            "point_body_m": list(self.point_body_m),
+            "normal_body": list(self.normal_body),
+            "tangent_u_body": list(self.tangent_u_body),
+            "tangent_v_body": list(self.tangent_v_body),
+            "half_extents_m": list(self.half_extents_m),
+            "margin_m": self.margin_m,
+            "provenance": _plain(self.provenance),
+        }
 
     @classmethod
     def from_dict(cls, value):
@@ -481,14 +483,14 @@ class SpacecraftGeometry:
         )
 
     def _payload(self):
-        return dict(
-            schema="orbexa.spacecraft-geometry.v1",
-            geometry_id=self.geometry_id,
-            frame=self.frame,
-            components=[c.as_dict() for c in self.components],
-            attachment_patches=[p.as_dict() for p in self.attachment_patches],
-            metadata=_plain(self.metadata),
-        )
+        return {
+            "schema": "orbexa.spacecraft-geometry.v1",
+            "geometry_id": self.geometry_id,
+            "frame": self.frame,
+            "components": [c.as_dict() for c in self.components],
+            "attachment_patches": [p.as_dict() for p in self.attachment_patches],
+            "metadata": _plain(self.metadata),
+        }
 
     @property
     def fingerprint(self):

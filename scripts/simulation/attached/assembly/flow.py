@@ -56,16 +56,18 @@ class AssemblyStateEnclosure:
     last_swept: IntervalBox | None = None
 
     def as_dict(self):
-        return dict(
-            method="carried-rigid-assembly-state-set-v1",
-            box=self.box.as_dict(),
-            exact_time_s=str(self.exact_time_s),
-            parameter_fingerprint=self.parameter_fingerprint,
-            source=copy.deepcopy(self.source),
-            completed_holds=self.completed_holds,
-            proof_chain_sha256=self.proof_chain_sha256,
-            last_swept=None if self.last_swept is None else self.last_swept.as_dict(),
-        )
+        return {
+            "method": "carried-rigid-assembly-state-set-v1",
+            "box": self.box.as_dict(),
+            "exact_time_s": str(self.exact_time_s),
+            "parameter_fingerprint": self.parameter_fingerprint,
+            "source": copy.deepcopy(self.source),
+            "completed_holds": self.completed_holds,
+            "proof_chain_sha256": self.proof_chain_sha256,
+            "last_swept": None
+            if self.last_swept is None
+            else self.last_swept.as_dict(),
+        }
 
     def successor(self, certificate, numerical_state):
         if not certificate.passed or certificate.initial != self.box:
@@ -104,37 +106,37 @@ class AssemblyFlowCertificate:
         return self.status == "PROVEN"
 
     def as_dict(self):
-        return dict(
-            method="arb-full-rigid-held-flow-and-split-fuel-v1",
-            status=self.status,
-            passed=self.passed,
-            reason=self.reason,
-            context=copy.deepcopy(self.context),
-            initial=self.initial.as_dict(),
-            duration_s=str(self.duration_s),
-            endpoint=None if self.endpoint is None else self.endpoint.as_dict(),
-            swept=None if self.swept is None else self.swept.as_dict(),
-            source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            scope="Exact declared rigid assembly with held physical nozzle commands and split co-rotating fuel; supplied initial and parameter sets, no flexible-body or flight claim",
-        )
+        return {
+            "method": "arb-full-rigid-held-flow-and-split-fuel-v1",
+            "status": self.status,
+            "passed": self.passed,
+            "reason": self.reason,
+            "context": copy.deepcopy(self.context),
+            "initial": self.initial.as_dict(),
+            "duration_s": str(self.duration_s),
+            "endpoint": None if self.endpoint is None else self.endpoint.as_dict(),
+            "swept": None if self.swept is None else self.swept.as_dict(),
+            "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "scope": "Exact declared rigid assembly with held physical nozzle commands and split co-rotating fuel; supplied initial and parameter sets, no flexible-body or flight claim",
+        }
 
 
 def assembly_parameter_fingerprint(assembly):
     return fingerprint(
-        dict(
-            elements=[element.to_dict() for element in assembly.elements],
-            parameter_enclosure=None
+        {
+            "elements": [element.to_dict() for element in assembly.elements],
+            "parameter_enclosure": None
             if assembly.parameter_enclosure is None
             else {
                 key: [box.as_dict() for box in value]
                 for key, value in assembly.parameter_enclosure.items()
             },
-            gravity_gradient=assembly.gravity_gradient,
-            mu_m3_s2=assembly.mu_m3_s2,
-            environment=None
+            "gravity_gradient": assembly.gravity_gradient,
+            "mu_m3_s2": assembly.mu_m3_s2,
+            "environment": None
             if assembly.environment is None
             else assembly.environment.as_dict(),
-        )
+        }
     )
 
 
@@ -374,18 +376,18 @@ class AssemblyFlowEncloser:
             for command, nozzle in zip(commands, propulsion.thrusters)
         ):
             raise ValueError("Carried assembly command exceeds the declared hardware")
-        context = dict(
-            physical_graph="All supplied-state physical quaternions are unit; qdot preserves that graph. For every uncertain fixed-mass member family, center=sum(m_i*p_i)/sum(m_i) and r_i=p_i-center imply sum(m_i*r_i)=0. Unchanged half-depletion maps reform that same identity at their actual new masses.",
-            common_environment_reference="Same typed environment and parameters evaluated at the virtual assembly COM with the first member drag law/fuel; every actual body retains its own position, velocity, fuel and drag law. The reference and every body must pass their declared force domains.",
-            exact_start_time_s=str(state.enclosure.exact_time_s),
-            parameter_fingerprint=parameter_id,
-            commands_n=commands.tolist(),
-            propulsion=propulsion.to_dict(),
-            max_step_s=self.max_step_s,
-            max_substeps=self.max_substeps,
-            max_picard_iterations=self.max_picard_iterations,
-            precision_bits=self.precision_bits,
-        )
+        context = {
+            "physical_graph": "All supplied-state physical quaternions are unit; qdot preserves that graph. For every uncertain fixed-mass member family, center=sum(m_i*p_i)/sum(m_i) and r_i=p_i-center imply sum(m_i*r_i)=0. Unchanged half-depletion maps reform that same identity at their actual new masses.",
+            "common_environment_reference": "Same typed environment and parameters evaluated at the virtual assembly COM with the first member drag law/fuel; every actual body retains its own position, velocity, fuel and drag law. The reference and every body must pass their declared force domains.",
+            "exact_start_time_s": str(state.enclosure.exact_time_s),
+            "parameter_fingerprint": parameter_id,
+            "commands_n": commands.tolist(),
+            "propulsion": propulsion.to_dict(),
+            "max_step_s": self.max_step_s,
+            "max_substeps": self.max_substeps,
+            "max_picard_iterations": self.max_picard_iterations,
+            "precision_bits": self.precision_bits,
+        }
         try:
             import flint
 

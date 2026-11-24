@@ -220,16 +220,16 @@ class FleetGeometryOracle:
     @property
     def fingerprint(self):
         return fingerprint(
-            dict(
-                component_ids=self.component_ids,
-                body_radii=self.body_radii,
-                geometry_id=self.geometry_id,
-                target_model_id=self.target_model_id,
-                frame=self.frame,
-                clock_id=self.clock_id,
-                clearance=self.clearance,
-                minimum_pair_center_distance=self.minimum_pair_center_distance,
-            )
+            {
+                "component_ids": self.component_ids,
+                "body_radii": self.body_radii,
+                "geometry_id": self.geometry_id,
+                "target_model_id": self.target_model_id,
+                "frame": self.frame,
+                "clock_id": self.clock_id,
+                "clearance": self.clearance,
+                "minimum_pair_center_distance": self.minimum_pair_center_distance,
+            }
         )
 
     def _occupied(self, start, end):

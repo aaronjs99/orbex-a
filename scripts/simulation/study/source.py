@@ -41,16 +41,20 @@ def runtime_environment():
         relative = "gekko/bin/" + executable
         path = Path(distribution.locate_file(relative))
         if path.is_file():
-            native = dict(distribution="gekko", path=relative, sha256=hash_file(path))
+            native = {
+                "distribution": "gekko",
+                "path": relative,
+                "sha256": hash_file(path),
+            }
     except importlib.metadata.PackageNotFoundError:
         pass
-    return dict(
-        python=sys.version,
-        platform=platform.platform(),
-        packages=packages,
-        native_gekko_executable=native,
-        scope="Installed version and native binary identities before motion; unavailable metadata remains null",
-    )
+    return {
+        "python": sys.version,
+        "platform": platform.platform(),
+        "packages": packages,
+        "native_gekko_executable": native,
+        "scope": "Installed version and native binary identities before motion; unavailable metadata remains null",
+    }
 
 
 class StudySourceFreezer:
@@ -93,24 +97,24 @@ class StudySourceFreezer:
                 raise RuntimeError(
                     "Explicit " + name + " input changed during snapshot"
                 )
-            inputs[name] = dict(
-                original=str(original),
-                frozen=str(target.relative_to(directory)),
-                sha256=expected,
-            )
+            inputs[name] = {
+                "original": str(original),
+                "frozen": str(target.relative_to(directory)),
+                "sha256": expected,
+            }
             frozen[name] = str(target)
         # This standard-library record intentionally precedes scientific imports.
-        manifest = dict(
-            schema="orbexa.nonlinear-study-source.v1",
-            package_python_sha256=before,
-            inputs=inputs,
-            selected_case=request.case,
-            adaptation=request.adaptation,
-            bandwidth=request.bandwidth,
-            steps=request.steps,
-            runtime_environment=runtime_environment(),
-            scope="One explicit predeclared arm; coherent source/input bytes before any motion; a cap is not completion",
-        )
+        manifest = {
+            "schema": "orbexa.nonlinear-study-source.v1",
+            "package_python_sha256": before,
+            "inputs": inputs,
+            "selected_case": request.case,
+            "adaptation": request.adaptation,
+            "bandwidth": request.bandwidth,
+            "steps": request.steps,
+            "runtime_environment": runtime_environment(),
+            "scope": "One explicit predeclared arm; coherent source/input bytes before any motion; a cap is not completion",
+        }
         (directory / "source-manifest.json").write_text(
             json.dumps(manifest, indent=2, allow_nan=False) + "\n", encoding="utf-8"
         )

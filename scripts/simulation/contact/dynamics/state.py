@@ -150,29 +150,29 @@ class ContactFleet:
                 gaps[member.id] = float((tip - patch) @ (rotations[0] @ normals[i]))
         else:
             gaps = {m.id: diag["rows"][i]["gap"] for i, m in enumerate(members)}
-        return dict(
-            target=states[0],
-            chasers={m.id: states[i + 1] for i, m in enumerate(members)},
-            positioner_encoders={
-                m.id: dict(
-                    extension_body_m=unpack(values)[1][i, :3].tolist(),
-                    extension_velocity_body_m_s=unpack(values)[1][i, 3:].tolist(),
-                )
+        return {
+            "target": states[0],
+            "chasers": {m.id: states[i + 1] for i, m in enumerate(members)},
+            "positioner_encoders": {
+                m.id: {
+                    "extension_body_m": unpack(values)[1][i, :3].tolist(),
+                    "extension_velocity_body_m_s": unpack(values)[1][i, 3:].tolist(),
+                }
                 for i, m in enumerate(members)
             },
-            contact_wrenches_eci={
-                m.id: dict(
-                    force_n=(
+            "contact_wrenches_eci": {
+                m.id: {
+                    "force_n": (
                         np.zeros(3) if diag is None else diag["rows"][i]["force"]
                     ).tolist(),
-                    couple_nm=(
+                    "couple_nm": (
                         np.zeros(3) if diag is None else diag["rows"][i]["couple"]
                     ).tolist(),
-                )
+                }
                 for i, m in enumerate(members)
             },
-            contact_gaps_m=gaps,
-        )
+            "contact_gaps_m": gaps,
+        }
 
     def check_observation(self, observation, clock):
         members = self.members

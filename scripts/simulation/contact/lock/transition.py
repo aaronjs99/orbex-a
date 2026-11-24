@@ -144,12 +144,12 @@ def _pad_inventory(contact, count):
             or _box(rest["quaternion"]).dimension != 4
         ):
             raise ValueError("A trapped pad rest has invalid coordinate dimensions")
-    return dict(
-        energy_j=energy.as_dict(),
-        strain_sets=copy.deepcopy(strains),
-        uncertain_rest_sets=copy.deepcopy(rests),
-        constitutive_rule="Existing compliant internal strains are trapped unchanged as independent energy/strain inventory during the ideal active joint phase and subsequent rigid motion",
-    )
+    return {
+        "energy_j": energy.as_dict(),
+        "strain_sets": copy.deepcopy(strains),
+        "uncertain_rest_sets": copy.deepcopy(rests),
+        "constitutive_rule": "Existing compliant internal strains are trapped unchanged as independent energy/strain inventory during the ideal active joint phase and subsequent rigid motion",
+    }
 
 
 def _contact_history_provenance(contact, started):
@@ -174,18 +174,18 @@ def _contact_history_provenance(contact, started):
     elapsed = Fraction(continuous["exact_accepted_duration_s"])
     if elapsed < 0:
         raise ValueError("A carried contact duration cannot be negative")
-    declared = dict(
-        exact_accepted_duration_s=str(elapsed),
-        contact_proof_chain_sha256=chain,
-        last_contact_proof_sha256=last.get("proof_sha256"),
-        physical_boundary_time_s=boundary,
-        terminal_boundary_identity=continuous.get("boundary_transfer", {}).get(
+    declared = {
+        "exact_accepted_duration_s": str(elapsed),
+        "contact_proof_chain_sha256": chain,
+        "last_contact_proof_sha256": last.get("proof_sha256"),
+        "physical_boundary_time_s": boundary,
+        "terminal_boundary_identity": continuous.get("boundary_transfer", {}).get(
             "identity"
         ),
-        physical_source_receipt=copy.deepcopy(
+        "physical_source_receipt": copy.deepcopy(
             continuous.get("full_evidence_reference")
         ),
-    )
+    }
     supplied = continuous.get("history_scope") == "supplied_initial_graph_fixture"
     if supplied:
         if chain is not None:
@@ -195,13 +195,13 @@ def _contact_history_provenance(contact, started):
         declared.update(
             scope="Explicit caller-supplied initial physical/auxiliary graph fixture; no acquired-contact history is claimed",
             supplied_graph_identity=fingerprint(
-                dict(
-                    initial=continuous["final_set"],
-                    gaps=continuous.get("final_gap_sets"),
-                    strains=continuous.get("final_strain_sets"),
-                    rests=continuous.get("final_rest_sets"),
-                    numerical=last["numerical_endpoint"],
-                )
+                {
+                    "initial": continuous["final_set"],
+                    "gaps": continuous.get("final_gap_sets"),
+                    "strains": continuous.get("final_strain_sets"),
+                    "rests": continuous.get("final_rest_sets"),
+                    "numerical": last["numerical_endpoint"],
+                }
             ),
         )
     else:
@@ -755,20 +755,20 @@ class _LockField:
             + relative_qdot
             + (power, external_power)
         )
-        diag = dict(
-            offsets=offsets,
-            rdots=rdots,
-            rddots=rddots,
-            quaternions=quaternions,
-            rotations=rotations,
-            forces=forces,
-            couples=couples,
-            angular_acceleration=angular,
-            g=g,
-            gd=gd,
-            inertias=inertias,
-            power=power,
-        )
+        diag = {
+            "offsets": offsets,
+            "rdots": rdots,
+            "rddots": rddots,
+            "quaternions": quaternions,
+            "rotations": rotations,
+            "forces": forces,
+            "couples": couples,
+            "angular_acceleration": angular,
+            "g": g,
+            "gd": gd,
+            "inertias": inertias,
+            "power": power,
+        }
         return derivative, diag
 
     def kinetic(self, time, values):
@@ -808,16 +808,16 @@ class _LockField:
             + matvec(target_inverse, values[10:13])
             + self.fuel
         )
-        parameters = dict(
-            position_body_m=tuple(ar.box(position) for position in positions),
-            inertia_per_kg_m2=tuple(
+        parameters = {
+            "position_body_m": tuple(ar.box(position) for position in positions),
+            "inertia_per_kg_m2": tuple(
                 ar.box(tuple(x for row in matrix for x in row)) for matrix in specifics
             ),
-            rotation_element_to_assembly=tuple(
+            "rotation_element_to_assembly": tuple(
                 ar.box(tuple(x for row in matrix for x in row))
                 for matrix in local_rotations
             ),
-        )
+        }
         anchors = [ar.box(tuple(ar.scalar(0) for _ in range(3)))]
         for member, initial, velocity, initial_gap in zip(
             self.fleet.members,
@@ -896,24 +896,24 @@ class _LockField:
                 ar,
             )
             rows.append(
-                dict(
-                    compression=compression,
-                    force=matvec(world, force),
-                    couple=matvec(world, couple),
-                    power=ar.interval((-power_upper, power_upper)),
-                    activation=ar.scalar(1),
-                    bond_force_unscaled=force_target,
-                    force_patch=force_target,
-                    normal_force=ar.scalar(0),
-                    couple_unscaled=matvec(world, couple),
-                    tip=add(body[0][:3], matvec(world, anchor)),
-                    gap=gap,
-                    u=matvec(world, extension_velocity),
-                    spin=scale(
+                {
+                    "compression": compression,
+                    "force": matvec(world, force),
+                    "couple": matvec(world, couple),
+                    "power": ar.interval((-power_upper, power_upper)),
+                    "activation": ar.scalar(1),
+                    "bond_force_unscaled": force_target,
+                    "force_patch": force_target,
+                    "normal_force": ar.scalar(0),
+                    "couple_unscaled": matvec(world, couple),
+                    "tip": add(body[0][:3], matvec(world, anchor)),
+                    "gap": gap,
+                    "u": matvec(world, extension_velocity),
+                    "spin": scale(
                         diag["g"],
                         subtract(self.relative_spin[j], self.relative_spin[0]),
                     ),
-                )
+                }
             )
             tips.append(extension + extension_velocity)
         context = SimpleNamespace(
@@ -926,17 +926,17 @@ class _LockField:
         )
         checks = ContactStepEncloser()._checks(
             context,
-            dict(
-                body=body,
-                tips=tips,
-                rows=rows,
-                rotations=tuple(_matmul(world, local) for local in rotations),
-                masses=self.masses,
-                spins=tuple(
+            {
+                "body": body,
+                "tips": tips,
+                "rows": rows,
+                "rotations": tuple(_matmul(world, local) for local in rotations),
+                "masses": self.masses,
+                "spins": tuple(
                     matvec(world, add(values[10:13], scale(diag["g"], sigma)))
                     for sigma in self.relative_spin
                 ),
-            ),
+            },
             geometry,
             dt,
         )
@@ -960,44 +960,44 @@ class FiniteLockTransition:
 
     def run(self, *, fleet, options, geometry, contact, environment=None):
         def declaration():
-            return dict(
-                source_files=_source_manifest(),
-                contact_history_provenance=_contact_history_provenance(
+            return {
+                "source_files": _source_manifest(),
+                "contact_history_provenance": _contact_history_provenance(
                     contact, fleet.started
                 ),
-                initial=contact.audit["continuous_enclosure"]["final_set"],
-                initial_gap_sets=copy.deepcopy(
+                "initial": contact.audit["continuous_enclosure"]["final_set"],
+                "initial_gap_sets": copy.deepcopy(
                     contact.audit["continuous_enclosure"].get("final_gap_sets")
                 ),
-                numerical=contact.audit["continuous_enclosure"]["step_records"][-1][
+                "numerical": contact.audit["continuous_enclosure"]["step_records"][-1][
                     "numerical_endpoint"
                 ],
-                trapped_pad_inventory=_pad_inventory(contact, fleet.chaser_count),
-                started=fleet.started,
-                options=asdict(options),
-                geometry_fingerprint=geometry.fingerprint,
-                dry=fleet.dry.tolist(),
-                specific=fleet.specific.tolist(),
-                mounts=fleet.mounts.tolist(),
-                anchors=fleet.anchors.tolist(),
-                normals=fleet.normals.tolist(),
-                mu=fleet.mu,
-                members=[
-                    dict(
-                        id=member.id,
-                        properties=asdict(member.properties),
-                        arm_reach_m=member.arm_reach_m,
-                        patch_id=member.patch_id,
-                        surface_anchor_body_m=member.surface_anchor_body_m.tolist(),
-                        normal_body=member.normal_body.tolist(),
-                        tangent_u_body=member.tangent_u_body.tolist(),
-                        tangent_v_body=member.tangent_v_body.tolist(),
-                    )
+                "trapped_pad_inventory": _pad_inventory(contact, fleet.chaser_count),
+                "started": fleet.started,
+                "options": asdict(options),
+                "geometry_fingerprint": geometry.fingerprint,
+                "dry": fleet.dry.tolist(),
+                "specific": fleet.specific.tolist(),
+                "mounts": fleet.mounts.tolist(),
+                "anchors": fleet.anchors.tolist(),
+                "normals": fleet.normals.tolist(),
+                "mu": fleet.mu,
+                "members": [
+                    {
+                        "id": member.id,
+                        "properties": asdict(member.properties),
+                        "arm_reach_m": member.arm_reach_m,
+                        "patch_id": member.patch_id,
+                        "surface_anchor_body_m": member.surface_anchor_body_m.tolist(),
+                        "normal_body": member.normal_body.tolist(),
+                        "tangent_u_body": member.tangent_u_body.tolist(),
+                        "tangent_v_body": member.tangent_v_body.tolist(),
+                    }
                     for member in fleet.members
                 ],
-                gravity_gradient=fleet.gravity_gradient,
-                environment=None if environment is None else environment.as_dict(),
-            )
+                "gravity_gradient": fleet.gravity_gradient,
+                "environment": None if environment is None else environment.as_dict(),
+            }
 
         declared = copy.deepcopy(declaration())
         frozen = fingerprint(declared)
@@ -1022,14 +1022,14 @@ class FiniteLockTransition:
                 )
             }
             audit.update(
-                preflight=dict(
-                    status="REFUSED",
-                    declaration_identity=frozen,
-                    declaration=declared,
-                    planned_prefix=planned,
-                    planned_outputs=_planned_outputs(audit),
-                    physical_motion_committed=False,
-                ),
+                preflight={
+                    "status": "REFUSED",
+                    "declaration_identity": frozen,
+                    "declaration": declared,
+                    "planned_prefix": planned,
+                    "planned_outputs": _planned_outputs(audit),
+                    "physical_motion_committed": False,
+                },
                 accepted_steps=0,
                 accepted_elapsed_s=0.0,
                 exact_accepted_elapsed_s="0",
@@ -1040,20 +1040,22 @@ class FiniteLockTransition:
                 constitutive_transition_applied=False,
             )
             return replace(plan, elapsed_s=0.0, audit=audit)
-        preflight = dict(
-            status="PROVEN",
-            declaration_identity=frozen,
-            full_duration_s=plan.audit["duration_s"],
-            declaration=declared,
-            planned_steps=plan.audit["accepted_steps"],
-            proof_chain_sha256=plan.audit["proof_chain_sha256"],
-            absolute_interface_work_upper_j=plan.audit[
+        preflight = {
+            "status": "PROVEN",
+            "declaration_identity": frozen,
+            "full_duration_s": plan.audit["duration_s"],
+            "declaration": declared,
+            "planned_steps": plan.audit["accepted_steps"],
+            "proof_chain_sha256": plan.audit["proof_chain_sha256"],
+            "absolute_interface_work_upper_j": plan.audit[
                 "integrated_absolute_interface_work_upper_j"
             ],
-            finite_power_work_budget_j=plan.audit["finite_power_work_budget_j"],
-            trapped_pad_inventory_identity=plan.audit["trapped_pad_inventory_identity"],
-            admission_scope="Complete finite profile and every supplied-state load/reach/power/geometry/resource hold proved before any lock motion",
-        )
+            "finite_power_work_budget_j": plan.audit["finite_power_work_budget_j"],
+            "trapped_pad_inventory_identity": plan.audit[
+                "trapped_pad_inventory_identity"
+            ],
+            "admission_scope": "Complete finite profile and every supplied-state load/reach/power/geometry/resource hold proved before any lock motion",
+        }
         preflight["identity"] = fingerprint(preflight)
         audit = copy.deepcopy(plan.audit)
         audit["preflight"] = preflight
@@ -1104,9 +1106,10 @@ class FiniteLockTransition:
                     ).hexdigest()
                     elapsed = q1
         except (ImportError, _ProofUnresolved, ArithmeticError, ValueError) as error:
-            audit["preflight_evidence"] = dict(
-                planned_outputs=_planned_outputs(audit), planned_step_records=records
-            )
+            audit["preflight_evidence"] = {
+                "planned_outputs": _planned_outputs(audit),
+                "planned_step_records": records,
+            }
             absolute_work = sum(
                 (
                     Fraction(record["exact_end_time_s"])
@@ -1129,9 +1132,10 @@ class FiniteLockTransition:
                 integrated_absolute_interface_work_upper_j=str(absolute_work),
                 constitutive_transition_applied=bool(executed),
                 final_rigid_coordinate_change_applied=False,
-                execution_replay=dict(
-                    status="REFUSED", preflight_identity=preflight["identity"]
-                ),
+                execution_replay={
+                    "status": "REFUSED",
+                    "preflight_identity": preflight["identity"],
+                },
             )
             if executed:
                 last = executed[-1]
@@ -1162,13 +1166,13 @@ class FiniteLockTransition:
                 None,
                 audit,
             )
-        audit["execution_replay"] = dict(
-            status="COMPLETED",
-            preflight_identity=preflight["identity"],
-            independently_reintegrated_steps=len(executed),
-            exact_elapsed_s=str(elapsed),
-            all_numerical_endpoints_identical=True,
-        )
+        audit["execution_replay"] = {
+            "status": "COMPLETED",
+            "preflight_identity": preflight["identity"],
+            "independently_reintegrated_steps": len(executed),
+            "exact_elapsed_s": str(elapsed),
+            "all_numerical_endpoints_identical": True,
+        }
         audit.update(
             constitutive_transition_applied=True,
             final_rigid_coordinate_change_applied=True,
@@ -1213,34 +1217,34 @@ class FiniteLockTransition:
         duration = Fraction(options.lock_duration_s)
         count = max(1, int(np.ceil(float(duration) / options.max_step_s)))
         dt = duration / count
-        audit = dict(
-            method="finite-prescribed-relative-motion-lock-v1",
-            duration_s=str(duration),
-            initial_contact_set=initial.as_dict(),
-            accepted_steps=0,
-            proof_chain_sha256=None,
-            physical_start_time_s=fleet.started,
-            physical_end_time_s=fleet.started,
-            accepted_elapsed_s=0.0,
-            exact_accepted_elapsed_s="0",
-            source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            source_files=_source_manifest(),
-            retained_locked_pad_energy_j=contact.audit["final_contact_potential_j"],
-            retained_locked_pad_energy_enclosure_j=inventory_energy.as_dict(),
-            trapped_pad_inventory=inventory,
-            trapped_pad_inventory_identity=fingerprint(inventory),
-            dissipated_pad_energy_at_instantaneous_event_j=0.0,
-            step_records=[],
-            constitutive_transition="Passive compliant pads to ideal strain-trapping clamps and active articulated joints; existing stored elastic energy is a retained independent constant inventory, not the continuing passive spring potential",
-            gravity_gradient=fleet.gravity_gradient,
-            environment_contract=environment.as_dict()
+        audit = {
+            "method": "finite-prescribed-relative-motion-lock-v1",
+            "duration_s": str(duration),
+            "initial_contact_set": initial.as_dict(),
+            "accepted_steps": 0,
+            "proof_chain_sha256": None,
+            "physical_start_time_s": fleet.started,
+            "physical_end_time_s": fleet.started,
+            "accepted_elapsed_s": 0.0,
+            "exact_accepted_elapsed_s": "0",
+            "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "source_files": _source_manifest(),
+            "retained_locked_pad_energy_j": contact.audit["final_contact_potential_j"],
+            "retained_locked_pad_energy_enclosure_j": inventory_energy.as_dict(),
+            "trapped_pad_inventory": inventory,
+            "trapped_pad_inventory_identity": fingerprint(inventory),
+            "dissipated_pad_energy_at_instantaneous_event_j": 0.0,
+            "step_records": [],
+            "constitutive_transition": "Passive compliant pads to ideal strain-trapping clamps and active articulated joints; existing stored elastic energy is a retained independent constant inventory, not the continuing passive spring potential",
+            "gravity_gradient": fleet.gravity_gradient,
+            "environment_contract": environment.as_dict()
             if callable(getattr(environment, "as_dict", None))
             else None,
-            actuation="Active massless positioners follow finite braking profiles f(t)=t-t^2/(2T); bounded Newton-Euler pad reactions; exact internal servo is a declared mechanism assumption",
-            initial_graph="Complete uncertain physical attitudes are retained as immutable initial parameters. Dynamic quaternions encode relative-to-initial attitude increments, each initially identity. Carried redundant scalar gaps intersect their same-event geometric covers and evolve as g0+f*n.adot; no reacquisition or truth reset. Target-relative momentum and positioner kinematic identities retain the same full physical graph; no physical attitude, extension or twist reset.",
-            gravity_factorization="Common central gravity at assembly COM cancels from internal reactions, torque and COM-frame work by sum(m*r)=0; COM/component singularity and typed environment domains remain checked.",
-            scope="Declared finite rigid/positioner mechanism and supplied complete endpoint set; no material, servo hardware or flight qualification",
-        )
+            "actuation": "Active massless positioners follow finite braking profiles f(t)=t-t^2/(2T); bounded Newton-Euler pad reactions; exact internal servo is a declared mechanism assumption",
+            "initial_graph": "Complete uncertain physical attitudes are retained as immutable initial parameters. Dynamic quaternions encode relative-to-initial attitude increments, each initially identity. Carried redundant scalar gaps intersect their same-event geometric covers and evolve as g0+f*n.adot; no reacquisition or truth reset. Target-relative momentum and positioner kinematic identities retain the same full physical graph; no physical attitude, extension or twist reset.",
+            "gravity_factorization": "Common central gravity at assembly COM cancels from internal reactions, torque and COM-frame work by sum(m*r)=0; COM/component singularity and typed environment domains remain checked.",
+            "scope": "Declared finite rigid/positioner mechanism and supplied complete endpoint set; no material, servo hardware or flight qualification",
+        }
         try:
             import flint
 
@@ -1336,27 +1340,27 @@ class FiniteLockTransition:
                     y = self._numerical_step(
                         nominal_model, ar, y, time, dt, fleet.body_count
                     )
-                    proof = dict(
-                        exact_start_time_s=str(time),
-                        exact_end_time_s=str(time + dt),
-                        initial=current.as_dict(),
-                        endpoint=endpoint.as_dict(),
-                        swept=trial.as_dict(),
-                        checks=checks,
-                    )
+                    proof = {
+                        "exact_start_time_s": str(time),
+                        "exact_end_time_s": str(time + dt),
+                        "initial": current.as_dict(),
+                        "endpoint": endpoint.as_dict(),
+                        "swept": trial.as_dict(),
+                        "checks": checks,
+                    }
                     digest = fingerprint(proof)
                     audit["proof_chain_sha256"] = hashlib.sha256(
                         ((audit["proof_chain_sha256"] or "") + digest).encode("ascii")
                     ).hexdigest()
                     audit["step_records"].append(
-                        dict(
-                            exact_start_time_s=str(time),
-                            exact_end_time_s=str(time + dt),
-                            proof_sha256=digest,
-                            proof=proof,
-                            numerical_endpoint=y.tolist(),
-                            checks=checks,
-                        )
+                        {
+                            "exact_start_time_s": str(time),
+                            "exact_end_time_s": str(time + dt),
+                            "proof_sha256": digest,
+                            "proof": proof,
+                            "numerical_endpoint": y.tolist(),
+                            "checks": checks,
+                        }
                     )
                     current = endpoint.hull(IntervalBox.point(y))
                     swept = swept.hull(trial)

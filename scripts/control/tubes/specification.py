@@ -151,20 +151,23 @@ class ProspectiveContactConstraint:
                     "Future reference kinematics differ from their node/clock/goal source"
                 )
             nodes.append(
-                dict(
-                    index=index,
-                    exact_q=str(q),
-                    goal_bound_id=goal_id,
-                    goal_speed_bound=bound.as_dict(),
-                )
+                {
+                    "index": index,
+                    "exact_q": str(q),
+                    "goal_bound_id": goal_id,
+                    "goal_speed_bound": bound.as_dict(),
+                }
             )
         if len(nodes) < 2:
             raise ValueError(
                 "A prospective contact forecast needs at least two prediction nodes"
             )
-        result = dict(
-            schema=record["schema"], source=source, limits=limits, nodes=nodes
-        )
+        result = {
+            "schema": record["schema"],
+            "source": source,
+            "limits": limits,
+            "nodes": nodes,
+        }
         if record.get("reach_policy") is not None:
             from orbexa.control.terminal.contact import ContactReachPolicy
 

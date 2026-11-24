@@ -513,10 +513,10 @@ class SolverConfig:
         composite_geometry_mode(self.composite_geometry_mode)
 
     def options(self) -> dict[str, Any]:
-        return dict(
-            remote=self.remote,
-            disp=self.disp,
-            max_iter=self.max_iter,
-            max_memory=self.max_memory,
-            composite_geometry_mode=self.composite_geometry_mode,
-        )
+        return {
+            "remote": self.remote,
+            "disp": self.disp,
+            "max_iter": self.max_iter,
+            "max_memory": self.max_memory,
+            "composite_geometry_mode": self.composite_geometry_mode,
+        }

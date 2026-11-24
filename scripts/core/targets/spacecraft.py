@@ -76,18 +76,18 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         return self.bounding_sphere_radius
 
     def collision_params(self, operation: str, anom: float) -> dict[str, Any]:
-        return dict(
-            operation=operation,
-            shape="composite",
-            active_safety_model="component_obb_union",
-            center=[0.0, 0.0, 0.0],
-            rotation_matrix=self.rotation_matrix_at(anom).tolist(),
-            geometry=self.geometry.as_dict(),
-            geometry_fingerprint=self.geometry.fingerprint,
-            docking_standoff=self.docking_standoff,
-            tube_radius=0.0,
-            attitude_model=self.attitude_model,
-        )
+        return {
+            "operation": operation,
+            "shape": "composite",
+            "active_safety_model": "component_obb_union",
+            "center": [0.0, 0.0, 0.0],
+            "rotation_matrix": self.rotation_matrix_at(anom).tolist(),
+            "geometry": self.geometry.as_dict(),
+            "geometry_fingerprint": self.geometry.fingerprint,
+            "docking_standoff": self.docking_standoff,
+            "tube_radius": 0.0,
+            "attitude_model": self.attitude_model,
+        }
 
     def assign_docking_targets(self, initial_states: Sequence[np.ndarray]):
         from orbexa.planning.rendezvous.composite import (
@@ -138,48 +138,48 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         )
 
     def as_dict(self):
-        return dict(
-            shape=self.shape,
-            geometry=self.geometry.as_dict(),
-            geometry_fingerprint=self.geometry.fingerprint,
-            mass_kg=self.mass_kg,
-            bounding_sphere_radius=self.bounding_sphere_radius,
-            rendezvous_sphere_radius=self.rendezvous_radius,
-            initial_orientation=self.initial_orientation.tolist(),
-            docking_standoff=self.docking_standoff,
-            docking_clearance=self.docking_standoff,
-            assignment_strategy="composite_accessible_patch_hungarian",
-            attitude_model=self.attitude_model,
-            motion_model=self.attitude_model,
-            gravity_gradient=self.gravity_gradient,
-            external_torque_model="central_spherical_gravity_gradient"
+        return {
+            "shape": self.shape,
+            "geometry": self.geometry.as_dict(),
+            "geometry_fingerprint": self.geometry.fingerprint,
+            "mass_kg": self.mass_kg,
+            "bounding_sphere_radius": self.bounding_sphere_radius,
+            "rendezvous_sphere_radius": self.rendezvous_radius,
+            "initial_orientation": self.initial_orientation.tolist(),
+            "docking_standoff": self.docking_standoff,
+            "docking_clearance": self.docking_standoff,
+            "assignment_strategy": "composite_accessible_patch_hungarian",
+            "attitude_model": self.attitude_model,
+            "motion_model": self.attitude_model,
+            "gravity_gradient": self.gravity_gradient,
+            "external_torque_model": "central_spherical_gravity_gradient"
             if self.gravity_gradient
             else "zero",
-            collision_geometry="explicit_component_obb_union",
-            attitude_reference_frame="body_to_LVLH",
-            quaternion_order="xyzw",
-            initial_quaternion=self.initial_quaternion.tolist(),
-            initial_body_angular_velocity_rad_s=self.initial_body_angular_velocity.tolist(),
-            inertia_kg_m2=self.inertia.tolist(),
-            anomaly_domain=list(self.anomaly_domain),
-            principal_moments_kg_m2=np.linalg.eigvalsh(self.inertia).tolist(),
-            clock_model="analytical_inverse_radius_quadratic_drag",
-            clock_parameters=dict(
-                eccentricity=float(self.eccentricity),
-                alpha=float(self.alpha),
-                mu=float(self.mu),
-                semi_major_axis=float(self.semi_major_axis),
-                theta0=0.0,
-            ),
-            inertial_reference="fixed coincident to LVLH at the first anomaly",
-            lvlh_frame_rotation="positive anomaly increment about orbit normal",
-            integration=dict(
-                method="DOP853",
-                rtol=self.integration_rtol,
-                atol=self.integration_atol,
-                max_anomaly_step=self.integration_max_step,
-            ),
-            assumptions=[
+            "collision_geometry": "explicit_component_obb_union",
+            "attitude_reference_frame": "body_to_LVLH",
+            "quaternion_order": "xyzw",
+            "initial_quaternion": self.initial_quaternion.tolist(),
+            "initial_body_angular_velocity_rad_s": self.initial_body_angular_velocity.tolist(),
+            "inertia_kg_m2": self.inertia.tolist(),
+            "anomaly_domain": list(self.anomaly_domain),
+            "principal_moments_kg_m2": np.linalg.eigvalsh(self.inertia).tolist(),
+            "clock_model": "analytical_inverse_radius_quadratic_drag",
+            "clock_parameters": {
+                "eccentricity": float(self.eccentricity),
+                "alpha": float(self.alpha),
+                "mu": float(self.mu),
+                "semi_major_axis": float(self.semi_major_axis),
+                "theta0": 0.0,
+            },
+            "inertial_reference": "fixed coincident to LVLH at the first anomaly",
+            "lvlh_frame_rotation": "positive anomaly increment about orbit normal",
+            "integration": {
+                "method": "DOP853",
+                "rtol": self.integration_rtol,
+                "atol": self.integration_atol,
+                "max_anomaly_step": self.integration_max_step,
+            },
+            "assumptions": [
                 "rigid body with constant physically realizable inertia",
                 "known target attitude and spin under caller-declared pose bounds",
                 "planar analytical orbit with central-field gravity-gradient torque"
@@ -188,7 +188,7 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
                 "component dimensions/layout and mass properties have the provenance and uncertainty in geometry metadata",
                 "unprepared structural-face candidates; contact strength and flexible appendages are not qualified",
             ],
-        )
+        }
 
     @classmethod
     def from_dict(cls, value):

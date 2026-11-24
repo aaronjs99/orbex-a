@@ -373,9 +373,10 @@ class PhysicalTerminalHandoff:
             ),
             "source body-point assignments contradict their stored points",
         )
-        parameter_context = dict(
-            mu=record["truth"]["mu"], semi_major_axis=record["truth"]["semi_major_axis"]
-        )
+        parameter_context = {
+            "mu": record["truth"]["mu"],
+            "semi_major_axis": record["truth"]["semi_major_axis"],
+        }
         truth = OrbitalModelBounds(
             **{
                 name: (record["truth"][name],) * 2
@@ -718,21 +719,21 @@ class PhysicalTerminalHandoff:
                 )
             )
             omega[key], phi[key] = _outward(padded_omega), _outward(padded_phi)
-            bounds[key] = dict(
-                reference_id=b.reference_id,
-                true_reference_omega=list(map(str, b.omega)),
-                true_reference_phi=list(map(str, b.phi)),
-                reference_state_error_abs=list(map(str, evaluation)),
-                capture_center_omega=list(map(str, padded_omega)),
-                capture_center_phi=list(map(str, padded_phi)),
-                lambda_gain=list(map(str, b.lambda_gain)),
-                bandwidth=list(map(str, b.bandwidth)),
-                maximum_hold=str(b.maximum_hold),
-                position_tolerance=str(b.position_tolerance),
-                whole_tube_position_radius_squared=str(sum(v * v for v in b.omega)),
-                input_limits=b.input_limits.as_dict(),
-                body_radius=str(b.geometry.body_radius),
-            )
+            bounds[key] = {
+                "reference_id": b.reference_id,
+                "true_reference_omega": list(map(str, b.omega)),
+                "true_reference_phi": list(map(str, b.phi)),
+                "reference_state_error_abs": list(map(str, evaluation)),
+                "capture_center_omega": list(map(str, padded_omega)),
+                "capture_center_phi": list(map(str, padded_phi)),
+                "lambda_gain": list(map(str, b.lambda_gain)),
+                "bandwidth": list(map(str, b.bandwidth)),
+                "maximum_hold": str(b.maximum_hold),
+                "position_tolerance": str(b.position_tolerance),
+                "whole_tube_position_radius_squared": str(sum(v * v for v in b.omega)),
+                "input_limits": b.input_limits.as_dict(),
+                "body_radius": str(b.geometry.body_radius),
+            }
             if controller.certificate.policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
                 bounds[key].update(
                     held_policy=controller.certificate.policy.value,
@@ -785,23 +786,23 @@ class PhysicalTerminalHandoff:
             source_guard["input_lower"], source_guard["input_upper"]
         )
         metadata["input_bounds"] = [
-            dict(lower=_float_outward(lo, False), upper=_float_outward(hi, True))
+            {"lower": _float_outward(lo, False), "upper": _float_outward(hi, True)}
             for lo, hi in zip(source_inputs.lower, source_inputs.upper)
         ]
-        metadata["continuous_execution_certificate"] = dict(
-            method="hybrid-source-and-terminal-accounting-clock-v1",
-            start_anomaly=source_guard["start_anomaly"],
-            exact_end_anomaly=str(clocks[-1]),
-            body_radius_m=float(
+        metadata["continuous_execution_certificate"] = {
+            "method": "hybrid-source-and-terminal-accounting-clock-v1",
+            "start_anomaly": source_guard["start_anomaly"],
+            "exact_end_anomaly": str(clocks[-1]),
+            "body_radius_m": float(
                 min(builder.body_radius for builder in runner.builders)
             ),
-            input_lower=list(map(str, source_inputs.lower)),
-            input_upper=list(map(str, source_inputs.upper)),
-            source_approach_exact_end_anomaly=str(clocks[0]),
-            source_approach_result_sha256=source_sha,
-            terminal_execution_sha256=terminal_sha,
-            scope="Composite accounting clock only; original approach and terminal continuous proofs remain separate records",
-        )
+            "input_lower": list(map(str, source_inputs.lower)),
+            "input_upper": list(map(str, source_inputs.upper)),
+            "source_approach_exact_end_anomaly": str(clocks[0]),
+            "source_approach_result_sha256": source_sha,
+            "terminal_execution_sha256": terminal_sha,
+            "scope": "Composite accounting clock only; original approach and terminal continuous proofs remain separate records",
+        }
         trajectory = PhysicalTerminalTrajectory(
             anom_history=_readonly(
                 list(record["anom_history"]) + [float(value) for value in clocks[1:]]
@@ -835,51 +836,51 @@ class PhysicalTerminalHandoff:
             truth=copy.deepcopy(record["truth"]),
             metadata=metadata,
         )
-        summary = dict(
-            method=HANDOFF_METHOD,
-            source_approach=dict(
-                path=str(approach_path.resolve()),
-                raw_sha256=source_sha,
-                semantic_sha256=digest(record),
-                samples=len(record["anom_history"]),
-                exact_end_anomaly=str(clocks[0]),
-                reporter_end_anomaly=str(_exact(record["anom_history"][-1])),
-                reporter_event_discrepancy=str(discrepancy),
-            ),
-            terminal_execution=dict(
-                path=str(terminal_path.resolve()),
-                raw_sha256=terminal_sha,
-                producer_source_snapshot_sha256=execution["source_context"][
+        summary = {
+            "method": HANDOFF_METHOD,
+            "source_approach": {
+                "path": str(approach_path.resolve()),
+                "raw_sha256": source_sha,
+                "semantic_sha256": digest(record),
+                "samples": len(record["anom_history"]),
+                "exact_end_anomaly": str(clocks[0]),
+                "reporter_end_anomaly": str(_exact(record["anom_history"][-1])),
+                "reporter_event_discrepancy": str(discrepancy),
+            },
+            "terminal_execution": {
+                "path": str(terminal_path.resolve()),
+                "raw_sha256": terminal_sha,
+                "producer_source_snapshot_sha256": execution["source_context"][
                     "caller"
                 ].get("source_snapshot_sha256"),
-                journal_sha256=journal_sha,
-                hold_records_sha256=digest(execution["hold_records"]),
-                exact_start_anomaly=str(clocks[0]),
-                exact_end_anomaly=str(clocks[-1]),
-                physical_duration_seconds=float(duration),
-                holds=len(commands),
-                rederived_global_certificates=len(ids),
-                reproved_continuous_flows=flow_count,
-                reproved_swept_fleet_holds=len(commands),
-            ),
-            endpoint=dict(
-                states={key: value.tolist() for key, value in endpoints.items()},
-                reference_centers={
+                "journal_sha256": journal_sha,
+                "hold_records_sha256": digest(execution["hold_records"]),
+                "exact_start_anomaly": str(clocks[0]),
+                "exact_end_anomaly": str(clocks[-1]),
+                "physical_duration_seconds": float(duration),
+                "holds": len(commands),
+                "rederived_global_certificates": len(ids),
+                "reproved_continuous_flows": flow_count,
+                "reproved_swept_fleet_holds": len(commands),
+            },
+            "endpoint": {
+                "states": {key: value.tolist() for key, value in endpoints.items()},
+                "reference_centers": {
                     key: value.tolist() for key, value in centers.items()
                 },
-                omega={key: value.tolist() for key, value in omega.items()},
-                phi={key: value.tolist() for key, value in phi.items()},
-                lambda_gain=list(map(float, runner.builders[0].lambda_gain)),
-                capture_truth=plain(vars(capture_truth)),
-            ),
-            controller_bounds=bounds,
-            original_approach_preserved=True,
-            reset_performed=False,
-            fabricated_mpc_or_smid_history=False,
-            scope="Finite conditional terminal continuation and numerical physical capture endpoint; sensor/reference/initial-spin contracts remain explicit assumptions",
-            reference_center_semantics="Evaluated physical reference, not an optimized nominal center; capture Omega/Phi include outward reference-evaluation reserve",
-            trajectory_semantics="Actual translation/target samples for attitude replay and conservative propellant accounting only",
-        )
+                "omega": {key: value.tolist() for key, value in omega.items()},
+                "phi": {key: value.tolist() for key, value in phi.items()},
+                "lambda_gain": list(map(float, runner.builders[0].lambda_gain)),
+                "capture_truth": plain(vars(capture_truth)),
+            },
+            "controller_bounds": bounds,
+            "original_approach_preserved": True,
+            "reset_performed": False,
+            "fabricated_mpc_or_smid_history": False,
+            "scope": "Finite conditional terminal continuation and numerical physical capture endpoint; sensor/reference/initial-spin contracts remain explicit assumptions",
+            "reference_center_semantics": "Evaluated physical reference, not an optimized nominal center; capture Omega/Phi include outward reference-evaluation reserve",
+            "trajectory_semantics": "Actual translation/target samples for attitude replay and conservative propellant accounting only",
+        }
         if runner.policy is TerminalFeedforwardPolicy.MIDPOINT_V1:
             summary["method"] = MIDPOINT_HANDOFF_METHOD
             summary["terminal_execution"].update(
@@ -896,18 +897,18 @@ class PhysicalTerminalHandoff:
                 ),
             )
         self = object.__new__(cls)
-        for name, value in dict(
-            trajectory=trajectory,
-            capture_truth=capture_truth,
-            states=MappingProxyType(endpoints),
-            nominal_centers=MappingProxyType(centers),
-            omega=MappingProxyType(omega),
-            phi=MappingProxyType(phi),
-            lambda_gain=_readonly(runner.builders[0].lambda_gain),
-            exact_end_anomaly=clocks[-1],
-            _approach_digest=digest(record),
-            _summary=summary,
-        ).items():
+        for name, value in {
+            "trajectory": trajectory,
+            "capture_truth": capture_truth,
+            "states": MappingProxyType(endpoints),
+            "nominal_centers": MappingProxyType(centers),
+            "omega": MappingProxyType(omega),
+            "phi": MappingProxyType(phi),
+            "lambda_gain": _readonly(runner.builders[0].lambda_gain),
+            "exact_end_anomaly": clocks[-1],
+            "_approach_digest": digest(record),
+            "_summary": summary,
+        }.items():
             object.__setattr__(self, name, value)
         object.__setattr__(self, "_integrity_digest", self._current_integrity())
         self.verify_approach(approach)
@@ -922,17 +923,17 @@ class PhysicalTerminalHandoff:
             controls=dict(self.trajectory.controls),
         )
         return digest(
-            dict(
-                summary=self._summary,
-                trajectory=trajectory,
-                capture_truth=vars(self.capture_truth),
-                states=dict(self.states),
-                centers=dict(self.nominal_centers),
-                omega=dict(self.omega),
-                phi=dict(self.phi),
-                lambda_gain=self.lambda_gain,
-                exact_end=str(self.exact_end_anomaly),
-            )
+            {
+                "summary": self._summary,
+                "trajectory": trajectory,
+                "capture_truth": vars(self.capture_truth),
+                "states": dict(self.states),
+                "centers": dict(self.nominal_centers),
+                "omega": dict(self.omega),
+                "phi": dict(self.phi),
+                "lambda_gain": self.lambda_gain,
+                "exact_end": str(self.exact_end_anomaly),
+            }
         )
 
     def verify_approach(self, approach):

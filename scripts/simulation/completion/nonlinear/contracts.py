@@ -51,15 +51,18 @@ def nonlinear_completion_source_identity():
         name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
         for name in _COMPLETION_SOURCE_FILES
     }
-    manifest = dict(schema="orbexa.nonlinear_completion_source_bundle.v1", files=files)
+    manifest = {
+        "schema": "orbexa.nonlinear_completion_source_bundle.v1",
+        "files": files,
+    }
     encoded = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(
         "utf-8"
     )
-    return dict(
-        schema=manifest["schema"],
-        sha256=hashlib.sha256(encoded).hexdigest(),
-        files=files,
-    )
+    return {
+        "schema": manifest["schema"],
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "files": files,
+    }
 
 
 def _require(condition, message):

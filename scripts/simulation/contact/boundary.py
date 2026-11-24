@@ -196,23 +196,23 @@ class TerminalContactBoundary:
         target = _saved_box(nav["target_ephemeris_box"], 6)
         rate_box = _saved_box(nav["target_angular_velocity_box"], 3)
         q = exact(nav["exact_q"])
-        source = dict(
-            method="terminal-navigation-tube-to-contact-v1",
-            exact_q=str(q),
-            navigation_fingerprint=fingerprint(nav),
-            clock_fingerprint=self.clock.fingerprint,
-            target_ephemeris=target.as_dict(),
-            target_body_rate=rate_box.as_dict(),
-            attitude_gate_rad=self.orientation_gate_rad,
-            spin_gate_rad_s=self.spin_gate_rad_s,
-            tube_inputs=dict(
-                nominal_centers=self.nominal_centers,
-                phi=self.phi,
-                omega=self.omega,
-                lambda_gain=self.lambda_gain,
-            ),
-            relative_sources={},
-        )
+        source = {
+            "method": "terminal-navigation-tube-to-contact-v1",
+            "exact_q": str(q),
+            "navigation_fingerprint": fingerprint(nav),
+            "clock_fingerprint": self.clock.fingerprint,
+            "target_ephemeris": target.as_dict(),
+            "target_body_rate": rate_box.as_dict(),
+            "attitude_gate_rad": self.orientation_gate_rad,
+            "spin_gate_rad_s": self.spin_gate_rad_s,
+            "tube_inputs": {
+                "nominal_centers": self.nominal_centers,
+                "phi": self.phi,
+                "omega": self.omega,
+                "lambda_gain": self.lambda_gain,
+            },
+            "relative_sources": {},
+        }
         with _ARB_LOCK, flint.ctx.workprec(self.precision_bits):
             ar = _Arithmetic(flint)
             frame_rotation, rate, _ = self.clock.evaluate(ar.scalar(q), ar)
@@ -245,13 +245,13 @@ class TerminalContactBoundary:
             )
             lifted_error = exact(nav["target_orientation_operator_error"]) + defect
             target_q = _quaternion_box(observed, lifted_error, numerical[0, 6:10], ar)
-            source["pose_frame_transfer"] = dict(
-                source_frame="body-to-reference-orbit",
-                target_frame="body-to-ECI",
-                lifted_raw_rotation=observed.tolist(),
-                clock_product_error_upper=str(defect),
-                operator_error_upper=str(lifted_error),
-            )
+            source["pose_frame_transfer"] = {
+                "source_frame": "body-to-reference-orbit",
+                "target_frame": "body-to-ECI",
+                "lifted_raw_rotation": observed.tolist(),
+                "clock_product_error_upper": str(defect),
+                "operator_error_upper": str(lifted_error),
+            }
             target_rotation = quaternion_rotation(ar.vector(target_q))
             packed = list(ar.vector(target))
             packed.extend((ar.scalar(0),) * 6)
@@ -313,11 +313,11 @@ class TerminalContactBoundary:
                     + tuple(x + uncertainty for x in bus_rate)
                 )
                 packed.append(ar.scalar(numerical[number + 1, 13]))
-                source["relative_sources"][key] = dict(
-                    navigation=_saved_box(relative[key], 6).as_dict(),
-                    admitted_tube=tube.as_dict(),
-                    intersection=state.as_dict(),
-                )
+                source["relative_sources"][key] = {
+                    "navigation": _saved_box(relative[key], 6).as_dict(),
+                    "admitted_tube": tube.as_dict(),
+                    "intersection": state.as_dict(),
+                }
             packed.extend((ar.scalar(0),) * (6 * len(ids)))
             box = ar.box(packed)
         representative = IntervalBox.point(fleet.initial_values[: fleet.ledger_start])

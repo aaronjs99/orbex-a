@@ -175,7 +175,7 @@ class C2RefugeReference:
             _identity(clock_id, "clock identity"),
         )
         self.reference_id = reference_id or fingerprint(
-            dict(pieces=exact_record(self.pieces), frame=frame, clock_id=clock_id)
+            {"pieces": exact_record(self.pieces), "frame": frame, "clock_id": clock_id}
         )
         _identity(self.reference_id, "reference identity")
 

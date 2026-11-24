@@ -211,22 +211,22 @@ def complete_nonlinear_mission(
         attitude_observations=attitude_observer,
         contact_initial_enclosure=contact_boundary,
     )
-    audit = dict(
-        method="nonlinear-actual-boundary-physical-completion-v1",
-        source_approach_sha256=semantic_sha256(vars(approach)),
-        environment=environment.as_dict(),
-        arrival_verification=arrival_verification,
-        environment_rhs_calls=environment.calls,
-        attitude_observations=attitude_observer.as_dict(),
-        contact_observations=contact_observer.as_dict(),
-        capture_truth=plain(capture_truth),
-        admission=dict(
-            position_enclosure_m=0.04,
-            relative_speed_m_s=0.01,
-            orientation_rad=0.01,
-            spin_error_rad_s=0.001,
-            arm_reach_m=design.arm_reach_m,
-        ),
-        scope="Simulated nonlinear continuation with explicit sensors and retained physical gates; separate attitude replay and representative rigid compliant contact, no hardware or flight qualification",
-    )
+    audit = {
+        "method": "nonlinear-actual-boundary-physical-completion-v1",
+        "source_approach_sha256": semantic_sha256(vars(approach)),
+        "environment": environment.as_dict(),
+        "arrival_verification": arrival_verification,
+        "environment_rhs_calls": environment.calls,
+        "attitude_observations": attitude_observer.as_dict(),
+        "contact_observations": contact_observer.as_dict(),
+        "capture_truth": plain(capture_truth),
+        "admission": {
+            "position_enclosure_m": 0.04,
+            "relative_speed_m_s": 0.01,
+            "orientation_rad": 0.01,
+            "spin_error_rad_s": 0.001,
+            "arm_reach_m": design.arm_reach_m,
+        },
+        "scope": "Simulated nonlinear continuation with explicit sensors and retained physical gates; separate attitude replay and representative rigid compliant contact, no hardware or flight qualification",
+    }
     return replace(result, completion_audit=audit)
