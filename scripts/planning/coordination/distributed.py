@@ -20,7 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize as opt
 
-from orbexa.utils.geometry.occlusion import calc_global_occlusion_cost, calc_local_occlusion_cost
+from orbexa.utils.geometry.occlusion import (
+    calc_global_occlusion_cost,
+    calc_local_occlusion_cost,
+)
 from orbexa.planning.coordination.allocation.system import TaskAllocationSystem
 
 logger = logging.getLogger(__name__)
@@ -244,7 +247,7 @@ def run_demo(
             agent.step(local_cost, states_snapshot=snapshot)
 
         if (t + 1) % 10 == 0:
-            msg = f"[DistOpt] step={t+1}/{num_steps}; neighbor-reads={neighbor_reads}"
+            msg = f"[DistOpt] step={t + 1}/{num_steps}; neighbor-reads={neighbor_reads}"
             if global_cost is not None:
                 try:
                     # If calc_global_occlusion_cost wants a different signature,

@@ -28,7 +28,11 @@ class _Interval:
 
     @staticmethod
     def cast(value):
-        return value if isinstance(value, _Interval) else _Interval(float(value), float(value))
+        return (
+            value
+            if isinstance(value, _Interval)
+            else _Interval(float(value), float(value))
+        )
 
     def __add__(self, other):
         other = self.cast(other)
@@ -53,15 +57,21 @@ class _Interval:
         other = self.cast(other)
         if self.lo == self.hi == 0.0 or other.lo == other.hi == 0.0:
             return _Interval(0.0, 0.0)
-        products = (self.lo * other.lo, self.lo * other.hi,
-                    self.hi * other.lo, self.hi * other.hi)
+        products = (
+            self.lo * other.lo,
+            self.lo * other.hi,
+            self.hi * other.lo,
+            self.hi * other.hi,
+        )
         return _Interval(_down(min(products)), _up(max(products)))
 
     __rmul__ = __mul__
 
     def reciprocal(self):
         if self.lo <= 0.0 <= self.hi:
-            raise ValueError("Orbital denominator interval contains zero; subdivide or restrict the domain")
+            raise ValueError(
+                "Orbital denominator interval contains zero; subdivide or restrict the domain"
+            )
         return _Interval(_down(1.0 / self.hi), _up(1.0 / self.lo))
 
     def __truediv__(self, other):
@@ -92,7 +102,9 @@ class _Interval:
             return _Interval(-1.0, 1.0)
         lower = min(math.cos(self.lo), math.cos(self.hi))
         upper = max(math.cos(self.lo), math.cos(self.hi))
-        if math.ceil(_down(self.lo / (2.0 * math.pi))) <= math.floor(_up(self.hi / (2.0 * math.pi))):
+        if math.ceil(_down(self.lo / (2.0 * math.pi))) <= math.floor(
+            _up(self.hi / (2.0 * math.pi))
+        ):
             upper = 1.0
         if math.ceil(_down((self.lo - math.pi) / (2.0 * math.pi))) <= math.floor(
             _up((self.hi - math.pi) / (2.0 * math.pi))
@@ -115,7 +127,11 @@ class _Jet:
 
     @staticmethod
     def cast(value):
-        return value if isinstance(value, _Jet) else _Jet(_Interval.cast(value), (_ZERO,) * 3)
+        return (
+            value
+            if isinstance(value, _Jet)
+            else _Jet(_Interval.cast(value), (_ZERO,) * 3)
+        )
 
     @staticmethod
     def variable(interval, index):
@@ -125,8 +141,10 @@ class _Jet:
 
     def __add__(self, other):
         other = self.cast(other)
-        return _Jet(self.value + other.value,
-                    tuple(a + b for a, b in zip(self.gradient, other.gradient)))
+        return _Jet(
+            self.value + other.value,
+            tuple(a + b for a, b in zip(self.gradient, other.gradient)),
+        )
 
     __radd__ = __add__
 
@@ -141,16 +159,21 @@ class _Jet:
 
     def __mul__(self, other):
         other = self.cast(other)
-        return _Jet(self.value * other.value, tuple(
-            a * other.value + self.value * b
-            for a, b in zip(self.gradient, other.gradient)
-        ))
+        return _Jet(
+            self.value * other.value,
+            tuple(
+                a * other.value + self.value * b
+                for a, b in zip(self.gradient, other.gradient)
+            ),
+        )
 
     __rmul__ = __mul__
 
     def reciprocal(self):
         inverse = self.value.reciprocal()
-        return _Jet(inverse, tuple(-entry * inverse * inverse for entry in self.gradient))
+        return _Jet(
+            inverse, tuple(-entry * inverse * inverse for entry in self.gradient)
+        )
 
     def __truediv__(self, other):
         return self * self.cast(other).reciprocal()
@@ -167,7 +190,9 @@ def _model(q, eccentricity, alpha, beta, semi_major_axis, theta0):
     exponential = (2.0 * alpha * q).exp()
     denominator = exponential + eccentricity * cosine
     if denominator.value.lo <= 0.0:
-        raise ValueError("Orbital denominator must stay positive over the full uncertainty interval")
+        raise ValueError(
+            "Orbital denominator must stay positive over the full uncertainty interval"
+        )
     k = (eccentricity * sine - 2.0 * alpha * exponential) / denominator
     scale = 1.0 + 4.0 * alpha * alpha
     c = scale * exponential / denominator
@@ -184,11 +209,20 @@ def _model(q, eccentricity, alpha, beta, semi_major_axis, theta0):
     return matrix, disturbance
 
 
-def _domain(start_anom, end_anom, nominal_parameters, semi_major_axis, ranges,
-            *, require_nominal_membership=True):
+def _domain(
+    start_anom,
+    end_anom,
+    nominal_parameters,
+    semi_major_axis,
+    ranges,
+    *,
+    require_nominal_membership=True,
+):
     values = (float(start_anom), float(end_anom), float(semi_major_axis))
     if not all(math.isfinite(value) for value in values) or values[2] <= 0.0:
-        raise ValueError("Anomaly endpoints must be finite and semi_major_axis positive")
+        raise ValueError(
+            "Anomaly endpoints must be finite and semi_major_axis positive"
+        )
     if values[1] < values[0]:
         raise ValueError("end_anom must not precede start_anom")
     theta0 = float(nominal_parameters.get("theta0", 0.0))
@@ -235,12 +269,17 @@ def uncertainty_envelope(
     if not math.isfinite(float(mu)) or float(mu) <= 0.0:
         raise ValueError("mu must be positive and finite")
     q, boxes, radii, theta0 = _domain(
-        start_anom, end_anom, nominal_parameters, semi_major_axis,
+        start_anom,
+        end_anom,
+        nominal_parameters,
+        semi_major_axis,
         (e_range, a_range, b_range),
     )
     matrix, disturbance = _model(
-        q, *(_Jet.variable(box, index) for index, box in enumerate(boxes)),
-        float(semi_major_axis), theta0,
+        q,
+        *(_Jet.variable(box, index) for index, box in enumerate(boxes)),
+        float(semi_major_axis),
+        theta0,
     )
 
     def deviation(entry):
@@ -252,19 +291,26 @@ def uncertainty_envelope(
     delta_a = np.asarray([[deviation(entry) for entry in row] for row in matrix])
     delta_d = np.asarray([deviation(entry) for entry in disturbance])
     if not np.all(np.isfinite(delta_a)) or not np.all(np.isfinite(delta_d)):
-        raise ValueError("Non-finite uncertainty envelope; restrict or subdivide the domain")
+        raise ValueError(
+            "Non-finite uncertainty envelope; restrict or subdivide the domain"
+        )
     return delta_a, delta_d
 
 
-def nominal_acceleration_bound(start_anom, end_anom, nominal_parameters, semi_major_axis):
+def nominal_acceleration_bound(
+    start_anom, end_anom, nominal_parameters, semi_major_axis
+):
     """Absolute acceleration-matrix envelope over an anomaly interval."""
-    ranges = tuple((nominal_parameters[key], nominal_parameters[key])
-                   for key in ("eccentricity", "alpha", "beta"))
+    ranges = tuple(
+        (nominal_parameters[key], nominal_parameters[key])
+        for key in ("eccentricity", "alpha", "beta")
+    )
     q, boxes, _, theta0 = _domain(
         start_anom, end_anom, nominal_parameters, semi_major_axis, ranges
     )
-    matrix, _ = _model(q, *(_Jet.cast(box) for box in boxes),
-                       float(semi_major_axis), theta0)
+    matrix, _ = _model(
+        q, *(_Jet.cast(box) for box in boxes), float(semi_major_axis), theta0
+    )
     result = np.asarray([[entry.value.magnitude for entry in row] for row in matrix])
     if not np.all(np.isfinite(result)):
         raise ValueError("Non-finite nominal acceleration envelope")
@@ -272,8 +318,14 @@ def nominal_acceleration_bound(start_anom, end_anom, nominal_parameters, semi_ma
 
 
 def coefficient_intervals(
-    start_anom, end_anom, nominal_parameters, semi_major_axis,
-    *, e_range=None, a_range=None, b_range=None,
+    start_anom,
+    end_anom,
+    nominal_parameters,
+    semi_major_axis,
+    *,
+    e_range=None,
+    a_range=None,
+    b_range=None,
 ):
     """Return ``(A_lo,A_hi,d_lo,d_hi)`` over time and optional parameter boxes.
 
@@ -285,15 +337,21 @@ def coefficient_intervals(
     """
     ranges = tuple(
         (nominal_parameters[key], nominal_parameters[key]) if bounds is None else bounds
-        for key, bounds in zip(("eccentricity", "alpha", "beta"),
-                               (e_range, a_range, b_range))
+        for key, bounds in zip(
+            ("eccentricity", "alpha", "beta"), (e_range, a_range, b_range)
+        )
     )
     q, boxes, _, theta0 = _domain(
-        start_anom, end_anom, nominal_parameters, semi_major_axis, ranges,
+        start_anom,
+        end_anom,
+        nominal_parameters,
+        semi_major_axis,
+        ranges,
         require_nominal_membership=False,
     )
-    matrix, disturbance = _model(q, *(_Jet.cast(box) for box in boxes),
-                                 float(semi_major_axis), theta0)
+    matrix, disturbance = _model(
+        q, *(_Jet.cast(box) for box in boxes), float(semi_major_axis), theta0
+    )
     result = (
         np.asarray([[entry.value.lo for entry in row] for row in matrix]),
         np.asarray([[entry.value.hi for entry in row] for row in matrix]),
@@ -301,5 +359,7 @@ def coefficient_intervals(
         np.asarray([entry.value.hi for entry in disturbance]),
     )
     if not all(np.all(np.isfinite(value)) for value in result):
-        raise ValueError("Non-finite coefficient intervals; restrict or subdivide the domain")
+        raise ValueError(
+            "Non-finite coefficient intervals; restrict or subdivide the domain"
+        )
     return result

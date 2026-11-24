@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 from gekko import GEKKO
 from orbexa.utils.runtime import thread_worker
 
+
 def gen_adaptor_data(
     range_params: Dict,
     orbit_params: Dict,

@@ -65,8 +65,10 @@ class ParameterPredictor:
             + upper_step * (float(refined[key]) - float(previous[key]))
             for key in self.parameter_keys
         }
-        if any(not feasible_sets[key][0] <= blended[key] <= feasible_sets[key][1]
-               for key in self.parameter_keys):
+        if any(
+            not feasible_sets[key][0] <= blended[key] <= feasible_sets[key][1]
+            for key in self.parameter_keys
+        ):
             return None
         return blended
 
@@ -115,9 +117,11 @@ class ParameterPredictor:
         pieces = []
         for idx in range(len(states) - 1):
             predicted = self._rk4_step(
-                states[idx], controls[idx],
+                states[idx],
+                controls[idx],
                 anom=start_anom + idx * anom_step,
-                anom_step=anom_step, matrices=matrices,
+                anom_step=anom_step,
+                matrices=matrices,
                 time_periapsis=params.get("time_periapsis", 0.0),
             )
             error = np.asarray(states[idx + 1] - predicted, dtype=float)
@@ -136,13 +140,19 @@ class ParameterPredictor:
     ) -> Tuple[bool, float, float]:
         """Verify the actual point returned to MPC, independently of a set witness."""
         point_prediction_error = self.prediction_error(
-            parameters=parameters, states=states, controls=controls,
-            start_anom=start_anom, anom_step=anom_step,
+            parameters=parameters,
+            states=states,
+            controls=controls,
+            start_anom=start_anom,
+            anom_step=anom_step,
             dynamics_context=dynamics_context,
         )
         residual = self._state_residuals(
-            parameters=parameters, states=states, controls=controls,
-            start_anom=start_anom, anom_step=anom_step,
+            parameters=parameters,
+            states=states,
+            controls=controls,
+            start_anom=start_anom,
+            anom_step=anom_step,
             dynamics_context=dynamics_context,
         )
         point_fit_error = float(np.sqrt(np.mean(np.square(residual))))
@@ -171,9 +181,11 @@ class ParameterPredictor:
         matrices, _, _ = orbital_ellp_drag(anom_step=anom_step, **params)
         for idx in range(len(states) - 1):
             predicted = self._rk4_step(
-                predicted, controls[idx],
+                predicted,
+                controls[idx],
                 anom=start_anom + idx * anom_step,
-                anom_step=anom_step, matrices=matrices,
+                anom_step=anom_step,
+                matrices=matrices,
                 time_periapsis=params.get("time_periapsis", 0.0),
             )
         return float(np.linalg.norm(predicted - states[-1]))
@@ -198,8 +210,12 @@ class ParameterPredictor:
         if len(states) < 2:
             return estimates, None, "skipped:insufficient_window"
 
-        lower = np.array([feasible_sets[key][0] for key in self.parameter_keys], dtype=float)
-        upper = np.array([feasible_sets[key][1] for key in self.parameter_keys], dtype=float)
+        lower = np.array(
+            [feasible_sets[key][0] for key in self.parameter_keys], dtype=float
+        )
+        upper = np.array(
+            [feasible_sets[key][1] for key in self.parameter_keys], dtype=float
+        )
         span = upper - lower
         scale = np.where(span > 0.0, span, 1.0)
         z0 = np.array(
@@ -220,8 +236,11 @@ class ParameterPredictor:
 
         def residual(z):
             data_error = self._state_residuals(
-                parameters=unpack(z), states=states, controls=controls,
-                start_anom=start_anom, anom_step=anom_step,
+                parameters=unpack(z),
+                states=states,
+                controls=controls,
+                start_anom=start_anom,
+                anom_step=anom_step,
                 dynamics_context=dynamics_context,
             )
             prior_error = self.time_series_prior_weight * (np.asarray(z) - z0)
@@ -239,13 +258,15 @@ class ParameterPredictor:
                 ftol=1.0e-10,
                 gtol=1.0e-10,
             )
-            data_residual = lambda z: residual(z)[:- len(z0)]
+            data_residual = lambda z: residual(z)[: -len(z0)]
             jacobian = self._finite_difference_jacobian(data_residual, result.x)
             observable, observability = self._observable_parameter_mask(jacobian)
             # Individual coefficients can be confounded while a combination such
             # as beta-alpha is observable. Preserve the prior's numerical nullspace
             # rather than discarding every component in an identifiable direction.
-            _, singular_values, right_vectors = np.linalg.svd(jacobian, full_matrices=False)
+            _, singular_values, right_vectors = np.linalg.svd(
+                jacobian, full_matrices=False
+            )
             rank_floor = max(
                 self.observability_absolute_threshold,
                 self.observability_relative_threshold * float(singular_values[0]),
@@ -257,14 +278,20 @@ class ParameterPredictor:
             )
             if refined is None:
                 return estimates, None, "failed:projected_step_outside_feasible_sets"
-            held = [key for idx, key in enumerate(self.parameter_keys) if not observable[idx]]
+            held = [
+                key
+                for idx, key in enumerate(self.parameter_keys)
+                if not observable[idx]
+            ]
             projected_z = np.array(
-                [(refined[key] - lower[idx]) / scale[idx]
-                 for idx, key in enumerate(self.parameter_keys)], dtype=float
+                [
+                    (refined[key] - lower[idx]) / scale[idx]
+                    for idx, key in enumerate(self.parameter_keys)
+                ],
+                dtype=float,
             )
             rms_error = float(
-                np.sqrt(np.mean(np.square(data_residual(projected_z))))
-                * residual_scale
+                np.sqrt(np.mean(np.square(data_residual(projected_z)))) * residual_scale
             )
             held_text = ",".join(held) if held else "none"
             score_text = ",".join(
@@ -378,7 +405,9 @@ class ParameterPredictor:
         intervals = max(length - 1, 0)
         if controls.size == 0:
             if intervals:
-                raise ValueError("SMID requires one recorded control per state interval")
+                raise ValueError(
+                    "SMID requires one recorded control per state interval"
+                )
             return np.empty((0, 3), dtype=float)
         if controls.ndim == 1:
             controls = controls.reshape(1, -1)

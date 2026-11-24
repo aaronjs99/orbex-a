@@ -39,6 +39,7 @@ def cylinder_inside_constraint(r: np.ndarray, limits: dict) -> float:
         z2 - l_limit**2,
     )
 
+
 def pyramidal_constraint(x_0, x_f, mu):
     """
     Generate inequality constraints for a pyramidal region defined between start and goal.

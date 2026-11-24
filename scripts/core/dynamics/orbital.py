@@ -143,9 +143,7 @@ def orbital_params(r_osc: np.ndarray, v_osc: np.ndarray, mu: float) -> SimpleNam
     if e <= 1.0e-10:
         E = M = q
     else:
-        E = np.arctan2(np.sqrt(1.0 - e**2) * np.sin(q), e + np.cos(q)) % (
-            2.0 * np.pi
-        )
+        E = np.arctan2(np.sqrt(1.0 - e**2) * np.sin(q), e + np.cos(q)) % (2.0 * np.pi)
         M = E - e * np.sin(E)
 
     return SimpleNamespace(r=r, v=v, h=h, e=e, a=a, E=E, M=M, q=q)

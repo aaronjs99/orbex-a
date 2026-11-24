@@ -12,6 +12,7 @@
 
 
 """Local Hungarian reassignment with Euclidean travel costs."""
+
 from __future__ import annotations
 
 import numpy as np

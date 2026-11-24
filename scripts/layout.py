@@ -25,4 +25,6 @@ def default_config_path() -> Path:
     root = checkout_root()
     if root is not None and (root / "config" / "default.yaml").is_file():
         return root / "config" / "default.yaml"
-    raise FileNotFoundError("Default scenario is unavailable; supply a scenario YAML with --config PATH")
+    raise FileNotFoundError(
+        "Default scenario is unavailable; supply a scenario YAML with --config PATH"
+    )

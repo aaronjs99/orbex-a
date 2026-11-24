@@ -12,6 +12,7 @@
 
 
 """Standalone chaser state, communication and explicitly selected solver services."""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -46,7 +47,9 @@ class Chaser(Spacecraft):
             self.cid = next(self._cids) + 1
             super().__init__(config, **kwargs)
             if self.num_states != 6:
-                raise ValueError("A standalone Chaser requires one six-state translational vector")
+                raise ValueError(
+                    "A standalone Chaser requires one six-state translational vector"
+                )
 
             self.mean_motion = config.orbit.mean_motion
             self.inputs = [np.zeros(3)]
@@ -135,10 +138,16 @@ class Chaser(Spacecraft):
             return {"goalLocations": self.goal_locations, "occlusion": self.occlusion}
         elif type == "goal":
             if args:
-                raise ValueError("The goal command accepts only a local position or complete state")
+                raise ValueError(
+                    "The goal command accepts only a local position or complete state"
+                )
             goal = np.asarray(info, dtype=float)
-            if goal.shape not in ((3,), (self.num_states,)) or not np.all(np.isfinite(goal)):
-                raise ValueError("Chaser goal must contain three finite position values or a finite complete state")
+            if goal.shape not in ((3,), (self.num_states,)) or not np.all(
+                np.isfinite(goal)
+            ):
+                raise ValueError(
+                    "Chaser goal must contain three finite position values or a finite complete state"
+                )
             self.goal_state = goal.copy()
             return self.goal_state.copy()
         else:
@@ -148,9 +157,15 @@ class Chaser(Spacecraft):
         """Propagate exactly num_steps planned control intervals."""
         from orbexa.core.dynamics.orbital import cwh_equations
 
-        if (isinstance(num_steps, bool) or not isinstance(num_steps, (int, np.integer))
-                or num_steps < 0 or num_steps > len(self.inputs)):
-            raise ValueError("Requested propagation exceeds the available control intervals")
+        if (
+            isinstance(num_steps, bool)
+            or not isinstance(num_steps, (int, np.integer))
+            or num_steps < 0
+            or num_steps > len(self.inputs)
+        ):
+            raise ValueError(
+                "Requested propagation exceeds the available control intervals"
+            )
         # Get CWH matrices
         matrices_tuple, _, _ = cwh_equations(
             self.dt,
@@ -218,7 +233,9 @@ class Chaser(Spacecraft):
         from orbexa.utils.geometry.occlusion import calc_global_occlusion_cost
 
         if self.goal_bounds is None:
-            raise ValueError("Standalone goal allocation requires explicit mpc.goal_bounds; docking missions use target geometry")
+            raise ValueError(
+                "Standalone goal allocation requires explicit mpc.goal_bounds; docking missions use target geometry"
+            )
         num_agents = len(self.r_n_info.keys()) - 1
 
         # Determine number of agents to initialize weights
@@ -255,8 +272,8 @@ class Chaser(Spacecraft):
             constraints.append(
                 {
                     "type": "ineq",
-                    "fun": lambda x, ag=agent: -(
-                        np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goal_bounds[1]
+                    "fun": lambda x, ag=agent: (
+                        -(np.linalg.norm(x[3 * ag - 3 : 3 * ag]) - self.goal_bounds[1])
                     ),
                 }
             )
@@ -311,13 +328,19 @@ class Chaser(Spacecraft):
         from orbexa.core.dynamics.orbital import cwh_equations
         from orbexa.control.mpc.problem import build_from_dynamics
 
-        if isinstance(num_steps, bool) or not isinstance(num_steps, (int, np.integer)) or num_steps < 1:
+        if (
+            isinstance(num_steps, bool)
+            or not isinstance(num_steps, (int, np.integer))
+            or num_steps < 1
+        ):
             raise ValueError("At least one control interval is required")
         reference_state = np.zeros_like(self.curr_state, dtype=float)
         if self.goal_state is not None:
             goal = np.asarray(self.goal_state, dtype=float).reshape(-1)
             if len(goal) not in (3, len(reference_state)):
-                raise ValueError("Chaser goal must contain a position or a complete state")
+                raise ValueError(
+                    "Chaser goal must contain a position or a complete state"
+                )
             reference_state[: len(goal)] = goal
         # Get dynamics matrices/functions from CWH
         matrices, _, _ = cwh_equations(

@@ -9,12 +9,21 @@ from orbexa.visualization.renderers.mission import ADTMPCMissionRenderer
 DemoManifest = ADTMPCMissionManifest
 MissionDemo = ADTMPCMissionResult
 
-__all__ = ["DemoConfig", "OrbexaDemo", "ADTMPCMissionRenderer", "ADTMPCMissionManifest",
-           "DemoManifest", "MissionDemo", "clean_generated_outputs", "main"]
+__all__ = [
+    "DemoConfig",
+    "OrbexaDemo",
+    "ADTMPCMissionRenderer",
+    "ADTMPCMissionManifest",
+    "DemoManifest",
+    "MissionDemo",
+    "clean_generated_outputs",
+    "main",
+]
 
 
 def main() -> int:
     from orbexa.cli.generate_demo import main as cli_main
+
     return cli_main()
 
 

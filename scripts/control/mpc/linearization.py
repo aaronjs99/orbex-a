@@ -79,10 +79,14 @@ def linearize_cylinder_constraint(
         body_normal = np.array([2.0 * p_body[0], 2.0 * p_body[1], 0.0])
         normal = rotation @ body_normal
         offset = radial_margin - normal @ p
-        return AffineConstraint(normal=normal, offset=float(offset), source="cylinder_radial")
+        return AffineConstraint(
+            normal=normal, offset=float(offset), source="cylinder_radial"
+        )
 
     z_sign = 1.0 if p_body[2] >= 0.0 else -1.0
     body_normal = np.array([0.0, 0.0, z_sign])
     normal = rotation @ body_normal
     offset = axial_margin - normal @ p
-    return AffineConstraint(normal=normal, offset=float(offset), source="cylinder_axial")
+    return AffineConstraint(
+        normal=normal, offset=float(offset), source="cylinder_axial"
+    )

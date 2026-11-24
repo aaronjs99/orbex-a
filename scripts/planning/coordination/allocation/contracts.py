@@ -12,6 +12,7 @@
 
 
 """Typed agent memory and policy/network contracts."""
+
 from __future__ import annotations
 
 import numpy as np

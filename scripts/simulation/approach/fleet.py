@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Fleet initialization, separate from mission policy and numerical execution."""
+
 from __future__ import annotations
 
 from typing import List, Sequence, TYPE_CHECKING
@@ -42,16 +43,18 @@ class FleetInitializer:
         ]
         return self.build_chaser_configs(initial_states)
 
-
     def multi_chasers(self) -> List[ChaserConfig]:
         return self.build_chaser_configs(
             self.multi_initial_states(int(self.config.num_chasers))
         )
 
-
     def multi_initial_states(self, count: int) -> List[np.ndarray]:
         """Create deterministic far-field starts for a configurable chaser fleet."""
-        if isinstance(count, bool) or not isinstance(count, (int, np.integer)) or count <= 0:
+        if (
+            isinstance(count, bool)
+            or not isinstance(count, (int, np.integer))
+            or count <= 0
+        ):
             raise ValueError("num_chasers must be a positive integer")
 
         base_state = np.asarray(self.config.orbit.initial_conditions, dtype=float)
@@ -75,9 +78,13 @@ class FleetInitializer:
                 ],
                 dtype=float,
             )
-            radial_unit = position[:2] / max(float(np.linalg.norm(position[:2])), 1.0e-9)
+            radial_unit = position[:2] / max(
+                float(np.linalg.norm(position[:2])), 1.0e-9
+            )
             tangential_unit = np.array([-radial_unit[1], radial_unit[0]], dtype=float)
-            velocity_xy = -inward_speed * radial_unit + 0.25 * inward_speed * tangential_unit
+            velocity_xy = (
+                -inward_speed * radial_unit + 0.25 * inward_speed * tangential_unit
+            )
             velocity = np.array(
                 [
                     velocity_xy[0],
@@ -89,16 +96,22 @@ class FleetInitializer:
             states.append(np.concatenate([position, velocity]))
         return states
 
-
     def build_chaser_configs(
         self, initial_states: Sequence[np.ndarray]
     ) -> List[ChaserConfig]:
         initial_states = [np.asarray(value, dtype=float) for value in initial_states]
-        if not initial_states or any(value.shape != (6,) or not np.all(np.isfinite(value)) for value in initial_states):
-            raise ValueError("A mission fleet requires finite six-state initial conditions")
+        if not initial_states or any(
+            value.shape != (6,) or not np.all(np.isfinite(value))
+            for value in initial_states
+        ):
+            raise ValueError(
+                "A mission fleet requires finite six-state initial conditions"
+            )
         assignments = self.target.assign_docking_targets(initial_states)
         if len(assignments) != len(initial_states):
-            raise ValueError("The target must assign exactly one docking point to each chaser")
+            raise ValueError(
+                "The target must assign exactly one docking point to each chaser"
+            )
         return [
             ChaserConfig(
                 chaser_id=f"chaser_{idx + 1}",

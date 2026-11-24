@@ -39,6 +39,7 @@ def is_key_pressed(key: str) -> bool:
     except Exception:
         return False
 
+
 def thread_worker(result_queue: Queue, func, *args, **kwargs):
     """
     Run a function in a thread and store the result in a queue.
@@ -55,6 +56,7 @@ def thread_worker(result_queue: Queue, func, *args, **kwargs):
         result_queue.put((True, result))
     except Exception as e:
         result_queue.put((False, e))
+
 
 def stream_printer(text):
     """

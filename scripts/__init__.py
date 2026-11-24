@@ -38,14 +38,21 @@ __email__ = "aaronjs@ucla.edu"
 # Solver Module Exports (always available, no circular deps)
 # =============================================================================
 _SOLVER_EXPORTS = {
-    "get_solver", "get_solver_from_config", "register_solver", "SolverBase",
-    "SolverResult", "MPCProblem", "GekkoSolver", "ScipySolver", "SOLVER_REGISTRY",
+    "get_solver",
+    "get_solver_from_config",
+    "register_solver",
+    "SolverBase",
+    "SolverResult",
+    "MPCProblem",
+    "GekkoSolver",
+    "ScipySolver",
+    "SOLVER_REGISTRY",
 }
 _CONTRACT_EXPORTS = {"MPCProblem", "SolverResult"}
 _MODEL_EXPORTS = {
-    "SimulationConfig": 'orbexa.core.configuration.model',
-    "ADTMPCMissionRunner": 'orbexa.simulation.approach.api',
-    "ADTMPCMissionResult": 'orbexa.simulation.approach.records.results',
+    "SimulationConfig": "orbexa.core.configuration.model",
+    "ADTMPCMissionRunner": "orbexa.simulation.approach.api",
+    "ADTMPCMissionResult": "orbexa.simulation.approach.records.results",
 }
 
 
@@ -85,7 +92,17 @@ def __getattr__(name):
         value = getattr(import_module(".solvers", __name__), name)
         globals()[name] = value
         return value
-    if name in ("core", "control", "solvers", "estimation", "planning", "simulation", "visualization", "utils", "layout"):
+    if name in (
+        "core",
+        "control",
+        "solvers",
+        "estimation",
+        "planning",
+        "simulation",
+        "visualization",
+        "utils",
+        "layout",
+    ):
         module = import_module("." + name, __name__)
         globals()[name] = module
         return module
@@ -98,7 +115,7 @@ def __getattr__(name):
 
         return spacecraft
     elif name in ("Spacecraft", "Target", "Chaser"):
-        return getattr(import_module('orbexa.core.spacecraft.base', __name__), name)
+        return getattr(import_module("orbexa.core.spacecraft.base", __name__), name)
     raise AttributeError(f"module 'orbexa' has no attribute '{name}'")
 
 

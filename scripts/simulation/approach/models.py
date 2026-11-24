@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Plain chaser assignments and phase records shared by runtime services."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -36,7 +37,11 @@ class ChaserConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.chaser_id, str) or not self.chaser_id:
             raise ValueError("chaser_id must be a nonempty string")
-        for name, size in (("initial_state", 6), ("docking_point_body", 3), ("docking_normal_body", 3)):
+        for name, size in (
+            ("initial_state", 6),
+            ("docking_point_body", 3),
+            ("docking_normal_body", 3),
+        ):
             value = np.asarray(getattr(self, name), dtype=float)
             if value.shape != (size,) or not np.all(np.isfinite(value)):
                 raise ValueError(f"{name} must be a finite vector of length {size}")
@@ -50,7 +55,9 @@ class ChaserConfig:
             if value is not None and (not isinstance(value, str) or not value):
                 raise ValueError(name + " must be a nonempty explicit identifier")
         if (self.attachment_patch_id is None) != (self.attachment_component_id is None):
-            raise ValueError("Attachment assignments require both patch and component IDs")
+            raise ValueError(
+                "Attachment assignments require both patch and component IDs"
+            )
 
     def assignment_metadata(self) -> Dict[str, Any]:
         result = {
@@ -64,8 +71,10 @@ class ChaserConfig:
             "docking_candidate_index": int(self.docking_candidate_index),
         }
         if self.attachment_patch_id is not None:
-            result.update(attachment_patch_id=self.attachment_patch_id,
-                          attachment_component_id=self.attachment_component_id)
+            result.update(
+                attachment_patch_id=self.attachment_patch_id,
+                attachment_component_id=self.attachment_component_id,
+            )
         return result
 
 

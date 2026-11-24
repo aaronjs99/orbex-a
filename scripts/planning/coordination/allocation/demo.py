@@ -12,6 +12,7 @@
 
 
 """Optional allocation figures and explicit demonstration."""
+
 from __future__ import annotations
 
 import matplotlib.pyplot as plt
@@ -19,9 +20,14 @@ import numpy as np
 from typing import Sequence
 from orbexa.planning.coordination.allocation.contracts import Vec
 from orbexa.planning.coordination.allocation.networks import KNNNetwork
-from orbexa.planning.coordination.allocation.policies.auction import DistributedAuctionPolicy
+from orbexa.planning.coordination.allocation.policies.auction import (
+    DistributedAuctionPolicy,
+)
 from orbexa.planning.coordination.allocation.policies.greedy import GreedySwapPolicy
-from orbexa.planning.coordination.allocation.system import TaskAllocationSystem, make_agents
+from orbexa.planning.coordination.allocation.system import (
+    TaskAllocationSystem,
+    make_agents,
+)
 
 
 def plot_assignments(starts: Sequence[Vec], goals: Sequence[Vec], title: str) -> None:
@@ -82,7 +88,7 @@ def demo_main() -> None:
         interactions = greedy_sys.step_all()
         if greedy_sys.has_converged():
             print(
-                f"[Greedy] converged in {it+1} iterations; interactions this iter={interactions}"
+                f"[Greedy] converged in {it + 1} iterations; interactions this iter={interactions}"
             )
             break
 
@@ -104,7 +110,7 @@ def demo_main() -> None:
         interactions = auction_sys.step_all()
         if auction_sys.has_converged():
             print(
-                f"[Auction] converged in {it+1} iterations; interactions this iter={interactions}"
+                f"[Auction] converged in {it + 1} iterations; interactions this iter={interactions}"
             )
             break
 

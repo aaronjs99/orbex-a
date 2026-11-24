@@ -5,7 +5,16 @@ from typing import Optional
 import numpy as np
 from orbexa.layout import default_config_path
 from orbexa.utils.io.configuration import load_config
-from orbexa.core.configuration.types import OrbitConfig, MPCConfig, TargetConfig, TubeMPCConfig, MissionPolicyConfig, AdaptationConfig, SolverConfig, _as_square_weight_matrix
+from orbexa.core.configuration.types import (
+    OrbitConfig,
+    MPCConfig,
+    TargetConfig,
+    TubeMPCConfig,
+    MissionPolicyConfig,
+    AdaptationConfig,
+    SolverConfig,
+    _as_square_weight_matrix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +22,7 @@ logger = logging.getLogger(__name__)
 def load_simulation_config(path: Optional[str] = None, *, config_type=None):
     """Decode a scenario into the supplied simulation configuration class."""
     from orbexa.core.configuration.model import SimulationConfig
+
     cls = config_type or SimulationConfig
     logger.debug(f"Loading configuration from {path}")
     if path is None:
@@ -50,13 +60,15 @@ def load_simulation_config(path: Optional[str] = None, *, config_type=None):
         goal_bounds=mpc_data.get("goal_bounds"),
         min_chaser_separation=float(mpc_data.get("min_chaser_separation", 0.35)),
         Q=_as_square_weight_matrix(mpc_data.get("Q", np.eye(6).tolist()), 6),
-        R=_as_square_weight_matrix(
-            mpc_data.get("R", (np.eye(3) * 1e-4).tolist()), 3
-        ),
+        R=_as_square_weight_matrix(mpc_data.get("R", (np.eye(3) * 1e-4).tolist()), 3),
         terminal_cost_enabled=mpc_data.get("terminal_cost_enabled", True),
         reference_preview_enabled=mpc_data.get("reference_preview_enabled", True),
-        docking_position_tolerance=float(mpc_data.get("docking_position_tolerance", 0.002)),
-        docking_velocity_tolerance=float(mpc_data.get("docking_velocity_tolerance", 0.08)),
+        docking_position_tolerance=float(
+            mpc_data.get("docking_position_tolerance", 0.002)
+        ),
+        docking_velocity_tolerance=float(
+            mpc_data.get("docking_velocity_tolerance", 0.08)
+        ),
         terminal_dwell_updates=int(mpc_data.get("terminal_dwell_updates", 5)),
     )
 

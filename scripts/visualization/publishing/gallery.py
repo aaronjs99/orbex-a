@@ -9,15 +9,24 @@ from urllib.parse import quote, urlsplit
 
 
 _TITLES = {
-    "docking_body_closeup": "Docking in the target frame", "docking_errors": "Error to the rotating goal",
-    "actual_nominal_trajectories": "Actual and planned paths", "active_target_margin": "Active target clearance",
-    "minimum_pairwise_spacing": "Closest recorded approaches", "multi_chaser_spacing": "Chaser separation",
-    "observable_drag": "Drag combination and uncertainty", "smid_point_errors": "Adaptation at the emitted point",
-    "parameter_estimates_vs_truth": "Parameter beliefs and simulated truth", "smid_fss_widths": "Marginal feasible-set widths",
-    "tube_geometry": "Predicted tube geometry", "control_effort": "Applied controls",
-    "target_attitude": "Target orientation", "target_angular_velocity": "Target orientation rates",
-    "rendezvous_margin": "Rendezvous exclusion sphere", "docking_cylinder_margin": "Docking cylinder clearance",
-    "tightened_rendezvous_margin": "Tube-tightened rendezvous margin", "tightened_docking_cylinder_margin": "Tube-tightened docking margin",
+    "docking_body_closeup": "Docking in the target frame",
+    "docking_errors": "Error to the rotating goal",
+    "actual_nominal_trajectories": "Actual and planned paths",
+    "active_target_margin": "Active target clearance",
+    "minimum_pairwise_spacing": "Closest recorded approaches",
+    "multi_chaser_spacing": "Chaser separation",
+    "observable_drag": "Drag combination and uncertainty",
+    "smid_point_errors": "Adaptation at the emitted point",
+    "parameter_estimates_vs_truth": "Parameter beliefs and simulated truth",
+    "smid_fss_widths": "Marginal feasible-set widths",
+    "tube_geometry": "Predicted tube geometry",
+    "control_effort": "Applied controls",
+    "target_attitude": "Target orientation",
+    "target_angular_velocity": "Target orientation rates",
+    "rendezvous_margin": "Rendezvous exclusion sphere",
+    "docking_cylinder_margin": "Docking cylinder clearance",
+    "tightened_rendezvous_margin": "Tube-tightened rendezvous margin",
+    "tightened_docking_cylinder_margin": "Tube-tightened docking margin",
 }
 
 
@@ -47,9 +56,13 @@ class MissionGallery:
             return False
 
     def _entry(self, entry: Mapping) -> dict:
-        relative = str(entry.get("relative_dir", entry.get("dirrelative", ""))).replace("\\", "/")
+        relative = str(entry.get("relative_dir", entry.get("dirrelative", ""))).replace(
+            "\\", "/"
+        )
         if not relative or Path(relative).is_absolute() or ":" in relative:
-            raise ValueError("Gallery families require a relative directory inside the session output")
+            raise ValueError(
+                "Gallery families require a relative directory inside the session output"
+            )
         family = self.output_dir / relative
         if not self._inside(family, self.output_dir):
             raise ValueError("Gallery family directory escapes the session output")
@@ -61,9 +74,14 @@ class MissionGallery:
             except (OSError, ValueError):
                 manifest = {}
         labels = dict(manifest.get("artifact_labels", {}))
-        skipped = dict(entry.get("skipped_artifacts", manifest.get("skipped_artifacts", {})))
+        skipped = dict(
+            entry.get("skipped_artifacts", manifest.get("skipped_artifacts", {}))
+        )
         notes = list(entry.get("notes", []))
-        for insights in (family / "insights_manifest.json", family / "extras" / "insights_manifest.json"):
+        for insights in (
+            family / "insights_manifest.json",
+            family / "extras" / "insights_manifest.json",
+        ):
             if insights.is_file() and self._inside(insights, family):
                 try:
                     extra = json.loads(insights.read_text(encoding="utf-8"))
@@ -77,19 +95,31 @@ class MissionGallery:
         if artifacts is None:
             artifacts = manifest.get("artifacts")
         if artifacts is None:
-            artifacts = sorted(path for path in family.rglob("*") if path.is_file()) if family.is_dir() else []
+            artifacts = (
+                sorted(path for path in family.rglob("*") if path.is_file())
+                if family.is_dir()
+                else []
+            )
         files = []
         seen = set()
         for artifact in artifacts:
             label = artifact.get("label") if isinstance(artifact, Mapping) else None
-            value = artifact.get("path", "") if isinstance(artifact, Mapping) else artifact
+            value = (
+                artifact.get("path", "") if isinstance(artifact, Mapping) else artifact
+            )
             path = Path(str(value))
             if not path.is_absolute():
                 candidate = family / path
                 path = candidate if candidate.is_file() else self.output_dir / path
-            if not path.is_file() or not self._inside(path, family) or path.name in skipped:
+            if (
+                not path.is_file()
+                or not self._inside(path, family)
+                or path.name in skipped
+            ):
                 continue
-            url = quote(path.resolve().relative_to(self.output_dir).as_posix(), safe="/")
+            url = quote(
+                path.resolve().relative_to(self.output_dir).as_posix(), safe="/"
+            )
             if url in seen:
                 continue
             seen.add(url)
@@ -104,8 +134,18 @@ class MissionGallery:
                 category = "Control & target"
             else:
                 category = "Motion"
-            files.append({"url": url, "name": path.name, "stem": stem, "suffix": path.suffix.lower(), "category": category,
-                          "title": _TITLES.get(stem, stem.replace("_", " ").capitalize()), "label": label or labels.get(path.name, "Recorded simulation artifact.")})
+            files.append(
+                {
+                    "url": url,
+                    "name": path.name,
+                    "stem": stem,
+                    "suffix": path.suffix.lower(),
+                    "category": category,
+                    "title": _TITLES.get(stem, stem.replace("_", " ").capitalize()),
+                    "label": label
+                    or labels.get(path.name, "Recorded simulation artifact."),
+                }
+            )
         files.sort(key=lambda item: 0 if item["stem"].startswith("matched_tube") else 1)
         sample_count = entry.get("sample_count", entry.get("samplecount"))
         data_href = str(entry.get("data_href") or "").replace("\\", "/")
@@ -114,26 +154,44 @@ class MissionGallery:
         return {
             "title": str(entry.get("title", "")),
             "mission": str(entry.get("mission", manifest.get("mission", "Mission"))),
-            "approximation": str(entry.get("approximation", manifest.get("approximation", "Unspecified"))),
-            "backend": str(entry.get("backend", entry.get("solver_backend", manifest.get("solver_backend", "Unspecified")))),
-            "success": entry.get("success"), "sample_count": None if sample_count is None else int(sample_count),
-            "chaser_count": entry.get("chaser_count"), "mission_complete": entry.get("mission_complete"),
+            "approximation": str(
+                entry.get("approximation", manifest.get("approximation", "Unspecified"))
+            ),
+            "backend": str(
+                entry.get(
+                    "backend",
+                    entry.get(
+                        "solver_backend", manifest.get("solver_backend", "Unspecified")
+                    ),
+                )
+            ),
+            "success": entry.get("success"),
+            "sample_count": None if sample_count is None else int(sample_count),
+            "chaser_count": entry.get("chaser_count"),
+            "mission_complete": entry.get("mission_complete"),
             "data_href": quote(data_href, safe="/%."),
-            "message": str(entry.get("message", "")), "files": files,
-            "skipped": skipped, "notes": list(dict.fromkeys(str(note) for note in notes)),
+            "message": str(entry.get("message", "")),
+            "files": files,
+            "skipped": skipped,
+            "notes": list(dict.fromkeys(str(note) for note in notes)),
         }
 
     def render(self, entries: Iterable[Mapping]) -> Path:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         families = [self._entry(entry) for entry in entries]
-        payload = json.dumps(families, ensure_ascii=True, allow_nan=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+        payload = (
+            json.dumps(families, ensure_ascii=True, allow_nan=False)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+        )
         page = _PAGE.replace("__FAMILIES__", payload)
         path = self.output_dir / "index.html"
         path.write_text(page, encoding="utf-8")
         return path
 
 
-_PAGE = r'''<!doctype html>
+_PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ORBEX-A · Mission gallery</title><style>
 :root{color-scheme:dark;--bg:#091321;--panel:#112136;--ink:#eaf1fa;--muted:#b6c6d8;--line:#2a4059;--accent:#88c8ff;--gold:#ebc67c}
@@ -166,4 +224,4 @@ function renderView(){const option=el('view').selectedOptions[0];if(!option)retu
 function listNotes(id,section,values){el(id).replaceChildren();for(const value of values){const item=document.createElement('li');item.textContent=value;el(id).append(item)}el(section).hidden=values.length===0}
 function renderFamily(){const f=families[selected];el('raw-data').hidden=!f.data_href;if(f.data_href)el('raw-data-link').href=f.data_href;el('family-title').textContent=familyLabel(f);const passed=f.success===true;el('status-badge').textContent=passed?'Saved criteria passed':f.success===false?'Incomplete or criteria not met':'Outcome unavailable';el('status-badge').classList.toggle('passed',passed);el('family-status').textContent=`${f.sample_count===null?'Sample count unavailable':f.sample_count+' recorded states'}`+(f.message?' · '+f.message:'');el('family-links').replaceChildren();for(const [name,title] of [['index.html','Mission report'],['manifest.json','Artifact manifest'],['trajectory.mp4','Approach video (MP4)'],['insights_manifest.json','Insight provenance'],['mission_data.json','Raw mission data']]){const file=f.files.find(item=>item.name===name);if(file)el('family-links').append(link(file.url,title))}const gifs=f.files.filter(file=>file.suffix==='.gif');const animations=gifs.length?gifs:f.files.filter(file=>file.suffix==='.mp4');el('animations').replaceChildren();for(const file of animations)el('animations').append(imageCard({...file,title:file.stem.includes('closeup')?'Docking in the target frame':'Recorded mission approach'},true));el('animation-section').hidden=animations.length===0;const labels={replay:'Animated recorded replay',trajectory:'Actual and planned paths',tube_trajectory:'Tubes and prediction horizons',diagnostics:'Interactive diagnostics'};const views=f.files.filter(file=>file.suffix==='.html'&&Object.keys(labels).some(name=>file.stem===name||name==='replay'&&file.stem.endsWith('_replay')));views.sort((a,b)=>(a.stem.includes('replay')?-1:0)-(b.stem.includes('replay')?-1:0));el('view').replaceChildren();for(const file of views){const option=document.createElement('option');option.value=file.url;option.textContent=labels[file.stem]||labels.replay;el('view').append(option)}el('explorer-section').hidden=views.length===0;if(views.length){if(views.some(file=>file.url===currentView))el('view').value=currentView;renderView()}else{el('explorer').removeAttribute('src')}el('categories').replaceChildren();const categories=['All',...new Set(f.files.filter(file=>['.png','.jpg','.jpeg','.webp','.svg'].includes(file.suffix)).map(file=>file.category))];if(!categories.includes(category))category='All';for(const name of categories){const button=document.createElement('button');button.type='button';button.textContent=name;button.dataset.category=name;button.setAttribute('aria-pressed',String(name===category));el('categories').append(button)}renderPlots();listNotes('missing','missing-section',Object.entries(f.skipped).map(([name,reason])=>`${name}: ${reason}`));listNotes('notes','notes-section',f.notes)}
 el('family-count').textContent=String(families.length);const known=families.filter(f=>typeof f.success==='boolean');el('success-count').textContent=`${families.filter(f=>f.success===true).length} / ${known.length}`;const counts=families.map(f=>f.sample_count);el('sample-count').textContent=counts.length&&counts.every(n=>n!==null)?counts.reduce((a,b)=>a+b,0).toLocaleString():'Unavailable';for(const [index,family] of families.entries()){const option=document.createElement('option');option.value=String(index);option.textContent=familyLabel(family);el('family').append(option)}el('family').disabled=families.length<2;el('selected').hidden=families.length===0;el('no-families').hidden=families.length>0;if(families.length)renderFamily();el('family').addEventListener('change',()=>{selected=Number(el('family').value);renderFamily()});el('view').addEventListener('change',renderView);el('categories').addEventListener('click',event=>{const button=event.target.closest('button[data-category]');if(!button)return;category=button.dataset.category;el('categories').querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));renderPlots()});el('close-dialog').addEventListener('click',()=>el('lightbox').close());el('lightbox').addEventListener('click',event=>{if(event.target===el('lightbox'))el('lightbox').close()});
-</script></body></html>'''
+</script></body></html>"""

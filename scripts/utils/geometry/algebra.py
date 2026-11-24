@@ -29,6 +29,7 @@ def calc_distance(p1, p2) -> float:
     p2 = np.asarray(p2, dtype=float)
     return float(np.linalg.norm(p1 - p2))
 
+
 def gen_skew_sym_mat(val: np.ndarray) -> np.ndarray:
     """
     Generate a 3x3 skew-symmetric matrix from a 3-element vector.
@@ -47,6 +48,7 @@ def gen_skew_sym_mat(val: np.ndarray) -> np.ndarray:
             [-v[1], v[0], 0.0],
         ]
     )
+
 
 def tait_bryan_to_rotation_matrix(angles: np.ndarray) -> np.ndarray:
     """
@@ -77,6 +79,7 @@ def tait_bryan_to_rotation_matrix(angles: np.ndarray) -> np.ndarray:
             [sa * sg - ca * sb * cg, sa * cg + ca * sb * sg, ca * cb],
         ]
     )
+
 
 def calc_current_pos(target, x_i, t):
     """

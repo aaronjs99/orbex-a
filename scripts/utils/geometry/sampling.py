@@ -21,6 +21,7 @@ def random_unit_vectors(n: int) -> np.ndarray:
     v /= np.linalg.norm(v, axis=1, keepdims=True)
     return v
 
+
 def gen_init_state(num_chasers: int, rX: float, rV: float) -> np.ndarray:
     """
     Generate random initial positions and velocities for chasers.
@@ -43,6 +44,7 @@ def gen_init_state(num_chasers: int, rX: float, rV: float) -> np.ndarray:
     # The original code interleaved them: x_0[chaser * 6 + 0:3] = pos, + 3:6 = vel
     x0 = np.hstack([pos, vel]).reshape((num_chasers, 6))
     return x0.flatten()
+
 
 def gen_shape_data(shape, shapeParams, numPoints=100):
     if shape == "cylinder":
@@ -72,6 +74,7 @@ def gen_shape_data(shape, shapeParams, numPoints=100):
         return x_pos, y_pos, z_pos
     else:
         raise ValueError("Shape not recognized")
+
 
 def gen_fib_lattice(sphere_params, num_points, **kwargs):
     sphere_center, sphere_radius = sphere_params

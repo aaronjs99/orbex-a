@@ -1,9 +1,11 @@
 """Validated configuration for fresh mission runs or saved-data rendering."""
+
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from orbexa.sessions import validate_session_id
+
 
 @dataclass(frozen=True)
 class DemoConfig:
@@ -30,6 +32,8 @@ class DemoConfig:
         if self.mission not in ("single", "multi", "all"):
             raise ValueError(f"Unknown mission: {self.mission}")
         if self.primary_solver != "gekko":
-            raise ValueError("ADTMPC mission generation requires the nonlinear GEKKO controller")
+            raise ValueError(
+                "ADTMPC mission generation requires the nonlinear GEKKO controller"
+            )
         if self.session_id is not None:
             validate_session_id(self.session_id, allow_latest=self.from_data)

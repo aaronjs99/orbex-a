@@ -271,7 +271,9 @@ def build_from_dynamics(
         np.eye(len(initial_state)) if state_cost_matrix is None else state_cost_matrix
     )
     input_cost_matrix = (
-        np.eye(input_matrix.shape[1]) if input_cost_matrix is None else input_cost_matrix
+        np.eye(input_matrix.shape[1])
+        if input_cost_matrix is None
+        else input_cost_matrix
     )
 
     config = ORBEXAProblemConfig(

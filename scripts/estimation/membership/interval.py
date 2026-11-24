@@ -26,10 +26,14 @@ def _add(left, right):
 
 
 def _multiply(left, right):
-    products = np.stack((
-        left[0] * right[0], left[0] * right[1],
-        left[1] * right[0], left[1] * right[1],
-    ))
+    products = np.stack(
+        (
+            left[0] * right[0],
+            left[0] * right[1],
+            left[1] * right[0],
+            left[1] * right[1],
+        )
+    )
     return (
         np.nextafter(np.min(products, axis=0), -np.inf),
         np.nextafter(np.max(products, axis=0), np.inf),
@@ -87,9 +91,13 @@ def _box_consistent(box, states, controls, anomalies, steps, context, error):
         q = anomalies[index]
         stage_coefficients = [
             coefficient_intervals(
-                stage_q, stage_q, nominal, float(axis),
+                stage_q,
+                stage_q,
+                nominal,
+                float(axis),
                 e_range=box["eccentricity"],
-                a_range=box["alpha"], b_range=box["beta"],
+                a_range=box["alpha"],
+                b_range=box["beta"],
             )
             for stage_q in (q, q + 0.5 * step, q + step)
         ]
@@ -98,7 +106,9 @@ def _box_consistent(box, states, controls, anomalies, steps, context, error):
         if not all(np.all(np.isfinite(endpoint)) for endpoint in predicted):
             raise FloatingPointError("nonfinite interval prediction")
         observation = _observation_interval(states[index + 1], error)
-        if np.any(predicted[1] < observation[0]) or np.any(observation[1] < predicted[0]):
+        if np.any(predicted[1] < observation[0]) or np.any(
+            observation[1] < predicted[0]
+        ):
             return False
     return True
 
@@ -143,7 +153,9 @@ def contract_parameter_box(
         raise ValueError("states must have shape (N+1, 6)")
     count = max(0, len(samples) - 1)
     if count and (inputs.ndim != 2 or inputs.shape != (count, 3)):
-        raise ValueError("controls must have shape (N, 3), one held input per transition")
+        raise ValueError(
+            "controls must have shape (N, 3), one held input per transition"
+        )
     if not np.all(np.isfinite(samples)) or not np.all(np.isfinite(inputs)):
         raise ValueError("observations and held controls must be finite")
     error = np.broadcast_to(np.asarray(error_bound, dtype=float), (6,))
@@ -156,8 +168,14 @@ def contract_parameter_box(
         steps = step_values
     else:
         raise ValueError("anom_step must be a scalar or one width per transition")
-    if np.any(~np.isfinite(steps)) or np.any(steps <= 0.0) or not np.isfinite(start_anom):
-        raise ValueError("finite anomaly and strictly positive subinterval widths are required")
+    if (
+        np.any(~np.isfinite(steps))
+        or np.any(steps <= 0.0)
+        or not np.isfinite(start_anom)
+    ):
+        raise ValueError(
+            "finite anomaly and strictly positive subinterval widths are required"
+        )
     budget = int(max_boxes)
     if budget < 0 or budget != max_boxes:
         raise ValueError("max_boxes must be a nonnegative integer")
@@ -196,7 +214,13 @@ def contract_parameter_box(
         diagnostics["evaluated_boxes"] += 1
         try:
             consistent = _box_consistent(
-                box, samples, inputs, anomalies, steps, dynamics_context, error,
+                box,
+                samples,
+                inputs,
+                anomalies,
+                steps,
+                dynamics_context,
+                error,
             )
         except (ValueError, FloatingPointError, OverflowError):
             retained.append(box)
@@ -209,7 +233,8 @@ def contract_parameter_box(
             _PARAMETERS,
             key=lambda key: (
                 (box[key][1] - box[key][0]) / initial_widths[key]
-                if initial_widths[key] > 0.0 else -1.0
+                if initial_widths[key] > 0.0
+                else -1.0
             ),
         )
         lo, hi = box[split_key]
@@ -235,7 +260,10 @@ def contract_parameter_box(
         )
     contracted = any(result[key] != original[key] for key in _PARAMETERS)
     diagnostics["status"] = (
-        "contracted" if contracted else
-        "unresolved_domain" if diagnostics["unresolved_boxes"] else "unchanged"
+        "contracted"
+        if contracted
+        else "unresolved_domain"
+        if diagnostics["unresolved_boxes"]
+        else "unchanged"
     )
     return result, diagnostics

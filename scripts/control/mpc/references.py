@@ -29,7 +29,9 @@ def sample_tracking_reference(
         or not np.all(np.isfinite(anomalies))
         or np.any(np.diff(anomalies) <= 0.0)
     ):
-        raise ValueError("A tracking reference needs at least two increasing finite samples")
+        raise ValueError(
+            "A tracking reference needs at least two increasing finite samples"
+        )
     states = np.column_stack([state_at(float(value)) for value in anomalies])
     input_matrix = np.asarray(input_matrix, dtype=float)
     inputs = []

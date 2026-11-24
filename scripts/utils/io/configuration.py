@@ -28,6 +28,7 @@ def load_config(path=None):
     """
     if path is None:
         from orbexa.layout import default_config_path
+
         path = default_config_path()
     with open(Path(path), "r", encoding="utf-8") as file:
         return yaml.safe_load(file)

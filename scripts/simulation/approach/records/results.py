@@ -11,6 +11,7 @@
 # ***********************************************************/
 
 """Serializable mission records and standalone result I/O."""
+
 from __future__ import annotations
 
 import copy
@@ -56,9 +57,13 @@ class ADTMPCMissionResult:
     active_target_margins: Dict[str, List[float]]
     pairwise_spacing: List[Dict[str, float]]
     physical_rendezvous_margins: Dict[str, List[float]] = field(default_factory=dict)
-    physical_docking_cylinder_margins: Dict[str, List[float]] = field(default_factory=dict)
+    physical_docking_cylinder_margins: Dict[str, List[float]] = field(
+        default_factory=dict
+    )
     tightened_rendezvous_margins: Dict[str, List[float]] = field(default_factory=dict)
-    tightened_docking_cylinder_margins: Dict[str, List[float]] = field(default_factory=dict)
+    tightened_docking_cylinder_margins: Dict[str, List[float]] = field(
+        default_factory=dict
+    )
     metadata: Dict[str, Any] = field(default_factory=dict)
     tube_diagnostics: Dict[str, Any] = field(default_factory=dict)
 
@@ -70,13 +75,29 @@ class ADTMPCMissionResult:
         payload = copy.deepcopy(data)
         # Partial and older recorded runs can omit optional diagnostic histories.
         # No trajectory, physical context, or current-model identity is invented.
-        for name in ("phase_history", "target_attitude_history", "target_angular_velocity_history",
-                     "feasible_set_history", "parameter_estimate_history", "smid_records",
-                     "tube_radius_history", "pairwise_spacing"):
+        for name in (
+            "phase_history",
+            "target_attitude_history",
+            "target_angular_velocity_history",
+            "feasible_set_history",
+            "parameter_estimate_history",
+            "smid_records",
+            "tube_radius_history",
+            "pairwise_spacing",
+        ):
             payload.setdefault(name, [])
-        for name in ("nominal_trajectories", "controls", "solve_stats", "solver_costs",
-                     "docking_points", "initial_belief", "final_belief", "tube_profiles",
-                     "rendezvous_margins", "docking_cylinder_margins"):
+        for name in (
+            "nominal_trajectories",
+            "controls",
+            "solve_stats",
+            "solver_costs",
+            "docking_points",
+            "initial_belief",
+            "final_belief",
+            "tube_profiles",
+            "rendezvous_margins",
+            "docking_cylinder_margins",
+        ):
             payload.setdefault(name, {})
         if "sample_phase_history" not in payload:
             payload["sample_phase_history"] = payload.get("metadata", {}).get(
@@ -85,12 +106,16 @@ class ADTMPCMissionResult:
             )
         if "active_target_margins" not in payload:
             payload["active_target_margins"] = payload.get("rendezvous_margins", {})
-        payload.setdefault("physical_rendezvous_margins", payload.get("rendezvous_margins", {}))
+        payload.setdefault(
+            "physical_rendezvous_margins", payload.get("rendezvous_margins", {})
+        )
         payload.setdefault(
             "physical_docking_cylinder_margins",
             payload.get("docking_cylinder_margins", {}),
         )
-        payload.setdefault("tightened_rendezvous_margins", payload.get("rendezvous_margins", {}))
+        payload.setdefault(
+            "tightened_rendezvous_margins", payload.get("rendezvous_margins", {})
+        )
         payload.setdefault(
             "tightened_docking_cylinder_margins",
             payload.get("docking_cylinder_margins", {}),

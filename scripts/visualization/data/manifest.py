@@ -1,4 +1,5 @@
 """Stable artifact manifest schema and raw-data references."""
+
 from __future__ import annotations
 import os
 from dataclasses import dataclass, field
@@ -7,13 +8,24 @@ from typing import Dict, List, Optional
 from orbexa.utils.io.data import save_data
 
 _CORE_ARTIFACTS = (
-    "trajectory.html", "diagnostics.html", "tube_trajectory.html",
-    "trajectory.mp4", "trajectory.gif", "actual_nominal_trajectories.png",
-    "tube_geometry.png", "control_effort.png", "rendezvous_margin.png",
-    "docking_cylinder_margin.png", "tightened_rendezvous_margin.png",
-    "tightened_docking_cylinder_margin.png", "active_target_margin.png",
-    "smid_fss_widths.png", "parameter_estimates_vs_truth.png",
-    "target_attitude.png", "target_angular_velocity.png", "multi_chaser_spacing.png",
+    "trajectory.html",
+    "diagnostics.html",
+    "tube_trajectory.html",
+    "trajectory.mp4",
+    "trajectory.gif",
+    "actual_nominal_trajectories.png",
+    "tube_geometry.png",
+    "control_effort.png",
+    "rendezvous_margin.png",
+    "docking_cylinder_margin.png",
+    "tightened_rendezvous_margin.png",
+    "tightened_docking_cylinder_margin.png",
+    "active_target_margin.png",
+    "smid_fss_widths.png",
+    "parameter_estimates_vs_truth.png",
+    "target_attitude.png",
+    "target_angular_velocity.png",
+    "multi_chaser_spacing.png",
 )
 
 
@@ -73,7 +85,11 @@ class ADTMPCMissionManifest:
             "model_version": self.model_version,
             "controller": self.controller,
         }
-        payload["required_entries"] = [name for name in payload["required_entries"] if name not in self.skipped_artifacts]
+        payload["required_entries"] = [
+            name
+            for name in payload["required_entries"]
+            if name not in self.skipped_artifacts
+        ]
         if not save_data(path, payload):
             raise OSError(f"Could not save artifact manifest to {path}")
         self.add(path)

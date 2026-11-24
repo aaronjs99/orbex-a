@@ -40,7 +40,9 @@ class CylinderConstraint:
         is a conservative distance rather than the Euclidean signed distance.
         """
         p_body = target_frame_position(position, self.orientation)
-        radial_margin = np.hypot(p_body[0], p_body[1]) - (self.radius + self.tube_radius)
+        radial_margin = np.hypot(p_body[0], p_body[1]) - (
+            self.radius + self.tube_radius
+        )
         axial_margin = abs(p_body[2]) - (self.half_length + self.tube_radius)
         return float(radial_margin), float(axial_margin)
 
@@ -53,9 +55,11 @@ def target_frame_position(position: np.ndarray, orientation: np.ndarray) -> np.n
     """Express an LVLH-frame position in the rotating target body frame."""
     value = np.asarray(orientation, dtype=float)
     if value.shape == (3, 3):
-        if (not np.all(np.isfinite(value)) or
-                not np.allclose(value.T @ value, np.eye(3), atol=1e-10, rtol=0) or
-                not np.isclose(np.linalg.det(value), 1.0, atol=1e-10, rtol=0)):
+        if (
+            not np.all(np.isfinite(value))
+            or not np.allclose(value.T @ value, np.eye(3), atol=1e-10, rtol=0)
+            or not np.isclose(np.linalg.det(value), 1.0, atol=1e-10, rtol=0)
+        ):
             raise ValueError("Target rotation matrix must be finite and proper")
         rotation = value
     else:
@@ -106,9 +110,7 @@ def rotating_body_point_velocity(
         dtype=float,
     )
     rotation_dot = (
-        roll_rate * d_r_d_roll
-        + pitch_rate * d_r_d_pitch
-        + yaw_rate * d_r_d_yaw
+        roll_rate * d_r_d_roll + pitch_rate * d_r_d_pitch + yaw_rate * d_r_d_yaw
     )
     return rotation_dot @ np.asarray(body_point, dtype=float)
 
@@ -168,12 +170,21 @@ def project_box_halfspace(
     control, normal, lower, upper = (
         np.asarray(value, dtype=float) for value in (control, normal, lower, upper)
     )
-    if (control.ndim != 1 or any(value.shape != control.shape for value in (normal, lower, upper))
-            or not np.all(np.isfinite(control)) or not np.all(np.isfinite(normal))
-            or not np.isfinite(offset) or np.any(np.isnan(lower)) or np.any(np.isnan(upper))
-            or np.any(np.isposinf(lower)) or np.any(np.isneginf(upper))
-            or np.any(lower > upper)):
-        raise ValueError("Halfspace projection requires finite control/normal/offset and a valid input box")
+    if (
+        control.ndim != 1
+        or any(value.shape != control.shape for value in (normal, lower, upper))
+        or not np.all(np.isfinite(control))
+        or not np.all(np.isfinite(normal))
+        or not np.isfinite(offset)
+        or np.any(np.isnan(lower))
+        or np.any(np.isnan(upper))
+        or np.any(np.isposinf(lower))
+        or np.any(np.isneginf(upper))
+        or np.any(lower > upper)
+    ):
+        raise ValueError(
+            "Halfspace projection requires finite control/normal/offset and a valid input box"
+        )
     bounded = np.clip(control, lower, upper)
     if float(normal @ bounded) >= offset:
         return bounded
@@ -208,9 +219,12 @@ def project_box_halfspace(
             high = midpoint
     projected = np.clip(control + high * normal, lower, upper)
     tolerance = 8.0 * np.finfo(float).eps * max(1.0, abs(original_offset))
-    if (not np.all(np.isfinite(projected)) or np.any(projected < lower)
-            or np.any(projected > upper)
-            or float(original_normal @ projected) < original_offset - tolerance):
+    if (
+        not np.all(np.isfinite(projected))
+        or np.any(projected < lower)
+        or np.any(projected > upper)
+        or float(original_normal @ projected) < original_offset - tolerance
+    ):
         return None
     return projected
 

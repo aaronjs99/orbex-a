@@ -15,11 +15,11 @@
 from importlib import import_module
 
 _EXPORTS = {
-    "SMIDAdaptor": 'orbexa.estimation.adaptation.smid',
-    "SMIDRecord": 'orbexa.estimation.adaptation.records',
-    "gen_adaptor_data": 'orbexa.estimation.adaptation.batch',
-    "run_adaptor_op": 'orbexa.estimation.adaptation.batch',
-    "run_adaptation": 'orbexa.estimation.adaptation.batch',
+    "SMIDAdaptor": "orbexa.estimation.adaptation.smid",
+    "SMIDRecord": "orbexa.estimation.adaptation.records",
+    "gen_adaptor_data": "orbexa.estimation.adaptation.batch",
+    "run_adaptor_op": "orbexa.estimation.adaptation.batch",
+    "run_adaptation": "orbexa.estimation.adaptation.batch",
 }
 __all__ = list(_EXPORTS)
 

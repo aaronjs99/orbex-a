@@ -1,4 +1,5 @@
 """Atomic worker records and streamed source-file identities."""
+
 from __future__ import annotations
 
 import hashlib
