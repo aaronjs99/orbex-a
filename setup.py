@@ -1,22 +1,19 @@
 #!/usr/bin/env python3
-# /***********************************************************
-# *                                                         *
-# * Copyright (c) 2026                                      *
-# *                                                         *
-# * The Verifiable & Control-Theoretic Robotics (VECTR) Lab *
-# * University of California, Los Angeles                   *
-# *                                                         *
-# * Authors: Aaron John Sabu                                *
-# * Contact: {aaronjs, btlopez}@ucla.edu                    *
-# *                                                         *
-# ***********************************************************/
+"""setup.py: setuptools entry for pip and ROS 2 ament_python builds.
 
-"""
-Setup script for ORBEX-A package.
-This file exists for compatibility with pip install -e in older pip versions.
-Configuration is in pyproject.toml.
+``pyproject.toml`` holds the package metadata. This file maps ``scripts/`` to
+the ``orbexa`` package and installs the ament resource marker and
+``package.xml`` so ``colcon build`` registers the package.
+
+Copyright: Aaron John Sabu
 """
 
 from setuptools import find_packages, setup
 
-setup(packages=["orbexa", *("orbexa." + name for name in find_packages("scripts"))])
+setup(
+    packages=["orbexa", *("orbexa." + name for name in find_packages("scripts"))],
+    data_files=[
+        ("share/ament_index/resource_index/packages", ["resource/orbexa"]),
+        ("share/orbexa", ["package.xml"]),
+    ],
+)
