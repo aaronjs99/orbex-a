@@ -540,7 +540,7 @@ class _LockField:
         )
 
     def evaluate(self, time, values):
-        ar, fleet, options = self.ar, self.fleet, self.o
+        ar, fleet = self.ar, self.fleet
         p, v, q, w = values[:3], values[3:6], values[6:10], values[10:13]
         _, g, gd, offsets, rdots, rddots, quaternions, rotations, inertias = self.shape(
             time, values

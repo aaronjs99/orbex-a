@@ -643,13 +643,6 @@ class MatchedNonlinearComparison:
                 width=0.175,
                 color=_COLORS[number],
             )
-            abbreviations = {
-                "COMPLETED": "C",
-                "INCOMPLETE": "I",
-                "FAILED": "F",
-                "SETUP_FAILED": "S",
-                "METRICS_REFUSED": "M",
-            }
             for position, value, row, bar in zip(positions, heights, rows, bars):
                 status = row["metrics"]["status"]
                 evidence = recorded_outcome_evidence(row["metrics"])

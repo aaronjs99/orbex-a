@@ -119,8 +119,8 @@ class Chaser(Spacecraft):
             self.t_n_info[neighbor] = info
         elif type == "get_locations":
             self.r_n_info[self.id] = self.curr_state[:3]
-            for agent in info.keys():
-                if agent not in self.r_n_info.keys() and agent != "len":
+            for agent in info:
+                if agent not in self.r_n_info and agent != "len":
                     self.r_n_info[agent] = info[agent]
                     self.neighbors_locn_consensus = False
             self.r_n_info["len"] = len(self.r_n_info.keys()) - 1
@@ -251,7 +251,7 @@ class Chaser(Spacecraft):
             r_ids = list(self.r_n_info.keys())
         except:
             r_ids, x0 = [], []
-            for agent in self.r_n_info.keys():
+            for agent in self.r_n_info:
                 if agent != "len":
                     r_ids.append(agent)
                     x0.append(self.r_n_info[agent])

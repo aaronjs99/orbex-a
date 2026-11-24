@@ -232,9 +232,6 @@ class CasadiSolver(SolverBase):
 
     def cleanup(self) -> None:
         """Clean up CasADi problem."""
-
-    def cleanup(self) -> None:
-        """Clean up CasADi problem."""
         self._opti = None
         self._states = None
         self._controls = None
