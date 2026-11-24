@@ -2,50 +2,6 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[project]
-name = "orbexa"
-version = "2.3.0"
-description = "Orbital Rendezvous and Capture Experiment with Adaptive Tube MPC"
-authors = [
-  { name = "Aaron John Sabu", email = "aaronjs@g.ucla.edu" },
-  { name = "Brett T. Lopez", email = "btlopez@ucla.edu" },
-]
-license = { text = "GPL-2.0-only" }
-readme = "README.md"
-requires-python = ">=3.10"
-
-dependencies = [
-  "numpy",
-  "scipy",
-  "gekko",
-  "matplotlib",
-  "plotly",
-  "pyyaml",
-]
-
-[project.optional-dependencies]
-casadi = ["casadi"]
-video = ["imageio-ffmpeg"]
-studio = ["mistune>=3,<4"]
-certification = ["python-flint>=0.8,<0.10", "zstandard==0.25.0"]
-all = ["casadi", "imageio-ffmpeg", "mistune>=3,<4", "python-flint>=0.8,<0.10", "zstandard==0.25.0"]
-
-[tool.setuptools]
-package-dir = {orbexa = "scripts"}
-
-[tool.setuptools.package-data]
-"orbexa.figures" = ["studio/*", "studio/vendor/*", "studio/vendor/three/*", "studio/vendor/katex/*", "studio/vendor/katex/fonts/*"]
-
-[project.scripts]
-orbexa-serve-studio = "orbexa.cli.serve_studio:main"
-orbexa-run-nonlinear = "orbexa.cli.run_nonlinear:main"
-orbexa-figures = "orbexa.cli.figures:main"
-
-
-[project.urls]
-Homepage = "https://github.com/aaronjs99/orbex-a"
-Documentation = "https://github.com/aaronjs99/orbex-a#readme"
-
 [tool.ruff]
 line-length = 88
 target-version = "py310"

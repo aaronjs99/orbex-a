@@ -10,6 +10,7 @@
   <author>Aaron John Sabu</author>
   <author>Brett T. Lopez</author>
 
+  <!-- gekko, python-flint and zstandard have no rosdep keys; see INSTALL.md -->
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-scipy</exec_depend>
   <exec_depend>python3-matplotlib</exec_depend>
