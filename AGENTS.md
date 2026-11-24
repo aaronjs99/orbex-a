@@ -21,3 +21,32 @@
 
 - The maintainer does not keep test or validation infrastructure in this repository. Do not add or run it.
 - Preserve paper scope and runtime solver boundaries when simplifying the source tree.
+
+## Owner rules
+
+These come from the owner's standing instructions. The sections above win where they differ.
+
+### Workflow
+
+- Work end to end without asking: edit, check, commit, open a pull request, squash-merge it into `master` and delete the branch. Keep only `master`. Ask only when a decision belongs to the owner.
+- Commits name Aaron John Sabu as author and carry a co-author trailer for the assistant that made the change. Never print or share the owner's email address.
+- A pull request description states what changed, the evidence and what is not shown. Report software checks (ruff, imports, wheel) and simulation evidence (named runs under `results/`) separately. Do not call an unmeasured value known. Say plainly what was not run.
+- Never force-push and never loosen a check to get a merge through.
+
+### Code
+
+- Behavior lives in classes. A callable is a small class with `__call__` and a module-level instance of the same name. Small stateless math helpers stay functions, as Project Direction says.
+- Keep it lean: no filler, dead code, speculative options or comments that restate code. Add no gate that does not protect real data or block real progress.
+- One job per class. Keep pure logic separate from solver backends and file I/O.
+- Format with `ruff format` and lint with `ruff check`, using the 88-column settings in `pyproject.toml`.
+- Name each signal, measurement and operation directly. Give physical values their units in names or docstrings (m, m/s, rad, s, kg, N).
+- Refactors must not change behavior. Compare every string constant, message and regex with the old version, and keep decorators and exact conditions.
+
+### Documentation
+
+- Every source file starts with a header docstring. Its first line names the file and its responsibility, and its last line is `Copyright: Aaron John Sabu`.
+- Every class, function and method has a factual docstring written from the code. Add `Inputs:` and `Outputs:` when the signature does not state values, units, state changes or failures.
+- The root README uses these sections in order: Overview, Responsibilities, Requirements, Installation, Usage, Validation, File Structure, License. Validation describes recorded evidence; it does not add test infrastructure.
+- Every maintained folder has a README with a File Structure table of its immediate entries. Columns: File, Relevance, Dependencies, Used by.
+- Update the guide a change affects.
+
