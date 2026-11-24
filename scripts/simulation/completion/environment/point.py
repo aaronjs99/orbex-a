@@ -116,11 +116,3 @@ class NonlinearEnvironment:
             "intrinsic_extra_torque": "zero; configured central gravity-gradient torque remains separate",
             "scope": "Same numerical force law through delivery; radius-domain extension is not atmospheric demise or flight qualification",
         }
-
-    def interval_model(self):
-        """Snapshot the maintained force declaration for continuous enclosures."""
-        from orbexa.simulation.completion.environment.enclosure import (
-            NonlinearEnvironmentEnclosure,
-        )
-
-        return NonlinearEnvironmentEnclosure.from_environment(self)

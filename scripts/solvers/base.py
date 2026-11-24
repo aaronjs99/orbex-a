@@ -120,7 +120,3 @@ class SolverBase(ABC):
         B_d = ms[:n, n:]
 
         return A_d, B_d
-
-
-class SolverError(Exception):
-    """Exception raised by solvers."""

@@ -24,7 +24,6 @@ from orbexa.core.configuration.model import SimulationConfig
 from orbexa.core.dynamics.parameters import OrbitalPlantTruth
 from orbexa.core.targets.prescribed import TargetGeometry, TumblingCylinderTarget
 from orbexa.estimation.adaptation.belief import ParameterBelief
-from orbexa.estimation.adaptation.mission import PointEstimator, default_point_estimator
 from orbexa.simulation.approach.fleet import FleetInitializer
 from orbexa.simulation.approach.references.policy import MissionReferencePolicy
 from orbexa.simulation.approach.safety import MissionSafety
@@ -68,7 +67,6 @@ class MissionScenario:
         fleet: FleetInitializer | None = None,
         reference: MissionReferencePolicy | None = None,
         safety: MissionSafety | None = None,
-        point_estimator: PointEstimator | None = None,
         controller_factory: ControllerFactory | None = None,
         initial_belief: ParameterBelief | None = None,
         execution_guard=None,
@@ -161,11 +159,6 @@ class MissionScenario:
         )
         self.safety = (
             safety if safety is not None else MissionSafety(self.config, self.target)
-        )
-        self.point_estimator = (
-            point_estimator
-            if point_estimator is not None
-            else default_point_estimator(self.config)
         )
         self.controller_factory = (
             controller_factory

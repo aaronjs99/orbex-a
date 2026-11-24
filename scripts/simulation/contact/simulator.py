@@ -17,7 +17,6 @@ from fractions import Fraction
 
 import numpy as np
 from orbexa.control.certification.reachability import IntervalBox, _ProofUnresolved
-from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.contact.contracts import (
     ContactBodyState,
     FiniteContactOptions,
@@ -55,23 +54,6 @@ _CONTACT_SOURCE_FILES = (
     "simulation/contact/dynamics/wrench.py",
     "layout.py",
 )
-
-
-def finite_contact_source_identity():
-    """Bind all implementation files, including the public coordinator, by bytes."""
-    directory = PACKAGE_ROOT
-    files = {
-        name: hashlib.sha256((directory / name).read_bytes()).hexdigest()
-        for name in _CONTACT_SOURCE_FILES
-    }
-    digest = hashlib.sha256(
-        json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-    return {
-        "schema": "orbexa.finite_contact_source_bundle.v1",
-        "sha256": digest,
-        "files": files,
-    }
 
 
 class FiniteContactSimulator:

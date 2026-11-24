@@ -492,62 +492,6 @@ class ValidatedFlowEncloser:
             request.as_dict(),
         )
 
-    def enclose_affine(
-        self,
-        matrix: Sequence[Sequence[Any]],
-        initial_state: IntervalBox,
-        affine: IntervalBox,
-        *,
-        start_anomaly=(0, 0),
-        hold_width=(0, 0),
-        frame: str = FRAME,
-    ) -> FlowCertificate:
-        """Validated constant affine differential inclusion x' in A*x+b.
-
-        Matrix entries are exact numbers. ``affine`` may enclose a bounded,
-        time-varying additive forcing. Useful for exact limiting cases and
-        other affine plants; no unvalidated callback can masquerade as Arb.
-        """
-        matrix = tuple(tuple(map(_exact, row)) for row in matrix)
-        dimension = initial_state.dimension
-        if (
-            len(matrix) != dimension
-            or any(len(row) != dimension for row in matrix)
-            or affine.dimension != dimension
-        ):
-            raise ValueError(
-                "Affine matrix, initial state and forcing dimensions must agree"
-            )
-        start, hold = (
-            _pair(start_anomaly, "start_anomaly"),
-            _pair(hold_width, "hold_width"),
-        )
-        if hold[0] < 0 or not frame:
-            raise ValueError(
-                "Nonnegative hold and explicit coordinate frame are required"
-            )
-
-        def coefficients(q, ar):
-            return (
-                tuple(tuple(ar.scalar(v) for v in row) for row in matrix),
-                ar.vector(affine),
-                None,
-            )
-
-        return self._enclose(
-            initial_state,
-            start,
-            hold,
-            coefficients,
-            frame,
-            "constant-affine-inclusion",
-            {
-                "matrix": tuple(tuple(map(str, row)) for row in matrix),
-                "affine": affine.as_dict(),
-            },
-            {},
-        )
-
     def _enclose(
         self, initial, start, hold, coefficients, frame, model, bounds, request
     ):

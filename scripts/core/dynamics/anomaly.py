@@ -87,37 +87,6 @@ def orbital_radius_terms(
     return radius, radius_prime, h
 
 
-def orbital_anomaly_rate(
-    q,
-    *,
-    eccentricity=0.0,
-    alpha=0.0,
-    mu: float = 3.986004418e14,
-    semi_major_axis: float | None = None,
-    mean_motion: float = 0.001,
-    specific_angular_momentum=None,
-    theta0: float = 0.0,
-    solver=None,
-):
-    """Return dq/dt in rad/s for the same orbit as ``orbital_radius_terms``.
-
-    This includes target drag; ``dq_dt`` below is the fixed Keplerian helper.
-    """
-    radius, _, h = orbital_radius_terms(
-        q,
-        eccentricity=eccentricity,
-        alpha=alpha,
-        mu=mu,
-        semi_major_axis=semi_major_axis,
-        mean_motion=mean_motion,
-        specific_angular_momentum=specific_angular_momentum,
-        theta0=theta0,
-        solver=solver,
-    )
-    backend = np if solver is None else solver
-    return h * backend.exp(-alpha * q) / radius**2
-
-
 def true_anomaly_to_time(
     q: float,
     *,
@@ -132,8 +101,7 @@ def true_anomaly_to_time(
     Convert unwrapped Keplerian true anomaly to elapsed time in seconds.
 
     Every revolution is retained, including negative orbital angles. This
-    fixed Keplerian clock excludes drag; use ``orbital_anomaly_rate`` and
-    integrate its reciprocal for the decaying analytical orbit.
+    fixed Keplerian clock excludes drag.
 
     Args:
         q: True anomaly (radians).

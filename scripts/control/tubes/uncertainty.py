@@ -297,26 +297,6 @@ def uncertainty_envelope(
     return delta_a, delta_d
 
 
-def nominal_acceleration_bound(
-    start_anom, end_anom, nominal_parameters, semi_major_axis
-):
-    """Absolute acceleration-matrix envelope over an anomaly interval."""
-    ranges = tuple(
-        (nominal_parameters[key], nominal_parameters[key])
-        for key in ("eccentricity", "alpha", "beta")
-    )
-    q, boxes, _, theta0 = _domain(
-        start_anom, end_anom, nominal_parameters, semi_major_axis, ranges
-    )
-    matrix, _ = _model(
-        q, *(_Jet.cast(box) for box in boxes), float(semi_major_axis), theta0
-    )
-    result = np.asarray([[entry.value.magnitude for entry in row] for row in matrix])
-    if not np.all(np.isfinite(result)):
-        raise ValueError("Non-finite nominal acceleration envelope")
-    return result
-
-
 def coefficient_intervals(
     start_anom,
     end_anom,

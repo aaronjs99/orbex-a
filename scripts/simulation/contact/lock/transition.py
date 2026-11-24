@@ -61,10 +61,6 @@ def _matmul(left, right):
     )
 
 
-def _outer(left, right):
-    return tuple(tuple(a * b for b in right) for a in left)
-
-
 def _skew(value):
     x, y, z = value
     return ((0, -z, y), (z, 0, -x), (-y, x, 0))

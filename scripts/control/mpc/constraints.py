@@ -43,10 +43,6 @@ class CylinderConstraint:
         axial_margin = abs(p_body[2]) - (self.half_length + self.tube_radius)
         return float(radial_margin), float(axial_margin)
 
-    def is_satisfied(self, position: np.ndarray) -> bool:
-        radial_margin, axial_margin = self.margins(position)
-        return max(radial_margin, axial_margin) >= 0.0
-
 
 def target_frame_position(position: np.ndarray, orientation: np.ndarray) -> np.ndarray:
     """Express an LVLH-frame position in the rotating target body frame."""
@@ -150,84 +146,3 @@ def rendezvous_margin(
 ) -> float:
     """Positive margin means the chaser is outside the rendezvous exclusion sphere."""
     return float(np.linalg.norm(position) - target_radius - tube_radius)
-
-
-def project_box_halfspace(
-    control: np.ndarray,
-    normal: np.ndarray,
-    offset: float,
-    lower: np.ndarray,
-    upper: np.ndarray,
-) -> np.ndarray | None:
-    """Nearest bounded input satisfying ``normal @ input >= offset``.
-
-    A scalar multiplier solves the Euclidean projection onto a box intersected
-    with one halfspace. Return ``None`` when the bounded halfspace is infeasible.
-    """
-    control, normal, lower, upper = (
-        np.asarray(value, dtype=float) for value in (control, normal, lower, upper)
-    )
-    if (
-        control.ndim != 1
-        or any(value.shape != control.shape for value in (normal, lower, upper))
-        or not np.all(np.isfinite(control))
-        or not np.all(np.isfinite(normal))
-        or not np.isfinite(offset)
-        or np.any(np.isnan(lower))
-        or np.any(np.isnan(upper))
-        or np.any(np.isposinf(lower))
-        or np.any(np.isneginf(upper))
-        or np.any(lower > upper)
-    ):
-        raise ValueError(
-            "Halfspace projection requires finite control/normal/offset and a valid input box"
-        )
-    bounded = np.clip(control, lower, upper)
-    if float(normal @ bounded) >= offset:
-        return bounded
-    original_normal, original_offset = normal, offset
-    scale = float(np.max(np.abs(normal)))
-    if scale == 0.0:
-        return None
-    normal, offset = normal / scale, offset / scale
-    if not np.isfinite(offset):
-        return None
-    positive, negative = normal > 0, normal < 0
-    maximizer = bounded.copy()
-    maximizer[positive], maximizer[negative] = upper[positive], lower[negative]
-    maximum = float(normal @ maximizer)
-    if maximum < offset:
-        return None
-    high = max(1.0, (offset - float(normal @ bounded)) / float(normal @ normal))
-    for _ in range(128):
-        if float(normal @ np.clip(control + high * normal, lower, upper)) >= offset:
-            break
-        high *= 2.0
-        if not np.isfinite(high):
-            return None
-    else:
-        return None
-    low = 0.0
-    for _ in range(60):
-        midpoint = 0.5 * (low + high)
-        if float(normal @ np.clip(control + midpoint * normal, lower, upper)) < offset:
-            low = midpoint
-        else:
-            high = midpoint
-    projected = np.clip(control + high * normal, lower, upper)
-    tolerance = 8.0 * np.finfo(float).eps * max(1.0, abs(original_offset))
-    if (
-        not np.all(np.isfinite(projected))
-        or np.any(projected < lower)
-        or np.any(projected > upper)
-        or float(original_normal @ projected) < original_offset - tolerance
-    ):
-        return None
-    return projected
-
-
-def collision_params_from_target_config(
-    target_config, operation: str = "rendezvous"
-) -> dict[str, object]:
-    """Build solver-ready target collision parameters from a TargetConfig."""
-    return target_config.collision_params(operation=operation)

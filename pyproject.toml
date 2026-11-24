@@ -21,7 +21,6 @@ dependencies = [
   "matplotlib",
   "plotly",
   "pyyaml",
-  "keyboard",
 ]
 
 [project.optional-dependencies]

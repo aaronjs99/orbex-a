@@ -421,17 +421,3 @@ class NonlinearRelativeDynamics:
                 self.parameters,
             )
         )
-
-    def fleet_rhs(self, q, target, relative_states, commands):
-        if len(relative_states) != len(commands):
-            raise ValueError("Every relative spacecraft needs one command")
-        target_derivative = self.target_rhs(q, target)
-        relative_derivatives = [
-            self.relative_rhs(q, state, target, u)
-            for state, u in zip(relative_states, commands)
-        ]
-        return (
-            target_derivative,
-            np.asarray(relative_derivatives),
-            1 / self.clock.point(q).rate_s_inv,
-        )
