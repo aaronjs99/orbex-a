@@ -2,8 +2,23 @@
 
 > For agentic workers: execute with subagent-driven-development and review each
 > workstream independently. Repository rules prohibit test and validation
-> infrastructure. Run qualifications as real examples outside the checkout, and
-> keep their evidence under `../orbexa-output/`.
+> infrastructure. Run qualifications as real examples. Their inputs go in
+> `./data/` and their evidence in `./results/`; both are gitignored (see W1b).
+
+## Decisions recorded (24 November 2026)
+
+- **Timing hardware:** no fixed reference machine. Each run records its host
+  fingerprint: CPU model, core count, OS, Python, IPOPT and GEKKO versions.
+  L7 is measured and reported per host.
+- **Paper:** the conference paper is already published: *Capturing Tumbling
+  Objects in Orbit with Adaptive Tube Model Predictive Control*, IEEE Aerospace
+  Conference 2025, doi:10.1109/AERO63441.2025.11068695, linked from
+  aaronjs.me/research/orbex-a/. The completion results become a follow-up
+  journal paper. W9 keeps the conference figures reproducible through the
+  analytical reproduction APIs and adds the new results.
+- **Data and results:** stored in the checkout under `./data/` and
+  `./results/`, with one modular layout (W1b). This replaces
+  `../orbexa-output/`.
 
 **Goal:** Close every open claim in [mission readiness](../../mission-readiness.md).
 Then publish the paper results package and a tagged final release.
@@ -60,9 +75,9 @@ approval listed in `README.md` stay declared out of scope. They are not ledger i
 ## Dependency order
 
 ```
-W0 ─► W1 ─► W2 ─► W3 ─► W4 ─┐
-            W5 ─────────────┤
-            W6 ─► W7 ───────┼─► W8 (frozen RC) ─► W9 paper ─► W10 release
+W0 ─► W1b ─► W1 ─► W2 ─► W3 ─► W4 ─┐
+                   W5 ─────────────┤
+                   W6 ─► W7 ───────┼─► W8 (frozen RC) ─► W9 paper ─► W10 release
 ```
 
 W2→W3→W4 is the critical path. W5, W6 and W7 run in parallel with it. All three
@@ -72,7 +87,20 @@ must merge before the release-candidate freeze.
 
 - [ ] Make `docs/mission-readiness.md` the single ledger above, with a status column and an evidence-link column.
 - [ ] Remove "current changes" narration from `README.md` and `research-review.md`. Point both to the ledger.
-- [ ] Record the user's decisions in this plan: reference hardware (L7), manuscript venue and source location (W9), and evidence archive host (W10).
+- [x] Record the user's decisions in this plan (see Decisions recorded).
+
+## W1b Data and results layout
+
+Files: `scripts/layout.py`, `scripts/sessions.py`, `scripts/simulation/study/{api,request,records}.py`, `scripts/cli/*.py`, `serve.py`, `scripts/simulation/service/`, `scripts/visualization/data/`, `.gitignore`, `README.md`, `INSTALL.md`, `docs/configuration.md`, `docs/deployment.md`.
+
+- [ ] Add a dependency-free `ProjectLayout` to `scripts/layout.py`, with `data_root` and `results_root`. The defaults are `<checkout>/data` and `<checkout>/results`; an installed wheel falls back to the working directory. Overrides come from `ORBEXA_DATA` / `ORBEXA_RESULTS`, then the CLI flags.
+- [ ] `./data/` holds inputs only: external datasets, downloaded geometry, frozen priors and reusable proof caches. `./data/paper/` stays tracked, as now.
+- [ ] `./results/` holds generated evidence only, at `results/<study>/<case>/<arm>/<run-id>/`. `<run-id>` is the UTC timestamp plus a short source hash. Keep the existing manifest, journal and approach/completion contents unchanged.
+- [ ] Keep `results/index.jsonl` as an append-only catalog: run id, path, source and input hashes, host fingerprint, status and stage reached. Write it atomically when a run starts and when it finishes.
+- [ ] Make `--output-dir` optional on every CLI and default it to the layout. Keep the rule that a fresh directory is required, which unique run ids now guarantee.
+- [ ] Studio, `MissionPlots`, the comparison audit and W8 aggregation discover runs through the index rather than hand-supplied paths.
+- [ ] Add `orbexa-results` with `list`, `show` and `clean` subcommands. `clean` removes only aborted runs, and only with explicit `--yes`.
+- [ ] Replace every `../orbexa-output` reference in code and docs. Change README's "Generated evidence stays outside the checkout" to describe the gitignored folders.
 
 ## W1 Environment and baseline reproduction
 
@@ -155,7 +183,7 @@ Files: `estimation/membership/nonlinear.py`, `estimation/adaptation/{smid,nonlin
 - [ ] Cut the docs: merge historical narration into one `docs/history.md` and keep theory docs that match the final code. Fix the stale references found by a full-link check.
 - [ ] Remove dead routes and prototypes no longer reached by the maintained mission. Keep the analytical reproduction APIs.
 - [ ] Build the wheel and check its imports from outside the checkout. Bump to `3.0.0`. Add `CITATION.cff`.
-- [ ] Publish the final Studio recording of the closed mission and archive the evidence bundle (host per W0).
+- [ ] Publish the final Studio recording of the closed mission and export the selected evidence from `./results/` as a release bundle (optionally deposit it on Zenodo).
 - [ ] Tag `v3.0.0`. After that, the repository accepts maintenance fixes only.
 
 ## Risks
