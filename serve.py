@@ -24,9 +24,6 @@ if __name__ == "__main__":
     defaults = []
     for option, path in (
         ("--config", ROOT / "config/envisat.yaml"),
-        ("--prior", ROOT / "config/envisat-prior.json"),
-        ("--admission", ROOT / "config/envisat-admission.json"),
-        ("--deployment", ROOT / "config/envisat-deployment.json"),
         ("--spacecraft", ROOT / "config/spacecraft/envisat.json"),
     ):
         defaults.extend((option, str(path)))

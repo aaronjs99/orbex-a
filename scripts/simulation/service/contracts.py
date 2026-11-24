@@ -69,39 +69,19 @@ class LiveParameters:
 class LiveServiceSettings:
     output_dir: Path
     config_path: Path
-    prior_path: Path
-    admission_path: Path
-    deployment_path: Path
     spacecraft_path: Path
     maximum_updates: int = 1200
-    resume_path: Path | None = None
-    historical_analytical_resume: bool = False
 
     def __post_init__(self):
         for name in (
             "output_dir",
             "config_path",
-            "prior_path",
-            "admission_path",
-            "deployment_path",
             "spacecraft_path",
         ):
             path = Path(getattr(self, name)).expanduser().resolve()
             if name != "output_dir" and not path.is_file():
                 raise ValueError(f"Missing explicit {name}: {path}")
             object.__setattr__(self, name, path)
-        if self.resume_path is not None:
-            path = Path(self.resume_path).expanduser().resolve()
-            if not path.is_file():
-                raise ValueError(f"Missing explicit resume record: {path}")
-            object.__setattr__(self, "resume_path", path)
-        if (
-            not isinstance(self.historical_analytical_resume, bool)
-            or bool(self.resume_path) != self.historical_analytical_resume
-        ):
-            raise ValueError(
-                "Saved analytical resume requires the explicit historical_analytical_resume flag and a resume path"
-            )
         if (
             isinstance(self.maximum_updates, bool)
             or not isinstance(self.maximum_updates, int)

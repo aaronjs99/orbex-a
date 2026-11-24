@@ -40,9 +40,6 @@ package-dir = {orbexa = "scripts"}
 "orbexa.visualization" = ["studio/*", "studio/vendor/*", "studio/vendor/three/*", "studio/vendor/katex/*", "studio/vendor/katex/fonts/*"]
 
 [project.scripts]
-orbexa-generate-demo = "orbexa.cli.generate_demo:main"
-orbexa-complete-mission = "orbexa.cli.complete_mission:main"
-orbexa-run-mission = "orbexa.cli.run_mission:main"
 orbexa-serve-studio = "orbexa.cli.serve_studio:main"
 orbexa-run-nonlinear = "orbexa.cli.run_nonlinear:main"
 

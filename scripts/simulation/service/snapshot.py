@@ -6,7 +6,6 @@ import shutil
 
 from orbexa.layout import PACKAGE_ROOT
 from orbexa.simulation.recording.artifacts import _sha, _write_json
-from orbexa.simulation.service.jobs.resume import _resume_source
 
 
 def _freeze_job(settings, directory):
@@ -40,9 +39,6 @@ def _freeze_job(settings, directory):
     changes, input_records = {}, {}
     for name in (
         "config_path",
-        "prior_path",
-        "admission_path",
-        "deployment_path",
         "spacecraft_path",
     ):
         original = getattr(settings, name)
@@ -57,24 +53,6 @@ def _freeze_job(settings, directory):
             "frozen": str(frozen.relative_to(directory)),
             "sha256": expected,
         }
-    if settings.resume_path is not None:
-        _record, source_journal = _resume_source(settings.resume_path)
-        for name, original, filename in (
-            ("resume_path", settings.resume_path, "resume-mission_data.json"),
-            ("resume_journal", source_journal, "continuous-certificates.jsonl.gz"),
-        ):
-            frozen = inputs / filename
-            expected = _sha(original)
-            shutil.copyfile(original, frozen)
-            if _sha(original) != expected or _sha(frozen) != expected:
-                raise RuntimeError("A resume source changed during job snapshot")
-            if name == "resume_path":
-                changes[name] = frozen
-            input_records[name] = {
-                "original": str(original),
-                "frozen": str(frozen.relative_to(directory)),
-                "sha256": expected,
-            }
     _write_json(
         directory / "snapshot-manifest.json",
         {

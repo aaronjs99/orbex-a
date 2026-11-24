@@ -167,8 +167,9 @@ Files: `estimation/membership/nonlinear.py`, `estimation/adaptation/{smid,nonlin
 
 Runs before W2–W8 so that new work lands in the final layout.
 
-- [ ] Remove eager package re-exports, so callers import from defining modules.
-- [ ] Retire the analytical pipeline, unmaintained modules and `paper/` PNGs.
+- [x] Replace the lazy package export maps with plain package docstrings.
+- [x] Retire the analytical entry points, the historical Studio resume route, analytical-only configs, `paper/` and every module outside the computed closure.
+- [ ] Cut the remaining analytical entanglement: shared helpers inside analytical modules, and SMID `run_adaptation` in `MPCController`.
 - [ ] Move modules into the layers `common` → `models` → `proofs` → `estimation` → `control`/`solvers` → `mission` → `evidence` → `studies` → `figures` → `service` → `cli`, one PR per layer.
 - [ ] Generate figures into `results/<topic>/` from recorded data.
 - [ ] Root cleanup and ROS 2 files (`package.xml`, `resource/orbexa`). Fold `requirements.txt` and `install_dependencies.sh` into `pyproject.toml` extras.

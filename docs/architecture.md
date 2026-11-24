@@ -268,31 +268,6 @@ stage evidence. Its success cannot fill a missing approach prefix or upgrade an
 older analytical record into a sensed nonlinear full mission. See
 [finite contact](finite-contact.md) and [mission lifecycle](mission-lifecycle.md).
 
-## Analytical reproduction and supporting APIs
-
-`ADTMPCMissionRunner` with `MissionScenario` retains the analytical translation
-reproduction and existing runner/result APIs. `CoupledMissionPlanner`,
-`DenseFeedbackExecutor`, `MissionAdaptation` and `MissionRecorder` remain that
-composition's services. `PhysicalApproachScenario` and `CompleteMissionRunner`
-also retain their explicitly configured analytical-translation/physical-target
-and completion interfaces; their names alone do not select the sensed model.
-
-| Module family | Retained scope |
-|---|---|
-| `simulation/approach/api.py`, `simulation/approach/scenario.py`, `simulation/approach/execution.py`, `simulation/approach/records/recorder.py` | Analytical runner/scenario, dense executor and recorder composition; existing Python/CLI APIs remain available |
-| `core/dynamics/orbital.py`, `core/dynamics/parameters.py` | Analytical quadratic-drag relative coefficients and `OrbitalPlantTruth`; separate from nonlinear Cartesian/J2/vector-drag truth |
-| `core/targets/prescribed.py`, `core/targets/cylinder.py`, `core/dynamics/attitude.py` | Prescribed or explicitly selected rigid target geometry/attitude, quaternion propagation and physical-time attitude conventions |
-| `estimation/membership/interval.py`, `estimation/fitting/prediction.py`, `estimation/adaptation/smid.py`, `estimation/adaptation/mission.py` | Analytical-model interval contraction, numerical fitting and nominal-point policy |
-| `control/terminal/tracking.py`, `control/terminal/physical.py`, `control/terminal/body_jets.py`, `control/terminal/componentwise.py`, `control/fallback/continuation.py` | Model-specific terminal/continuation derivations and stored admissible backups |
-| `simulation/approach/arrival/policy.py`, `simulation/approach/arrival/transition.py`, `simulation/approach/terminal/handoff.py`, `simulation/completion/coordinator.py` | Existing deadline/restart/terminal and physical-completion composition under its own contracts |
-| `planning/`, `core/spacecraft/target.py`, `core/spacecraft/chaser.py` | Supporting assignment/observation/deflection optimizers and standalone spacecraft APIs; time/frame conventions remain explicit |
-
-`DynamicTubeSpec` and solver problem/result interfaces are shared where their
-model-version contracts permit. A checkpoint or migrated rendering record keeps
-its originating model, clock and source segment; it is not a nonlinear physics
-conversion. Analytical checkpoint restoration is documented separately in
-[checkpoint compatibility](mission-checkpoint.md).
-
 ## One Studio and evidence ownership
 
 `StudioDataset` and `LifecycleDataset` project plain saved approach/lifecycle
