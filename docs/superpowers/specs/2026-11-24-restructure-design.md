@@ -30,14 +30,25 @@ Package `__init__` files hold no eager re-exports. Callers import a class from t
 
 ## Retirement set
 
-Retired, because only the analytical pipeline reaches them or nothing reaches them at all:
+The retirement set is computed, not listed by hand. It is every module outside the import closure of two starting sets:
 
-- **Analytical pipeline:** the analytical `simulation.approach` runner, checkpoint and scenario modules, `cli.run_mission`, `cli.complete_mission`, `cli.generate_demo`, `sessions`, `visualization.workflow`, the analytical plots/renderers/publishing, and `service.jobs.historical`/`resume`.
-- **Superseded estimation and planning:** SMID batch and fitting (`estimation.adaptation.batch/smid/records`, `estimation.fitting`, `estimation.enclosures`, `solvers.gekko.estimation`), old objectives (`planning.objectives`) and learned proposals (`planning.proposals.ppo/training/features`).
-- **Unused control and helpers:** `control.certification.barriers`, `control.mpc.linearization/projection`, `control.fallback.continuation/replacement`, `core.dynamics.inertial`, `utils.geometry.regions/sampling` and `utils.runtime`.
-- **Unmaintained modules:** a module is unmaintained if, after the eager re-exports are removed, it is still unreachable from the maintained entry points and is not on the keep list below.
+- the maintained entry points:
+  - `cli.run_nonlinear` and `cli.serve_studio`;
+  - the study API and execution;
+  - the nonlinear live job and worker process;
+  - the registered solver backends;
+- the keep list below.
 
-Unwired but kept, because a plan workstream wires them in:
+The closure counts every `import`, every string module name passed to `import_module`, and every lazy export map.
+
+First the analytical entry points go: `cli.run_mission`, `cli.complete_mission`, `cli.generate_demo`, `sessions`, `visualization.workflow`, the historical Studio resume route and the analytical-only inputs `--prior`, `--admission` and `--deployment`. The closure is then recomputed until it stops changing.
+
+Two kinds of entanglement are cut by hand in later steps:
+
+1. **Shared helpers inside analytical modules.** For example, `plain` lives in `approach.records.checkpoint`. Each helper moves to its owning layer before the analytical module is deleted.
+2. **Analytical branches inside maintained classes.** For example, `MPCController` imports SMID `run_adaptation`. These branches are removed, and the superseded SMID batch, fitting and enclosure modules then fall out of the closure.
+
+Unwired but kept, because a plan workstream wires them in. Their whole dependency closure is kept too, for example `control.fallback.replacement`, which `simulation.online` imports.
 
 | Module | Workstream it feeds |
 |---|---|
