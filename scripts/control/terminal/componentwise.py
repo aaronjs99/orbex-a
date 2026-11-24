@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.terminal.body_jets import bound_componentwise_terminal_jets
 from orbexa.control.terminal.composite import (
     COMPOSITE_TERMINAL_METHOD,
@@ -17,6 +16,7 @@ from orbexa.control.terminal.composite import (
 )
 from orbexa.control.terminal.physical import _abs, _add, _dot
 from orbexa.control.terminal.tracking import TerminalFeedforwardPolicy
+from orbexa.proofs.reachability import IntervalBox
 
 COMPONENTWISE_MIDPOINT_TERMINAL_METHOD = (
     "arb-componentwise-composite-midpoint-terminal-v1"

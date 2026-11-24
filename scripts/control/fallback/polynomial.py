@@ -8,8 +8,8 @@ from functools import cached_property
 from math import comb
 from typing import Any
 
-from orbexa.control.certification.reachability import IntervalBox, _exact
 from orbexa.control.fallback.refuge import _identity, _scope, fingerprint
+from orbexa.proofs.reachability import IntervalBox, _exact
 
 POLYNOMIAL_PEER_METHOD = "exact-same-time-polynomial-reference-peer-v1"
 

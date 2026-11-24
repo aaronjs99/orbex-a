@@ -297,7 +297,7 @@ After $T_r$, the reference formation is fixed in the commanded frame while
 shared braking continues. Exact rational piecewise polynomials join with
 continuous position, velocity and acceleration; a finite constant-reference
 holding interval follows. The implementation is
-`simulation/nonlinear/safety/braking.py`. This is a reference proposal, and the complete
+`mission/safety/braking.py`. This is a reference proposal, and the complete
 nonlinear tracking, sensing, actuator, force, fuel, target-component and peer
 proofs still decide admission. The tube widths and safety distances remain
 unchanged. See [the finite-refuge formulation](fleet-fallback.md).
@@ -752,7 +752,7 @@ Supply a provider explicitly when constructing a controller:
 
 ```python
 from orbexa.control.mpc.controller import MPCController
-from orbexa.planning.proposals.trajectory import TrackingHint
+from orbexa.mission.proposals.trajectory import TrackingHint
 
 # Use the constructor's normal dynamics/configuration arguments, plus:
 # controller = MPCController(..., proposal_provider=TrackingHint(...))
@@ -764,7 +764,7 @@ For direct solver use:
 ```python
 from orbexa.solvers.gekko.solver import GekkoSolver
 from orbexa.solvers.proposal_seed import ProposalSeededSolver
-from orbexa.planning.proposals.trajectory import ConvexTrajectoryHint
+from orbexa.mission.proposals.trajectory import ConvexTrajectoryHint
 
 solver = ProposalSeededSolver(
     GekkoSolver({"remote": False}), ConvexTrajectoryHint(),
@@ -783,7 +783,7 @@ loop supplies no physical environment on its own.
 Generate a self-contained gallery in an ignored output directory:
 
 ```python
-from orbexa.visualization.plots.control import ControlFoundationsFigures
+from orbexa.figures.plots.control import ControlFoundationsFigures
 ControlFoundationsFigures().export("data/control-foundations-figures")
 # Open data/control-foundations-figures/index.html.
 ```

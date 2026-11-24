@@ -20,10 +20,10 @@ from typing import Any
 
 import numpy as np
 from gekko import GEKKO
-from orbexa.core.dynamics.anomaly import dt_dq
+from orbexa.common.geometry.algebra import tait_bryan_to_rotation_matrix
+from orbexa.common.solver_options import gekko_memory_exponent
+from orbexa.models.dynamics.anomaly import dt_dq
 from orbexa.solvers.base import MPCProblem, SolverBase, SolverResult
-from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
-from orbexa.utils.solver_options import gekko_memory_exponent
 
 logger = logging.getLogger(__name__)
 

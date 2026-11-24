@@ -22,7 +22,7 @@ rendering modules with explicit dependencies; keep compatibility facades small.
 
 ## Task 1: Relocation and structured configuration
 
-Files: `run.py`, `pyproject.toml`, `scripts/layout.py`, `scripts/core/config.py`,
+Files: `run.py`, `pyproject.toml`, `scripts/common/layout.py`, `scripts/core/config.py`,
 `config/default.yaml`, `AGENTS.md`, `README.md`, `INSTALL.md`.
 
 - [x] Map logical `orbexa` packages to physical `scripts/`; bootstrap checkout entrypoint.

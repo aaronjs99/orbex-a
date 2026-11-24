@@ -13,16 +13,16 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 from orbexa.control.actuation import CommandDependentActuationPrior
-from orbexa.control.certification.nonlinear import NonlinearFlowEncloser
-from orbexa.control.certification.reachability import HeldInputRequest, IntervalBox
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
-from orbexa.core.dynamics.relative import NonlinearModelBounds
 from orbexa.estimation.membership.nonlinear import (
     NonlinearMembershipContractor,
     NonlinearMembershipResult,
     NonlinearTransitionObservation,
 )
 from orbexa.estimation.navigation.boxes import intersect
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.relative import NonlinearModelBounds
+from orbexa.proofs.nonlinear import NonlinearFlowEncloser
+from orbexa.proofs.reachability import HeldInputRequest, IntervalBox
 
 METHOD = "linked-affine-window-v1"
 PERSISTENCE = "fixed-affine-per-agent-v1"

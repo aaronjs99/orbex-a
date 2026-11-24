@@ -6,7 +6,7 @@ import time
 from dataclasses import replace
 
 import numpy as np
-from orbexa.planning.proposals.trajectory import AffinePrediction, input_limits
+from orbexa.mission.proposals.trajectory import AffinePrediction, input_limits
 from orbexa.solvers.base import SolverBase
 
 

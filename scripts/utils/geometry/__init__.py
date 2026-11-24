@@ -1,1 +1,0 @@
-"""Focused numerical geometry services."""

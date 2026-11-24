@@ -12,12 +12,12 @@ from functools import cached_property
 from pathlib import Path
 
 import numpy as np
-from orbexa.control.certification.reachability import IntervalBox
 from orbexa.control.tubes.sample_hold import (
     SENSED_TUBE_MODEL_VERSION,
     sample_hold_bounds,
 )
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
+from orbexa.proofs.reachability import IntervalBox
 
 _TUBE_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -126,8 +126,8 @@ def _outward_tube_endpoint(
 ):
     """Enclose the same positive comparison solutions with Arb exponentials."""
     import flint
-    from orbexa.control.certification.nonlinear import _Arithmetic
-    from orbexa.control.certification.reachability import _ARB_LOCK
+    from orbexa.proofs.nonlinear import _Arithmetic
+    from orbexa.proofs.reachability import _ARB_LOCK
 
     with _ARB_LOCK, flint.ctx.workprec(precision_bits):
         ar = _Arithmetic(flint)

@@ -27,7 +27,7 @@ from typing import Any
 import numpy as np
 from orbexa.control.terminal.contact import ContactGoalSpeedBound
 from orbexa.control.terminal.region import TerminalRegion
-from orbexa.core.dynamics.reference_frame import exact, fingerprint
+from orbexa.models.dynamics.reference_frame import exact, fingerprint
 
 
 @dataclass(frozen=True)

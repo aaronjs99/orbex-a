@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from orbexa.layout import ProjectLayout
+from orbexa.common.layout import ProjectLayout
 
 
 def main(argv=None):
@@ -53,7 +53,7 @@ def main(argv=None):
             if not path.is_dir():
                 raise ValueError("Missing explicit proof dependency directory")
             sys.path.insert(0, str(path))
-        from orbexa.simulation.study.api import StudyArmRequest, run_study_arm
+        from orbexa.studies.api import StudyArmRequest, run_study_arm
 
         result = run_study_arm(
             StudyArmRequest(

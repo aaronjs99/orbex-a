@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
-from orbexa.contracts import MPCProblem, SolverResult
+from orbexa.common.contracts import MPCProblem, SolverResult
 
 logger = logging.getLogger(__name__)
 

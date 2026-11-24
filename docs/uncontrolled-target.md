@@ -192,11 +192,11 @@ explicit exception; proper-matrix queries and the collision payload remain avail
 
 ```python
 import numpy as np
-from orbexa.core import RigidBodyCylinderTarget
-from orbexa.core.configuration.model import SimulationConfig
+from orbexa.models import RigidBodyCylinderTarget
+from orbexa.models.configuration.model import SimulationConfig
 from orbexa.estimation.adaptation.belief import ParameterBelief
-from orbexa.simulation.approach.scenario import MissionScenario
-from orbexa.simulation.approach.runner import CoupledTubeMission
+from orbexa.mission.approach.scenario import MissionScenario
+from orbexa.mission.approach.runner import CoupledTubeMission
 
 config = SimulationConfig.load()
 target = RigidBodyCylinderTarget.from_config(

@@ -56,10 +56,10 @@ recenters or enlarges it from the plant. Membership consistency still depends on
 the truth/model and measurement assumptions; an inconsistent prior may fail.
 
 ```python
-from orbexa.core.configuration.model import SimulationConfig
-from orbexa.layout import ProjectLayout
+from orbexa.models.configuration.model import SimulationConfig
+from orbexa.common.layout import ProjectLayout
 from orbexa.estimation.adaptation.belief import ParameterBelief
-from orbexa.simulation import (
+from orbexa.mission import (
     ADTMPCMissionRunner, CompactArcDeployment, CompactDeploymentOptions,
     MissionResultStore,
 )

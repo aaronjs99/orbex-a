@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 
-from orbexa.control.certification.reachability import (
-    IntervalBox,
-)
 from orbexa.control.terminal.physical import (
     OrbitalClockBounds,
     _encode,
+)
+from orbexa.proofs.reachability import (
+    IntervalBox,
 )
 
 RIGID_BODY_ROTATION_METHOD = "arb-rigid-energy-orbital-rotation-v1"

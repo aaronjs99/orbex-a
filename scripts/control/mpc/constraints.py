@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from orbexa.utils.geometry.algebra import tait_bryan_to_rotation_matrix
+from orbexa.common.geometry.algebra import tait_bryan_to_rotation_matrix
 
 
 @dataclass(frozen=True)

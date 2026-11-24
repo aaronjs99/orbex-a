@@ -12,10 +12,10 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from orbexa.layout import ProjectLayout
-from orbexa.simulation.service.contracts import LIVE_SERVICE, LiveServiceSettings
-from orbexa.simulation.service.http import make_server
-from orbexa.simulation.service.session import LiveSimulationService
+from orbexa.common.layout import ProjectLayout
+from orbexa.service.contracts import LIVE_SERVICE, LiveServiceSettings
+from orbexa.service.http import make_server
+from orbexa.service.session import LiveSimulationService
 
 THEORY_DOCUMENTS = (
     ("Nonlinear mission formulation", "nonlinear-mission.md"),
@@ -30,7 +30,7 @@ THEORY_DOCUMENTS = (
 
 def _export_live_viewer(settings, root):
     """Export a fresh empty live catalog and available source theory docs."""
-    from orbexa.visualization.publishing.studio import MissionStudio
+    from orbexa.figures.publishing.studio import MissionStudio
 
     root = Path(root)
     docs = settings.config_path.parent.parent / "docs"

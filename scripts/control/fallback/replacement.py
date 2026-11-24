@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from fractions import Fraction
 
-from orbexa.control.certification.reachability import IntervalBox, _exact
 from orbexa.control.fallback.common import _same_plant
 from orbexa.control.fallback.plan import FleetFallbackPlan
 from orbexa.control.fallback.refuge import exact_record, fingerprint
@@ -19,6 +18,7 @@ from orbexa.control.fallback.runtime import (
     FleetAdmissionRuntime,
     _require_policy_supports,
 )
+from orbexa.proofs.reachability import IntervalBox, _exact
 
 
 class AdmissionContextChanged(RuntimeError):

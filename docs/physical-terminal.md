@@ -310,7 +310,7 @@ pair-distance proof.
 
 ### Executing the actual endpoint
 
-`orbexa.simulation.approach.terminal.execution.PhysicalTerminalRunner` owns
+`orbexa.mission.approach.terminal.execution.PhysicalTerminalRunner` owns
 the offline runtime loop. Its constructor receives `builders`, the actual
 physical `target`, a point `truth` for numerical propagation, an explicit
 `observation_source`, and a declared `orientation_matrix_error`. Controller
@@ -335,7 +335,7 @@ The minimal integration has this shape, with every input obtained from the
 actual approach and the explicit bound configuration:
 
 ```python
-from orbexa.simulation import PhysicalTerminalRunner, TerminalObservation
+from orbexa.mission import PhysicalTerminalRunner, TerminalObservation
 
 runner = PhysicalTerminalRunner(
     builders=admitted_builders,
@@ -481,7 +481,7 @@ approach, prepare it from the literal source file and a separately frozen
 terminal runtime:
 
 ```python
-from orbexa.simulation import terminal_source_lineage
+from orbexa.mission import terminal_source_lineage
 
 source_context = {
     "origin": "actual_approach_endpoint",

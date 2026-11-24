@@ -10,13 +10,13 @@ from __future__ import annotations
 from dataclasses import replace
 from fractions import Fraction
 
-from orbexa.control.certification.nonlinear import _Arithmetic
-from orbexa.control.certification.reachability import _ARB_LOCK, IntervalBox
-from orbexa.core.dynamics.reference_frame import exact
-from orbexa.core.dynamics.relative import dot
 from orbexa.estimation.membership.nonlinear import NonlinearMembershipContractor
 from orbexa.estimation.navigation.boxes import intersect
 from orbexa.estimation.navigation.target_pose import infer_target_ephemeris
+from orbexa.models.dynamics.reference_frame import exact
+from orbexa.models.dynamics.relative import dot
+from orbexa.proofs.nonlinear import _Arithmetic
+from orbexa.proofs.reachability import _ARB_LOCK, IntervalBox
 
 
 def initial_eccentricity_box(inertial_box, mu, *, precision_bits=128):
