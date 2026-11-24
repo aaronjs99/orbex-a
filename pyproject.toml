@@ -41,6 +41,7 @@ package-dir = {orbexa = "scripts"}
 [project.scripts]
 orbexa-serve-studio = "orbexa.cli.serve_studio:main"
 orbexa-run-nonlinear = "orbexa.cli.run_nonlinear:main"
+orbexa-figures = "orbexa.cli.figures:main"
 
 
 [project.urls]

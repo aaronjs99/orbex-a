@@ -72,6 +72,22 @@ class ProjectLayout:
         run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
         return self.data_root.joinpath(*parts, run_id)
 
+    def results_directory(self, topic: str, source: Path) -> Path:
+        """Name the results folder for one recorded source under ``results/<topic>/``.
+
+        Inputs: ``source`` is a run or study directory. A source under
+        ``data/`` keeps its relative path below its first folder, so
+        ``data/nonlinear/<case>/<arm>/<run id>`` maps to
+        ``results/<topic>/<case>/<arm>/<run id>``. Other sources use their name.
+        Outputs: a path that is not created here.
+        """
+        source = Path(source).resolve()
+        if source.is_relative_to(self.data_root):
+            parts = source.relative_to(self.data_root).parts[1:]
+            if parts:
+                return self.results_root.joinpath(topic, *parts)
+        return self.results_root / topic / source.name
+
     def require_output(self, path: Path, description: str) -> None:
         """Refuse an output inside the checkout unless it is under a generated root.
 
