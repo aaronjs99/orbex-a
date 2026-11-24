@@ -3,8 +3,6 @@
 The maintained sensed nonlinear pipeline separates physical truth, bounded
 observations, nominal GEKKO planning, held-command admission and recorded evidence.
 The public Python package is `orbexa`; its checkout source is `scripts/`.
-Analytical translation reproduction remains available under its own model and
-clock identities. Sharing an interface or renderer does not equate these models.
 
 ## Entry points and composition
 
@@ -17,9 +15,8 @@ does not turn an unfinished approach into a completed mission.
 
 `LiveSimulationService` uses this same nonlinear runner, planner, executor and
 completion composition. Its worker boundary owns job control, frozen inputs and
-committed projections; the browser consumes those projections. Historical
-analytical resume is a separate, explicitly selected route. Neither entry point
-implements a second controller or physical plant.
+committed projections; the browser consumes those projections. Neither entry
+point implements a second controller or physical plant.
 
 ```mermaid
 flowchart TD
@@ -64,18 +61,24 @@ The source hierarchy follows runtime responsibility. Package APIs expose public
 interfaces; internal callers import their canonical owner. Old flat file paths
 do not receive forwarding modules.
 
-| Area | Nested responsibilities |
-|---|---|
-| `core/` | Configuration, force/frame dynamics, geometry, spacecraft state and target motion |
-| `control/` | MPC, tube algebra, whole-step certification, fallback and terminal admission |
-| `estimation/` | Navigation, conservative membership, adaptation policy and numerical fitting |
-| `planning/` | Rendezvous, coordination, trajectory/policy proposals and optimization objectives |
-| `solvers/gekko/` | GEKKO formulation, geometry, fitting and native IPOPT iteration evidence |
-| `simulation/` | Approach, contact, attached flight, online execution, studies and recording |
-| `visualization/` | Saved data, plots, renderers, publishing and session workflow |
-| `utils/` | Shared geometry, discretization, explicit data/configuration IO and runtime helpers |
+| Layer | Package | Responsibilities |
+|---|---|---|
+| 1 | `common/` | Solver records, project paths, serialization, intervals, geometry algebra and explicit configuration and data IO |
+| 2 | `models/` | Structured configuration, force and frame dynamics, spacecraft and patch geometry, target motion |
+| 3 | `proofs/` | Arb interval flows, held-input and attitude enclosures, swept and composite collision guards |
+| 4 | `control/` | MPC, tube algebra, actuation, finite fallback and terminal admission |
+| 5 | `estimation/` | Navigation, conservative membership and adaptation |
+| 6 | `solvers/` | GEKKO/IPOPT formulation and the optional SciPy and CasADi backends |
+| 7 | `evidence/` | Journals, proof archives, source freezing and recorded-data projections |
+| 8 | `mission/` | Approach, safety planning, execution, contact, attached flight, lifecycle and recording |
+| 9 | `studies/` | Matched adaptive/frozen by dynamic/fixed arms, their records and metrics |
+| 10 | `figures/` | Plots, renderers, publishing and the browser Studio assets |
+| 11 | `service/` | Live job control, snapshots and the loopback HTTP adapter |
+| 12 | `cli/` | The `orbexa-run-nonlinear`, `orbexa-serve-studio` and `orbexa-figures` commands |
 
-The physical `scripts/` name and the five installed commands remain stable.
+Imports only go downward through this order.
+
+The physical `scripts/` name and the three installed commands remain stable.
 Regular Python packages are discovered recursively; static Studio assets remain
 package data rather than incidental namespace packages. Exporters resolve the
 asset directory from the package root, independently of their own nesting depth.
@@ -87,11 +90,10 @@ Paths in this table are relative to `scripts/`.
 | Module | Main interfaces and responsibility |
 |---|---|
 | `models/configuration/types.py`, `models/configuration/loader.py`, `models/configuration/model.py` | Structured scenario validation, YAML loading and configuration composition |
-| `common/contracts.py`, `common/layout.py`, `sessions.py` | Solver problem/result records, relocated-checkout paths and explicit generated-session ownership |
+| `common/contracts.py`, `common/layout.py` | Solver problem/result records and the `ProjectLayout` paths for inputs, run directories and results |
 | `models/dynamics/reference_frame.py` | `ReferenceClockFrame`: declared reference orbit, commanded anomaly clock and frame transforms |
 | `models/dynamics/relative.py` | `NonlinearModelBounds`, `ExponentialAtmosphere`, `NonlinearRelativeDynamics`: central gravity, J2, co-rotating vector drag and exact transformed relative RHS |
 | `models/targets/nonlinear.py` | `NonlinearTargetTruth` owns numerical Cartesian, quaternion and body-rate truth; `NonlinearTargetPreview` is updated from current navigation observations |
-| `models/dynamics/inertial.py` | Independent Cartesian SI dynamics and frame calculations used to check the physical equations separately |
 | `models/geometry/composite.py`, `mission/lifecycle/configuration/design.py` | Exact expanded component solids, patch geometry and prospective mass/actuator/contact declarations |
 | `proofs/nonlinear.py` | `NonlinearFlowEncloser`, `TargetEphemerisCertificate`, `RegionalResidualCertificate`: strict Picard flow bounds, physical-time support, nonlinear-minus-nominal regional bounds and Arb nominal coefficients |
 | `proofs/attitude.py`, `mission/safety/target_bounds.py` | `AttitudeFlowEncloser` and source-bound moving-goal errors from observed pose/rate supports; continuous occupied-geometry bounds remain separate |
@@ -110,7 +112,7 @@ Paths in this table are relative to `scripts/`.
 | `mission/coordination/allocation/{contracts,networks,system}.py` | Agent state, explicit neighbor graphs and task-allocation scheduling |
 | `mission/coordination/allocation/policies/`, `mission/coordination/allocation/demo.py` | Greedy, Hungarian and auction policies; optional plotting and demonstration stay outside controller imports |
 | `control/fallback/fuel.py` | `FleetFuelBudget`: exact same-event, same-hardware remaining-fuel budget for finite successor selection; admission independently rechecks the debit and complete reserve |
-| `proofs/reachability.py`, `proofs/orbital.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the analytical nominal endpoint while retaining its swept witness |
+| `proofs/reachability.py`, `proofs/orbital.py` | Interval/held-input/flow records and geometry guards; `OrbitalHoldProofService` refines the nominal endpoint while retaining its swept witness |
 | `control/fallback/refuge.py`, `control/fallback/plan.py` | `RefugeController`, `FleetFallbackPlan`: finite feedback authority, complete route construction and retained certificates |
 | `control/fallback/polynomial.py`, `control/fallback/geometry.py` | Exact polynomial peer bounds, occupied-component projections and whole-fleet separation |
 | `control/fallback/records.py`, `control/fallback/runtime.py` | Immutable proposal/decision/resource records and `FleetAdmissionRuntime` transactions, current-state checks and fuel accounting |
@@ -135,11 +137,11 @@ Paths in this table are relative to `scripts/`.
 | `mission/attached/assembly/model.py`, `mission/attached/propulsion.py` | `AttachedAssembly`, `AssemblyState`, `ThrusterSystem`: mass/inertia/fuel evolution, bounded nozzle allocation, pre-motion pad-load admission and actual load reconstruction |
 | `mission/attached/disposal/axis.py`, `mission/attached/disposal/preview.py`, `mission/attached/detumbling.py`, `mission/attached/disposal/simulator.py`, `mission/lifecycle/stages.py` | Burn-axis/throttle previews, controlled rate damping, finite-burn events and `MissionLifecycle` stage ownership and load/failure gates |
 | `service/{contracts,session,http}.py` | Typed live inputs, one worker/session owner and the bounded loopback HTTP adapter |
-| `service/{snapshot,process}.py`, `service/jobs/` | Coherent source/input freeze, isolated spawned lifetime and explicit nonlinear/historical execution routes |
-| `evidence/{artifacts,native}.py`, `mission/approach/arrival/composition.py` | Shared durable/native evidence instrumentation and prospective arrival composition, independent of HTTP |
+| `service/{snapshot,process}.py`, `service/jobs/` | Coherent source/input freeze, isolated spawned lifetime and the nonlinear execution route |
+| `evidence/{artifacts,native}.py` | Shared durable/native evidence instrumentation, independent of HTTP |
 | `evidence/projections/studio.py`, `figures/renderers/lifecycle.py`, `figures/publishing/studio.py`, `figures/studio/` | `StudioDataset`, `LifecycleDataset`, `MissionStudio`: one recorded-data browser replay and synchronized approach/lifecycle views |
-| `common/geometry/`, `common/discretization.py` | Geometry algebra, sampling, occlusion and region calculations; numerical discretization imports its backend only when selected |
-| `common/io/{configuration,data}.py`, `utils/runtime.py` | Explicit YAML configuration, atomic data persistence and opt-in runtime/keyboard helpers |
+| `common/geometry/` | Geometry algebra, sampling, occlusion and region calculations |
+| `common/io/{configuration,data}.py` | Explicit YAML configuration and atomic data persistence |
 
 ## Changing one subsystem
 
@@ -176,8 +178,7 @@ The numerical and Arb nonlinear RHS share equations and immutable physical
 declarations. Certificates bind the model, clock, target ephemeris, input,
 regional domain and source. The independent inertial service checks those
 equations; it is not a replacement source of controller measurements. See
-[navigation](nonlinear-navigation.md) and the
-[historical analytical fidelity audit](dynamics-fidelity.md).
+[navigation](nonlinear-navigation.md).
 
 `SensorSuite` produces truth-side packets. Navigation consumes declared priors,
 validated held-flow predictions and delivered bounded packets. Own-chaser GNSS
@@ -188,8 +189,7 @@ actuator magnitudes are explicit study parameters, not device qualifications.
 
 The nonlinear membership contractor uses the actual nonlinear transition and
 observation boxes. It removes only certified inconsistent parameter boxes and
-retains unresolved ones. The analytical RK4 contractor does not establish
-membership for this physical model. A failed NLP is a retained solver attempt,
+retains unresolved ones. A failed NLP is a retained solver attempt,
 not an infeasibility or unreachability label.
 
 ## Planning, admission and physical commits
@@ -264,8 +264,8 @@ perigee are separate recorded outcomes. Below-interface heating, breakup,
 demise and impact are outside this pipeline.
 
 A separately reconstructed post-contact replay has its own source/boundary and
-stage evidence. Its success cannot fill a missing approach prefix or upgrade an
-older analytical record into a sensed nonlinear full mission. See
+stage evidence. Its success cannot fill a missing approach prefix or stand in for a
+sensed nonlinear full mission. See
 [finite contact](finite-contact.md) and [mission lifecycle](mission-lifecycle.md).
 
 ## One Studio and evidence ownership

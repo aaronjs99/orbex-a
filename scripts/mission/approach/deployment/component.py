@@ -8,7 +8,6 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 
 import numpy as np
-from orbexa.mission.approach.deployment.arc import _quintic
 from orbexa.mission.approach.fleet import FleetInitializer
 from orbexa.mission.approach.models import ChaserConfig
 from orbexa.mission.rendezvous.carrier import CarrierTransferReference
@@ -17,6 +16,20 @@ from orbexa.mission.rendezvous.routes import (
     _point,
     _positive,
 )
+
+
+def _quintic(value: float, duration: float) -> tuple[float, float, float]:
+    """Clamped C2 progress and its first/second anomaly derivatives."""
+    if value <= 0.0:
+        return 0.0, 0.0, 0.0
+    if value >= duration:
+        return 1.0, 0.0, 0.0
+    t = value / duration
+    return (
+        t**3 * (10.0 - 15.0 * t + 6.0 * t**2),
+        30.0 * t**2 * (1.0 - t) ** 2 / duration,
+        60.0 * t * (1.0 - t) * (1.0 - 2.0 * t) / duration**2,
+    )
 
 
 @dataclass(frozen=True)

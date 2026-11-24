@@ -174,7 +174,8 @@ Runs before W2–W8 so that new work lands in the final layout.
 - [x] Remove the upward imports. `MPCController` moves to `solvers`, the interval kernel to `common.intervals`, constraints and target snapshots to `models`, rotation bounds to `proofs`, and the run recorders to `mission.records`. `control` now sits below `estimation`, and `evidence` below `mission`.
 - [x] Generate figures into `results/<topic>/` from recorded data with `orbexa-figures`: `mission` writes run plots and lifecycle replay, and `comparison` writes matched-arm comparisons.
 - [x] Root cleanup and ROS 2 files: `package.xml`, `resource/orbexa`, `setup.cfg`, and `setup.py` installing the ament marker. `requirements.txt` and `install_dependencies.sh` are folded into `pyproject.toml` extras, and the unused `mayavi` and `torch` extras are dropped.
-- [ ] One guide per layer, `docs/history.md` for narration, and folder READMEs.
+- [x] Folder READMEs with File Structure tables, generated from file headers and the import graph. Docs that described retired code (`swarm-consolidation.md`, `dynamics-fidelity.md`, the analytical cylinder deployment, the rotation-rate evidence path and the CLF/CBF/GP/consensus/PPO sections of `control-foundations.md`) are removed or cut.
+- [ ] One guide per layer, and `docs/history.md` for any narration worth keeping.
 
 ## WS Repository standards (owner rules in `AGENTS.md`)
 
@@ -190,7 +191,7 @@ Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` 
 - [ ] Classes and callables: convert module-level behavior to classes or callable objects package by package. Keep math helpers as functions.
 - [x] File headers: every source file, including `run.py` and `serve.py`, starts with `<file>: <responsibility>` and ends with `Copyright: Aaron John Sabu`. The VECTR Lab comment blocks that the initializer rewrite had dropped are restored.
 - [ ] Factual class, function and method docstrings, with `Inputs:` and `Outputs:` where the signature does not say enough, one layer per pull request.
-- [ ] Folder READMEs with File Structure tables. Restructure the root README into the standard sections.
+- [x] Folder READMEs with File Structure tables. Root README restructured into the standard sections.
 
 ## W8 Release-candidate studies (L10–L12)
 
@@ -211,7 +212,7 @@ Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` 
 ## W10 Release
 
 - [ ] Cut the docs: merge historical narration into one `docs/history.md` and keep theory docs that match the final code. Fix the stale references found by a full-link check.
-- [ ] Remove dead routes and prototypes no longer reached by the maintained mission. Keep the analytical reproduction APIs.
+- [x] Remove dead routes and prototypes no longer reached by the maintained mission. The analytical reproduction APIs are retired with them: 268 modules are reachable and no definition is unreferenced.
 - [ ] Build the wheel and check its imports from outside the checkout. Bump to `3.0.0`. Add `CITATION.cff`.
 - [ ] Publish the final Studio recording of the closed mission and export the selected evidence from `./results/` as a release bundle (optionally deposit it on Zenodo).
 - [ ] Tag `v3.0.0`. After that, the repository accepts maintenance fixes only.

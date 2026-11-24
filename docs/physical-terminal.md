@@ -335,7 +335,7 @@ The minimal integration has this shape, with every input obtained from the
 actual approach and the explicit bound configuration:
 
 ```python
-from orbexa.mission import PhysicalTerminalRunner, TerminalObservation
+from orbexa.mission.approach.terminal.execution import PhysicalTerminalRunner, TerminalObservation
 
 runner = PhysicalTerminalRunner(
     builders=admitted_builders,
@@ -481,7 +481,7 @@ approach, prepare it from the literal source file and a separately frozen
 terminal runtime:
 
 ```python
-from orbexa.mission import terminal_source_lineage
+from orbexa.mission.approach.terminal.execution import terminal_source_lineage
 
 source_context = {
     "origin": "actual_approach_endpoint",

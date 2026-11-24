@@ -47,52 +47,11 @@ Equal gains cancel the extra position term in the sliding expression. Adding ano
 
 Each numerical suffix query must lie in the error declaration's domain and within its explicit displacement from the canonical guard-derived clock. Actual endpoint membership uses the full independently enclosed state box and the same declared reference errors, with exact rational comparisons. The physical terminal controller still needs its own qualified global bounds, fleet geometry, finite scope and actual `PhysicalTerminalFleet.admit` gate. A region JSON or native inequality never substitutes for that certificate.
 
-## Explicit APIs and restart seam
+## Explicit API and activation record
 
-Inject the typed policy into `MissionScenario` or `PhysicalApproachScenario`. The guarded mission owns its exact clock; this bounded implementation requires that guard. `DynamicTubeSpec` adds optional `terminal_start_index`, `terminal_planning_fraction` and `terminal_region` fields. Absent optional values are omitted at the solver boundary, preserving the historical formulation.
-
-Ordinary `ADTMPCMissionRunner.resume` requires the same policy and retained commitment. The recognized checkpoint context binds enabled arrival policy. A missing, modified or detached commitment refuses; it is never regenerated as current time plus a horizon. The immutable deadline also survives JSON roundtrip. A partially committed outer interval is retained as evidence but cannot resume this arrival policy on a fabricated integer grid.
+Inject the typed policy into `MissionScenario`. The guarded mission owns its exact clock; this bounded implementation requires that guard. `DynamicTubeSpec` adds optional `terminal_start_index`, `terminal_planning_fraction` and `terminal_region` fields. Absent optional values are omitted at the solver boundary, preserving the historical formulation.
 
 Enabled records also require a separate `arrival_activation` marker. It binds the immutable enablement update and exact anomaly to the fresh mission origin or explicit transition seam, and binds the original commitment after its first acceptance. Reload checks the original/latest candidate identities and ordered event ledger against that marker. Completed docking intervals since enablement cannot be reclassified as precommit by deleting the runtime ledger or artifacts. A first refused docking candidate with no committed docking interval remains a valid unaccepted state.
-
-To add arrival to an older prefix, use `MissionPolicyTransition.prepare(source_checkpoint=..., source_scenario=..., target_scenario=...)`, then `ADTMPCMissionRunner(scenario=target_scenario).transition(transition, steps=...)`. Preparation applies ordinary source validation, permits only the injected arrival-policy addition, and restores the original guard's prior, inputs, sensing, bodies, geometry and exact endpoint. Every existing physical/configuration/reference field must match, including costs, horizon, geometry mode and cadence. The transition is single-use and records both source manifests and the exact seam.
-
-The supplied source configuration must also equal the complete configuration saved in the checkpoint, including solver settings. Changing both supplied profiles cannot hide a change from the original source. This policy-only seam is stricter than ordinary numerical resume, which separately permits an explicitly recorded solver repair.
-
-The original actual states, nominal centers, tubes, gains, belief, raw solver-stat rows and historical kinematics remain unchanged. New lineage goes in `policy_transition_history`; it is not inserted retroactively into old solver rows. Original unexecuted proposals remain archived. The dense adaptation window and unavailable warm starts are explicitly reset as in numerical restart; they are not reconstructed from averaged inputs.
-
-The physical CLI `orbexa-run-mission` enables the explicit arrival path for composite missions. Supply `--arrival-policy` with its sourced region/errors, or an explicitly present configuration-name sibling arrival JSON. Missing declarations refuse before output reservation. `--resume --transition-arrival-policy` selects a new cohort explicitly. `--historical-terminal-policy` selects the retained distance-gated reproduction. No default zero reference errors or spacecraft-specific region constants are hidden in the backend.
-
-## Default Envisat declaration
-
-`config/envisat-arrival.json` is sourced for the unchanged fresh Envisat study,
-including its full inertia, eight COM reference points, 0.85 m standoff,
-2.4 degree/s initial axial spin, central gravity-gradient model and orbital
-clock. The initial spin box has component radii $10^{-8}$ rad/s. Its canonical
-anomaly domain is [0, 1.214], covering 1200 updates and the declared preview.
-
-| Quantity | Declared or derived bound per component |
-| :-- | :-- |
-| Required position / sliding region | 0.00115 m / 0.020 m/rad |
-| Reference sliding gain | 20/rad |
-| Direct numerical reference position / velocity error | $10^{-6}$ m / $10^{-4}$ m/rad |
-| Numerical anomaly-query displacement | $10^{-10}$ rad |
-| Reference error including query displacement | $1.039062929292621\times10^{-6}$ m / $1.2063371187349754\times10^{-4}$ m/rad |
-
-The original full-inertia energy comparison and orbital rotation derivatives
-bound the entire expanded query interval, then take the maximum over all eight
-COM points and round outward to binary64. The preserved Arb proof archive has
-SHA-256 `d34fad9edde3058bc6139b71aea18d15f6fa5c1ffb56dc87bd7b6fa031792615`.
-Uniform direct evaluation accuracy and physical initial-spin containment remain
-assumptions; ODE tolerances and a pose-only rotation error do not prove them.
-All eight global physical-controller attempts remain refused. This JSON
-supplies only a planning/entry error screen; actual terminal tracking needs its
-own finite-window derivation at the achieved endpoint.
-
-The declaration does not automatically bind a changed target configuration.
-Different spin, inertia, orbit, standoff/reference norms, query allowance or
-evaluation accuracy requires a coverage argument or a new sourced declaration.
-Longer queries must pass the explicit domain gate; the screen never extrapolates.
 
 ## Evidence and scope
 

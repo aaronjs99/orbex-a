@@ -1,161 +1,143 @@
 # ORBEX-A
 
+## Overview
+
 Adaptive dynamic tube MPC for a configurable fleet deployed in a common cluster
 from a tumbling spacecraft. The default study releases eight chasers at 300 m.
-The mission sequence is approach, finite attachment,
-assembly detumbling and orbital lowering to a descending 120 km interface.
-The default target uses Envisat bus, solar-wing and appendage geometry. Other
-solid-component targets, patch layouts and vehicle designs enter through
+The mission sequence is approach, finite attachment, assembly detumbling and
+orbital lowering to a descending 120 km interface. The default target uses
+Envisat bus, solar-wing and appendage geometry. Other solid-component targets,
+patch layouts and vehicle designs enter through
 [explicit mission configuration](docs/configuration.md).
 
 **Start with [mission readiness](docs/mission-readiness.md).** It lists the
 current results, unresolved problems and the modules responsible for each one.
 The complete sensed nonlinear mission and real-time operation remain unverified.
 
-The maintained runtime separates these responsibilities:
-
-| Component | Implementation |
-| --- | --- |
-| Physical translation | Cartesian central gravity, inclined J2 and co-rotating vector quadratic drag |
-| Target rotation | Quaternion/Euler rigid-body dynamics with gravity-gradient torque |
-| Navigation | Bounded range/bearing, pose/rate and own-GNSS products with bias, acquisition time, latency and dropout |
-| ADTMPC | GEKKO/IPOPT nominal motion, dynamic tube and feedback bandwidth; sensing-aware held-input reserve |
-| Adaptation | Initial osculating eccentricity inference and nonlinear set-membership parameter exclusion |
-| Motion admission | Independent interval flows, every spacecraft component and peer, finite backup and fuel reservation |
-| Attachment | Finite positioners, compliant pad contact, friction, finite bonds and settling/load gates |
-| Post-contact flight | Actual assembled mass/inertia, external thrusters, propellant and environmental dynamics |
-
 [Nonlinear mission theory](docs/nonlinear-mission.md) connects the equations and
 assumptions. The commanded reference orbit frame has a fixed clock; it is not
 the perturbed target LVLH. Carter–Humi dynamics remain the optimizer's nominal
 surrogate. Independently bounded nonlinear residuals and physical flows bridge
-that surrogate to the declared truth model.
+that surrogate to the declared truth model. The COM uncertainty tube stays
+outside the hull, and a finite carried mechanism closes the remaining gap after
+the whole terminal tube meets the position and physical-speed gates.
 
-[Control foundations](docs/control-foundations.md) teaches the full chain from
-tracking and high-order barriers to ADTMPC, adaptation, coordination and contact.
-The [swarm consolidation record](docs/swarm-consolidation.md) explains the
-optional planning tools, source preservation and measured component costs.
-The [research review](docs/research-review.md) compares primary literature through
-October 2026, diagnoses the closed nonlinear run, and separates implemented
-finite safeguards from the remaining completion, contact and online obligations.
-The current changes add fuel-aware finite retreat selection, a sharper valid
-force bound, delivered target evidence, guarded geometry reuse and native
-iteration provenance. A complete sensed nonlinear mission, useful drag learning
-and real-time execution remain unestablished.
+## Responsibilities
 
-The COM uncertainty tube stays outside the hull. A finite carried mechanism
-closes the remaining gap after the whole terminal tube meets the position and
-physical-speed gates. Completion does not require forcing the true spacecraft
-to an uncertainty tube's edge.
+| Component | Implementation | Package |
+| --- | --- | --- |
+| Physical translation | Cartesian central gravity, inclined J2 and co-rotating vector quadratic drag | `models` |
+| Target rotation | Quaternion/Euler rigid-body dynamics with gravity-gradient torque | `models` |
+| Validated enclosures | Arb Picard flows, held-input proofs, rotation and attitude bounds | `proofs` |
+| ADTMPC | GEKKO/IPOPT nominal motion, dynamic tube and feedback bandwidth; sensing-aware held-input reserve | `control`, `solvers` |
+| Navigation | Bounded range/bearing, pose/rate and own-GNSS products with bias, acquisition time, latency and dropout | `estimation` |
+| Adaptation | Initial osculating eccentricity inference and nonlinear set-membership parameter exclusion | `estimation` |
+| Motion admission | Independent interval flows, every spacecraft component and peer, finite backup and fuel reservation | `control`, `mission` |
+| Attachment | Finite positioners, compliant pad contact, friction, finite bonds and settling/load gates | `mission` |
+| Post-contact flight | Actual assembled mass/inertia, external thrusters, propellant and environmental dynamics | `mission` |
+| Records | Durable journals, proof archives and result records | `evidence` |
+| Studies | Matched adaptive/frozen by dynamic/fixed arms | `studies` |
+| Figures and Studio | Plots, replay and browser Studio from recorded data | `figures`, `service` |
 
-## Run
+Source lives in `scripts/`, installed as the `orbexa` package. Imports only go
+downward through `common`, `models`, `proofs`, `control`, `estimation`,
+`solvers`, `evidence`, `mission`, `studies`, `figures`, `service` and `cli`.
+See the [architecture map](docs/architecture.md).
 
-Python 3.10 or later:
+## Requirements
+
+- Python 3.10 or later.
+- NumPy, SciPy, GEKKO (with IPOPT), Matplotlib and PyYAML.
+- `certification` extra: python-flint (Arb) and zstandard. Without them every certified step refuses.
+- `studio` extra: the theory renderer. `video` extra: a local video encoder. `casadi` extra: an optional proposal backend.
+- ROS 2 is optional. `package.xml` makes the package an `ament_python` package.
+
+## Installation
 
 ```bash
 python -m pip install -e ".[certification,studio,video]"
+```
+
+[INSTALL.md](INSTALL.md) covers the extras, the colcon build and the packages
+rosdep cannot provide.
+
+## Usage
+
+```bash
 python run.py --case central --adaptation adaptive --bandwidth dynamic
 ```
 
-The movable checkout launcher supplies `config/envisat.yaml`,
-`config/spacecraft/envisat.json` and `config/nonlinear-study.json`. Override those
-paths explicitly when needed. `python -S run.py --help` needs no scientific
-packages. Installed use is equivalent:
+The launcher supplies `config/envisat.yaml`, `config/spacecraft/envisat.json`
+and `config/nonlinear-study.json`; override them explicitly when needed. The
+installed command is `orbexa-run-nonlinear`, and `python -S run.py --help` needs
+no scientific packages. Each invocation runs one declared case and arm. Run all
+four adaptive/frozen belief by dynamic/fixed bandwidth arms for each case to
+form a matched study.
 
-```bash
-orbexa-run-nonlinear --config config/envisat.yaml --spacecraft config/spacecraft/envisat.json --study config/nonlinear-study.json --case central --adaptation adaptive --bandwidth dynamic
-```
-
-Each run writes its raw records to a new
+Each run writes its records to a new
 `data/nonlinear/<case>/<adaptation>-<bandwidth>/<UTC run id>/` directory. Rendered
-plots, videos and Studio viewers go under `results/`. Both folders are gitignored.
-The `ORBEXA_DATA` and `ORBEXA_RESULTS` environment variables move those roots,
-and `--output-dir` chooses one run's directory.
-
-Each invocation selects one declared case and arm. Run all four adaptive/frozen
-belief × dynamic/fixed bandwidth arms for each case to form a matched study.
-The maintained study shares accepted initial GNSS orbit conditioning across
-belief arms; only subsequent membership adaptation is frozen. The API default
-`initial_orbit_conditioning="legacy"` preserves earlier saved configurations.
-Study v6 also shares a bounded physical-time/channel random field with declared
-50 ms bins. Actual caller-driven acquisition times can differ; this is not an
-exact 20 Hz scheduler or iid noise. Earlier sequential-noise cohorts remain
-separate reproducible results.
-The linked estimator retains eight holds per agent and shared affine-actuator
-hypotheses. Full measured packets and delivery events are retained for audit.
-This changes how evidence is combined; it does not assume useful drag learning.
-A new output directory is required. `--steps` limits execution without shortening
-the prospective reference domain. A cap or a refused stage returns a nonzero
-status and retains the actual prefix; it never means mission completion.
+output goes to `results/`. Both folders are gitignored. `ORBEXA_DATA` and
+`ORBEXA_RESULTS` move the roots, and `--output-dir` chooses one run's directory.
+`--steps` caps the number of executed updates. A capped or refused run returns a
+nonzero status and keeps its recorded prefix; a cap never means completion.
 
 Before motion, each process freezes its Python source, explicit inputs and
 resolved study declaration. It streams complete admission witnesses before each
-applied hold, then records completion or assumption violation. Outputs include
-`source-manifest.json`, `study-manifest.json`, `approach/`, `completion/`,
-`nonlinear-certificates.jsonl.zst` and `study-metrics.json`. Comparisons require
-matching source and input hashes, the complete declared case/arm grid, and all
-failed or capped outcomes. Planner-only and full attempted-update timings are
-separate; offline simulation does not establish a flight deadline.
-
-The lossless Zstd journal retains the complete ordered JSON witnesses. Each
-acknowledged event is flushed and fsynced before motion; closure adds a checksum
-and the manifest. Closed readers reject incomplete frames, checksum errors,
-trailing data and decoder windows above 128 MiB. Earlier gzip archives remain
-readable. An interrupted byte prefix is retained as an aborted run.
-
-## Mission Studio
-
-[Open the published Studio](https://orbex-a.aaronjs.me/studio/).
-Its saved record identifies its own source, model and completed stages. Publishing
-a viewer does not upgrade an older recording's dynamics or proof scope.
-
-For live local simulation:
+applied hold, then records completion or assumption violation. A run directory
+holds `source-manifest.json`, `study-manifest.json`, `approach/`, `completion/`,
+`nonlinear-certificates.jsonl.zst` and `study-metrics.json`.
 
 ```bash
+orbexa-figures mission data/nonlinear/central/adaptive-dynamic/<run id>
 python serve.py
 ```
 
-Open `http://127.0.0.1:8881/studio/`. Release distance, spacing and target-spin
-knobs start fresh native solver runs through the loopback API on port 8882.
-Only committed samples update the scene. Run, pause and reset retain each job's
-source and output directory. An already running process keeps its frozen source.
-The browser is a viewer; it does not run GEKKO inside the page.
+`orbexa-figures` renders a run's plots, and a matched comparison of arms with its
+`comparison` subcommand, into `results/`. `python serve.py` starts the local
+Studio at `http://127.0.0.1:8881/studio/`, where release distance, spacing and
+target-spin knobs start fresh native solver runs through a loopback API. The
+browser is a viewer; it does not run GEKKO.
 
-If those ports serve an earlier job, start alongside it with
-`python serve.py --ui-port 8893 --api-port 8894` and open the printed Studio URL.
-The hosted viewer checks ports 8882 and 8894 and requires the v2 sensed nonlinear
-handshake before accepting a state or enabling commands. Each local viewer
-uses its explicitly configured API port.
+## Validation
 
-Mission, Plots and Theory share one recorded clock. True-size tube outlines and
-a magnified error-space view show the small uncertainty geometry without changing
-physical bounds. `MissionStudio`, `MissionPlots`, `NonlinearMissionPlots` and
-`LifecycleRenderer` derive portable replays, figures and video from saved data.
-Missing measurements remain unavailable. Decorative stars and the dispenser
-illustration are display context.
+This repository keeps no test or validation infrastructure. Evidence is the
+recorded output of real runs, each bound to its source and input hashes:
 
-## Models and scope
+- every run's manifests, certificate journal and metrics under `data/`;
+- the matched study comparison, which refuses unmatched sources, declarations or
+  grids, and reports failed and capped arms;
+- [mission readiness](docs/mission-readiness.md), which separates what is
+  verified, what is only a component check, and what is open.
 
-The [sensor contract](docs/nonlinear-navigation.md),
-[sensed tube derivation](docs/sensed-tube.md),
-[finite feedback fallback](docs/fleet-fallback.md),
-[finite contact model](docs/finite-contact.md), and
-[Envisat geometry sources](docs/envisat.md) state the implemented bounds.
-The rigid geometry and contact parameters are a research model. Raw image
-perception, flexible appendages, hardware qualification, atmospheric demise and
-regulatory disposal approval are outside this simulation. Chaser attitude is a
-causal rotational replay; approach translation uses a declared force-servo
-error envelope. The model does not claim a coupled thruster-resolved flight test.
+No complete sensed mission from the 300 m release through disposal has been
+recorded, and no run establishes a real-time deadline or useful drag learning.
+Hardware qualification, flexible appendages, atmospheric demise and regulatory
+approval are outside this simulation. The
+[research review](docs/research-review.md) compares the primary literature and
+states the remaining obligations.
 
-Source lives in `scripts/`, installed as the `orbexa` package. Nested packages
-separate mission stages, physics, proof services, recording and presentation;
-the [architecture map](docs/architecture.md) identifies the owner of each part. Dynamics,
-estimation, control, solver backends, mission orchestration and rendering use
-separate interfaces. Generated evidence stays in the gitignored `data/` and
-`results/` folders and is never committed. Figures are generated into `results/`
-from recorded data. See [architecture](docs/architecture.md) and [scenario inputs](config/README.md).
+## File Structure
 
-## Citation
+| File | Relevance | Dependencies | Used by |
+| --- | --- | --- | --- |
+| `scripts/` | The `orbexa` package: layered models, proofs, control, mission stages, evidence, studies, figures, service and command lines. | `numpy`, `scipy`, `gekko`, `matplotlib`, `pyyaml`, `python-flint`, `zstandard` | `run.py`, `serve.py`, installed commands |
+| `config/` | Scenario inputs: orbit and controller YAML, vehicle geometry and the study declaration. | none | `run.py`, `serve.py` |
+| `docs/` | Guides for the models, proofs and stages, and the design record. | none | readers |
+| `run.py` | Checkout launcher for one study arm. | `scripts/cli/run_nonlinear.py`, `config/` | users |
+| `serve.py` | Checkout launcher for the local Studio service. | `scripts/cli/serve_studio.py`, `config/` | users |
+| `setup.py` | Package metadata, the `scripts/` to `orbexa` mapping and the ament data files. | `setuptools`, `package.xml`, `resource/` | `pip`, `colcon` |
+| `setup.cfg` | Console-script install directory for ROS 2. | none | `colcon` |
+| `pyproject.toml` | Build system and `ruff` settings. | `setuptools` | `pip`, `ruff` |
+| `package.xml`, `resource/` | ROS 2 `ament_python` package manifest and resource marker. | none | `colcon` |
+| `INSTALL.md` | Installation, extras, ROS 2 build and figure commands. | none | readers |
+| `AGENTS.md` | Standing rules for code, documentation and workflow. | none | maintainers |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md` | Project license and the notice for adapted third-party ideas. | none | readers |
+
+## License
+
+GPL-2.0-only. See `LICENSE`.
+
+### Citation
 
 ```bibtex
 @inproceedings{johnsabu2025orbexa,
@@ -165,5 +147,3 @@ from recorded data. See [architecture](docs/architecture.md) and [scenario input
   year={2025}
 }
 ```
-
-GPLv2. See `LICENSE`.

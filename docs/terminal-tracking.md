@@ -282,12 +282,11 @@ their stated assumptions. [Lopez, Slotine and How (2019)](https://arxiv.org/abs/
 ### Runtime and serialization contract
 
 `certify_terminal_tracking(bounds)` returns exact quantities and refusal
-reasons. `TerminalTrackingController` recomputes that certificate at
-construction. Its `command` method requires an authoritative
-`TerminalReferenceSample`, an independently valid current-state enclosure, a
-measurement consistent with the declared sensing budget, and a complete hold
-inside scope. `float_command()` refuses a conversion outside the declared
-actuator-error budget.
+reasons. The terminal fleet recomputes that certificate before it admits a hold.
+A command requires an authoritative `TerminalReferenceSample`, an independently
+valid current-state enclosure, a measurement consistent with the declared
+sensing budget, and a complete hold inside scope. `float_command()` refuses a
+conversion outside the declared actuator-error budget.
 
 `ContinuationBuilder.certify(...)` validates the complete backup before
 execution. Constructing its supervisor recomputes all flow, geometry and
@@ -319,10 +318,9 @@ plant, reference, occupied bodies, uncertainty and timing context.
 
 The start terminal controller uses the same held ancillary law as the approach model,
 with explicit extra forcing for changing reference feedforward and sensing.
-It retains the full nonlinear analytical orbital model in the reachability
-provider when `OrbitalHeldPlant` is selected. `AffineHeldPlant` is a separate,
-explicit constant-affine plant adapter. It never inserts a continuous $A+BK$
-matrix to certify a controller whose input is actually held.
+It retains the full nonlinear orbital model in the reachability provider. It
+never inserts a continuous $A+BK$ matrix to certify a controller whose input is
+actually held.
 
 Finite body radii and strictly positive clearance are part of both terminal
 geometry and swept geometry. A near-surface gripper reference and a chaser

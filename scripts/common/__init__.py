@@ -1,4 +1,4 @@
-"""common/__init__.py: Shared paths, serialization, IO, geometry and discretization helpers.
+"""common/__init__.py: Shared paths, exact intervals, serialization, IO and geometry helpers.
 
 Copyright: Aaron John Sabu
 """

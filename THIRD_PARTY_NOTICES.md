@@ -5,13 +5,12 @@ Selected algorithmic ideas and implementation structure were adapted from
 master `07073759b14e2afef96f744362b5a78577020d5f` and the unmerged
 `feature/rl-cbf` head `1324b890cda49d664b797413cdb1bb95a6a85fad`.
 
-Affected modules: `control/barrier.py`, `control/command_projection.py`,
-`estimation/residual_gp.py`, `planning/consensus.py`, `planning/connectivity.py`,
-`planning/trajectory_hints.py`, `planning/ppo_proposal.py`,
-`planning/policy_features.py` and `planning/training.py` under `scripts/`.
-ORBEX-A supplies its own dynamics, units, mathematical corrections, solver
-boundary, physical admission and mission orchestration. See
-[the incorporation record](docs/swarm-consolidation.md).
+Earlier ORBEX-A versions adapted barrier, command-projection, residual-GP,
+consensus, connectivity, trajectory-hint and policy-training modules from that
+source. Those modules are no longer in the tree. `solvers/proposals.py` and
+`solvers/proposal_seed.py` keep only the affine-prediction and proposal-seeding
+interface, and ORBEX-A supplies its own dynamics, units, solver boundary,
+physical admission and mission orchestration.
 
 The source license is reproduced below. It does not change ORBEX-A's project license.
 

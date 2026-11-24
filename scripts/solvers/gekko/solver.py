@@ -278,7 +278,7 @@ class GekkoSolver(SolverBase):
                 q_val = q_var
 
             # Evaluate dynamics matrices symbolically using either t or q.
-            # orbital_ellp_undrag and similar factories support the 'solver'
+            # Dynamics factories support the 'solver'
             # and 'q' keywords.
             try:
                 A_mat_expr = A_func(t_var, time_periapsis, solver=solver, q=q_val)
