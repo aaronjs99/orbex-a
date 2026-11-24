@@ -68,9 +68,6 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
         name: str(getattr(settings, name))
         for name in (
             "config_path",
-            "prior_path",
-            "admission_path",
-            "deployment_path",
             "spacecraft_path",
         )
     }
@@ -90,11 +87,6 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
             "nonlinear_study_options": options.as_dict(),
             "independent_truth_case": asdict(case),
             "initial_spin_prior": prior.as_dict(),
-            "historical_only_inputs": (
-                "prior_path",
-                "admission_path",
-                "deployment_path",
-            ),
             "scope": "Shared declared nonlinear physics/sensor/safety profile; requested study knobs and nonzero observed spin prior; no flight qualification",
         },
     )

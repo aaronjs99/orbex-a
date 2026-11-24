@@ -152,10 +152,8 @@ separate mission stages, physics, proof services, recording and presentation;
 the [architecture map](docs/architecture.md) identifies the owner of each part. Dynamics,
 estimation, control, solver backends, mission orchestration and rendering use
 separate interfaces. Generated evidence stays in the gitignored `data/` and
-`results/` folders and is never committed. Paper source
-and figures retain the user's layout in `paper/IEEE Aerospace Conference 2025/`;
-analytical reproduction APIs remain available separately from the current run
-entry. See [architecture](docs/architecture.md) and [scenario inputs](config/README.md).
+`results/` folders and is never committed. Figures are generated into `results/`
+from recorded data. See [architecture](docs/architecture.md) and [scenario inputs](config/README.md).
 
 ## Citation
 

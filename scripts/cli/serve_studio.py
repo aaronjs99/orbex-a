@@ -92,24 +92,6 @@ def main(argv=None):
         "--config", type=Path, required=True, help="Explicit Envisat scenario YAML"
     )
     parser.add_argument(
-        "--prior",
-        type=Path,
-        required=True,
-        help="Retained analytical prior for historical resume; fresh runs use the shared nonlinear study prior",
-    )
-    parser.add_argument(
-        "--admission",
-        type=Path,
-        required=True,
-        help="Retained analytical admission settings for historical resume; fresh runs use the shared nonlinear sensing/safety profile",
-    )
-    parser.add_argument(
-        "--deployment",
-        type=Path,
-        required=True,
-        help="Retained analytical route settings for historical resume; fresh runs use the shared nonlinear deployment profile",
-    )
-    parser.add_argument(
         "--spacecraft",
         type=Path,
         required=True,
@@ -137,16 +119,6 @@ def main(argv=None):
         type=int,
         default=8882,
         help="Loopback simulator API port; the hosted viewer also checks8894",
-    )
-    parser.add_argument(
-        "--resume",
-        type=Path,
-        help="One-use historical analytical resume source; requires --historical-analytical-resume and its adjacent guard journal",
-    )
-    parser.add_argument(
-        "--historical-analytical-resume",
-        action="store_true",
-        help="Explicitly run the saved analytical model on first Run; fresh jobs use the sensed nonlinear profile",
     )
     parser.add_argument(
         "--proof-deps",
@@ -177,13 +149,8 @@ def main(argv=None):
         settings = LiveServiceSettings(
             output_dir=args.output_dir,
             config_path=args.config,
-            prior_path=args.prior,
-            admission_path=args.admission,
-            deployment_path=args.deployment,
             spacecraft_path=args.spacecraft,
             maximum_updates=args.max_updates,
-            resume_path=args.resume,
-            historical_analytical_resume=args.historical_analytical_resume,
         )
         # Reserve the UI before constructing/binding the API. A failed UI bind
         # must not leave a hidden API service or replace an unowned listener.
@@ -229,9 +196,6 @@ def main(argv=None):
                     "theory_documents": theory_count,
                     "output_dir": str(settings.output_dir),
                     "maximum_updates": settings.maximum_updates,
-                    "resume_source": None
-                    if settings.resume_path is None
-                    else str(settings.resume_path),
                 }
             ),
             flush=True,

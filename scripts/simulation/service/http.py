@@ -145,7 +145,7 @@ class _LiveHandler(BaseHTTPRequestHandler):
                         "session_id": state["session_id"],
                         "parameter_limits": PARAMETER_LIMITS,
                         "maximum_updates": self.server.service.settings.maximum_updates,
-                        "source": "Maintained sensed nonlinear GEKKO/IPOPT with finite fleet admission and contact; explicit historical analytical resume available; outcomes may refuse",
+                        "source": "Maintained sensed nonlinear GEKKO/IPOPT with finite fleet admission and contact; outcomes may refuse",
                     },
                 )
             if url.path != "/state":

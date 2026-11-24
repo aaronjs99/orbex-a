@@ -13,7 +13,6 @@ from pathlib import Path
 
 from orbexa.simulation.recording.artifacts import _write_json
 from orbexa.simulation.service.contracts import LiveParameters, LiveServiceSettings
-from orbexa.simulation.service.jobs.resume import _resume_source
 from orbexa.simulation.service.process import _run_job, _WorkerTree
 from orbexa.simulation.service.snapshot import _freeze_job
 
@@ -29,7 +28,6 @@ class LiveSimulationService:
         self._condition = threading.Condition(threading.RLock())
         self._operation = threading.Lock()
         self._process = self._tree = self._messages = self._run_event = None
-        self._resume_pending = settings.resume_path is not None
         self._state = {
             "revision": 0,
             "session_id": uuid.uuid4().hex,
@@ -42,13 +40,7 @@ class LiveSimulationService:
             "message": "Ready for a new bounded simulation",
             "paused": False,
             "scope": "Actual maintained nonlinear ADTMPC simulation under declared study-model assumptions; no flight qualification",
-            "execution_model": "historical_analytical_resume"
-            if self._resume_pending
-            else "sensed_nonlinear",
-            "resume_pending": self._resume_pending,
-            "resume_source": None
-            if settings.resume_path is None
-            else str(settings.resume_path),
+            "execution_model": "sensed_nonlinear",
         }
 
     @property
@@ -110,17 +102,7 @@ class LiveSimulationService:
             else LiveParameters.from_dict(parameters)
         )
         with self._operation:
-            from dataclasses import replace
-
-            if self._resume_pending:
-                _resume_source(self.settings.resume_path, parameters)
-            job_settings = (
-                self.settings
-                if self._resume_pending
-                else replace(
-                    self.settings, resume_path=None, historical_analytical_resume=False
-                )
-            )
+            job_settings = self.settings
             self._stop(
                 "Replaced by an explicitly requested new parameter set; outputs preserved"
             )
@@ -174,9 +156,7 @@ class LiveSimulationService:
                 progress={},
                 paused=False,
                 success=None,
-                execution_model="historical_analytical_resume"
-                if frozen_settings.resume_path
-                else "sensed_nonlinear",
+                execution_model="sensed_nonlinear",
                 message="Constructing the declared physical model, sensor prior and finite safety policy",
             )
             try:
@@ -197,13 +177,7 @@ class LiveSimulationService:
                 messages,
                 run_event,
             )
-            self._resume_pending = False
-            self._publish(
-                resume_pending=False,
-                origin="historical_analytical_checkpoint"
-                if frozen_settings.resume_path
-                else "fresh_nonlinear_parameters",
-            )
+            self._publish(origin="fresh_nonlinear_parameters")
             threading.Thread(
                 target=self._collect, args=(job_id, process, messages), daemon=True
             ).start()

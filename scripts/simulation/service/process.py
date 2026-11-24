@@ -143,8 +143,8 @@ def _run_job(settings, parameters, directory, messages, run_event, launch_event)
             package = importlib.util.module_from_spec(spec)
             sys.modules["orbexa"] = package
             spec.loader.exec_module(package)
-            from orbexa.simulation.service.jobs.dispatch import (
-                _execute_job as frozen_execute,
+            from orbexa.simulation.service.jobs.nonlinear import (
+                _execute_nonlinear_job as frozen_execute,
             )
 
             frozen_execute(settings, parameters, directory, messages, run_event)

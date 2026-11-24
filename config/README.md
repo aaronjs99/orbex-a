@@ -33,9 +33,3 @@ fleet. The default Envisat radius remains 30 m. This selects proposals; changing
 target geometry, mass, inertia or spin still requires every original dynamics,
 sensing, force, fuel, contact and whole-set collision check. It does not establish
 arrival for every target.
-
-The remaining prior/admission/arrival/deployment JSON files support separately
-identified analytical reproductions. Fresh nonlinear runs do not borrow their
-micrometre sensing assumptions or relabel their saved certificates. `default.yaml`
-retains the paper-scale analytical scenario; the current checkout launcher uses
-`envisat.yaml` with `nonlinear-study.json`.

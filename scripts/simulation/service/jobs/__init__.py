@@ -1,1 +1,1 @@
-"""Explicit worker execution routes and historical source admission."""
+"""Nonlinear live-job execution in an isolated worker process."""

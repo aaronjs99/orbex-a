@@ -32,8 +32,8 @@ def project_root() -> Path:
 def default_config_path() -> Path:
     """Find the checkout scenario without relying on package nesting depth."""
     root = checkout_root()
-    if root is not None and (root / "config" / "default.yaml").is_file():
-        return root / "config" / "default.yaml"
+    if root is not None and (root / "config" / "envisat.yaml").is_file():
+        return root / "config" / "envisat.yaml"
     raise FileNotFoundError(
         "Default scenario is unavailable; supply a scenario YAML with --config PATH"
     )
