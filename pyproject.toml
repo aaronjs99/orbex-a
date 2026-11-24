@@ -50,3 +50,7 @@ orbexa-run-nonlinear = "orbexa.cli.run_nonlinear:main"
 [project.urls]
 Homepage = "https://github.com/aaronjs99/orbex-a"
 Documentation = "https://github.com/aaronjs99/orbex-a#readme"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

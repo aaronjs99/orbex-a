@@ -78,6 +78,7 @@ approval listed in `README.md` stay declared out of scope. They are not ledger i
 W0 ─► W1b ─► W1 ─► W2 ─► W3 ─► W4 ─┐
                    W5 ─────────────┤
                    W6 ─► W7 ───────┼─► W8 (frozen RC) ─► W9 paper ─► W10 release
+                   WS standards ───┘
 ```
 
 W2→W3→W4 is the critical path. W5, W6 and W7 run in parallel with it. All three
@@ -161,6 +162,18 @@ Files: `estimation/membership/nonlinear.py`, `estimation/adaptation/{smid,nonlin
 - [ ] Compute certified distinguishability between drag candidates for the declared sensors, clock and mission duration (W2–W4 arcs). This covers the integral constraints over the long attached-flight and coast arcs, where drag dominates.
 - [ ] If the bound shows separability, implement multi-epoch linked evidence. Optionally add safe excitation inside the admitted tube.
 - [ ] Gate: either a certified support contraction on the mission record (Demonstrated), or the certified non-identifiability bound (Bounded). Do not narrow the declared noise or density.
+
+## WS Repository standards (owner rules in `AGENTS.md`)
+
+Runs alongside W2–W8 and must be finished before W10. Each step is its own pull request and must not change behavior.
+
+Baseline at `0fd25e6`: 278 of 340 Python files need `ruff format`. `ruff check` reports 2,263 findings, 1,250 of them auto-fixable. There are 533 module-level `def`s, some of them math helpers that may stay. One of 73 source folders has a README.
+
+- [ ] Formatting-only pull request: `ruff format` across the tree. Confirm the AST is unchanged for every file.
+- [ ] `ruff check` cleanup, one package per pull request. Apply only safe fixes, then fix the rest by hand.
+- [ ] Classes and callables: convert module-level behavior to classes or callable objects package by package. Keep math helpers as functions.
+- [ ] Headers and docstrings: add the file header ending in `Copyright: Aaron John Sabu` and factual docstrings, package by package.
+- [ ] Folder READMEs with File Structure tables. Restructure the root README into the standard sections.
 
 ## W8 Release-candidate studies (L10–L12)
 
