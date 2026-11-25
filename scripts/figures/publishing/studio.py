@@ -201,7 +201,7 @@ class MissionStudio:
             heading_ids = {}
 
             class DocumentRenderer(mistune.HTMLRenderer):
-                def heading(self, text, level, **attrs):
+                def heading(self, text, level, heading_ids=heading_ids, **attrs):
                     plain = html.unescape(re.sub(r"<[^>]+>", "", text)).lower()
                     slug = (
                         re.sub(r"\s+", "-", re.sub(r"[^\w\s-]", "", plain)).strip("-")
@@ -212,7 +212,7 @@ class MissionStudio:
                     anchor = slug if count == 0 else f"{slug}-{count}"
                     return f'<h{level} id="{html.escape(anchor, quote=True)}">{text}</h{level}>\n'
 
-                def link(self, text, url, title=None):
+                def link(self, text, url, title=None, source=source):
                     relative, separator, fragment = url.partition("#")
                     if ":" not in relative and relative.endswith(".md"):
                         target = (Path(source).parent / relative).resolve()

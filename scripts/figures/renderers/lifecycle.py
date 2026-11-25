@@ -148,18 +148,17 @@ def _contact_projection(attachment, approach, approach_digest, assembly, first_s
             raise ValueError(
                 "Finite-contact target SI state differs from the saved actual source ephemeris"
             )
-    if inertial_quaternions is not None:
-        if (
-            np.linalg.norm(
-                _rotation(inertial_quaternions[-1])
-                - _rotation(target["quaternion_body_to_eci"][0]),
-                ord=2,
-            )
-            > 1e-8
-        ):
-            raise ValueError(
-                "Finite-contact target attitude differs from the actual source boundary"
-            )
+    if inertial_quaternions is not None and (
+        np.linalg.norm(
+            _rotation(inertial_quaternions[-1])
+            - _rotation(target["quaternion_body_to_eci"][0]),
+            ord=2,
+        )
+        > 1e-8
+    ):
+        raise ValueError(
+            "Finite-contact target attitude differs from the actual source boundary"
+        )
     display_rotation = (
         relative_rotation @ _rotation(target["quaternion_body_to_eci"][0]).T
     )

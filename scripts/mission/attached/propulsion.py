@@ -9,6 +9,7 @@ Copyright: Aaron John Sabu
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 from numbers import Integral
 
@@ -130,7 +131,7 @@ class ThrusterSystem:
             not 2 <= len(scales) <= 16
             or scales[0] != 1.0
             or scales[-1] != 0.0
-            or any(a <= b for a, b in zip(scales, scales[1:]))
+            or any(a <= b for a, b in itertools.pairwise(scales))
         ):
             raise ValueError(
                 "Declare two to sixteen strictly decreasing attachment scales from one to zero"

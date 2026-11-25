@@ -152,11 +152,9 @@ class GekkoDynamicTube:
     def _array(self, key, shape, nonnegative=False):
         value = np.asarray(self.spec[key], dtype=float)
         if value.shape != shape or not np.all(np.isfinite(value)):
-            raise ValueError(
-                "dynamic_tube.%s must be finite with shape %s" % (key, shape)
-            )
+            raise ValueError(f"dynamic_tube.{key} must be finite with shape {shape}")
         if nonnegative and np.any(value < 0):
-            raise ValueError("dynamic_tube.%s must be nonnegative" % key)
+            raise ValueError(f"dynamic_tube.{key} must be nonnegative")
         return value
 
     def _eq(self, left, right=0.0):
@@ -259,7 +257,7 @@ class GekkoDynamicTube:
         if value.shape != shape and value.shape == shape[::-1]:
             value = value.T
         if value.shape != shape or not np.all(np.isfinite(value)):
-            raise ValueError("%s must have shape %s" % (key, shape))
+            raise ValueError(f"{key} must have shape {shape}")
         return value
 
     def _numeric_step(self, state, control, coefficients):
@@ -1017,7 +1015,7 @@ class GekkoDynamicTube:
                 fraction = self.terminal_planning_fraction if k > 0 else 1.0
                 native_fraction = 1.0 - self.terminal_solve_reserve if k > 0 else 1.0
                 self.constraint_context = (
-                    "normalized_terminal_pose[%s]" % k
+                    f"normalized_terminal_pose[{k}]"
                     if self.explicit_terminal_policy
                     else "normalized_terminal_pose"
                 )
@@ -1035,7 +1033,7 @@ class GekkoDynamicTube:
                         or float(tolerance) <= 0
                     ):
                         raise ValueError(
-                            "Hard terminal constraints require positive %s" % key
+                            f"Hard terminal constraints require positive {key}"
                         )
                     tolerance = float(tolerance) * fraction * native_fraction
                     error = [
@@ -1054,7 +1052,7 @@ class GekkoDynamicTube:
                         ),
                     )
                 if self.terminal_region is not None:
-                    self.constraint_context = "required_terminal_region[%s]" % k
+                    self.constraint_context = f"required_terminal_region[{k}]"
                     region = self.terminal_region.scaled(fraction)
                     ep = [
                         self.states[k][i] - float(p.reference_states[i, k])
@@ -1088,7 +1086,7 @@ class GekkoDynamicTube:
                             1.0, sliding / (float(region.phi[i]) * native_fraction)
                         )
                 if self.contact_terminal is not None:
-                    self.constraint_context = "prospective_contact_split_speed[%s]" % k
+                    self.constraint_context = f"prospective_contact_split_speed[{k}]"
                     bound = contact_bounds[k]
                     goal = np.array([float(value) for value in bound.observed_goal])
                     ep = [self.states[k][i] - goal[i] for i in range(3)]
@@ -1150,7 +1148,7 @@ class GekkoDynamicTube:
                     )
                     if reach_policy is not None:
                         self.constraint_context = (
-                            "prospective_contact_reach_and_gap[%s]" % k
+                            f"prospective_contact_reach_and_gap[{k}]"
                         )
                         allowance = reach_policy.position_allowance_m(
                             exact(limits["gripper_offset_m"])
@@ -1587,7 +1585,7 @@ class GekkoDynamicTube:
             return SolverResult(
                 success=False,
                 solve_time=time.time() - started,
-                message="Coupled GEKKO dynamic-tube solve failed: %s" % error,
+                message=f"Coupled GEKKO dynamic-tube solve failed: {error}",
                 solver_info={
                     "composite_geometry_mode": self.composite_geometry_mode,
                     **native_ipopt_iteration_metadata(
@@ -1660,11 +1658,11 @@ class GekkoDynamicTube:
                         "initialization": "fresh_dynamics_rollout",
                         "success": False,
                         "solve_time": 0.0,
-                        "message": "Alternate initialization failed: %s" % error,
+                        "message": f"Alternate initialization failed: {error}",
                         "max_constraint_violation": None,
                     }
                 )
-                result.message += "; alternate initialization failed: %s" % error
+                result.message += f"; alternate initialization failed: {error}"
         if (
             not result.success
             and result.message == "Coupled dynamic-tube residual verification failed"

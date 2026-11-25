@@ -117,7 +117,7 @@ def _refuse_target_geometry(
         # Freeze this one genuine query for the existing final target formula.
         # No provider is replaced on the actual plan/oracle.
         probe = FleetGeometryOracle(
-            lambda *_: occupied,
+            lambda *_, occupied=occupied: occupied,
             component_ids=geometry.component_ids,
             body_radii=dict(geometry.body_radii),
             geometry_id=geometry.geometry_id,

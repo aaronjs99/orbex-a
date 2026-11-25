@@ -5,6 +5,7 @@ Copyright: Aaron John Sabu
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from numbers import Real
 
@@ -81,7 +82,7 @@ class AxialBurnPlanner:
         if (
             not 1 <= len(scales) <= 16
             or scales[0] != 1.0
-            or any(a <= b for a, b in zip(scales, scales[1:]))
+            or any(a <= b for a, b in itertools.pairwise(scales))
         ):
             raise ValueError(
                 "Declare one to sixteen strictly decreasing positive burn force scales starting at one"

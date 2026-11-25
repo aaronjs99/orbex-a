@@ -114,15 +114,14 @@ class NominalTubePropagator:
             raise ValueError("Nominal Picard/VoC endpoint unresolved")
         chosen = np.array(midpoint(certificate.endpoint))
         defect = measurement_radius(certificate.endpoint, chosen)
-        if budget is not None:
-            if any(exact(value) > bound for value, bound in zip(defect, budget)):
-                excess = max(
-                    exact(value) - bound for value, bound in zip(defect, budget)
-                )
-                raise ValueError(
-                    "Certified nominal endpoint defect exceeds prospective budget; maximum excess="
-                    + str(excess)
-                )
+        if budget is not None and any(
+            exact(value) > bound for value, bound in zip(defect, budget)
+        ):
+            excess = max(exact(value) - bound for value, bound in zip(defect, budget))
+            raise ValueError(
+                "Certified nominal endpoint defect exceeds prospective budget; maximum excess="
+                + str(excess)
+            )
         if np.any(phi > stage["phi_peak"]) or np.any(omega > stage["omega_peak"]):
             excess = max(
                 *(exact(a) - exact(b) for a, b in zip(phi, stage["phi_peak"])),

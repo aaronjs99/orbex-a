@@ -35,7 +35,7 @@ class ScipySolver(SolverBase):
         disp (bool): Display output. Default: False
     """
 
-    def __init__(self, config: dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.method = self.config.get("method", "SLSQP")
         self.max_iter = self.config.get("max_iter", 1000)

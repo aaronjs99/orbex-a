@@ -47,7 +47,7 @@ class CasadiSolver(SolverBase):
         warm_start (bool): Use warm start. Default: False
     """
 
-    def __init__(self, config: dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         if not CASADI_AVAILABLE:
             raise ImportError("CasADi not installed. Run: pip install casadi")
 

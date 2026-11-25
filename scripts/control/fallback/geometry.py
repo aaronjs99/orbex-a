@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
-from itertools import combinations
+from itertools import combinations, pairwise
 from typing import Any
 
 from orbexa.common.intervals import IntervalBox, _exact
@@ -502,7 +502,7 @@ class FleetGeometryOracle:
             }
         )
         records, reasons = [], []
-        for lower, upper in zip(cuts, cuts[1:]):
+        for lower, upper in pairwise(cuts):
             boxes = {}
             for key, flow in zip(self.ids, ordered):
                 segment = next(

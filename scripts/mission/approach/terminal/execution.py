@@ -776,7 +776,7 @@ class PhysicalTerminalRunner:
                     self.record_sink(event)
                 return finish("REFUSED_COMMAND_CONVERSION", str(error))
 
-            def rhs(anomaly, flat):
+            def rhs(anomaly, flat, control=control):
                 actual = flat.reshape(len(self.builders), 6)
                 matrix, affine = self._coefficients(anomaly, self.truth)
                 disturbance = np.zeros((len(self.builders), 3))

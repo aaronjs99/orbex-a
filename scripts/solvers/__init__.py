@@ -39,7 +39,7 @@ except ImportError:
     CasadiSolver = None
 
 
-def get_solver(backend: str = "gekko", config: dict = None) -> SolverBase:
+def get_solver(backend: str = "gekko", config: dict | None = None) -> SolverBase:
     """
     Get a solver instance by backend name.
 

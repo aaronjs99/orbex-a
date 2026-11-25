@@ -144,7 +144,7 @@ class FiniteBurnThrottlePlanner:
                 continue
             total_flow = float(np.sum(flow))
 
-            def derivative(time, values):
+            def derivative(time, values, force=force, total_flow=total_flow):
                 r, v, m = values[:3], values[3:6], values[6]
                 norm = np.linalg.norm(r)
                 if norm <= 0 or m <= 0:
@@ -176,7 +176,7 @@ class FiniteBurnThrottlePlanner:
             def entry_event(time, values):
                 return np.linalg.norm(values[:3]) - entry_radius
 
-            def reserve_event(time, values):
+            def reserve_event(time, values, fuel_duration=fuel_duration):
                 return fuel_duration - values[7]
 
             reserve_event.terminal, reserve_event.direction = True, -1

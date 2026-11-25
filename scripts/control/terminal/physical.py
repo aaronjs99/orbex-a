@@ -1155,13 +1155,15 @@ class PhysicalTerminalFleet:
                 "Joint terminal builders need a common physical target, scope and peer geometry context"
             )
         geometries = tuple(getattr(item, "target_geometry", None) for item in builders)
-        if any(value is not None for value in geometries):
-            if any(value is None for value in geometries) or any(
+        if any(value is not None for value in geometries) and (
+            any(value is None for value in geometries)
+            or any(
                 value.fingerprint != geometries[0].fingerprint for value in geometries
-            ):
-                raise ValueError(
-                    "Every terminal member must share the same explicit composite geometry; mixed geometry refuses"
-                )
+            )
+        ):
+            raise ValueError(
+                "Every terminal member must share the same explicit composite geometry; mixed geometry refuses"
+            )
         for index, item in enumerate(builders):
             peer_limit = (
                 sum(v * v for v in item.omega)

@@ -33,7 +33,7 @@ class SolverBase(ABC):
     the setup() and solve() methods.
     """
 
-    def __init__(self, config: dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize solver with configuration.
 

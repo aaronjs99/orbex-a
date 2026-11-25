@@ -213,17 +213,20 @@ class NonlinearMissionRecorder:
         # Refuge segment boundaries can split a dense feedback interval. Use
         # the exact executed widths, rather than assuming 32 equal samples.
         widths = [exact(record["exact_hold_width"]) for record in hold_records]
-        if not widths or sum(widths) != exact(outcome.end_anomaly) - exact(
-            outcome.start_anomaly
+        # The public outer endpoints are binary64 projections, so the exact
+        # journal endpoints are compared as well when the projection is inexact.
+        if (
+            not widths
+            or sum(widths) != exact(outcome.end_anomaly) - exact(outcome.start_anomaly)
+        ) and (
+            not widths
+            or sum(widths)
+            != exact(hold_records[-1]["exact_end"])
+            - exact(hold_records[0]["exact_start"])
         ):
-            # The public outer endpoints are binary64 projections; compare
-            # their exact journal endpoints when projection is inexact.
-            if not widths or sum(widths) != exact(
-                hold_records[-1]["exact_end"]
-            ) - exact(hold_records[0]["exact_start"]):
-                raise ValueError(
-                    "Executed hold widths do not cover the recorded outer interval"
-                )
+            raise ValueError(
+                "Executed hold widths do not cover the recorded outer interval"
+            )
         weights = np.asarray([float(width) for width in widths])
         duration = float(sum(widths))
         for key in a.ids:

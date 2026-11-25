@@ -6,6 +6,7 @@ Copyright: Aaron John Sabu
 from __future__ import annotations
 
 import hashlib
+import itertools
 from fractions import Fraction
 from pathlib import Path
 
@@ -135,7 +136,7 @@ def _proper_rotation_comparison(attitude, preview, clock, queries, ar):
             tuple(a - b for a, b in zip(segment.swept_state.upper[4:], omega0)),
         )
         deviation = _norm_box(delta)
-        for start, stop in zip(cuts, cuts[1:]):
+        for start, stop in itertools.pairwise(cuts):
             nu = clock.evaluate(ar.interval((start, stop)), ar)[1]
             clock_box = ar.box((nu,))
             if clock_box.lower[0] <= 0:

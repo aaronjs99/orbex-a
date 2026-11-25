@@ -41,7 +41,7 @@ class GekkoSolver(SolverBase):
         disp (bool): Display solver output. Default: False
     """
 
-    def __init__(self, config: dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.remote = self.config.get("remote", False)
         self.max_iter = self.config.get("max_iter", 3000)
@@ -102,10 +102,9 @@ class GekkoSolver(SolverBase):
 
         # Tube MPC params
         tube_mpc = extra.get("tube_mpc")  # Dict or None
-        if tube_mpc:
+        if tube_mpc and tube_mpc.get("enabled", False):
             # Tube MPC constraint tightening (if enabled)
-            if tube_mpc and tube_mpc.get("enabled", False):
-                logger.debug("Tube MPC enabled - bounds should be pre-tightened")
+            logger.debug("Tube MPC enabled - bounds should be pre-tightened")
 
         solver = GEKKO(remote=self.remote)
         horizon_end = max(problem.num_steps - 1, 0) * problem.anom_step
