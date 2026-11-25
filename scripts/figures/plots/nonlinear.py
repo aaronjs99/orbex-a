@@ -9,6 +9,7 @@ Copyright: Aaron John Sabu
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from collections.abc import Mapping
 from fractions import Fraction
@@ -333,7 +334,7 @@ class NonlinearMissionPlots:
             )
         if not rows:
             raise ValueError("No VALID navigation row matches retained numerical truth")
-        if any(a["index"] >= b["index"] for a, b in zip(rows, rows[1:])):
+        if any(a["index"] >= b["index"] for a, b in itertools.pairwise(rows)):
             raise ValueError(
                 "Matched navigation records are not in strictly increasing node order"
             )

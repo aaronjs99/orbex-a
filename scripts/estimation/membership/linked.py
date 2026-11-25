@@ -10,6 +10,7 @@ Copyright: Aaron John Sabu
 
 from __future__ import annotations
 
+import itertools
 from collections import deque
 from dataclasses import dataclass
 from fractions import Fraction
@@ -438,7 +439,7 @@ class LinkedNonlinearMembershipContractor:
                 prior_ids = {t.actuation_prior.fingerprint for t in history}
                 if len(prior_ids) != 1 or any(
                     a.start_q[0] + a.width_q[0] > b.start_q[0]
-                    for a, b in zip(history, history[1:])
+                    for a, b in itertools.pairwise(history)
                 ):
                     raise ValueError(
                         "A linked window requires one immutable actuator prior and nonoverlapping observations"

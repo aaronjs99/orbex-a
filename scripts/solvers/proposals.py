@@ -61,7 +61,7 @@ class AffinePrediction:
             q = start + k * h
             c0, cm, c1 = coefficients(q), coefficients(q + h / 2), coefficients(q + h)
 
-            def step(x, u):
+            def step(x, u, c0=c0, cm=cm, c1=c1):
                 if problem.dynamics_type == "discrete":
                     return c0[0] @ x + b @ u + c0[1]
                 if problem.dynamics_type != "continuous":

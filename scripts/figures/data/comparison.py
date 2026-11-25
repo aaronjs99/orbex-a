@@ -646,7 +646,8 @@ class MatchedNonlinearComparison:
                 color=_COLORS[number],
             )
             for position, value, row, bar in zip(positions, heights, rows, bars):
-                status = row["metrics"]["status"]
+                # A row without a recorded status refuses here.
+                row["metrics"]["status"]
                 evidence = recorded_outcome_evidence(row["metrics"])
                 execution_error = evidence["termination_class"] == "EXECUTION_ERROR"
                 short = evidence["display_marker"]

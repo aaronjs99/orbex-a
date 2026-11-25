@@ -148,7 +148,7 @@ class PastNavigationAttitudeObserver:
             "no past accepted target observation is available at this replay time",
         )
         index = eligible[-1]
-        available, epoch, initial, packets, q = self.records[index]
+        _available, epoch, initial, packets, _q = self.records[index]
         if (
             self._cached is not None
             and self._cached[0] == index

@@ -18,7 +18,7 @@ Copyright: Aaron John Sabu
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 from orbexa.models.dynamics.parameters import (
@@ -26,9 +26,6 @@ from orbexa.models.dynamics.parameters import (
     OrbitalPlantTruth,
     specific_angular_momentum,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 def serial_ranges(ranges: dict[str, tuple[float, float]]) -> dict[str, list[float]]:

@@ -8,7 +8,7 @@ Copyright: Aaron John Sabu
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from orbexa.common.intervals import IntervalBox
 from orbexa.control.actuation import CommandDependentActuationPrior
@@ -35,7 +35,9 @@ class NonlinearTransitionObservation:
     width_q: tuple
     target_initial: IntervalBox
     physical_time_initial: tuple = (0, 0)
-    acceleration_disturbance: IntervalBox = IntervalBox.point((0, 0, 0))
+    acceleration_disturbance: IntervalBox = field(
+        default_factory=lambda: IntervalBox.point((0, 0, 0))
+    )
     observation_id: str = ""
     target_observed: IntervalBox | None = None
     agent_id: str = ""

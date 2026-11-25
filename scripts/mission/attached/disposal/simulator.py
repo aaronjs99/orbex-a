@@ -918,7 +918,7 @@ class DeorbitSimulator:
                 )
                 return finish(False, f"deorbit_{allocation.message}")
 
-            def propagate(dt):
+            def propagate(dt, state=state, allocation=allocation):
                 if dt <= 0:
                     return state
                 return assembly.advance(
@@ -932,7 +932,7 @@ class DeorbitSimulator:
                     max_angular_rate_rad_s=options.max_body_rate_rad_s,
                 )
 
-            def predict(dt):
+            def predict(dt, feedback_state=feedback_state, allocation=allocation):
                 if dt <= 0:
                     return feedback_state
                 estimate = replace(feedback_state, enclosure=None)
@@ -959,7 +959,8 @@ class DeorbitSimulator:
                     }
                 )
                 return finish(False, "deorbit_held_preview_refused: " + str(error))
-            next_orbit = orbital_elements(
+            # Raises ValueError for a non-finite or radial next state.
+            orbital_elements(
                 next_state.position_eci_m,
                 next_state.velocity_eci_m_s,
                 assembly.mu_m3_s2,

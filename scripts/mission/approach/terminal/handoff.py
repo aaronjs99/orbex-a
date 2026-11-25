@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import gzip
 import hashlib
+import itertools
 import json
 import zlib
 from collections.abc import Mapping
@@ -283,7 +284,7 @@ class PhysicalTerminalHandoff:
         )
         clocks = tuple(map(_exact, execution["anomaly_history"]))
         _require(
-            len(clocks) >= 2 and all(a < b for a, b in zip(clocks, clocks[1:])),
+            len(clocks) >= 2 and all(a < b for a, b in itertools.pairwise(clocks)),
             "the terminal clock must strictly increase",
         )
         _require(

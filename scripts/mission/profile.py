@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 import math
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from fractions import Fraction
 
 import numpy as np
@@ -58,7 +58,7 @@ class NonlinearStudyOptions:
     maximum_updates: int = 1200
     planning_workers: int = 8
     fallback_fuel_reserve_kg: float = 10.0
-    sensor: StudySensorProfile = StudySensorProfile()
+    sensor: StudySensorProfile = field(default_factory=StudySensorProfile)
     # Legacy keeps saved adaptive/frozen declarations unchanged. Enabled lets
     # both arms share initial orbit conditioning before online membership.
     initial_orbit_conditioning: str = "legacy"

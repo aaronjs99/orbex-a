@@ -62,7 +62,7 @@ class LocalHungarianPolicy:
         goals = [agents[i].goal_pos for i in cluster]
 
         C = self._cost_matrix(starts, goals)
-        row_ind, col_ind = linear_sum_assignment(C)
+        _row_ind, col_ind = linear_sum_assignment(C)
         new_goals = [goals[j] for j in col_ind]
 
         for idx, agent_idx in enumerate(cluster):

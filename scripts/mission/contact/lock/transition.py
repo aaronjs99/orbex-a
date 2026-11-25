@@ -789,7 +789,7 @@ class _LockField:
     def assembly_payload(self, time, values):
         """Use the final actual target material axes; g(T)=0 gives one twist."""
         ar = self.ar
-        f, g, _, offsets, _, _, quaternions, rotations, _ = self.shape(time, values)
+        f, _g, _, offsets, _, _, quaternions, rotations, _ = self.shape(time, values)
         target_inverse = transpose(rotations[0])
         local_rotations = tuple(
             _matmul(target_inverse, rotation) for rotation in rotations

@@ -5,6 +5,7 @@ Copyright: Aaron John Sabu
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cached_property
@@ -97,7 +98,7 @@ class PolynomialReferenceSource:
             raise TypeError(
                 "Complete typed exact polynomial reference pieces are required"
             )
-        for old, new in zip(pieces, pieces[1:]):
+        for old, new in itertools.pairwise(pieces):
             if old.end != new.start or any(
                 old.jet(old.end, k) != new.jet(new.start, k) for k in range(3)
             ):
@@ -148,7 +149,7 @@ class PolynomialReferenceSource:
             }
         )
         result = None
-        for lower, upper in zip(cuts, cuts[1:]):
+        for lower, upper in itertools.pairwise(cuts):
             left = next(
                 (
                     piece

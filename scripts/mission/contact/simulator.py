@@ -407,7 +407,7 @@ class FiniteContactSimulator:
                     )
                 exact_start_time, proof_time = proof_time, proof_time + Fraction(dt)
                 t = float(proof_time)
-                body, tips = fleet.unpack(y)
+                body, _tips = fleet.unpack(y)
                 if not np.all(np.isfinite(y)) or np.any(body[:, 13] < -1e-12):
                     y, t = committed_values, committed_time
                     _, diag = mechanics.evaluate(t, y)
