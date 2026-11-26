@@ -34,10 +34,23 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
     target_geometry: Any = None
 
     def __post_init__(self):
+        """Run the inherited validation, then check ``target_geometry`` with
+        ``_geometry_context``.
+        """
         super().__post_init__()
         _geometry_context(self.target_geometry)
 
     def _geometry_distance(self, ar, point):
+        """Return a proved positive distance from ``point`` to the occupied union.
+
+        Builds a ``CompositeTerminalGeometry`` from ``target_geometry`` at this
+        builder's precision bits and takes its point-separation lower distance minus
+        ``errors.target_solid_position_error_radius``. ``ar`` is unused.
+        Outputs: ``(distance, evidence)``; the evidence records the geometry, its
+        fingerprint, the separation certificate and ``cylinder_geometry_used`` false.
+        Raises ValueError when the certificate is not admissible or the distance is
+        not strictly positive.
+        """
         service = CompositeTerminalGeometry(
             self.target_geometry, precision_bits=self.precision_bits
         )
@@ -61,9 +74,22 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
         }
 
     def _geometry_proof_reference(self):
+        """Return the composite terminal method identifier."""
         return COMPOSITE_TERMINAL_METHOD
 
     def _spin_bound(self, ar, entry_norm, duration, quadratic, constant, jmin):
+        """Return a spin-norm upper bound: the lesser of energy and first-exit bounds.
+
+        The energy bound is sqrt(twice the entry energy upper bound / ``jmin``) plus
+        ``constant * duration``. The inherited scalar first-exit bound is also
+        attempted and selected when it is smaller; if it raises ValueError, the reason
+        is recorded and the energy bound is used.
+        Inputs: ``entry_norm``, ``duration``, ``quadratic``, ``constant`` and ``jmin``
+        as in the inherited method.
+        Outputs: ``(spin, discriminant, margin, evidence)``; discriminant and margin
+        are None when the energy bound is selected.
+        Raises ValueError when the entry energy upper bound is negative.
+        """
         # E=.5 omega^T J omega and |E'|<=|omega|*tau_max. For
         # V=sqrt(2E/Jmin), |omega|<=V and |V'|<=tau_max/Jmin.
         # The comparison at V=0 follows by positive regularization and its
@@ -130,4 +156,8 @@ class CompositePhysicalTerminalBoundsBuilder(PhysicalTerminalBoundsBuilder):
         )
 
     def build(self):
+        """Return the inherited build result with its method set to the composite one.
+
+        Replaces the ``method`` field with ``COMPOSITE_TERMINAL_METHOD``.
+        """
         return replace(super().build(), method=COMPOSITE_TERMINAL_METHOD)

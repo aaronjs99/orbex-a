@@ -25,6 +25,12 @@ class FleetFuelBudget:
     fuel_domain_id: str
 
     def __post_init__(self):
+        """Validate the budget and store it in exact, sorted form.
+
+        Outputs: ``exact_q`` becomes an exact value and ``available_kg`` a tuple of
+        ``(member, exact kg)`` pairs sorted by member. Raises ValueError when no member
+        is named, a member name is blank, not a string or repeated, ``exact_q`` or any
+        tank is negative, or ``fuel_domain_id`` is blank."""
         q = exact(self.exact_q)
         rows = (
             tuple(self.available_kg.items())
@@ -49,9 +55,16 @@ class FleetFuelBudget:
 
     @property
     def available(self):
+        """Return a read-only mapping from member name to available fuel in kg."""
         return MappingProxyType(dict(self.available_kg))
 
     def check_context(self, ids, q, fuel_domain_id):
+        """Check that a fleet, exact clock and fuel domain match this budget.
+
+        Inputs: ``ids`` are the member names, ``q`` the exact clock value and
+        ``fuel_domain_id`` the resource domain.
+        Outputs: None. Raises ValueError when the member set, the clock or the domain
+        differs from the budget."""
         if (
             set(ids) != {key for key, _ in self.available_kg}
             or exact(q) != self.exact_q
@@ -62,6 +75,12 @@ class FleetFuelBudget:
             )
 
     def shortfalls(self, required):
+        """Return the members whose required fuel exceeds their available fuel.
+
+        Inputs: ``required`` maps each member to its required fuel in kg.
+        Outputs: dict from member to required minus available kg, only for members
+        with a positive shortfall. Raises ValueError when the member set differs from
+        the budget fleet or a requirement is negative."""
         rows = dict(required)
         if set(rows) != set(self.available):
             raise ValueError("Complete continuation fuel must name the budget fleet")
@@ -75,6 +94,10 @@ class FleetFuelBudget:
         }
 
     def require(self, required):
+        """Raise ValueError when any member's required fuel exceeds its budget.
+
+        Inputs: ``required`` maps each member to its required fuel in kg. The message
+        lists each member's shortfall in kg. Also raises as ``shortfalls`` does."""
         shortfalls = self.shortfalls(required)
         if shortfalls:
             raise ValueError(
@@ -86,6 +109,7 @@ class FleetFuelBudget:
             )
 
     def as_dict(self):
+        """Return the JSON-ready record of the budget with its method label."""
         return {
             "method": "exact-finite-fleet-fuel-budget-v1",
             "exact_q": str(self.exact_q),
@@ -95,4 +119,5 @@ class FleetFuelBudget:
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 fingerprint of ``as_dict()``."""
         return fingerprint(self.as_dict())

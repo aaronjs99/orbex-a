@@ -18,6 +18,11 @@ from orbexa.control.fallback.refuge import _identity, exact_record, fingerprint
 
 
 def _freeze(value):
+    """Convert JSON-like evidence into immutable tuples with exact numbers.
+
+    Mappings become tuples of (str key, frozen value); lists and tuples become
+    tuples; floats and Fractions become exact. Raises TypeError for other types.
+    """
     if isinstance(value, Mapping):
         return tuple((str(key), _freeze(item)) for key, item in value.items())
     if isinstance(value, (list, tuple)):
@@ -31,12 +36,19 @@ def _freeze(value):
 
 @dataclass(frozen=True)
 class PerformanceAttempt:
+    """Record the status, message, solver identity and frozen details of an attempt."""
+
     status: str
     message: str
     solver_id: str = "unspecified-performance-planner"
     details: Any = ()
 
     def __post_init__(self):
+        """Validate identities and message text and freeze details.
+
+        Raises ValueError for a blank status or solver_id and TypeError for a
+        non-text message or non-immutable details.
+        """
         _identity(self.status, "performance status")
         _identity(self.solver_id, "performance solver identity")
         if not isinstance(self.message, str):
@@ -48,12 +60,15 @@ class PerformanceAdmissionRefusal(ValueError):
     """An admission failure with exact evidence independent of solver outcome."""
 
     def __init__(self, message, *, details=()):
+        """Store the message and the frozen exact details as admission_details."""
         super().__init__(message)
         self.admission_details = _freeze(details)
 
 
 @dataclass(frozen=True)
 class PerformanceProposal:
+    """Hold a performance hold, its held input boxes, successor plan and attempt."""
+
     start: Any
     hold_width: Any
     applied_inputs: Any
@@ -63,6 +78,12 @@ class PerformanceProposal:
     attempt: PerformanceAttempt
 
     def __post_init__(self):
+        """Validate and normalize the proposal fields.
+
+        Raises ValueError unless hold_width is positive and every applied input is a
+        three-dimensional IntervalBox, and TypeError unless successor is a
+        FleetFallbackPlan and attempt a PerformanceAttempt.
+        """
         q, h = _exact(self.start), _exact(self.hold_width)
         if h <= 0:
             raise ValueError("A positive performance hold is required")
@@ -93,6 +114,7 @@ class PerformanceProposal:
 
     @property
     def fingerprint(self):
+        """Return the digest of the proposal fields and the successor fingerprint."""
         return fingerprint(
             {
                 "start": self.start,
@@ -108,6 +130,8 @@ class PerformanceProposal:
 
 @dataclass(frozen=True)
 class HeldFleetDecision:
+    """Hold the commands, evidence and fuel charges of one decided fleet hold."""
+
     start: Fraction
     hold_width: Fraction
     source: str
@@ -126,20 +150,25 @@ class HeldFleetDecision:
 
     @property
     def fingerprint(self):
+        """Return the digest of this decision."""
         return fingerprint(self)
 
     def float_commands(self):
+        """Return the commands as a dict of float tuples keyed by member."""
         return {
             key: tuple(float(value) for value in command)
             for key, command in self.commands
         }
 
     def as_dict(self):
+        """Return the exact record of this decision with its identity."""
         return dict(identity=self.fingerprint, **exact_record(self))
 
 
 @dataclass(frozen=True)
 class CommandResourceBound:
+    """Hold a proof of fuel (kg) and force margin (N) for one applied command hold."""
+
     start: Any
     hold_width: Any
     applied_input: IntervalBox
@@ -149,6 +178,11 @@ class CommandResourceBound:
     proof_reference: str
 
     def __post_init__(self):
+        """Convert numeric fields to exact and validate them.
+
+        Raises ValueError unless hold_width is positive, fuel_upper_kg is
+        nonnegative, applied_input is an IntervalBox and both identities are nonblank.
+        """
         for name in ("start", "hold_width", "fuel_upper_kg", "force_margin_n"):
             object.__setattr__(self, name, _exact(getattr(self, name)))
         if (

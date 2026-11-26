@@ -16,20 +16,25 @@ import numpy as np
 
 
 def _down(value):
+    """Return the next representable float below ``value``."""
     return float(np.nextafter(value, -np.inf))
 
 
 def _up(value):
+    """Return the next representable float above ``value``."""
     return float(np.nextafter(value, np.inf))
 
 
 @dataclass(frozen=True)
 class _Interval:
+    """Closed float interval whose arithmetic rounds endpoints outward."""
+
     lo: float
     hi: float
 
     @staticmethod
     def cast(value):
+        """Return ``value`` if it is an interval, else the point interval at it."""
         return (
             value
             if isinstance(value, _Interval)
@@ -37,6 +42,10 @@ class _Interval:
         )
 
     def __add__(self, other):
+        """Return the interval sum, widened outward by one float step per endpoint.
+
+        An operand that is exactly the point 0 returns the other operand unchanged.
+        """
         other = self.cast(other)
         if self.lo == self.hi == 0.0:
             return other
@@ -47,15 +56,23 @@ class _Interval:
     __radd__ = __add__
 
     def __neg__(self):
+        """Return the interval ``[-hi, -lo]``."""
         return _Interval(-self.hi, -self.lo)
 
     def __sub__(self, other):
+        """Return the interval difference ``self + (-other)``."""
         return self + -self.cast(other)
 
     def __rsub__(self, other):
+        """Return the interval difference ``other - self``."""
         return self.cast(other) + -self
 
     def __mul__(self, other):
+        """Return the interval product, widened outward by one float step.
+
+        The endpoints are the minimum and maximum of the four endpoint products. A
+        point-zero operand gives the point interval 0.
+        """
         other = self.cast(other)
         if self.lo == self.hi == 0.0 or other.lo == other.hi == 0.0:
             return _Interval(0.0, 0.0)
@@ -70,6 +87,10 @@ class _Interval:
     __rmul__ = __mul__
 
     def reciprocal(self):
+        """Return the outward-rounded interval ``1/self``.
+
+        Raises ValueError when the interval contains zero.
+        """
         if self.lo <= 0.0 <= self.hi:
             raise ValueError(
                 "Orbital denominator interval contains zero; subdivide or restrict the domain"
@@ -77,12 +98,23 @@ class _Interval:
         return _Interval(_down(1.0 / self.hi), _up(1.0 / self.lo))
 
     def __truediv__(self, other):
+        """Return ``self`` times the reciprocal of ``other``.
+
+        Raises ValueError when ``other`` contains zero.
+        """
         return self * self.cast(other).reciprocal()
 
     def exp(self):
+        """Return the outward-rounded exponential, lower bound kept nonnegative."""
         return _Interval(max(0.0, _down(math.exp(self.lo))), _up(math.exp(self.hi)))
 
     def sin(self):
+        """Return an outward-rounded enclosure of sine over the interval (rad).
+
+        Returns [-1, 1] when the width is at least 2*pi. Otherwise the endpoints give
+        the bounds, extended to 1 or -1 when a maximum or minimum lies in the interval,
+        tested with outward-rounded arguments; the result is clipped to [-1, 1].
+        """
         if self.hi - self.lo >= 2.0 * math.pi:
             return _Interval(-1.0, 1.0)
         lower = min(math.sin(self.lo), math.sin(self.hi))
@@ -99,6 +131,12 @@ class _Interval:
         return _Interval(max(-1.0, _down(lower)), min(1.0, _up(upper)))
 
     def cos(self):
+        """Return an outward-rounded enclosure of cosine over the interval (rad).
+
+        Returns [-1, 1] when the width is at least 2*pi. Otherwise the endpoints give
+        the bounds, extended to 1 or -1 when a maximum or minimum lies in the interval,
+        tested with outward-rounded arguments; the result is clipped to [-1, 1].
+        """
         # A direct cosine enclosure avoids widening via a rounded phase shift.
         if self.hi - self.lo >= 2.0 * math.pi:
             return _Interval(-1.0, 1.0)
@@ -116,6 +154,7 @@ class _Interval:
 
     @property
     def magnitude(self):
+        """Return the largest absolute value of the interval's endpoints."""
         return max(abs(self.lo), abs(self.hi))
 
 
@@ -124,11 +163,17 @@ _ZERO = _Interval(0.0, 0.0)
 
 @dataclass(frozen=True)
 class _Jet:
+    """Interval value paired with interval partial derivatives for three parameters.
+
+    The gradient order is eccentricity, alpha, beta.
+    """
+
     value: _Interval
     gradient: tuple
 
     @staticmethod
     def cast(value):
+        """Return ``value`` if it is a jet, else a constant jet with zero gradient."""
         return (
             value
             if isinstance(value, _Jet)
@@ -137,11 +182,13 @@ class _Jet:
 
     @staticmethod
     def variable(interval, index):
+        """Return a jet over ``interval`` with the unit gradient at ``index``."""
         gradient = [_ZERO] * 3
         gradient[index] = _Interval(1.0, 1.0)
         return _Jet(interval, tuple(gradient))
 
     def __add__(self, other):
+        """Return the jet sum: values add and gradients add entrywise."""
         other = self.cast(other)
         return _Jet(
             self.value + other.value,
@@ -151,15 +198,19 @@ class _Jet:
     __radd__ = __add__
 
     def __neg__(self):
+        """Return the jet with negated value and gradient."""
         return _Jet(-self.value, tuple(-value for value in self.gradient))
 
     def __sub__(self, other):
+        """Return the jet difference ``self + (-other)``."""
         return self + -self.cast(other)
 
     def __rsub__(self, other):
+        """Return the jet difference ``other - self``."""
         return self.cast(other) + -self
 
     def __mul__(self, other):
+        """Return the jet product, with gradient from the product rule."""
         other = self.cast(other)
         return _Jet(
             self.value * other.value,
@@ -172,15 +223,24 @@ class _Jet:
     __rmul__ = __mul__
 
     def reciprocal(self):
+        """Return the jet of ``1/self``, with gradient ``-g * inverse * inverse``.
+
+        Raises ValueError when the value interval contains zero.
+        """
         inverse = self.value.reciprocal()
         return _Jet(
             inverse, tuple(-entry * inverse * inverse for entry in self.gradient)
         )
 
     def __truediv__(self, other):
+        """Return ``self`` times the reciprocal of ``other``.
+
+        Raises ValueError when the value of ``other`` contains zero.
+        """
         return self * self.cast(other).reciprocal()
 
     def exp(self):
+        """Return the jet of ``exp(self)``, with gradient ``exp(value) * g``."""
         value = self.value.exp()
         return _Jet(value, tuple(value * entry for entry in self.gradient))
 
@@ -220,6 +280,19 @@ def _domain(
     *,
     require_nominal_membership=True,
 ):
+    """Validate the anomaly interval and parameter boxes and return their intervals.
+
+    Inputs: ``start_anom`` and ``end_anom`` are anomalies in rad;
+    ``semi_major_axis`` is positive; ``ranges`` holds (lo, hi) for eccentricity,
+    alpha and beta; ``nominal_parameters`` supplies those three values and an
+    optional ``theta0`` in rad (default 0).
+    Outputs: ``(anomaly interval, [three parameter intervals], radii, theta0)``,
+    where each radius is the outward-rounded largest distance from the nominal
+    value to a box endpoint, or 0 for a zero-width box.
+    Raises ValueError for non-finite or misordered inputs, nonpositive
+    semi_major_axis, an eccentricity box outside [0, 1) or, when
+    ``require_nominal_membership`` is true, a nominal outside its box.
+    """
     values = (float(start_anom), float(end_anom), float(semi_major_axis))
     if not all(math.isfinite(value) for value in values) or values[2] <= 0.0:
         raise ValueError(
@@ -285,6 +358,10 @@ def uncertainty_envelope(
     )
 
     def deviation(entry):
+        """Return the upper bound of the entry's deviation over the parameter boxes.
+
+        Sums, over the three parameters, the gradient magnitude times the radius.
+        """
         total = _ZERO
         for derivative, radius in zip(entry.gradient, radii):
             total = total + _Interval.cast(derivative.magnitude) * radius

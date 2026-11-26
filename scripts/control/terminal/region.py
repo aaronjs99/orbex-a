@@ -70,6 +70,11 @@ def exact_scalar(value: Any) -> Fraction:
 
 
 def _vector(values, length, name, *, positive=False):
+    """Return ``values`` as a tuple of exact scalars after checking count and sign.
+
+    Requires ``length`` components, each positive when ``positive`` is true and
+    nonnegative otherwise. Raises ValueError naming ``name`` on failure.
+    """
     result = tuple(exact_scalar(value) for value in values)
     if len(result) != length or any(
         value <= 0 if positive else value < 0 for value in result
@@ -99,6 +104,13 @@ class TerminalRegion:
     maximum_query_displacement: Any
 
     def __post_init__(self):
+        """Validate the fields and replace numeric ones with exact Fractions.
+
+        Requires three positive components for omega, phi and lambda_gain, six
+        nonnegative components for reference_state_error_abs, a strictly increasing
+        two-value anomaly_domain, a nonnegative maximum_query_displacement and
+        nonempty error_source and frame strings. Raises ValueError otherwise.
+        """
         for name in ("omega", "phi", "lambda_gain"):
             object.__setattr__(
                 self, name, _vector(getattr(self, name), 3, name, positive=True)
@@ -128,6 +140,7 @@ class TerminalRegion:
                 )
 
     def as_dict(self):
+        """Return the region as a dict with exact numeric values written as strings."""
         return {
             name: [str(value) for value in getattr(self, name)]
             for name in (
@@ -145,17 +158,27 @@ class TerminalRegion:
 
     @classmethod
     def from_dict(cls, value):
+        """Return a region built from the mapping ``value`` as keyword arguments.
+
+        Raises TypeError when ``value`` is not a dict.
+        """
         if not isinstance(value, dict):
             raise TypeError("A terminal region must be an explicit mapping")
         return cls(**value)
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 hex digest of the canonical JSON of ``as_dict()``."""
         return hashlib.sha256(
             json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
 
     def scaled(self, fraction):
+        """Return a region with omega and phi multiplied by ``fraction``.
+
+        The other fields are unchanged. Raises ValueError unless ``fraction`` is in
+        (0, 1].
+        """
         fraction = exact_scalar(fraction)
         if not 0 < fraction <= 1:
             raise ValueError("A planning region fraction must lie in (0,1]")
@@ -171,9 +194,13 @@ class TerminalRegion:
         )
 
     def contains_anomaly(self, anomaly):
+        """Return True when ``anomaly`` (rad) lies in the closed anomaly domain."""
         return self.anomaly_domain[0] <= exact_scalar(anomaly) <= self.anomaly_domain[1]
 
     def supports_query(self, canonical_anomaly, query_anomaly):
+        """Return True when both anomalies (rad) lie in the domain and differ by at most
+        ``maximum_query_displacement``.
+        """
         canonical, query = exact_scalar(canonical_anomaly), exact_scalar(query_anomaly)
         return (
             self.contains_anomaly(canonical)

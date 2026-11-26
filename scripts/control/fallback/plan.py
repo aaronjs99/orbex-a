@@ -28,9 +28,17 @@ FLEET_FALLBACK_METHOD = "exact-finite-fleet-feedback-fallback-v1"
 
 @dataclass(frozen=True)
 class FleetFeedbackSegment:
+    """Hold one clock segment of executable feedback controllers for a named fleet."""
+
     controllers: Any
 
     def __post_init__(self):
+        """Validate and normalize the named controllers of this segment.
+
+        Raises TypeError unless every value is a RefugeController whose certificate is
+        admissible. Raises ValueError unless all controllers share the same exact
+        start and end of their certificate spec.
+        """
         values = _pairs(self.controllers, "feedback controllers")
         if any(
             not isinstance(c, RefugeController) or not c.certificate.admissible
@@ -50,23 +58,29 @@ class FleetFeedbackSegment:
 
     @property
     def start(self):
+        """Return the exact segment start shared by its controllers."""
         return self.controllers[0][1].certificate.spec.start
 
     @property
     def end(self):
+        """Return the exact segment end shared by its controllers."""
         return self.controllers[0][1].certificate.spec.end
 
     @property
     def ids(self):
+        """Return the fleet member identities in controller order."""
         return tuple(key for key, _ in self.controllers)
 
     @property
     def certificate_ids(self):
+        """Return each controller certificate fingerprint in controller order."""
         return tuple(c.certificate.fingerprint for _, c in self.controllers)
 
 
 @dataclass(frozen=True)
 class FleetFallbackCertificate:
+    """Record the composed proof and refusal reasons of a finite fallback route."""
+
     start: Fraction
     end: Fraction
     controller_ids: tuple[tuple[str, ...], ...]
@@ -80,6 +94,7 @@ class FleetFallbackCertificate:
 
     @property
     def admissible(self):
+        """Return True if the method matches, no reasons exist and geometry passes."""
         return (
             self.method == FLEET_FALLBACK_METHOD
             and not self.reasons
@@ -91,6 +106,7 @@ class FleetFallbackCertificate:
         # Composition binds every complete immutable geometry proof without
         # serializing thousands of exact swept records again for each suffix.
         # The original proofs remain available in as_dict for full evidence.
+        """Return the cached digest of the route fields and geometry proof digests."""
         return fingerprint(
             {
                 "start": self.start,
@@ -107,6 +123,7 @@ class FleetFallbackCertificate:
         )
 
     def as_dict(self):
+        """Return the exact record with identity and a proven or refused status."""
         return dict(
             status="CONDITIONAL_PROVEN" if self.admissible else "REFUSED",
             identity=self.fingerprint,
@@ -125,6 +142,19 @@ class FleetFallbackPlan:
     def __init__(
         self, segments: Sequence[FleetFeedbackSegment], geometry: FleetGeometryOracle
     ):
+        """Compose segments and a geometry oracle into a certified fallback plan.
+
+        Inputs:
+            segments: nonempty sequence of FleetFeedbackSegment with identical fleet
+                identity and order, ordered in the clock variable q.
+            geometry: FleetGeometryOracle whose ids match the segments.
+
+        Raises TypeError for an empty or untyped route or a wrong oracle type, and
+        ValueError for a changed fleet order or a geometry context mismatch. Route
+        gaps, identity changes, tube non-containment, reference jet mismatches,
+        geometry refusals, a non-constant terminal reference, an insufficient terminal
+        scope and fuel excess are recorded as reasons in self.certificate.
+        """
         self.segments = tuple(segments)
         if not self.segments or not isinstance(geometry, FleetGeometryOracle):
             raise TypeError(
@@ -235,14 +265,22 @@ class FleetFallbackPlan:
 
     @property
     def ids(self):
+        """Return the fleet member identities of the route."""
         return self.segments[0].ids
 
     @property
     def fingerprint(self):
+        """Return the admitted plan identity after verifying integrity."""
         self.verify_integrity()
         return self._identity
 
     def verify_integrity(self):
+        """Check the plan is unchanged since admission.
+
+        Raises ValueError if the certificate digest, the segment controller ids or
+        the geometry oracle digest differ from admission, or if a polynomial reference
+        provider, its methods or its coefficient digest changed.
+        """
         if (
             self.certificate.fingerprint != self._identity
             or tuple(s.certificate_ids for s in self.segments)
@@ -273,6 +311,15 @@ class FleetFallbackPlan:
                 )
 
     def segment_at(self, q, hold_width=0):
+        """Return the segment containing clock q whose scope holds the whole hold.
+
+        Inputs:
+            q: clock value, exact. hold_width: nonnegative hold length in q.
+
+        A zero hold at the final end selects the last segment. Raises ValueError for
+        a negative hold, a q outside every segment, a hold crossing the segment end,
+        or a hold above a controller's maximum_hold.
+        """
         q, h = _exact(q), _exact(hold_width)
         if h < 0:
             raise ValueError("Negative fallback hold")
@@ -290,6 +337,12 @@ class FleetFallbackPlan:
         return selected
 
     def contains(self, state_boxes, q, hold_width=0):
+        """Return True if every member's state box lies in its controller's region.
+
+        Returns False if the certificate is not admissible or the keys differ from
+        the fleet ids. Otherwise verifies integrity and checks the segment selected
+        by segment_at(q, hold_width), which may raise ValueError.
+        """
         if not self.certificate.admissible or set(state_boxes) != set(self.ids):
             return False
         self.verify_integrity()
@@ -300,6 +353,12 @@ class FleetFallbackPlan:
         )
 
     def remaining_fuel(self, q):
+        """Return per-member fuel upper bounds needed from clock q to the route end.
+
+        Sums the overlap length of each segment with [q, end] times the controller
+        fuel_rate_upper_per_q. Raises ValueError if q is outside the route (or the
+        suffix view start).
+        """
         q = _exact(q)
         if (
             not getattr(self, "_view_start", self.segments[0].start)

@@ -25,6 +25,9 @@ TUBE_ASSUMPTIONS = (
 
 
 def _nonnegative(value, shape, name):
+    """Return value as a float array of `shape`; raise ValueError if it is not finite
+    or has a negative entry.
+    """
     result = np.asarray(value, dtype=float)
     if result.shape != shape or not np.all(np.isfinite(result)) or np.any(result < 0):
         raise ValueError(f"{name} must be finite, nonnegative and have shape {shape}")
@@ -81,9 +84,11 @@ def sample_hold_expressions(
             raise ValueError(f"{name} must contain three components")
 
     def wrap(values):
+        """Apply `intermediate` to each value and return the results as a list."""
         return [intermediate(value) for value in values]
 
     def dot(matrix, vector):
+        """Return row sums of float(coefficient) * value over nonzero coefficients."""
         return [
             sum(
                 float(coefficient) * value

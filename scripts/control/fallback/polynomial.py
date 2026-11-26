@@ -19,6 +19,10 @@ POLYNOMIAL_PEER_METHOD = "exact-same-time-polynomial-reference-peer-v1"
 
 
 def _polynomial_shift(coefficients, offset):
+    """Return the coefficients of the polynomial re-expanded about the point offset.
+
+    Coefficients are ascending powers; the result p(offset + x) has the same length.
+    """
     if offset == 0:
         return coefficients
     return tuple(
@@ -48,11 +52,18 @@ def _polynomial_range(coefficients, lower, upper):
 
 @dataclass(frozen=True)
 class PolynomialReferenceSpan:
+    """Hold three exact polynomials, one per axis, on one clock interval."""
+
     start: Any
     end: Any
     coefficients: Any
 
     def __post_init__(self):
+        """Validate the scope and convert coefficients to exact numbers.
+
+        Raises ValueError unless there are three nonempty rows of at most six
+        coefficients each.
+        """
         start, end = _scope(self.start, self.end)
         rows = tuple(tuple(map(_exact, row)) for row in self.coefficients)
         if len(rows) != 3 or any(not row or len(row) > 6 for row in rows):
@@ -64,6 +75,10 @@ class PolynomialReferenceSpan:
         object.__setattr__(self, "coefficients", rows)
 
     def jet(self, q, order):
+        """Return the derivative of the given order at clock q, one value per axis.
+
+        Coefficients are ascending powers of (q - start); the result is exact.
+        """
         value = _exact(q) - self.start
         result = []
         for row in self.coefficients:
@@ -91,6 +106,12 @@ class PolynomialReferenceSource:
     clock_id: str
 
     def __post_init__(self):
+        """Validate that the pieces form one gap-free C2 reference and identities.
+
+        Raises TypeError for empty or non-PolynomialReferenceSpan pieces, ValueError
+        if adjacent pieces do not meet or their value, first and second derivatives
+        differ at the joint, or if an identity is blank.
+        """
         pieces = tuple(self.pieces)
         if not pieces or any(
             type(piece) is not PolynomialReferenceSpan for piece in pieces
@@ -111,17 +132,31 @@ class PolynomialReferenceSource:
 
     @cached_property
     def coefficient_fingerprint(self):
+        """Return the cached digest of the polynomial pieces."""
         return fingerprint(self.pieces)
 
     @cached_property
     def fingerprint(self):
+        """Return the cached digest of the whole source including identities."""
         return fingerprint(self)
 
     @property
     def proof_reference(self):
+        """Return the proof reference string bound to the coefficient digest."""
         return "exact-quintic-Bernstein:" + self.coefficient_fingerprint
 
     def difference_bounds(self, other, start, end):
+        """Return an IntervalBox enclosing self minus other over the clock window.
+
+        Inputs:
+            other: PolynomialReferenceSource in the same frame and clock.
+            start, end: exact clock window.
+
+        Splits the window at all piece boundaries, bounds each axis difference by
+        the Bernstein range, and returns the hull of the sub-window boxes. Raises
+        ValueError if the type, frame or clock differs, either source does not cover
+        the window, or a sub-window piece is missing.
+        """
         start, end = _scope(start, end)
         if (
             type(other) is not PolynomialReferenceSource
@@ -194,6 +229,8 @@ class PolynomialReferenceSource:
 
 @dataclass(frozen=True)
 class PolynomialPeerBounds:
+    """Hold the exact reference difference and relative position box of two peers."""
+
     first_id: str
     second_id: str
     start: Fraction
@@ -213,6 +250,13 @@ class PolynomialPeerBounds:
     method: str = POLYNOMIAL_PEER_METHOD
 
     def __post_init__(self):
+        """Validate scope, identities, error radii and the relative position box.
+
+        Raises ValueError unless the two ids differ, both omega vectors have three
+        nonnegative entries, both boxes are three-dimensional, the method matches,
+        and relative_position equals reference_difference widened by the sum of the
+        two omega values.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -261,6 +305,9 @@ class PolynomialPeerBounds:
 
 
 def _reference_methods(provider):
+    """Return the underlying functions of the provider's sample, bounds and
+    polynomial_source methods.
+    """
     return tuple(
         getattr(value, "__func__", value)
         for value in (provider.sample, provider.bounds, provider.polynomial_source)

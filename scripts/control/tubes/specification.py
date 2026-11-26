@@ -47,6 +47,21 @@ class ProspectiveContactConstraint:
 
     @staticmethod
     def _validated(record):
+        """Validate a prospective contact record and return its canonical copy.
+
+        Checks the field set, the schema string, the source kind, frame and nonempty
+        identity strings, a positive exact step with navigation_q equal to the start,
+        finite nonnegative limits (positive speed limit), a complete ordered node grid
+        at exact_start_q + index * exact_step_q with at least two nodes, per-node
+        goal-bound parsing and, when reference kinematics are present, agreement of
+        their q, clock, goal id and frame with the node and source. An optional
+        reach_policy is parsed. A supplied identity must equal the recomputed one.
+
+        Inputs: ``record`` is a mapping; q values are exact scalars in rad.
+        Outputs: a dict with exact values as strings and a recomputed ``identity``.
+        Raises ValueError on any failed check; parsing errors from helpers may also
+        propagate as TypeError, KeyError, OverflowError or ArithmeticError.
+        """
         if not isinstance(record, Mapping):
             raise ValueError("Prospective contact evidence must be a mapping")
         required = {"schema", "source", "limits", "nodes"}
@@ -185,6 +200,11 @@ class ProspectiveContactConstraint:
 
     @classmethod
     def from_dict(cls, record):
+        """Validate ``record`` and return an instance holding its canonical JSON text.
+
+        Raises ValueError when validation fails, including when it raises TypeError,
+        KeyError, OverflowError or ArithmeticError.
+        """
         try:
             return cls(
                 json.dumps(
@@ -198,6 +218,10 @@ class ProspectiveContactConstraint:
             raise ValueError("Malformed prospective contact evidence") from error
 
     def as_dict(self):
+        """Re-validate the stored JSON text and return the canonical record dict.
+
+        Raises ValueError when re-validation fails.
+        """
         try:
             return self._validated(json.loads(self._record_json))
         except (TypeError, KeyError, OverflowError, ArithmeticError) as error:
@@ -205,15 +229,18 @@ class ProspectiveContactConstraint:
 
     @property
     def identity(self):
+        """Return the identity fingerprint of the freshly validated record."""
         return self.as_dict()["identity"]
 
     def node_bounds(self):
+        """Return one ``ContactGoalSpeedBound`` per node, in node order."""
         return tuple(
             ContactGoalSpeedBound.from_dict(node["goal_speed_bound"])
             for node in self.as_dict()["nodes"]
         )
 
     def reach_policy(self):
+        """Return the record's ``ContactReachPolicy``, or None when it has none."""
         record = self.as_dict().get("reach_policy")
         if record is None:
             return None
@@ -222,6 +249,13 @@ class ProspectiveContactConstraint:
         return ContactReachPolicy.from_dict(record)
 
     def validate_grid(self, start_q, step_q, count):
+        """Return the validated record after checking it matches the given grid.
+
+        Inputs: ``start_q`` and ``step_q`` are exact scalars in rad; ``count`` is the
+        number of prediction nodes.
+        Outputs: the record dict. Raises ValueError when the start, step or node count
+        differs from the record.
+        """
         record = self.as_dict()
         if (
             exact(record["source"]["exact_start_q"]) != exact(start_q)
@@ -236,6 +270,12 @@ class ProspectiveContactConstraint:
 
 @dataclass
 class DynamicTubeSpec:
+    """Validated dynamic-tube data passed to the MPC backend.
+
+    The number of intervals is ``len(delta_A)``. Array fields are validated and
+    replaced by float copies in ``__post_init__``.
+    """
+
     phi_initial: np.ndarray
     omega_initial: np.ndarray
     lambda_gain: np.ndarray
@@ -266,6 +306,18 @@ class DynamicTubeSpec:
     applied_actuator_input_error_abs: np.ndarray | None = None
 
     def __post_init__(self) -> None:
+        """Validate every field and normalize it in place.
+
+        Requires finite nonnegative arrays of the stated shapes, positive
+        lambda_gain, hold_width, tolerances and ordered positive alpha_bounds that
+        contain alpha_initial. Replaces arrays with float copies, alpha_bounds with a
+        float tuple, a terminal_region mapping with a ``TerminalRegion``, a
+        contact_terminal mapping with a ``ProspectiveContactConstraint`` and
+        terminal_start_index and terminal_planning_fraction with int and float.
+        Terminal start index, region, planning fraction and contact evidence require
+        enforce_terminal; contact evidence must have ``horizon_steps`` nodes.
+        Raises ValueError when any check fails.
+        """
         delta_a = np.asarray(self.delta_A, dtype=float)
         if delta_a.ndim != 3 or delta_a.shape[1:] != (3, 6) or len(delta_a) < 1:
             raise ValueError(
@@ -419,6 +471,7 @@ class DynamicTubeSpec:
 
     @property
     def horizon_steps(self) -> int:
+        """Return the number of prediction nodes, one more than ``len(delta_A)``."""
         return len(self.delta_A) + 1
 
     def to_extra_params(self) -> dict[str, Any]:

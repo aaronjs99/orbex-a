@@ -31,6 +31,10 @@ FLEET_SWEEP_METHOD = "exact-component-box-fleet-sweep-v1"
 
 
 def _box_distance_squared(left, right):
+    """Return the squared Euclidean distance between two boxes.
+
+    Each axis contributes the squared gap between the intervals, or zero where
+    they overlap. The boxes are IntervalBox values of equal dimension."""
     return sum(
         max(Fraction(0), lo2 - hi1, lo1 - hi2) ** 2
         for lo1, hi1, lo2, hi2 in zip(left.lower, left.upper, right.lower, right.upper)
@@ -58,6 +62,13 @@ class OccupiedGeometryBounds:
     proof_kind: str = "validated-interval-global"
 
     def __post_init__(self):
+        """Normalize and validate the occupied-geometry proof inputs.
+
+        Outputs: replaces ``start``, ``end``, ``components``, ``assumptions`` and
+        ``support_projections`` with normalized tuples or exact values. Raises
+        ValueError when a component is not a 3D IntervalBox, an identity field is
+        invalid, the proof source is rejected, or a projection is not an
+        OccupiedProjection of a declared component."""
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -91,11 +102,22 @@ class OccupiedGeometryBounds:
 
 @dataclass(frozen=True)
 class OccupiedProjection:
+    """Hold a proved interval of one occupied component along a fixed direction.
+
+    Inputs: ``component_id`` names the component, ``direction`` is a nonzero exact
+    3-vector and ``projected_interval`` is a one-dimensional IntervalBox of the
+    component's projection onto that direction."""
+
     component_id: str
     direction: Any
     projected_interval: IntervalBox
 
     def __post_init__(self):
+        """Validate the projection and store ``direction`` as exact values.
+
+        Raises ValueError when the component identity is invalid, the direction is not
+        three entries with a nonzero one, or the interval is not a one-dimensional
+        IntervalBox."""
         _identity(self.component_id, "projected component identity")
         direction = tuple(map(_exact, self.direction))
         if len(direction) != 3 or not any(direction):
@@ -110,6 +132,13 @@ class OccupiedProjection:
 
 @dataclass(frozen=True)
 class SeparationRecord:
+    """Hold one separation check over the window ``[start, end]``.
+
+    ``kind`` is ``target_component`` or ``peer``. ``distance_squared_lower`` is the
+    proved lower bound of the squared distance between ``first_id`` and
+    ``second_id`` and ``required_squared`` the squared distance it must exceed.
+    ``occupied_bounds_id`` is the fingerprint of the occupied bounds used."""
+
     kind: str
     first_id: str
     second_id: str
@@ -122,6 +151,13 @@ class SeparationRecord:
 
 @dataclass(frozen=True)
 class FleetGeometryCertificate:
+    """Hold the result of a whole-fleet separation check over ``[start, end]``.
+
+    The record lists every separation check, the fleet and component identities,
+    the declared radii and clearances, the fingerprints of the flows or regions
+    checked, and any refusal ``reasons``. The certificate is not itself a proof;
+    it reports what ``FleetGeometryOracle`` computed."""
+
     start: Fraction
     end: Fraction
     records: tuple[SeparationRecord, ...]
@@ -143,6 +179,10 @@ class FleetGeometryCertificate:
 
     @property
     def admissible(self):
+        """Return True when the method matches, there are no reasons and records pass.
+
+        A record passes when ``distance_squared_lower`` strictly exceeds
+        ``required_squared``. At least one record is required."""
         return (
             self.method == FLEET_SWEEP_METHOD
             and not self.reasons
@@ -155,9 +195,14 @@ class FleetGeometryCertificate:
 
     @cached_property
     def fingerprint(self):
+        """Return the fingerprint of this certificate (cached)."""
         return fingerprint(self)
 
     def as_dict(self):
+        """Return the JSON-ready record of the certificate.
+
+        The status is ``CONDITIONAL_PROVEN`` when ``admissible`` and ``REFUSED``
+        otherwise; ``identity`` is the fingerprint."""
         return dict(
             status="CONDITIONAL_PROVEN" if self.admissible else "REFUSED",
             identity=self.fingerprint,
@@ -185,6 +230,16 @@ class FleetGeometryOracle:
         clearance=0,
         minimum_pair_center_distance=0,
     ):
+        """Store and validate the fleet geometry declaration.
+
+        Inputs: ``occupied_provider`` is a callable ``(start, end)`` or an object with
+        a ``bounds(start, end)`` method returning OccupiedGeometryBounds.
+        ``component_ids`` are the occupied target components; ``body_radii`` maps each
+        spacecraft to its enclosing radius in m; ``clearance`` and
+        ``minimum_pair_center_distance`` are in m.
+        Outputs: sets the attributes. Raises ValueError when component identities are
+        missing, repeated or blank, a radius is not positive, a clearance is negative,
+        or an identity string is invalid."""
         self.occupied_provider = occupied_provider
         self.component_ids = tuple(component_ids)
         if (
@@ -214,10 +269,13 @@ class FleetGeometryOracle:
 
     @property
     def ids(self):
+        """Return the spacecraft identities in declaration order."""
         return tuple(key for key, _ in self.body_radii)
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of the declared components, radii, identities and
+        clearances."""
         return fingerprint(
             {
                 "component_ids": self.component_ids,
@@ -232,6 +290,11 @@ class FleetGeometryOracle:
         )
 
     def _occupied(self, start, end):
+        """Return the occupied bounds for ``[start, end]`` after checking them.
+
+        Raises ValueError when the provider returns something other than an
+        OccupiedGeometryBounds, the bounds do not cover the window, an identity differs
+        from this oracle's, or the component set differs from ``component_ids``."""
         provider = self.occupied_provider
         value = (
             provider(start, end) if callable(provider) else provider.bounds(start, end)
@@ -252,6 +315,18 @@ class FleetGeometryOracle:
         return value
 
     def _records(self, boxes, start, end, peer_relative_bounds=()):
+        """Return the separation records and refusal reasons for swept position boxes.
+
+        Inputs: ``boxes`` maps each spacecraft to a 3D IntervalBox of its swept
+        position over ``[start, end]``; ``peer_relative_bounds`` are optional
+        PolynomialPeerBounds covering every pair.
+        Outputs: ``(records, reasons)`` tuples. Each spacecraft is compared with each
+        occupied component, using support projections to tighten an unseparated box
+        distance, and each pair with the squared sum of radii plus clearance (or the
+        minimum center distance); a pair's distance is raised by its peer relative
+        bound when given. A reason is added when a distance does not strictly exceed
+        the requirement. Raises ValueError when the box fleet differs, peer bounds do
+        not match the fleet, window, frame, clock and method, or a box is not 3D."""
         if set(boxes) != set(self.ids):
             raise ValueError("Swept geometry fleet changed")
         target, radii = self._occupied(start, end), dict(self.body_radii)
@@ -352,6 +427,12 @@ class FleetGeometryOracle:
         return tuple(records), tuple(reasons)
 
     def regions(self, boxes, start, end, *, region_fingerprints):
+        """Return the certificate for position boxes held over ``[start, end]``.
+
+        Inputs: ``boxes`` maps each spacecraft to a 3D IntervalBox;
+        ``region_fingerprints`` are recorded in the certificate.
+        Outputs: FleetGeometryCertificate built from ``_records``. Refusals appear in
+        its ``reasons``; ValueError is raised as in ``_records``."""
         start, end = _scope(start, end)
         records, reasons = self._records(boxes, start, end)
         return FleetGeometryCertificate(
@@ -471,6 +552,14 @@ class FleetGeometryOracle:
         )
 
     def flows(self, flows):
+        """Return the certificate for the swept positions of proven performance flows.
+
+        Inputs: ``flows`` maps each spacecraft to a proven FlowCertificate.
+        Outputs: FleetGeometryCertificate over the common hold window, with the
+        separation checked on each sub-interval between segment offsets. Raises
+        ValueError when the fleet differs, a flow is not a proven FlowCertificate or
+        fails its structure check, the flows do not share one frame, an exact start
+        anomaly and a positive hold width, or a sub-interval has no covering segment."""
         if set(flows) != set(self.ids):
             raise ValueError("Performance flow fleet changed")
         ordered = tuple(flows[key] for key in self.ids)

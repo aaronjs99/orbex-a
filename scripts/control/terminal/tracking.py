@@ -33,18 +33,27 @@ class TerminalFeedforwardPolicy(str, Enum):
 
     @property
     def sample_fraction(self):
+        """Return the hold fraction at which feedforward is evaluated (0 or 1/2)."""
         return Fraction(0) if self is self.START_V1 else Fraction(1, 2)
 
     @property
     def residual_fraction(self):
+        """Return the factor applied to the hold-width feedforward residual term."""
         return Fraction(1) if self is self.START_V1 else Fraction(1, 2)
 
     @property
     def certificate_method(self):
+        """Return the certificate method identifier for this policy."""
         return TERMINAL_METHOD if self is self.START_V1 else MIDPOINT_TERMINAL_METHOD
 
 
 def _q(value: Any) -> Fraction:
+    """Convert a number to an exact Fraction.
+
+    Accepts Fraction, integers, rational strings and objects with
+    ``as_integer_ratio``. Raises ValueError for booleans and TypeError for
+    unsupported types.
+    """
     if isinstance(value, bool):
         raise ValueError("Boolean values are not numerical bounds")
     if isinstance(value, Fraction):
@@ -60,6 +69,11 @@ def _q(value: Any) -> Fraction:
 
 
 def _vector(values, length: int, name: str, *, nonnegative=False, positive=False):
+    """Convert ``values`` to exact rationals and require ``length`` components.
+
+    Raises ValueError naming ``name`` when the length differs or a component
+    violates ``nonnegative`` (>= 0) or ``positive`` (> 0).
+    """
     result = tuple(map(_q, values))
     if (
         len(result) != length
@@ -71,6 +85,11 @@ def _vector(values, length: int, name: str, *, nonnegative=False, positive=False
 
 
 def _matrix(values, name: str, *, nonnegative=False):
+    """Convert ``values`` to a 3x6 tuple of exact rows.
+
+    Raises ValueError naming ``name`` when the shape is not (3,6) or an entry
+    violates ``nonnegative``.
+    """
     result = tuple(_vector(row, 6, name, nonnegative=nonnegative) for row in values)
     if len(result) != 3:
         raise ValueError(f"{name} must have shape (3,6)")
@@ -78,20 +97,24 @@ def _matrix(values, name: str, *, nonnegative=False):
 
 
 def _dot(matrix, vector):
+    """Return the exact matrix-vector product of rational rows and a vector."""
     return tuple(
         sum((a * x for a, x in zip(row, vector)), Fraction(0)) for row in matrix
     )
 
 
 def _sum(*vectors):
+    """Return the component-wise sum of equal-length vectors."""
     return tuple(map(sum, zip(*vectors)))
 
 
 def _mul(left, right):
+    """Return the component-wise product of two vectors."""
     return tuple(a * b for a, b in zip(left, right))
 
 
 def _encode(value):
+    """Encode Fractions as strings, recursing through tuples and dicts."""
     if isinstance(value, Fraction):
         return str(value)
     if isinstance(value, tuple):
@@ -119,6 +142,14 @@ class BoundScope:
     frame: str = FRAME
 
     def __post_init__(self):
+        """Validate the scope and normalize its anomalies to exact rationals.
+
+        Raises ValueError when ``all_time`` is not a bool, when it disagrees with
+        the presence of ``end_anomaly``, when a finite end precedes the start, when
+        ``proof_kind`` is not "analytic-global" or "validated-interval-global",
+        when the proof reference or any assumption is blank or missing, or when
+        ``frame`` is empty.
+        """
         if not isinstance(self.all_time, bool):
             raise ValueError("all_time must be an explicit Boolean")
         start = _q(self.start_anomaly)
@@ -146,16 +177,21 @@ class BoundScope:
         object.__setattr__(self, "assumptions", tuple(self.assumptions))
 
     def contains(self, anomaly) -> bool:
+        """Return True when ``anomaly`` lies in the inclusive scope."""
         anomaly = _q(anomaly)
         return self.start_anomaly <= anomaly and (
             self.end_anomaly is None or anomaly <= self.end_anomaly
         )
 
     def contains_hold(self, anomaly, hold) -> bool:
+        """Return True when ``hold`` is nonnegative and both ``anomaly`` and
+        ``anomaly + hold`` lie in the scope.
+        """
         anomaly, hold = _q(anomaly), _q(hold)
         return hold >= 0 and self.contains(anomaly) and self.contains(anomaly + hold)
 
     def as_dict(self):
+        """Return the scope as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
@@ -175,6 +211,11 @@ class TerminalGeometryBounds:
     peers: tuple[tuple[Any, Any, Any], ...] = ()
 
     def __post_init__(self):
+        """Normalize the geometry bounds to exact rationals and validate them.
+
+        Raises ValueError when the target distance, body radius or clearance is
+        negative, or a peer entry lacks three nonnegative components.
+        """
         for name in ("target_distance_lower", "body_radius", "clearance"):
             value = _q(getattr(self, name))
             if value < 0:
@@ -186,6 +227,7 @@ class TerminalGeometryBounds:
         object.__setattr__(self, "peers", peers)
 
     def as_dict(self):
+        """Return the geometry bounds as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
@@ -222,6 +264,14 @@ class TerminalTrackingBounds:
     anomaly_velocity_tolerance: Any
 
     def __post_init__(self):
+        """Normalize the bounds to exact rationals and validate them.
+
+        Raises ValueError when the reference identity is blank, gains and limits
+        fail the sign and length checks (omega, phi, lambda_gain and bandwidth
+        positive; the others nonnegative), maximum_hold or a tolerance is not
+        positive, or the feedforward range or input limits are not
+        three-dimensional.
+        """
         if not self.reference_id.strip():
             raise ValueError("An authoritative reference identity is required")
         for name in ("omega", "phi", "lambda_gain", "bandwidth"):
@@ -260,6 +310,7 @@ class TerminalTrackingBounds:
             raise ValueError("Feedforward and input-limit boxes have dimension 3")
 
     def as_dict(self):
+        """Return the bounds as a dict, with nested objects expanded by ``as_dict``."""
         return _encode(
             {
                 key: value.as_dict() if hasattr(value, "as_dict") else value
@@ -281,6 +332,13 @@ class TerminalTrackingBounds:
 
 @dataclass(frozen=True)
 class TerminalCertificate:
+    """Result of the exact terminal algebra for one set of bounds.
+
+    ``admissible`` is True when ``reasons`` is empty. ``quantities`` holds the
+    exact margins and forcing bounds, and ``method`` and ``policy`` identify the
+    held law.
+    """
+
     bounds: TerminalTrackingBounds
     admissible: bool
     reasons: tuple[str, ...]
@@ -289,6 +347,10 @@ class TerminalCertificate:
     policy: TerminalFeedforwardPolicy = TerminalFeedforwardPolicy.START_V1
 
     def __post_init__(self):
+        """Coerce ``policy`` to the enum and check ``method`` matches it.
+
+        Raises ValueError when ``method`` is not the policy's certificate method.
+        """
         policy = TerminalFeedforwardPolicy(self.policy)
         if self.method != policy.certificate_method:
             raise ValueError(
@@ -297,6 +359,12 @@ class TerminalCertificate:
         object.__setattr__(self, "policy", policy)
 
     def as_dict(self):
+        """Return the certificate as a JSON-style dict.
+
+        Includes the method, admissibility, a CONDITIONAL_PROVEN or REFUSED status,
+        reasons, encoded bounds and quantities, and the conditional claim. The held
+        policy is added for non-start policies.
+        """
         record = {
             "method": self.method,
             "admissible": self.admissible,
@@ -311,6 +379,12 @@ class TerminalCertificate:
         return record
 
     def contains(self, state: IntervalBox, reference: TerminalReferenceSample) -> bool:
+        """Return True when the state box lies in the terminal set about a reference.
+
+        Requires an admissible certificate, a six-dimensional state, a reference in
+        scope that complies with the bounds, position errors within ``omega`` and
+        sliding variables within ``phi`` over the whole box.
+        """
         if (
             not self.admissible
             or not self.bounds.scope.contains(reference.anomaly)
@@ -496,6 +570,11 @@ class TerminalReferenceSample:
     reference_id: str
 
     def __post_init__(self):
+        """Convert the sample to exact rationals and validate it.
+
+        Raises ValueError when the state, acceleration, matrix or affine shape is
+        wrong or the reference identity is blank.
+        """
         object.__setattr__(self, "anomaly", _q(self.anomaly))
         object.__setattr__(self, "state", _vector(self.state, 6, "reference state"))
         object.__setattr__(
@@ -514,12 +593,20 @@ class TerminalReferenceSample:
 
     @property
     def feedforward(self):
+        """Return the feedforward acceleration: acceleration minus the nominal matrix
+        times the state minus the nominal affine term.
+        """
         drift = _dot(self.nominal_matrix, self.state)
         return tuple(
             a - d - f for a, d, f in zip(self.acceleration, drift, self.nominal_affine)
         )
 
     def complies(self, bounds: TerminalTrackingBounds) -> bool:
+        """Return True when the sample matches the bounds.
+
+        Checks the reference identity, scope, state and nominal matrix magnitude
+        limits, and that the feedforward lies in ``feedforward_range``.
+        """
         return (
             self.reference_id == bounds.reference_id
             and bounds.scope.contains(self.anomaly)
@@ -535,6 +622,7 @@ class TerminalReferenceSample:
         )
 
     def as_dict(self):
+        """Return the sample as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
@@ -555,6 +643,13 @@ class TerminalHoldReferences:
     maximum_query_displacement: Any = 0
 
     def __post_init__(self):
+        """Validate the two samples and normalize the query clocks.
+
+        Raises TypeError when either sample is not a TerminalReferenceSample.
+        Raises ValueError when the reference identities differ or the query
+        displacement budget is negative. A missing query anomaly defaults to its
+        sample's anomaly.
+        """
         object.__setattr__(self, "policy", TerminalFeedforwardPolicy(self.policy))
         if not isinstance(self.feedback, TerminalReferenceSample) or not isinstance(
             self.feedforward, TerminalReferenceSample
@@ -578,6 +673,19 @@ class TerminalHoldReferences:
         object.__setattr__(self, "maximum_query_displacement", budget)
 
     def validate(self, bounds, hold_width, *, maximum_query_displacement=0):
+        """Check the pair against the bounds, hold width and query budget.
+
+        Inputs:
+            bounds: TerminalTrackingBounds in force.
+            hold_width: hold duration in anomaly units (rad).
+            maximum_query_displacement: budget the pair must have declared.
+        Outputs:
+            True. Raises ValueError when the budget differs, the hold is not in
+            (0, maximum_hold] or scope, the feedforward anomaly is not the feedback
+            anomaly plus the policy sample fraction times the hold, the reference
+            identity differs, a start-policy pair has distinct samples, or a query
+            clock is displaced beyond the budget.
+        """
         hold, budget = _q(hold_width), _q(maximum_query_displacement)
         if (
             self.maximum_query_displacement != budget
@@ -607,6 +715,7 @@ class TerminalHoldReferences:
         return True
 
     def as_dict(self):
+        """Return the pair, query clocks and displacements as a dict of strings."""
         return {
             "held_policy": self.policy.value,
             "feedback": self.feedback.as_dict(),
@@ -625,6 +734,13 @@ class TerminalHoldReferences:
 
 @dataclass(frozen=True)
 class TerminalControlCommand:
+    """Held command for one sample and the actuator band around it.
+
+    ``exact_command`` is the rational input applied over ``hold_width`` from
+    ``anomaly``, ``applied_input`` the box around it by ``actuator_error_abs``,
+    and ``hold_references`` the held reference pair for non-start policies.
+    """
+
     anomaly: Fraction
     hold_width: Fraction
     exact_command: tuple[Fraction, ...]
@@ -648,6 +764,9 @@ class TerminalControlCommand:
         return result
 
     def as_dict(self):
+        """Return the command as a dict of strings, with hold-reference details when
+        present.
+        """
         record = {
             "anomaly": str(self.anomaly),
             "hold_width": str(self.hold_width),

@@ -23,6 +23,9 @@ from orbexa.control.tubes.sample_hold import sample_hold_bounds
 
 
 def _vector(value, name, *, nonnegative=False):
+    """Return value as a float 3-vector; raise ValueError if not finite or, when
+    requested, if any component is negative.
+    """
     result = np.asarray(value, dtype=float)
     if result.shape != (3,) or not np.all(np.isfinite(result)):
         raise ValueError(f"{name} must be a finite three-vector")
@@ -32,6 +35,9 @@ def _vector(value, name, *, nonnegative=False):
 
 
 def _matrix(value, name, *, nonnegative=False):
+    """Return value as a float 3 by 6 matrix; raise ValueError if not finite or, when
+    requested, if any entry is negative.
+    """
     result = np.asarray(value, dtype=float)
     if result.shape != (3, 6) or not np.all(np.isfinite(result)):
         raise ValueError(f"{name} must be a finite 3 by 6 matrix")
@@ -57,14 +63,20 @@ class TubeProfile:
 
     @property
     def position_radius(self):
+        """Return the Euclidean norm of omega at each node."""
         return np.linalg.norm(self.omega, axis=1)
 
     @property
     def max_position_radius(self):
+        """Return the largest per-node position radius as a float."""
         return float(np.max(self.position_radius))
 
     @property
     def velocity_error_bound(self):
+        """Return phi + |lambda_gain| * omega per node.
+
+        Raises ValueError if the profile has no lambda_gain.
+        """
         if self.lambda_gain is None:
             raise ValueError(
                 "Velocity error bounds require the profile's sliding gains"
@@ -73,6 +85,9 @@ class TubeProfile:
 
     @property
     def max_state_error(self):
+        """Return the six-vector of maximum omega per axis then maximum velocity error
+        bound per axis over all nodes.
+        """
         return np.concatenate(
             (np.max(self.omega, axis=0), np.max(self.velocity_error_bound, axis=0))
         )
@@ -173,6 +188,14 @@ def held_tube_stage_seed(
         )
 
     def advance(terms):
+        """Advance (phi, omega) one step for the given forcing terms.
+
+        Uses terms["disturbance_bound"] (plus the nominal reset forcing when nonzero)
+        and the enclosing peak_phi. When reset forcing is nonzero, omega also gains
+        the lambda_gain weight times reset_omega, rounded upward.
+
+        Outputs: (next_phi, next_omega).
+        """
         if not np.any(reset_phi) and not np.any(reset_omega):
             return advance_tube(
                 phi,

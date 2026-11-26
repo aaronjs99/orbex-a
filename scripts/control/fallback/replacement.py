@@ -41,6 +41,7 @@ class PreparedFleetReplacement:
     proof_identity: str
 
     def _record(self):
+        """Return the dict of fields that proof_identity is computed over."""
         return {
             "start": self.start,
             "hold_width": self.hold_width,
@@ -52,6 +53,7 @@ class PreparedFleetReplacement:
         }
 
     def verify_integrity(self):
+        """Raise ValueError if the record digest differs from proof_identity."""
         if fingerprint(self._record()) != self.proof_identity:
             raise ValueError(
                 "Prepared feedback replacement changed after its entry proof"
@@ -59,10 +61,15 @@ class PreparedFleetReplacement:
 
     @property
     def fingerprint(self):
+        """Return proof_identity after verifying integrity."""
         self.verify_integrity()
         return self.proof_identity
 
     def as_dict(self):
+        """Return the exact replacement record with schema, identity and scope text.
+
+        Raises ValueError if integrity verification fails.
+        """
         self.verify_integrity()
         return dict(
             schema="orbexa.prepared-fleet-replacement.v1",
@@ -211,6 +218,9 @@ def activate_fleet_replacement(runtime, prepared, observations, *, q, hold_width
     old = runtime.active_fallback
 
     def state():
+        """Return a snapshot of the runtime's active plan, clock, fuel, pending decision
+        and disturbance, used to detect changes during the checks.
+        """
         return (
             id(runtime.active_fallback),
             runtime.active_fallback.fingerprint,

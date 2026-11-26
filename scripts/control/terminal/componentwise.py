@@ -39,6 +39,11 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
     held_policy: str = TerminalFeedforwardPolicy.MIDPOINT_V1.value
 
     def __post_init__(self):
+        """Run the inherited validation and require the midpoint held policy.
+
+        Stores the policy's normalized string value in ``held_policy``. Raises
+        ValueError when the policy is not ``TerminalFeedforwardPolicy.MIDPOINT_V1``.
+        """
         super().__post_init__()
         policy = TerminalFeedforwardPolicy(self.held_policy)
         if policy is not TerminalFeedforwardPolicy.MIDPOINT_V1:
@@ -48,9 +53,11 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
         object.__setattr__(self, "held_policy", policy.value)
 
     def _terminal_policy(self):
+        """Return the midpoint feedforward policy."""
         return TerminalFeedforwardPolicy.MIDPOINT_V1
 
     def _terminal_proof_reference(self):
+        """Return the componentwise midpoint terminal method identifier."""
         return COMPONENTWISE_MIDPOINT_TERMINAL_METHOD
 
     def _reference_jet_bounds(
@@ -68,6 +75,14 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
         torque_factor,
         radius_log_prime,
     ):
+        """Return reference norm bounds from the componentwise rigid-body port jets.
+
+        Calls ``bound_componentwise_terminal_jets`` with this builder's inertia, entry
+        spin and precision bits. ``flint`` and ``ar`` are unused.
+        Outputs: ``(jets.reference_norm_bounds, evidence)``. The evidence holds the
+        jet evidence, the scalar bounds ``point_radius * rotation_derivatives`` it
+        supersedes, the held policy and the geometry proof reference.
+        """
         jets = bound_componentwise_terminal_jets(
             inertia=self.inertia,
             entry_spin=self.entry_spin,
@@ -94,6 +109,12 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
         }
 
     def _feedforward_range(self, ar, nominal, p2, reference_state, matrix_abs):
+        """Return the symmetric box of midpoint feedforward magnitude bounds.
+
+        Each component bound is ``p2`` plus the row of ``matrix_abs`` dotted with
+        ``reference_state`` plus the absolute value of the nominal affine entry. The
+        box is ``[-bound, bound]`` per component. ``ar`` is used for the absolute value.
+        """
         magnitude = _add(
             (p2,) * 3,
             _dot(matrix_abs, reference_state),
@@ -112,6 +133,13 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
         reference_error,
         matrix_abs,
     ):
+        """Return the componentwise input-error bound for separately evaluated matrices.
+
+        Adds the acceleration and affine errors, ``matrix_error`` applied to the
+        reference state plus ``reference_error``, ``matrix_error`` applied to the error
+        state plus sensing error plus ``reference_error``, and ``matrix_abs`` applied
+        to ``reference_error``. No same-clock cancellation is assumed.
+        """
         # Midpoint feedforward and start feedback use separate evaluated
         # matrices. Their matrix errors do not have same-clock cancellation.
         return _add(
@@ -126,4 +154,8 @@ class ComponentwiseCompositePhysicalTerminalBoundsBuilder(
         )
 
     def build(self):
+        """Return the inherited build result with its method set to the midpoint method.
+
+        Replaces the ``method`` field with ``COMPONENTWISE_MIDPOINT_TERMINAL_METHOD``.
+        """
         return replace(super().build(), method=COMPONENTWISE_MIDPOINT_TERMINAL_METHOD)

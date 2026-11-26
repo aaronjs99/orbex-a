@@ -27,6 +27,11 @@ from orbexa.common.contracts import MPCProblem
 
 
 def _square_weight_matrix(matrix: np.ndarray, size: int) -> np.ndarray:
+    """Return a weight matrix from a vector, scalar or matrix.
+
+    A one-dimensional input becomes a diagonal matrix, a scalar becomes that scalar
+    times the identity of order ``size``, and any other array is returned as given
+    (as float)."""
     arr = np.asarray(matrix, dtype=float)
     if arr.ndim == 1:
         return np.diag(arr)
