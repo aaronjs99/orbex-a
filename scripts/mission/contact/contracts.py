@@ -164,7 +164,8 @@ class ContactMember:
     """Frozen description of one chaser taking part in finite contact.
 
     Inputs: surface_anchor_body_m in m and the unit axes normal_body, tangent_u_body
-    and tangent_v_body are expressed in the member body frame; arm_reach_m in m.
+    and tangent_v_body describe the attachment patch on the target and are expressed
+    in the target body frame, not the chaser's own frame; arm_reach_m in m.
     """
 
     id: str
