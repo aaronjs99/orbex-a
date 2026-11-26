@@ -38,6 +38,11 @@ COMPOSITE_DISTANCE_METHOD = "arb-composite-reference-separation-v1"
 
 
 def _point(values):
+    """Return three exact Fractions for a 3-vector.
+
+    Raises ValueError unless there are exactly three components; ``_exact``
+    converts each value.
+    """
     result = tuple(map(_exact, values))
     if len(result) != 3:
         raise ValueError("A composite geometry vector needs three finite components")
@@ -45,14 +50,23 @@ def _point(values):
 
 
 def _dot(left, right):
+    """Return the exact dot product of two vectors as a Fraction."""
     return sum((a * b for a, b in zip(left, right)), Fraction(0))
 
 
 def _multiply(matrix, vector):
+    """Return the exact product of a row-major matrix and a vector."""
     return tuple(_dot(row, vector) for row in matrix)
 
 
 def _geometry_context(geometry):
+    """Validate a spacecraft geometry and return ``(parts, context, fingerprint)``.
+
+    Raises TypeError unless ``geometry`` is a ``SpacecraftGeometry``. Raises
+    ValueError unless its frame is ``target_body_COM``, its components are
+    nonempty with unique ids and each has exact vertices, and ``as_dict()`` is
+    finite JSON-serializable. ``context`` is that dictionary.
+    """
     # Import lazily: result loading and the cylinder baseline need not import
     # the spacecraft asset/provenance layer.
     from orbexa.models.geometry.composite import SpacecraftGeometry
@@ -126,6 +140,13 @@ def _candidate_normals(point, component, matrix):
 
 
 def _matrix(value, error):
+    """Return an exact 3x3 matrix after consistency checks against ``error``.
+
+    Raises ValueError if it is not 3x3, if ``M^T M`` differs from identity by more
+    than ``2*error + error^2`` in any entry, or if ``error < 1`` and the
+    determinant is not positive. These are necessary conditions, not a proof that a
+    rotation lies within ``error``.
+    """
     matrix = tuple(_point(row) for row in value)
     if len(matrix) != 3:
         raise ValueError("Composite target pose requires a three by three matrix")
@@ -173,6 +194,13 @@ class RotatingCompositeBounds:
     )
 
     def __post_init__(self):
+        """Validate and normalize the fields in place.
+
+        Checks the geometry, converts the three nonnegative scalar fields to exact
+        values, converts the start matrix with ``_matrix``, and requires a
+        three-dimensional ``IntervalBox`` center and nonempty ``frame`` and ``scope``.
+        Raises ValueError (or TypeError for the geometry) on any violation.
+        """
         _geometry_context(self.geometry)
         for name in (
             "orientation_matrix_error",
@@ -206,6 +234,9 @@ class RotatingCompositeBounds:
             )
 
     def as_dict(self):
+        """Return the bounds as a dictionary with the geometry context and fingerprint,
+        the matrix and scalars as strings, and the center box.
+        """
         _, geometry, identity = _geometry_context(self.geometry)
         result = {
             "shape": "composite_spacecraft",
@@ -233,6 +264,11 @@ class CompositeSweptCollisionGuard:
     """
 
     def __init__(self, *, precision_bits=128):
+        """Validate ``precision_bits`` and create the pair guard at that precision.
+
+        ``precision_bits`` must be an integer (not bool) of at least 64. Raises
+        ValueError otherwise.
+        """
         if (
             isinstance(precision_bits, bool)
             or not isinstance(precision_bits, Integral)
@@ -252,6 +288,20 @@ class CompositeSweptCollisionGuard:
         minimum_pair_center_distance=0,
         normals=(),
     ):
+        """Return a ``CollisionCertificate`` for swept chaser sets against the target.
+
+        Inputs: ``flows`` are proven six-dimensional ``FlowCertificate`` objects with
+        equal start anomaly, hold width and the target frame; ``body_radii`` gives one
+        nonnegative radius per flow; ``clearance`` and ``minimum_pair_center_distance``
+        are nonnegative; ``normals`` are extra nonzero candidate separating
+        directions in the target frame.
+        Outputs: PROVEN_SAFE only if every flow segment is strictly separated from
+        every component by an Arb-checked plane and, for several flows, the pair guard
+        admits them. Otherwise UNRESOLVED or UNAVAILABLE (python-flint missing), with
+        the evidence gathered so far. Raises TypeError if ``target`` is not
+        ``RotatingCompositeBounds`` and ValueError for invalid radii, clearances or
+        normals.
+        """
         if not isinstance(target, RotatingCompositeBounds):
             raise TypeError(
                 "Composite exclusion requires RotatingCompositeBounds; unsupported geometry refuses"
@@ -391,6 +441,15 @@ class CompositeSweptCollisionGuard:
 
     @staticmethod
     def _component_segment(segment, body_radius, target, component, normals, ar):
+        """Search for a plane separating one swept segment from one component.
+
+        Candidates are ``normals`` plus numerical directions from the segment's
+        relative midpoint. A plane is accepted when the lower bound of the normal
+        projection over the swept position and target center, minus the exact support
+        of the component under the start matrix, exceeds the norm times the body
+        radius plus a reserve for rotation, matrix error and center motion.
+        Returns an evidence dictionary for the first accepted plane, else None.
+        """
         vertices = tuple(_point(vertex) for vertex in component.vertices_body_m)
         matrix, center = target.orientation_matrix_at_start, target.center_at_start
         position = segment.swept_state.slice(0, 3)
@@ -444,6 +503,13 @@ class CompositeSweptCollisionGuard:
 
 @dataclass(frozen=True)
 class CompositePointSeparation:
+    """Result of a point-to-union clearance check in the target body frame.
+
+    ``distance_lower`` is a lower bound of the distance from ``point_body`` to the
+    union, meaningful when ``admissible``; otherwise it is zero. ``evidence`` holds
+    one record per component.
+    """
+
     status: str
     reason: str
     distance_lower: Fraction
@@ -454,9 +520,11 @@ class CompositePointSeparation:
 
     @property
     def admissible(self):
+        """Return True when the status is ``PROVEN_OUTSIDE_EVERY_COMPONENT``."""
         return self.status == "PROVEN_OUTSIDE_EVERY_COMPONENT"
 
     def as_dict(self):
+        """Return the result as a dictionary with numeric fields as strings."""
         return {
             "status": self.status,
             "reason": self.reason,
@@ -477,6 +545,12 @@ class CompositeTerminalGeometry:
     """
 
     def __init__(self, geometry, *, precision_bits=160):
+        """Validate ``precision_bits`` (an integer, not bool, at least 64) and the
+        geometry, and store the parts, context and fingerprint.
+
+        Raises ValueError for an invalid precision or geometry and TypeError for an
+        unsupported geometry type.
+        """
         if (
             isinstance(precision_bits, bool)
             or not isinstance(precision_bits, Integral)
@@ -487,6 +561,14 @@ class CompositeTerminalGeometry:
         self.geometry, self.precision_bits = geometry, int(precision_bits)
 
     def point_separation(self, point_body):
+        """Return a ``CompositePointSeparation`` for a point in the target body frame.
+
+        For each component a candidate plane is accepted when the exact projection gap
+        is positive and the Arb distance lower bound is positive; the best plane per
+        component is kept and the minimum is reported. UNAVAILABLE without
+        python-flint; UNRESOLVED if a component has no such plane, candidate search is
+        refused, or the geometry fingerprint changes during the proof.
+        """
         point = _point(point_body)
         try:
             import flint
@@ -570,6 +652,10 @@ class CompositeTerminalGeometry:
         )
 
     def distance_lower(self, point_body):
+        """Return the proven lower bound of the distance from the point to the union.
+
+        Raises ValueError with the certificate reason unless the separation is proven.
+        """
         certificate = self.point_separation(point_body)
         if not certificate.admissible:
             raise ValueError(certificate.reason)

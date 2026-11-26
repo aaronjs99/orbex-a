@@ -54,14 +54,17 @@ except OSError:
 
 
 def _json(value):
+    """Return canonical JSON text: sorted keys, compact separators, no NaN."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def _digest(value):
+    """Return the SHA-256 hex digest of the canonical JSON of a value."""
     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
 def _sum_boxes(left, right):
+    """Return the box whose lower and upper bounds are the componentwise sums."""
     return IntervalBox(
         tuple(a + b for a, b in zip(left.lower, right.lower)),
         tuple(a + b for a, b in zip(left.upper, right.upper)),
@@ -69,6 +72,10 @@ def _sum_boxes(left, right):
 
 
 def _require_box(value, dimension, name):
+    """Require an exact IntervalBox instance of the given dimension.
+
+    Outputs: raises ValueError naming the argument otherwise.
+    """
     if type(value) is not IntervalBox or value.dimension != dimension:
         raise ValueError(
             f"{name} requires an explicit {dimension}-dimensional IntervalBox"
@@ -76,6 +83,11 @@ def _require_box(value, dimension, name):
 
 
 def _source_identity():
+    """Return the model, frame, method names and SHA-256 of the three supported sources.
+
+    Outputs: raises ValueError if a source file is unreadable or its bytes differ
+    from the hashes recorded when the modules were loaded.
+    """
     files = {
         "common/intervals.py": Path(_intervals.__file__),
         "proofs/reachability.py": Path(_reachability.__file__),
@@ -109,6 +121,11 @@ def _source_identity():
 
 
 def _box_record(value, name):
+    """Rebuild an IntervalBox from its complete exported record.
+
+    Outputs: raises ValueError unless the record has exactly the four keys and
+    re-exporting the rebuilt box reproduces the record.
+    """
     if not isinstance(value, dict) or set(value) != {
         "lower",
         "upper",
@@ -140,6 +157,13 @@ class OrbitalHoldContext:
     reachability_config: ReachabilityConfig
 
     def __post_init__(self):
+        """Validate the context and store the anomaly domain in normalized form.
+
+        Outputs: raises ValueError for a model that is not exactly OrbitalModelBounds,
+        an empty domain, non-IntervalBox limits, a malformed model hash, a config
+        that is not ReachabilityConfig or has under 128 precision bits, or a
+        non-serializable record.
+        """
         if type(self.model) is not OrbitalModelBounds:
             raise ValueError("Use the supported analytical OrbitalModelBounds directly")
         domain = _pair(self.anomaly_domain, "anomaly_domain")
@@ -165,6 +189,7 @@ class OrbitalHoldContext:
         _json(self.as_dict())
 
     def as_dict(self):
+        """Return a serializable record of model, domain, limits, hash and policy."""
         policy = {
             name: str(value) if isinstance(value, Fraction) else value
             for name, value in vars(self.reachability_config).items()
@@ -199,6 +224,11 @@ class OrbitalHoldRequest:
     )
 
     def __post_init__(self):
+        """Validate box dimensions and exact scalars, and normalize start and width.
+
+        Outputs: raises ValueError for wrongly sized boxes, a non-positive hold width
+        or a non-serializable record.
+        """
         _require_box(self.initial_state, 6, "Initial state")
         _require_box(self.constant_input, 3, "Constant input")
         _require_box(self.varying_actuator_error, 3, "Varying actuator error")
@@ -212,6 +242,7 @@ class OrbitalHoldRequest:
         _json(self.as_dict())
 
     def as_dict(self):
+        """Return a serializable record of the request with exact scalars as strings."""
         return {
             "initial_state": self.initial_state.as_dict(),
             "constant_input": self.constant_input.as_dict(),
@@ -222,6 +253,11 @@ class OrbitalHoldRequest:
 
     @classmethod
     def from_dict(cls, value):
+        """Rebuild a request from its canonical as_dict() record.
+
+        Outputs: raises ValueError if the keys differ, a field is malformed, or the
+        rebuilt request does not re-export to exactly the given record.
+        """
         expected = {
             "initial_state",
             "constant_input",
@@ -253,14 +289,17 @@ class OrbitalEndpointCertificate:
     _record_json: str = field(repr=False)
 
     def as_dict(self):
+        """Return the stored endpoint record decoded from JSON."""
         return json.loads(self._record_json)
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 hex digest of the stored record text."""
         return hashlib.sha256(self._record_json.encode("utf-8")).hexdigest()
 
     @property
     def endpoint(self):
+        """Return the refined intersection endpoint box from the record."""
         return _box_record(
             self.as_dict()["refined_intersection_endpoint"], "Refined endpoint"
         )
@@ -280,6 +319,11 @@ class OrbitalHeldFlow:
     _record_json: str = field(repr=False)
 
     def as_dict(self):
+        """Return the hold record after checking it matches the held certificates.
+
+        Outputs: raises ValueError if the Picard flow or endpoint certificate no
+        longer matches the stored record.
+        """
         record = json.loads(self._record_json)
         if (
             _json(self.picard_flow.as_dict()) != _json(record["picard_flow"])
@@ -295,14 +339,17 @@ class OrbitalHeldFlow:
 
     @property
     def fingerprint(self):
+        """Return the digest of the checked hold record."""
         return _digest(self.as_dict())
 
     @property
     def proven(self):
+        """Return True when the recorded status is EnclosureStatus.PROVEN."""
         return self.as_dict()["status"] == EnclosureStatus.PROVEN.value
 
     @property
     def endpoint(self):
+        """Return the refined endpoint box, or None without an endpoint certificate."""
         return (
             None
             if self.endpoint_certificate is None
@@ -323,15 +370,30 @@ class OrbitalHoldProofService:
     _implementation_json: str = field(init=False, repr=False)
 
     def __post_init__(self):
+        """Bind the exact source identity to the service.
+
+        Outputs: raises ValueError if context is not exactly OrbitalHoldContext or the
+        source identity cannot be established.
+        """
         if type(self.context) is not OrbitalHoldContext:
             raise ValueError("An explicit OrbitalHoldContext is required")
         object.__setattr__(self, "_implementation_json", _json(_source_identity()))
 
     @property
     def _implementation(self):
+        """Return the bound source identity decoded from JSON."""
         return json.loads(self._implementation_json)
 
     def _validate(self, request, swept_entry):
+        """Check a request against the bound sources, domain, input authority and entry.
+
+        Inputs: swept_entry is the optional Picard entry box; None uses the initial
+        state.
+        Outputs: the entry box. Raises ValueError if request is not an
+        OrbitalHoldRequest, the sources changed, the hold leaves the anomaly domain,
+        constant input plus varying error exceeds input_limits, or the entry is not
+        six-dimensional or does not contain the initial state.
+        """
         if type(request) is not OrbitalHoldRequest:
             raise ValueError(
                 "Use an exact OrbitalHoldRequest, not a supplied flow certificate"
@@ -428,6 +490,13 @@ class OrbitalHoldProofService:
         return OrbitalHeldFlow(flow, endpoint, _json(record))
 
     def _refine(self, flow, request):
+        """Compute the variation-of-constants endpoint and intersect it with Picard.
+
+        Freezes the coefficients at the start anomaly, bounds the residual over the
+        Picard swept state, and encloses the endpoint via the Arb matrix exponential
+        plus a residual error radius. Outputs: an OrbitalEndpointCertificate; raises
+        _ProofUnresolved if the two endpoints do not intersect.
+        """
         import flint
 
         config, model = self.context.reachability_config, self.context.model
@@ -519,6 +588,7 @@ class OrbitalHoldProofService:
             endpoint = IntervalBox(lo, hi)
 
             def matrix_box(rows):
+                """Return the exported box records of each row of an Arb matrix."""
                 return [ar.box(tuple(row)).as_dict() for row in rows]
 
             record = {

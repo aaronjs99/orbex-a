@@ -9,6 +9,7 @@ from orbexa.common.intervals import _ProofUnresolved
 
 
 def cross(a, b):
+    """Return the cross product of two 3-vectors, using the operands' arithmetic."""
     return (
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -17,22 +18,27 @@ def cross(a, b):
 
 
 def add(a, b):
+    """Return the componentwise sum of two vectors."""
     return tuple(x + y for x, y in zip(a, b))
 
 
 def subtract(a, b):
+    """Return the componentwise difference ``a - b`` of two vectors."""
     return tuple(x - y for x, y in zip(a, b))
 
 
 def scale(s, a):
+    """Return the vector ``a`` with every component multiplied by ``s``."""
     return tuple(s * x for x in a)
 
 
 def matvec(a, b):
+    """Return the product of row-major matrix ``a`` and vector ``b``."""
     return tuple(sum(x * y for x, y in zip(row, b)) for row in a)
 
 
 def transpose(matrix):
+    """Return the transpose of a row-major matrix as a tuple of tuples."""
     return tuple(zip(*matrix))
 
 
@@ -55,6 +61,11 @@ def inverse3(a):
 
 
 def square(value, ar):
+    """Return an interval enclosing the square of ``value`` using its box endpoints.
+
+    The lower bound is zero when the box contains zero, so it is never negative.
+    ``ar`` is the arithmetic providing ``box`` and ``interval``.
+    """
     box = ar.box((value,))
     lo, hi = box.lower[0], box.upper[0]
     return ar.interval(
@@ -63,6 +74,11 @@ def square(value, ar):
 
 
 def norm(vector, ar):
+    """Return an interval enclosing the Euclidean norm of ``vector``.
+
+    Squared endpoints are formed exactly from the box; the lower root uses zero
+    for components whose box contains zero.
+    """
     # A ball hull of [0,u] can have a tiny negative lower endpoint because
     # its radius is rounded. Take square roots of exact nonnegative rational
     # endpoints separately rather than asking sqrt of that enclosing hull.
@@ -78,19 +94,26 @@ def norm(vector, ar):
 
 
 def norm_upper(vector, ar):
+    """Return the upper endpoint of the interval norm of ``vector``."""
     return ar.box((norm(vector, ar),)).upper[0]
 
 
 def quaternion_product(a, b):
+    """Return the Hamilton product ``a * b`` of scalar-last quaternions (x, y, z, w)."""
     vector = add(add(scale(a[3], b[:3]), scale(b[3], a[:3])), cross(a[:3], b[:3]))
     return (*vector, a[3] * b[3] - sum(x * y for x, y in zip(a[:3], b[:3])))
 
 
 def quaternion_conjugate(q):
+    """Return the conjugate of a scalar-last quaternion (vector part negated)."""
     return (-q[0], -q[1], -q[2], q[3])
 
 
 def normalized_quaternion(q, ar):
+    """Return ``q`` divided by its interval norm.
+
+    Raises ``_ProofUnresolved`` unless the norm is proved positive.
+    """
     length = norm(q, ar)
     if not length > 0:
         raise _ProofUnresolved("quaternion set includes zero")

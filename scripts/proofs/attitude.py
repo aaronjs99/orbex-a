@@ -30,6 +30,11 @@ _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _matrix(quaternion, arithmetic):
+    """Return the 3x3 rotation polynomial of a scalar-last quaternion (x, y, z, w).
+
+    No normalization is applied, so the result is a rotation matrix only for unit
+    quaternions. Squares use ``arithmetic.square``; entries are in the operand type.
+    """
     x, y, z, w = quaternion
     square = arithmetic.square
     return (
@@ -40,6 +45,13 @@ def _matrix(quaternion, arithmetic):
 
 
 def _inertia(value):
+    """Validate an exact inertia declaration and return it with its exact inverse.
+
+    Inputs: ``value`` is a 3x3 nested sequence convertible by ``exact`` (kg m^2).
+    Outputs: ``(matrix, inverse)`` as 3x3 tuples of Fractions.
+    Raises ValueError unless the matrix is 3x3, symmetric and exactly positive
+    definite (a > 0, a*d - b^2 > 0 and determinant > 0).
+    """
     matrix = tuple(tuple(map(exact, row)) for row in value)
     if len(matrix) != 3 or any(len(row) != 3 for row in matrix):
         raise ValueError("Inertia must be a three by three exact declaration")
@@ -60,6 +72,11 @@ def _inertia(value):
 
 
 def _sqrt_upper(value):
+    """Return a rational upper bound of the square root of a nonnegative value.
+
+    The root is rounded up on a grid of 1e-15. Raises ValueError for a negative
+    value.
+    """
     value = exact(value)
     if value < 0:
         raise ValueError("Nonnegative square root required")
@@ -72,6 +89,16 @@ def _sqrt_upper(value):
 
 @dataclass(frozen=True)
 class AttitudeSegment:
+    """One Picard-certified segment of the attitude flow, in anomaly offsets.
+
+    ``offset`` and ``anomaly`` are the (lower, upper) segment bounds relative to the
+    hold start and in absolute anomaly. The boxes are seven-dimensional (scalar-last
+    quaternion then body rate): ``initial_state`` at the segment start,
+    ``swept_state`` the Picard candidate enclosing the whole segment, ``endpoint``
+    the enclosure at the segment end, ``picard_image`` the image that lies strictly
+    inside the candidate, and ``derivative`` the field over the candidate.
+    """
+
     offset: tuple
     anomaly: tuple
     initial_state: IntervalBox
@@ -82,6 +109,9 @@ class AttitudeSegment:
     iterations: int
 
     def as_dict(self):
+        """Return the segment as a dictionary with bounds as strings and boxes via
+        ``IntervalBox.as_dict``.
+        """
         return dict(
             offset=tuple(map(str, self.offset)),
             anomaly=tuple(map(str, self.anomaly)),
@@ -101,6 +131,16 @@ class AttitudeSegment:
 
 @dataclass(frozen=True)
 class AttitudeFlowCertificate:
+    """Outcome of an attitude inclusion over one exact-width target hold.
+
+    ``status`` and ``reason`` state whether the enclosure was proven. When proven,
+    ``endpoint``, ``swept_state`` and ``segments`` enclose the seven-dimensional
+    state (scalar-last quaternion, body rate) and the reference rotation fields
+    bound the start orientation, its operator error and the relative angular rate
+    per anomaly. ``context`` records the model, fingerprints, inertia and
+    assumptions the claim is conditional on.
+    """
+
     status: EnclosureStatus
     reason: str
     initial_state: IntervalBox
@@ -114,10 +154,12 @@ class AttitudeFlowCertificate:
 
     @property
     def proven(self):
+        """Return True when ``status`` is ``EnclosureStatus.PROVEN``."""
         return self.status == EnclosureStatus.PROVEN
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of ``as_dict()``."""
         return fingerprint(self.as_dict())
 
     def state_at(self, query):
@@ -203,6 +245,10 @@ class AttitudeFlowCertificate:
         return result
 
     def as_dict(self):
+        """Return the certificate as a dictionary.
+
+        Boxes use ``as_dict``, exact values are strings and absent fields are None.
+        """
         return {
             "status": self.status.value,
             "reason": self.reason,
@@ -227,6 +273,13 @@ class AttitudeFlowCertificate:
         }
 
     def occupied_bounds(self, geometry):
+        """Return ``RotatingCompositeBounds`` for ``geometry`` from this certificate.
+
+        The bounds use the start rotation, its operator error and the angular rate per
+        anomaly stored here, the shared ``FRAME``, and a scope string that includes
+        this certificate's fingerprint. Raises ValueError if the certificate is not
+        proven.
+        """
         from orbexa.proofs.geometry import RotatingCompositeBounds
 
         if not self.proven:
@@ -245,7 +298,14 @@ class AttitudeFlowCertificate:
 
 
 class AttitudeFlowEncloser:
+    """Enclose quaternion and body-rate trajectories over a target ephemeris hold.
+
+    Each segment is certified by Arb Picard self-inclusion of the quaternion/Euler
+    field with the independent variable the target-flow anomaly.
+    """
+
     def __init__(self, config=None):
+        """Store ``config``, or a default ``ReachabilityConfig`` when None."""
         self.config = config or ReachabilityConfig()
 
     def enclose(
@@ -258,6 +318,20 @@ class AttitudeFlowEncloser:
         clock,
         gravity_gradient=True,
     ):
+        """Return an ``AttitudeFlowCertificate`` for an initial quaternion/rate box.
+
+        Inputs: ``initial_quaternion_box`` (4 scalar-last components) and
+        ``initial_body_rate_box`` (3 components) are interval boxes; ``target_flow`` is
+        a proven, exact-width ``TargetEphemerisCertificate`` whose target and clock
+        fingerprints match ``model`` and ``clock``; ``inertia`` is a 3x3 exact matrix;
+        ``gravity_gradient`` selects central spherical gravity-gradient torque or zero
+        torque.
+        Outputs: PROVEN only if every substep passes strict Picard self-inclusion and
+        the quaternion box contains unit norm. UNAVAILABLE is returned without
+        python-flint. Mismatched flows, a non-unit domain, an exhausted substep budget
+        or an unresolved step return UNRESOLVED. Wrong box dimensions or an invalid
+        inertia raise ValueError.
+        """
         if (
             initial_quaternion_box.dimension != 4
             or initial_body_rate_box.dimension != 3
@@ -290,6 +364,7 @@ class AttitudeFlowEncloser:
         }
 
         def failure(status, reason):
+            """Return a certificate with ``status`` and ``reason`` and no enclosures."""
             return AttitudeFlowCertificate(
                 status, reason, initial, None, None, (), None, None, None, context
             )
@@ -336,6 +411,15 @@ class AttitudeFlowEncloser:
                     )
 
                 def field(qb, state):
+                    """Evaluate the attitude vector field over anomaly interval ``qb``.
+
+                    The state is (quaternion xyzw, body rate). Euler's equation and
+                    quaternion kinematics give time derivatives, divided by the clock
+                    rate to give derivatives with respect to anomaly. With gravity
+                    gradient, the radial direction in the body frame is clipped to
+                    [-1, 1] per component, a continuous extension that leaves
+                    unit-quaternion trajectories unchanged.
+                    """
                     q, omega = state[:4], state[4:]
                     _, rate, _ = clock.evaluate(ar.interval(qb), ar)
                     tau = (ar.scalar(0),) * 3
@@ -508,6 +592,14 @@ class AttitudeFlowEncloser:
             return failure(EnclosureStatus.UNRESOLVED, str(error))
 
     def _picard(self, initial, qb, width, field, ar):
+        """Try to prove strict Picard self-inclusion of the field over one segment.
+
+        Inputs: ``initial`` state, anomaly interval ``qb``, step ``width`` and the
+        field evaluator ``field``.
+        Outputs: ``(candidate, image, derivative, endpoint, iterations)`` when the image
+        lies strictly inside the candidate, otherwise None (non-finite image or
+        ``max_picard_iterations`` reached).
+        """
         offset, h = ar.interval((0, width)), ar.scalar(width)
         first = field(qb, initial)
         candidate = ar.inflate(
