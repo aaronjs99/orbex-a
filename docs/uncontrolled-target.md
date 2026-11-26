@@ -196,7 +196,6 @@ from orbexa.models.targets.cylinder import RigidBodyCylinderTarget
 from orbexa.models.configuration.model import SimulationConfig
 from orbexa.estimation.adaptation.belief import ParameterBelief
 from orbexa.mission.approach.scenario import MissionScenario
-from orbexa.mission.approach.runner import CoupledTubeMission
 
 config = SimulationConfig.load()
 target = RigidBodyCylinderTarget.from_config(
@@ -214,9 +213,10 @@ belief = ParameterBelief(
     estimates={"eccentricity": 0.16, "alpha": 1.5e-7, "beta": 3.5e-7},
 )
 scenario = MissionScenario(config=config, target=target, initial_belief=belief)
-result = CoupledTubeMission(scenario).run(mission="single", steps=200)
-samples = target.recorded_kinematics(result.anom_history)
 ```
+
+The sensed nonlinear mission is run by `NonlinearMissionRunner`
+(`orbexa.mission.runner`); see [the nonlinear mission](nonlinear-mission.md).
 
 The spin above is an illustrative slow-debris input, not an observed or
 representative population measurement. `from_config` requires this explicit

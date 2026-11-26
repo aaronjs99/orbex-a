@@ -4,8 +4,8 @@
 
 **Pass with stated conditions.** The terminal module checks sufficient
 invariance, actuator, geometry and accuracy inequalities using exact rational
-arithmetic. The continuation module admits an initial set only after proving a
-complete continuous-flow backup chain into that terminal set. A failed or
+arithmetic. The fleet fallback layer (`control/fallback`) admits an initial set only after
+proving a complete continuous-flow backup chain into that terminal set. A failed or
 unacceptable optimizer proposal selects a previously certified held input.
 
 The terminal certificate is conditional on the supplied global bounds and their
@@ -15,8 +15,9 @@ user-supplied sensor, reference, uncertainty or geometry bounds are true. A
 bound source and explicit assumptions. Sampled maxima are refused. A proof
 source string records provenance; it is not a verification of that source.
 
-The public modules are `orbexa.control.terminal.tracking` and
-`orbexa.control.fallback.continuation`. Continuous flow and occupied-set separation use
+The public module is `orbexa.control.terminal.tracking`. The finite backup
+chain it relies on is built in `orbexa.control.fallback.plan` and admitted in
+`orbexa.control.fallback.runtime` ([fleet fallback](fleet-fallback.md)). Continuous flow and occupied-set separation use
 [the validated reachability layer](continuous-safety.md). The approach NLP stays
 ADTMPC. These modules do not prove that its nonconvex optimization problem is
 recursively feasible from every initial condition.
@@ -288,21 +289,14 @@ valid current-state enclosure, a measurement consistent with the declared
 sensing budget, and a complete hold inside scope. `float_command()` refuses a
 conversion outside the declared actuator-error budget.
 
-`ContinuationBuilder.certify(...)` validates the complete backup before
-execution. Constructing its supervisor recomputes all flow, geometry and
-terminal checks. `decide(...)` returns either an admitted performance command
-or the already proved backup. `advance(...)` uses its proven successor and
-may intersect an independently valid observation box. An inconsistent
-observation is refused. `terminal_handoff()` succeeds only after the complete
-successor enters the terminal set.
-The unchanged v1 continuation format explicitly supports only the start
-terminal policy. It refuses a midpoint certificate instead of silently
-recertifying it as the start law; midpoint physical execution uses its
-separate policy-aware runner and handoff.
+The fleet fallback layer validates the complete backup before motion.
+`FleetAdmissionRuntime.decide` (control/fallback/runtime.py) returns either an
+admitted performance command or the already proved backup, and an inconsistent
+observation is refused. See [fleet fallback](fleet-fallback.md).
 
 The execution layer must preload the fallback command and invoke the supervisor
 on the actual schedule independently of an optimizer that may be late or fail.
-The classes neither pause a plant nor provide a real-time operating system,
+These classes neither pause a plant nor provide a real-time operating system,
 deadline scheduler, actuator driver or sensor. A planner result arriving after
 the proved hold boundary cannot be applied as if time had stopped.
 

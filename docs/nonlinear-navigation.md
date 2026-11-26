@@ -54,7 +54,7 @@ A caller must prove that the prospective true flow and nominal+tube stay in that
 
 ## Sensor products and state estimation
 
-`orbexa.estimation.navigation.SensorSuite` is the truth-side generator. Its `sample(q=...,physical_time_s=...,relative_states=...,target_rotation=...,target_angular_velocity=...,chaser_inertial_states=...)` produces immutable `SensorPacket`s. A controller receives packets, not this sampler or its truth arguments.
+`orbexa.estimation.navigation.sensors.SensorSuite` is the truth-side generator. Its `sample(q=...,physical_time_s=...,relative_states=...,target_rotation=...,target_angular_velocity=...,chaser_inertial_states=...)` produces immutable `SensorPacket`s. A controller receives packets, not this sampler or its truth arguments.
 
 The optional last argument produces own-chaser GNSS packets; the target has no assumed cooperative GNSS. `infer_target_ephemeris(gnss_packet,relative_box,clock)` uses Arb to infer target position/velocity from chaser absolute measurements and relative geometry. Callers must wait until the packet's receipt event before relying on this inferred prior. Initial velocity uncertainty comes from a declared release/navigation prior and observations, not truth velocity.
 
