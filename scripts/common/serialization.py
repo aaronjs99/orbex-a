@@ -1,10 +1,4 @@
-"""serialization.py: Source-qualified numerical continuation of a committed mission record.
-
-This is a numerical restart, not the admissible safe-backup theorem. Actual
-states, persistent nominal centers, tube widths/gains, belief, clock, phase and
-assignments are retained. Unavailable full control warm starts and dense SMID
-measurements are explicitly reset; neither is reconstructed from mean inputs.
-No callables or pickle payloads are serialized.
+"""serialization.py: Plain JSON conversion and canonical SHA-256 digests of records.
 
 Copyright: Aaron John Sabu
 """
@@ -18,10 +12,14 @@ from pathlib import Path
 
 import numpy as np
 
-CHECKPOINT_SCHEMA = "orbexa.mission_checkpoint.v1"
-
 
 def plain(value):
+    """Convert a value to JSON-compatible builtins.
+
+    Dataclasses go through ``asdict``, arrays through ``tolist``, NumPy scalars
+    through ``item``, dictionary keys become strings, tuples and lists become
+    lists and paths become strings. Any other value is returned unchanged.
+    """
     if is_dataclass(value):
         return plain(asdict(value))
     if isinstance(value, np.ndarray):
@@ -38,6 +36,11 @@ def plain(value):
 
 
 def digest(value):
+    """Return the SHA-256 hex digest of the canonical JSON form of ``plain(value)``.
+
+    The JSON uses sorted keys and compact separators. Raises ValueError for a
+    non-finite float.
+    """
     return hashlib.sha256(
         json.dumps(
             plain(value), sort_keys=True, separators=(",", ":"), allow_nan=False

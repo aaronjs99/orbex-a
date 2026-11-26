@@ -20,10 +20,10 @@ Guides for the models, proofs and mission stages, and the design record. Start w
 | `deployment.md` | Carrier deployment and compact free flight | `nonlinear-mission.md` | `theory.md` |
 | `envisat.md` | Envisat geometry and physical assumptions | none | `mission-lifecycle.md` |
 | `finite-contact.md` | Finite compliant capture | none | `architecture.md`, `control-foundations.md`, `mission-lifecycle.md`, `mission-readiness.md`, `nonlinear-mission.md`, `theory.md` |
-| `fleet-fallback.md` | Finite nonlinear fleet feedback fallback | none | `control-foundations.md`, `mission-readiness.md`, `nonlinear-mission.md`, `theory.md` |
+| `fleet-fallback.md` | Finite nonlinear fleet feedback fallback | none | `control-foundations.md`, `mission-readiness.md`, `nonlinear-mission.md`, `terminal-tracking.md`, `theory.md` |
 | `mission-lifecycle.md` | Physical mission lifecycle | `chaser-attitude.md`, `envisat.md`, `finite-contact.md`, `nonlinear-mission.md` | `adtmpc-design.md`, `architecture.md`, `chaser-attitude.md`, `control-foundations.md`, `theory.md`, `uncontrolled-target.md` |
 | `mission-readiness.md` | Mission readiness | `configuration.md`, `finite-contact.md`, `fleet-fallback.md`, `nonlinear-mission.md`, `nonlinear-navigation.md`, `research-review.md` | `configuration.md`, `research-review.md` |
-| `nonlinear-mission.md` | Nonlinear fleet mission | `attached-flight.md`, `finite-contact.md`, `fleet-fallback.md`, `nonlinear-navigation.md`, `sensed-tube.md` | `architecture.md`, `control-foundations.md`, `deployment.md`, `mission-lifecycle.md`, `mission-readiness.md`, `theory.md` |
+| `nonlinear-mission.md` | Nonlinear fleet mission | `attached-flight.md`, `finite-contact.md`, `fleet-fallback.md`, `nonlinear-navigation.md`, `sensed-tube.md` | `architecture.md`, `control-foundations.md`, `deployment.md`, `mission-lifecycle.md`, `mission-readiness.md`, `theory.md`, +1 more |
 | `nonlinear-navigation.md` | Nonlinear reference motion and bounded navigation | none | `architecture.md`, `mission-readiness.md`, `nonlinear-mission.md`, `theory.md` |
 | `nonlinear-solver.md` | Nonlinear solver acceptance and failure handling | `composite-approach.md`, `terminal-tracking.md` | `architecture.md`, `research-review.md` |
 | `orbital-held-flow.md` | Analytical orbital holds and separate endpoint refinement | none | `theory.md` |
@@ -31,7 +31,7 @@ Guides for the models, proofs and mission stages, and the design record. Start w
 | `research-review.md` | Research review and implementation decisions | `mission-readiness.md`, `nonlinear-solver.md` | `adtmpc-design.md`, `mission-readiness.md`, `theory.md` |
 | `sensed-tube.md` | ADTMPC with bounded observation error | none | `control-foundations.md`, `nonlinear-mission.md`, `theory.md` |
 | `terminal-handoff.md` | Physical terminal endpoint handoff | none | `control-foundations.md` |
-| `terminal-tracking.md` | Terminal tracking and admissible continuation | `continuous-safety.md`, `physical-terminal.md` | `nonlinear-solver.md`, `physical-terminal.md`, `theory.md` |
+| `terminal-tracking.md` | Terminal tracking and admissible continuation | `continuous-safety.md`, `fleet-fallback.md`, `physical-terminal.md` | `nonlinear-solver.md`, `physical-terminal.md`, `theory.md` |
 | `theory-audit.md` | Equation and implementation audit | `theory.md` | `adtmpc-design.md`, `theory.md` |
 | `theory.md` | ORBEX-A mathematical foundations | `arrival-policy.md`, `continuous-safety.md`, `deployment.md`, `finite-contact.md`, `fleet-fallback.md`, `mission-lifecycle.md`, +8 more | `adtmpc-design.md`, `control-foundations.md`, `physical-terminal.md`, `theory-audit.md`, `uncontrolled-target.md` |
-| `uncontrolled-target.md` | Uncontrolled rigid-body target | `mission-lifecycle.md`, `theory.md` | none |
+| `uncontrolled-target.md` | Uncontrolled rigid-body target | `mission-lifecycle.md`, `nonlinear-mission.md`, `theory.md` | none |
