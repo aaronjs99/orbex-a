@@ -58,6 +58,14 @@ class OrbitalModelBounds:
     theta0: tuple[Any, Any] = (0, 0)
 
     def __post_init__(self):
+        """Normalise bounds to exact rationals and validate the parameter domain.
+
+        Inputs: eccentricity, alpha, beta and theta0 are (lower, upper) pairs; the
+        semi-major axis (m) and mu (m^3/s^2) must be positive.
+        Outputs: replaces the fields with exact values on the frozen instance.
+        Raises ValueError if a scalar is not positive, eccentricity is not within
+        [0, 1) or a drag lower bound is negative.
+        """
         for name in ("eccentricity", "alpha", "beta", "theta0"):
             object.__setattr__(self, name, _pair(getattr(self, name), name))
         for name in ("semi_major_axis", "mu"):
@@ -71,6 +79,7 @@ class OrbitalModelBounds:
             raise ValueError("Drag constants must be nonnegative")
 
     def as_dict(self) -> dict:
+        """Return every field as strings (tuples as tuples of strings)."""
         return {
             name: (tuple(map(str, value)) if isinstance(value, tuple) else str(value))
             for name, value in vars(self).items()
@@ -96,6 +105,11 @@ class HeldInputRequest:
     )
 
     def __post_init__(self):
+        """Validate dimensions and normalise the clock boxes to exact pairs.
+
+        Raises ValueError unless the state, input and disturbance boxes have
+        dimensions 6, 3 and 3, or if the hold width has a negative lower bound.
+        """
         if (
             self.initial_state.dimension != 6
             or self.held_input.dimension != 3
@@ -111,6 +125,7 @@ class HeldInputRequest:
         object.__setattr__(self, "hold_width", hold)
 
     def as_dict(self) -> dict:
+        """Return the request boxes and clock bounds as strings and nested dicts."""
         return {
             "initial_state": self.initial_state.as_dict(),
             "held_input": self.held_input.as_dict(),
@@ -122,6 +137,14 @@ class HeldInputRequest:
 
 @dataclass(frozen=True)
 class ReachabilityConfig:
+    """Integration budget and Picard inflation settings for the flow encloser.
+
+    Steps are in anomaly (rad). ``precision_bits`` is the Arb working precision;
+    ``max_substeps`` and ``max_picard_iterations`` bound the work per hold and
+    per substep attempt. ``inflation_fraction`` and ``absolute_padding`` widen
+    each Picard candidate box.
+    """
+
     precision_bits: int = 128
     max_step: Any = "0.002"
     min_step: Any = "1e-12"
@@ -131,6 +154,12 @@ class ReachabilityConfig:
     absolute_padding: Any = "1e-24"
 
     def __post_init__(self):
+        """Validate the configuration and convert step and padding values to exact.
+
+        Raises ValueError if an integer setting is not a positive integer, if
+        precision_bits is below 64, if a rational setting is not positive or if
+        min_step exceeds max_step.
+        """
         for name in ("precision_bits", "max_substeps", "max_picard_iterations"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, Integral) or value <= 0:
@@ -147,6 +176,8 @@ class ReachabilityConfig:
 
 
 class EnclosureStatus(str, Enum):
+    """Outcome of a flow enclosure: proved, unresolved or backend unavailable."""
+
     PROVEN = "PROVEN"
     UNRESOLVED = "UNRESOLVED"
     UNAVAILABLE = "UNAVAILABLE"
@@ -154,6 +185,15 @@ class EnclosureStatus(str, Enum):
 
 @dataclass(frozen=True)
 class SweptSegment:
+    """Enclosure of one integration substep of a held-input flow.
+
+    ``offset`` and ``anomaly`` are the substep interval in anomaly (rad) relative
+    to the hold start and as absolute bounds. The boxes are six-state enclosures
+    at the substep start, over the whole substep, at its end, and of the Picard
+    image and derivative used for the self-inclusion check. ``anomaly_rate`` is
+    the enclosure of dq/dt when available.
+    """
+
     offset: tuple[Fraction, Fraction]
     anomaly: tuple[Fraction, Fraction]
     initial_state: IntervalBox
@@ -165,6 +205,7 @@ class SweptSegment:
     anomaly_rate: IntervalBox | None = None
 
     def as_dict(self) -> dict:
+        """Return the segment as strings and nested dicts of its boxes."""
         return {
             "offset": tuple(map(str, self.offset)),
             "anomaly": tuple(map(str, self.anomaly)),
@@ -180,6 +221,13 @@ class SweptSegment:
 
 @dataclass(frozen=True)
 class FlowCertificate:
+    """Result of enclosing a held-input flow, with its request and backend metadata.
+
+    Only a PROVEN status carries an endpoint and swept state. Boxes are
+    six-state [p, dp/dq] (m, m/rad); ``swept_physical_velocity`` is in m/s and
+    ``elapsed_seconds`` is an upper bound on physical duration in s.
+    """
+
     status: EnclosureStatus
     reason: str
     start_anomaly: tuple[Fraction, Fraction]
@@ -200,6 +248,7 @@ class FlowCertificate:
 
     @property
     def proven(self) -> bool:
+        """Return True when the status is PROVEN."""
         return self.status == EnclosureStatus.PROVEN
 
     @property
@@ -213,10 +262,12 @@ class FlowCertificate:
 
     @property
     def swept_position(self) -> IntervalBox | None:
+        """Return the position part (first three states, m) of the swept box."""
         return self.swept_state.slice(0, 3) if self.swept_state else None
 
     @property
     def swept_anomaly_velocity(self) -> IntervalBox | None:
+        """Return the dp/dq part (last three states, m/rad) of the swept box."""
         return (
             self.swept_state.slice(3, 6)
             if self.swept_state and self.swept_state.dimension == 6
@@ -224,6 +275,10 @@ class FlowCertificate:
         )
 
     def as_dict(self, *, include_segments: bool = True) -> dict:
+        """Return the certificate as strings and nested dicts, optionally with segments.
+
+        Inputs: include_segments adds the per-substep records under "segments".
+        """
         result = {
             "status": self.status.value,
             "reason": self.reason,
@@ -298,12 +353,25 @@ class ValidatedFlowEncloser:
     """
 
     def __init__(self, config: ReachabilityConfig | None = None):
+        """Store the configuration, defaulting to ReachabilityConfig()."""
         self.config = config or ReachabilityConfig()
 
     def enclose_orbital(
         self, request: HeldInputRequest, parameters: OrbitalModelBounds
     ) -> FlowCertificate:
+        """Enclose the held-input flow of the analytical orbital model.
+
+        Builds the affine coefficients with the held input and disturbance added to
+        the acceleration rows, then delegates to ``_enclose``.
+        Outputs: a FlowCertificate (PROVEN, UNRESOLVED or UNAVAILABLE).
+        """
+
         def coefficients(q, ar):
+            """Return (matrix, forcing, rate) over anomaly interval ``q`` (Arb ``ar``).
+
+            The forcing is the model drift plus the held input and disturbance in the
+            last three rows.
+            """
             matrix, affine, rate = _orbital_coefficients(q, parameters, ar)
             control, disturbance = (
                 ar.vector(request.held_input),
@@ -328,6 +396,15 @@ class ValidatedFlowEncloser:
     def _enclose(
         self, initial, start, hold, coefficients, frame, model, bounds, request
     ):
+        """Run the Arb integration for an affine system and wrap the outcome.
+
+        Inputs: initial box, start and hold anomaly pairs (rad), a ``coefficients``
+        callable (q, ar) -> (matrix, forcing, rate), and frame, model, bounds and
+        request metadata recorded in the certificate.
+        Outputs: UNAVAILABLE if python-flint cannot be imported; UNRESOLVED if the
+        integration raises _ProofUnresolved; otherwise the PROVEN certificate. The
+        Arb lock and working precision are held during integration.
+        """
         common = {
             "start_anomaly": start,
             "hold_width": hold,
@@ -355,6 +432,15 @@ class ValidatedFlowEncloser:
                 return FlowCertificate(EnclosureStatus.UNRESOLVED, str(error), **common)
 
     def _integrate(self, initial, start, hold, coefficients, ar, common):
+        """Partition the hold into substeps and enclose each by Picard self-inclusion.
+
+        Each substep halves its width until the Picard check succeeds, and raises
+        _ProofUnresolved if the width falls below min_step, max_substeps is
+        exhausted or coefficients are not finite. Accumulates the swept hull, the
+        endpoint (hulled over stop offsets when the hold width is uncertain), the
+        physical velocity hull and an upper bound on elapsed seconds. A zero-width
+        hold returns the initial box unchanged.
+        """
         config, final_time = self.config, hold[1]
         if final_time == 0:
             return FlowCertificate(
@@ -452,9 +538,17 @@ class ValidatedFlowEncloser:
         )
 
     def _picard(self, initial, matrix, forcing, width, ar):
+        """Find an interval Picard candidate that strictly contains its image.
+
+        Returns (candidate, image, derivative, endpoint, iteration) for the affine
+        system x' = matrix*x + forcing over a substep of ``width``, or None if the
+        image is not finite or strict self-inclusion is not reached within
+        max_picard_iterations inflations.
+        """
         h, offsets = ar.scalar(width), ar.interval((Fraction(0), width))
 
         def derivative(state):
+            """Return matrix*state + forcing for an interval state tuple."""
             return tuple(
                 sum((a * x for a, x in zip(row, state)), b)
                 for row, b in zip(matrix, forcing)
@@ -507,6 +601,13 @@ class RotatingCylinderBounds:
     scope: str = "Declared geometry and pose/rate bounds over this complete hold"
 
     def __post_init__(self):
+        """Validate and normalise the cylinder geometry and pose bounds.
+
+        Raises ValueError for wrong box dimensions, a negative scalar, a matrix that
+        is not 3x3, both Euler bounds and a matrix being given, a matrix inconsistent
+        with its declared error (Gram deviation or sign of determinant), a matrix
+        error without a matrix, or an empty frame or scope.
+        """
         if (
             self.orientation_at_start.dimension != 3
             or self.center_at_start.dimension != 3
@@ -564,6 +665,7 @@ class RotatingCylinderBounds:
             raise ValueError("Explicit geometry frame and bound scope are required")
 
     def as_dict(self) -> dict:
+        """Return the geometry and pose bounds as strings and nested dicts."""
         return {
             "radius": str(self.radius),
             "half_length": str(self.half_length),
@@ -583,6 +685,8 @@ class RotatingCylinderBounds:
 
 
 class GuardStatus(str, Enum):
+    """Outcome of a collision check: proven safe, unresolved or backend unavailable."""
+
     PROVEN_SAFE = "PROVEN_SAFE"
     UNRESOLVED = "UNRESOLVED"
     UNAVAILABLE = "UNAVAILABLE"
@@ -590,6 +694,13 @@ class GuardStatus(str, Enum):
 
 @dataclass(frozen=True)
 class CollisionCertificate:
+    """Result of a swept collision check with the evidence behind it.
+
+    Lengths (``body_radii``, ``clearance``, ``minimum_pair_center_distance``) are
+    in m, stored as strings. ``evidence`` holds per-segment target and pair
+    separation records, and ``flow_fingerprints`` identifies the checked flows.
+    """
+
     status: GuardStatus
     reason: str
     evidence: tuple[dict, ...] = ()
@@ -602,9 +713,11 @@ class CollisionCertificate:
 
     @property
     def admissible(self) -> bool:
+        """Return True when the status is PROVEN_SAFE."""
         return self.status == GuardStatus.PROVEN_SAFE
 
     def as_dict(self) -> dict:
+        """Return the certificate as a dict with the status as its string value."""
         return {
             "status": self.status.value,
             "reason": self.reason,
@@ -627,6 +740,10 @@ class SweptCollisionGuard:
     """
 
     def __init__(self, *, precision_bits: int = 128):
+        """Store the Arb working precision.
+
+        Raises ValueError unless precision_bits is an integer of at least 64.
+        """
         if (
             isinstance(precision_bits, bool)
             or not isinstance(precision_bits, Integral)
@@ -645,6 +762,19 @@ class SweptCollisionGuard:
         minimum_pair_center_distance: Any = 0,
         normals: Sequence[Sequence[Any]] = (),
     ) -> CollisionCertificate:
+        """Check that swept chaser positions stay separated from target and each other.
+
+        Inputs: proved flows, one physical radius per flow (m), an optional
+        rotating cylinder target, a nonnegative clearance (m), a minimum pair
+        center distance (m) and extra separating normals (3-vectors).
+        Outputs: PROVEN_SAFE only if every flow is a PROVEN FlowCertificate with
+        valid continuous coverage, frames and clock bounds agree, and a separation
+        margin is proved for every segment against the target and every overlapping
+        segment pair. Otherwise UNRESOLVED (invalid flow, no geometry supplied, or
+        no separation found) or UNAVAILABLE (python-flint missing).
+        Raises ValueError for an empty or mismatched flow/radius list, negative
+        radius, clearance or distance, or a zero or non-3D normal.
+        """
         flows, radii, clearance = (
             tuple(flows),
             tuple(map(_exact, body_radii)),
@@ -852,6 +982,11 @@ class SweptCollisionGuard:
 
     @staticmethod
     def _segments(flow):
+        """Return the flow's segments, or one zero-width segment for a flow without any.
+
+        A proved zero-width flow has no integration segments; its initial box is
+        used for the substitute segment.
+        """
         if flow.segments:
             return flow.segments
         # A proven zero-width flow has no integration segments.
@@ -871,6 +1006,11 @@ class SweptCollisionGuard:
 
     @staticmethod
     def _box_distance_squared(left, right):
+        """Return the exact squared distance between two axis-aligned boxes.
+
+        Computed per axis as the squared gap (zero if the intervals overlap), summed
+        as Fractions.
+        """
         return sum(
             (
                 max(Fraction(0), lo1 - hi2, lo2 - hi1) ** 2
@@ -882,6 +1022,16 @@ class SweptCollisionGuard:
         )
 
     def _target_segment(self, segment, body_radius, target, normals, ar):
+        """Try to separate one swept segment from the target cylinder.
+
+        Tests the supplied normals and a default set (axes, relative midpoint,
+        radial and cylinder-axis directions). For each normal, the margin is the
+        signed projection of the swept position relative to the target center minus
+        the cylinder support function, minus the norm times the motion reserve
+        (rotation and center translation over the segment offset) and the body
+        radius (m, already including clearance). Returns a dict naming the first
+        normal with a finite positive margin, or None if none is found.
+        """
         position = segment.swept_state.slice(0, 3)
         matrix = None
         if target.orientation_matrix_at_start is not None:

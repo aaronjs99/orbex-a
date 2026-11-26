@@ -56,12 +56,14 @@ class NominalCoefficientBounds:
 
     @property
     def matrix_rows(self):
+        """Return the three acceleration rows as six-entry slices of the matrix box."""
         return tuple(
             self.acceleration_matrix.slice(6 * i, 6 * (i + 1)) for i in range(3)
         )
 
     @property
     def absolute_upper(self):
+        """Return max(|lower|, |upper|) per entry for each acceleration row."""
         return tuple(
             tuple(max(abs(lo), abs(hi)) for lo, hi in zip(row.lower, row.upper))
             for row in self.matrix_rows
@@ -69,6 +71,7 @@ class NominalCoefficientBounds:
 
     @property
     def variation_upper(self):
+        """Return upper minus lower per entry for each acceleration row."""
         return tuple(
             tuple(hi - lo for lo, hi in zip(row.lower, row.upper))
             for row in self.matrix_rows
@@ -76,6 +79,7 @@ class NominalCoefficientBounds:
 
     @property
     def drift_upper(self):
+        """Return max(|lower|, |upper|) per component of the acceleration drift."""
         return tuple(
             max(abs(lo), abs(hi))
             for lo, hi in zip(
@@ -84,6 +88,7 @@ class NominalCoefficientBounds:
         )
 
     def as_dict(self):
+        """Return a serializable record of the bounds, backend source hash and role."""
         return {
             "method": "arb-commanded-CH-nominal-coefficients-v1",
             "backend_source_sha256": _SOURCE_SHA256,
@@ -97,6 +102,7 @@ class NominalCoefficientBounds:
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of the as_dict() record."""
         return fingerprint(self.as_dict())
 
 
@@ -138,12 +144,19 @@ def bound_nominal_coefficients(q_interval, nominal_parameters, precision_bits=12
 
 @dataclass(frozen=True)
 class TargetEphemerisCertificate(FlowCertificate):
+    """FlowCertificate for the target ephemeris, with physical-time [s] boxes."""
+
     physical_time_initial: IntervalBox | None = None
     physical_time_endpoint: IntervalBox | None = None
     physical_time_swept: IntervalBox | None = None
     segment_time_boxes: tuple = ()
 
     def as_dict(self, *, include_segments=True):
+        """Return the FlowCertificate record plus the three physical-time boxes.
+
+        Inputs: include_segments adds segment_time_boxes to the record when true.
+        Unset time boxes are exported as None.
+        """
         result = super().as_dict(include_segments=include_segments)
         result.update(
             physical_time_initial=None
@@ -165,6 +178,8 @@ class TargetEphemerisCertificate(FlowCertificate):
 
 @dataclass(frozen=True)
 class RegionalResidualCertificate:
+    """Status and Arb component box of the regional nonlinear-minus-CH residual."""
+
     status: EnclosureStatus
     reason: str
     component_bounds: IntervalBox | None
@@ -172,14 +187,20 @@ class RegionalResidualCertificate:
 
     @property
     def proven(self):
+        """Return True when the status is EnclosureStatus.PROVEN."""
         return self.status == EnclosureStatus.PROVEN
 
     @property
     def eta_component_box(self):
+        """Return component_bounds, which is None when no box was enclosed."""
         return self.component_bounds
 
     @property
     def upper_bounds(self):
+        """Return max(|lower|, |upper|) per component of the enclosed residual box.
+
+        Outputs: raises ValueError when the certificate is not proven.
+        """
         if not self.proven:
             raise ValueError("Unresolved residual has no usable forcing allowance")
         return tuple(
@@ -189,9 +210,11 @@ class RegionalResidualCertificate:
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of the as_dict() record."""
         return fingerprint(self.as_dict())
 
     def as_dict(self):
+        """Return a serializable record of status, reason, bounds and context."""
         return {
             "status": self.status.value,
             "reason": self.reason,
@@ -203,6 +226,13 @@ class RegionalResidualCertificate:
 
 
 def _region(state_box, model):
+    """Require a six-state box to lie inside the model's componentwise domain.
+
+    Inputs: state_box holds position [m] then velocity [m/rad]; the limits are
+    model.relative_position_limit_m and model.relative_velocity_limit_m_per_rad.
+    Outputs: raises ValueError if the dimension is not 6 or any bound exceeds
+    its symmetric limit.
+    """
     if state_box.dimension != 6:
         raise ValueError("Relative regional domain requires six states")
     limits = (model.relative_position_limit_m,) * 3 + (
@@ -218,6 +248,15 @@ def _region(state_box, model):
 
 
 def _target_box(flow, interval):
+    """Return the hull of target swept states whose segments meet an anomaly interval.
+
+    Inputs: flow is a proven TargetEphemerisCertificate; interval is the
+    (lower, upper) anomaly range queried.
+    Outputs: an IntervalBox. Raises ValueError if flow is not a proven target
+    certificate, the interval leaves [start_anomaly[0], start_anomaly[1] +
+    hold_width[1]], or no segment covers it while hold_width[1] is nonzero. With
+    no covering segment and zero hold width, flow.initial_state is returned.
+    """
     if not flow.proven or not isinstance(flow, TargetEphemerisCertificate):
         raise ValueError("A proven nonlinear target ephemeris certificate is required")
     lo, hi = interval
@@ -239,11 +278,18 @@ def _target_box(flow, interval):
 
 
 class NonlinearFlowEncloser:
+    """Compute Arb Picard inclusions for the target ephemeris and the relative plant."""
+
     def __init__(self, config=None):
+        """Store the reachability config, defaulting to ReachabilityConfig()."""
         self.config = config or ReachabilityConfig()
 
     @staticmethod
     def identity(flow):
+        """Return the plant, target model, clock and target flow fingerprints of a flow.
+
+        Each value is read from flow.model_bounds and is None when absent.
+        """
         return {
             name: flow.model_bounds.get(name)
             for name in (
@@ -257,6 +303,15 @@ class NonlinearFlowEncloser:
     def enclose_target(
         self, initial_state, q_start, q_width, model, clock, initial_time_s=(0, 0)
     ):
+        """Enclose the target state and physical time over a held anomaly span.
+
+        Inputs: initial_state is a six-state IntervalBox; q_start and q_width give
+        the start anomaly and hold width; initial_time_s is the physical time [s]
+        as an IntervalBox or bounds pair.
+        Outputs: a TargetEphemerisCertificate whose status is PROVEN, UNRESOLVED or
+        UNAVAILABLE (see _run). Raises ValueError if the state is not six-dimensional,
+        the time is not one-dimensional or the width lower bound is negative.
+        """
         start, width = bounds(q_start), bounds(q_width)
         time = (
             initial_time_s
@@ -292,6 +347,7 @@ class NonlinearFlowEncloser:
         }
 
         def field(q_bounds, state, ar):
+            """Return target state derivatives in q plus dt/dq = 1/clock rate."""
             q = ar.interval(q_bounds)
             return target_field(q, state[:6], model, clock, ar) + (
                 1 / clock.evaluate(q, ar)[1],
@@ -313,6 +369,13 @@ class NonlinearFlowEncloser:
         )
 
     def enclose_relative(self, request, target_flow, model, clock):
+        """Enclose the six-state relative flow for a held input and anomaly span.
+
+        Inputs: request is a HeldInputRequest; target_flow supplies the target
+        ephemeris; model is the plant; clock is the reference clock.
+        Outputs: a FlowCertificate whose status is PROVEN, UNRESOLVED or UNAVAILABLE.
+        Raises TypeError if request is not a HeldInputRequest.
+        """
         if not isinstance(request, HeldInputRequest):
             raise TypeError("Use a HeldInputRequest for the six-state relative core")
         context = {
@@ -337,6 +400,11 @@ class NonlinearFlowEncloser:
         }
 
         def field(q_bounds, state, ar):
+            """Return relative derivatives in q, adding the acceleration disturbance.
+
+            Raises ValueError if the state box leaves the model domain or the target
+            flow's model or clock fingerprint differs from the model's or clock's.
+            """
             _region(ar.box(state), model)
             if (
                 target_flow.model_bounds.get("target_model_fingerprint")
@@ -380,6 +448,13 @@ class NonlinearFlowEncloser:
         target=False,
         time_initial=None,
     ):
+        """Run the Picard integration and return a certificate instead of raising.
+
+        Returns UNAVAILABLE if flint cannot be imported, and UNRESOLVED if the clock
+        domain check or integration raises ValueError, ArithmeticError or
+        _ProofUnresolved. Integration runs under the Arb lock at the configured
+        precision. When target is true the certificate is a TargetEphemerisCertificate.
+        """
         certificate = TargetEphemerisCertificate if target else FlowCertificate
         extra = {"physical_time_initial": time_initial} if target else {}
         try:
@@ -411,6 +486,15 @@ class NonlinearFlowEncloser:
     def _integrate(
         self, initial, start, hold, field, clock, ar, common, target, time_initial
     ):
+        """Advance the state enclosure over the hold with Picard-validated substeps.
+
+        Each substep starts at max_step, halves down to min_step until Picard
+        self-inclusion holds, and doubles after success. Raises _ProofUnresolved if
+        max_substeps is exhausted or no step width at least min_step validates. A
+        zero-width hold only evaluates the field at the start and returns the initial
+        state. For a nonzero hold width, the endpoint hulls the states reached at
+        hold_width[0] through hold_width[1].
+        """
         cfg, final = self.config, hold[1]
         if final == 0:
             # Even a zero-width request must have a valid physical domain.
@@ -537,6 +621,15 @@ class NonlinearFlowEncloser:
         )
 
     def _picard(self, initial, q_bounds, width, field, ar):
+        """Return a strict Picard self-inclusion witness for one substep, or None.
+
+        Inputs: initial is the state box at the substep start; q_bounds is the
+        anomaly interval; width is the substep length in anomaly.
+        Outputs: (candidate, image, derivative, endpoint, iterations) when every
+        image component lies strictly inside the candidate within
+        max_picard_iterations; None if any value is non-finite or no inclusion is
+        reached. ValueError and ArithmeticError from field() propagate.
+        """
         offsets, h = ar.interval((0, width)), ar.scalar(width)
         first = field(q_bounds, initial, ar)
         if not all(v.is_finite() for v in first):
@@ -567,6 +660,15 @@ class NonlinearFlowEncloser:
         model,
         clock,
     ):
+        """Enclose the nonlinear-minus-CH acceleration residual over a state box.
+
+        Inputs: q_interval is the anomaly interval; target_flow is a proven target
+        ephemeris; regional_state_box is the six-state region; input_box is the
+        three-component input (checked for dimension only); nominal_parameters
+        defines the CH model.
+        Outputs: a RegionalResidualCertificate, UNAVAILABLE without flint and
+        UNRESOLVED on a failed check or enclosure.
+        """
         interval = bounds(q_interval)
         context = {
             "q_interval": tuple(map(str, interval)),
