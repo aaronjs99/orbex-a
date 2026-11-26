@@ -24,16 +24,24 @@ class _AccelerationMomentLedger:
     """
 
     def __init__(self):
+        """Create an empty ledger bound to no history."""
         self.owner, self.keys, self.sources, self.valid = None, (), (), False
         self._clear()
 
     def _clear(self):
+        """Reset the segment index, moment prefix sums and counters."""
         self.starts, self.ends, self.coefficients = [], [], []
         self.prefix = [((Fraction(0),) * 3,) * 4]
         self.counts, self.head, self.dead_holds = [], 0, 0
 
     @staticmethod
     def _key(hold, agent):
+        """Return a tuple of ids and exact numerator/denominator integers for one hold.
+
+        Outputs: None when the hold, its flow for agent, or any segment is not of the
+        exact expected type and shape (Fraction start/end and offsets, six-component
+        IntervalBox derivative of Fraction bounds).
+        """
         if type(hold) is not dict or type(hold.get("flows")) is not dict:
             return None
         start, end = hold.get("start"), hold.get("end")
@@ -88,6 +96,14 @@ class _AccelerationMomentLedger:
         )
 
     def _append(self, key):
+        """Append the segments of one hold key to the moment prefix sums.
+
+        Outputs: False when a value is not a normalized positive-denominator
+        fraction, the hold does not start where the previous one ended, the segments
+        are not contiguous from offset 0 to the hold end, or a lower acceleration
+        bound exceeds its upper bound; True otherwise. Segment moments use the
+        acceleration components (derivative indices 3 to 5).
+        """
         scalars = key[1:5] + tuple(
             value for segment in key[7] for value in segment[2:6] + segment[6]
         )
@@ -133,10 +149,18 @@ class _AccelerationMomentLedger:
         return True
 
     def _rebuild(self, keys):
+        """Clear the ledger and append every key; return True if all were appended."""
         self._clear()
         return all(self._append(key) for key in keys)
 
     def _prepare(self, history, agent):
+        """Synchronize the ledger with the hold history for agent and return validity.
+
+        Outputs: False when history is not a bounded nonempty deque or a hold has an
+        unexpected form. Unchanged keys reuse the ledger; evicted leading holds are
+        dropped and new holds appended when the retained holds overlap; otherwise
+        the ledger is rebuilt. Sets owner, keys and sources.
+        """
         if type(history) is not deque or history.maxlen is None or not history:
             return False
         sources = tuple(history)
@@ -170,6 +194,7 @@ class _AccelerationMomentLedger:
         return self.valid
 
     def _at(self, q):
+        """Return the prefix moments at unwrapped anomaly q, or None if outside."""
         index = bisect_left(self.ends, q, self.head)
         if index >= len(self.ends) or q < self.starts[index]:
             return None
@@ -193,6 +218,11 @@ class _AccelerationMomentLedger:
         )
 
     def integral(self, history, agent, q0, q1):
+        """Return the bounds from integrals() for the single query (q0, q1).
+
+        Outputs: NotImplemented when the ledger cannot serve the history, None when
+        the query lies outside it, otherwise (lower, upper) three-component tuples.
+        """
         result = self.integrals(history, agent, ((q0, q1),))
         return result if result is NotImplemented else result[0]
 
@@ -215,6 +245,12 @@ class _AccelerationMomentLedger:
         return tuple(self._integral_prepared(q0, q1) for q0, q1 in queries)
 
     def _integral_prepared(self, q0, q1):
+        """Return (lower, upper) bounds of the integral of (s - q0) * acceleration.
+
+        The integral runs over unwrapped anomaly s from q0 to q1, componentwise for
+        the three acceleration components. Outputs: None unless the live segments
+        cover [q0, q1].
+        """
         if not self.starts[self.head] <= q0 < q1 <= self.ends[-1]:
             return None
         first, last = self._at(q0), self._at(q1)

@@ -32,6 +32,12 @@ class SensorSuite:
     """Truth-side packet generator; never inject this object into a planner."""
 
     def __init__(self, profile=None):
+        """Create the generator, its seeded RNG and, if keyed, the noise field.
+
+        Inputs: profile: StudySensorProfile, default StudySensorProfile().
+        State: sequence starts at 0, per-agent range biases are empty and no
+        acquisition time has been recorded.
+        """
         self.profile = profile or StudySensorProfile()
         self.rng = np.random.default_rng(self.profile.seed)
         self.noise = (
@@ -47,11 +53,18 @@ class SensorSuite:
         self.sequence, self.biases, self.last_acquisition_s = 0, {}, None
 
     def _uniform(self, slot, agent, channel, low=0.0, high=1.0, size=None):
+        """Draw uniform values on [low, high) from the RNG or the keyed field.
+
+        With the keyed policy the draw depends on slot, agent and channel only;
+        slot None denotes a fixed per-agent value. Otherwise slot and channel are
+        ignored and the seeded RNG stream advances.
+        """
         if self.noise is None:
             return self.rng.uniform(low, high, size)
         return self.noise.uniform(slot, agent, channel, low, high, size)
 
     def _random(self, slot, agent, channel):
+        """Draw one uniform value on [0, 1) from the RNG or the keyed field."""
         return (
             self.rng.random()
             if self.noise is None
@@ -68,6 +81,24 @@ class SensorSuite:
         target_angular_velocity,
         chaser_inertial_states=None,
     ):
+        """Return the packets acquired at one physical time, or () when none are due.
+
+        Inputs: q: unwrapped-anomaly event stored as acquired_q; physical_time_s:
+            acquisition time in s; relative_states: agent to six truth relative
+            components; target_rotation: 3x3 truth rotation; target_angular_velocity:
+            three truth components in rad/s; chaser_inertial_states: optional agent
+            to six truth inertial components (m, m/s) for GNSS packets.
+        Outputs: tuple of SensorPacket. Each has a point acquisition time and a
+        delivery time later by a uniform latency in [0, max_latency_s].
+        Returns () without recording the time when it is less than
+        acquisition_period_s after the last acquisition. A time inside a dropout burst
+        is recorded and returns (). Range/bearing is omitted for an agent whose truth
+        range is outside [minimum_range_m, maximum_range_m] or that drops out; the
+        target pose is omitted on a target dropout.
+        State: sets last_acquisition_s, advances sequence and caches range biases.
+        Raises ValueError for a non-finite time, a time before the last acquisition,
+        or non-finite or wrongly shaped truth inputs.
+        """
         profile, time = self.profile, float(physical_time_s)
         if not math.isfinite(time):
             raise ValueError("Acquisition time must be finite")
@@ -96,6 +127,12 @@ class SensorSuite:
         packets = []
 
         def emit(agent, kind, value, radius, orientation_error=0, frame=FRAME):
+            """Append one SensorPacket with the next sequence number.
+
+            The packet's acquisition time is the sampled time, its delivery time adds a
+            latency drawn on [0, max_latency_s], and its error box is centered at zero
+            with the given radius.
+            """
             self.sequence += 1
             latency = float(
                 self._uniform(slot, agent, kind + ".latency", 0, profile.max_latency_s)

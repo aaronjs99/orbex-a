@@ -20,6 +20,13 @@ class PhysicalSlotNoise:
     """Branch-independent bounded innovations indexed by physical time/channel."""
 
     def __init__(self, seed, period_s, epoch_s, quantum_s):
+        """Store the seed and convert period, epoch and quantum to integer tick counts.
+
+        Inputs: seed: value keyed into every draw; period_s, epoch_s, quantum_s:
+            bin period, bin epoch and tick size in physical seconds.
+        Raises ValueError when quantum_s or period_s is not positive, or when
+        period_s or epoch_s is not an exact multiple of quantum_s.
+        """
         self.seed = seed
         self.quantum = Fraction(str(quantum_s))
         period = Fraction(str(period_s))

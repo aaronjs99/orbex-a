@@ -31,24 +31,32 @@ from orbexa.models.dynamics.reference_frame import bounds, exact, fingerprint
 
 
 def _add(a, b):
+    """Return the interval sum of two (lower, upper) pairs."""
     return a[0] + b[0], a[1] + b[1]
 
 
 def _negative(a):
+    """Return the interval negation of a (lower, upper) pair."""
     return -a[1], -a[0]
 
 
 def _multiply(a, b):
+    """Return the interval product, from the extremes of the endpoint products."""
     products = tuple(x * y for x in a for y in b)
     return min(products), max(products)
 
 
 def _scale(a, coefficient):
+    """Return the interval multiplied by an exact scalar coefficient."""
     coefficient = exact(coefficient)
     return _multiply(a, (coefficient, coefficient))
 
 
 def _vector(values, count=3):
+    """Return the values as a tuple of bounded intervals.
+
+    Raises ValueError if the number of components differs from count.
+    """
     result = tuple(bounds(value) for value in values)
     if len(result) != count:
         raise ValueError(f"Expected {count} bounded components")
@@ -56,12 +64,17 @@ def _vector(values, count=3):
 
 
 def _identifier(value):
+    """Return value if it is a nonempty, non-blank string.
+
+    Raises ValueError otherwise.
+    """
     if not isinstance(value, str) or not value.strip():
         raise ValueError("A nonempty source/context/parameter identity is required")
     return value
 
 
 def _serial_intervals(values):
+    """Return each interval pair as a tuple of strings."""
     return tuple(tuple(map(str, pair)) for pair in values)
 
 
@@ -90,6 +103,12 @@ class IntegralCoefficientSegment:
     context_id: str
 
     def __post_init__(self):
+        """Convert fields to exact values and bounded intervals, then validate them.
+
+        Raises ValueError unless command and additive_error_abs have three
+        components, end > start, all error bounds are nonnegative, and source_id and
+        context_id are nonempty strings.
+        """
         for name in ("start", "end"):
             object.__setattr__(self, name, exact(getattr(self, name)))
         for name in ("position", "centered_gravity", "target_drag", "chaser_drag"):
@@ -112,6 +131,7 @@ class IntegralCoefficientSegment:
 
     @property
     def fingerprint(self):
+        """Return a fingerprint of the context, source, hold interval and all bounds."""
         return fingerprint(
             dict(
                 context_id=self.context_id,
@@ -186,6 +206,11 @@ class IntegralPositionEvent:
     chain_id: str
 
     def __post_init__(self):
+        """Validate identifiers and convert q, position and the moment snapshot.
+
+        Raises ValueError if an identifier is empty, a prefix snapshot does not
+        have 18 entries, or count is not a nonnegative integer.
+        """
         for name in ("stream_id", "context_id", "source_id", "chain_id"):
             _identifier(getattr(self, name))
         object.__setattr__(self, "q", exact(self.q))
@@ -216,6 +241,11 @@ class IntervalAffineRow:
     context_id: str
 
     def __post_init__(self):
+        """Convert fields to exact intervals and validate names and provenance.
+
+        Raises ValueError if parameter names are empty or repeated, source_ids is
+        empty, an identifier is blank, or coefficients do not match the names.
+        """
         names = tuple(_identifier(name) for name in self.parameter_names)
         object.__setattr__(self, "parameter_names", names)
         object.__setattr__(self, "coefficients", _vector(self.coefficients, len(names)))
@@ -230,6 +260,7 @@ class IntervalAffineRow:
 
     @property
     def fingerprint(self):
+        """Return a fingerprint of names, coefficients, bound, sources and context."""
         return fingerprint(
             {
                 "parameter_names": self.parameter_names,
@@ -255,6 +286,11 @@ class IntegralMomentLedger:
     width = 18
 
     def __init__(self, start, *, context_id):
+        """Start a ledger at start with zero moments and a fresh stream identity.
+
+        Creates an 18-entry zero list for each of the four moment accumulators, a
+        random stream_id, count 0 and a chain_id derived from the context and start.
+        """
         self.q, self.context_id = exact(start), _identifier(context_id)
         self.stream_id, self.count = uuid4().hex, 0
         for name in ("lower_zero", "upper_zero", "lower_first", "upper_first"):
@@ -268,6 +304,13 @@ class IntegralMomentLedger:
         )
 
     def append(self, segment):
+        """Add one hold's zeroth and first moments and advance the ledger to its end.
+
+        Outputs:
+            Updates the lower/upper moment lists, chain_id, q and count. Raises
+            ValueError if segment is not an IntegralCoefficientSegment, does not
+            start at the current q, or has a different context_id.
+        """
         if (
             not isinstance(segment, IntegralCoefficientSegment)
             or segment.start != self.q
@@ -289,6 +332,10 @@ class IntegralMomentLedger:
         self.q, self.count = segment.end, self.count + 1
 
     def event(self, position, *, source_id):
+        """Return an IntegralPositionEvent snapshotting the current moments at q.
+
+        The snapshot carries the supplied position bounds and source_id.
+        """
         return IntegralPositionEvent(
             self.stream_id,
             self.context_id,
@@ -305,6 +352,11 @@ class IntegralMomentLedger:
 
     @staticmethod
     def _weighted(left, right, *, slope, offset):
+        """Return the 18 moment bounds between two snapshots under an affine kernel.
+
+        The kernel is slope * q + offset. Raises ValueError if it is negative at
+        either snapshot's q, or if a resulting lower moment exceeds its upper.
+        """
         if min(slope * left.q + offset, slope * right.q + offset) < 0:
             raise ValueError(
                 "The affine kernel must be nonnegative on the complete subarc"
@@ -428,6 +480,12 @@ class IntegralParameterSet:
     """
 
     def __init__(self, parameter_names, prior, *, context_id, maximum_rows=64):
+        """Store parameter names, shared prior, context and the row budget.
+
+        Raises ValueError if names are empty, repeated or blank, the prior does not
+        match the names, context_id is blank, or maximum_rows is not a positive
+        integer.
+        """
         self.parameter_names = tuple(_identifier(name) for name in parameter_names)
         self.prior = _vector(prior, len(self.parameter_names))
         self.context_id = _identifier(context_id)
@@ -447,10 +505,12 @@ class IntegralParameterSet:
 
     @property
     def rows(self):
+        """Return the retained interval rows as a tuple."""
         return tuple(self._rows)
 
     @property
     def fingerprint(self):
+        """Return a fingerprint of the context, names, prior and retained rows."""
         return fingerprint(
             {
                 "context_id": self.context_id,
@@ -478,6 +538,10 @@ class IntegralParameterSet:
         return True
 
     def _box(self, box):
+        """Return box as bounded intervals, or the prior when box is None.
+
+        Raises ValueError if the box leaves the prior.
+        """
         box = self.prior if box is None else _vector(box, len(self.prior))
         if any(lo < a or hi > b for (lo, hi), (a, b) in zip(box, self.prior)):
             raise ValueError(
@@ -529,6 +593,11 @@ class IntegralParameterSet:
         )
 
     def verify_support_certificate(self, certificate):
+        """Rebuild the certificate and return its upper bound if it matches exactly.
+
+        Raises TypeError if certificate is not an ExactSupportCertificate, and
+        ValueError if the rebuilt certificate differs from it.
+        """
         if not isinstance(certificate, ExactSupportCertificate):
             raise TypeError("An exact support certificate is required")
         rebuilt = self.support_certificate(
@@ -541,5 +610,6 @@ class IntegralParameterSet:
         return rebuilt.upper
 
     def proves_infeasible(self, certificate):
+        """Return True if the certificate verifies, has zero objective and upper < 0."""
         upper = self.verify_support_certificate(certificate)
         return all(value == 0 for value in certificate.objective) and upper < 0

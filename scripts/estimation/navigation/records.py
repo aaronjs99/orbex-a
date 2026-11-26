@@ -18,6 +18,12 @@ from orbexa.proofs.nonlinear import FRAME
 
 @dataclass(frozen=True)
 class StudySensorProfile:
+    """Frozen declaration of the synthetic processed-sensor study bounds.
+
+    Names carry units: _m (m), _s (s), _rad_s (rad/s), _m_s (m/s). Bearing and
+    rotation errors are dimensionless components or operator-norm bounds.
+    """
+
     range_noise_m: float = 0.0005
     range_noise_relative: float = 20e-6
     bearing_component_noise: float = 30e-6
@@ -42,6 +48,15 @@ class StudySensorProfile:
     noise_time_quantum_s: float = 1e-9
 
     def __post_init__(self):
+        """Coerce numeric fields to float, validate them and normalize dropout bursts.
+
+        Raises ValueError when a bound is not finite and nonnegative, the range limits
+        are not 0 < minimum < maximum, dropout_probability exceeds 1,
+        range_noise_relative is at least 1, seed is not a nonnegative int,
+        declaration is blank, randomness_policy is unknown, or a noise epoch/quantum
+        is set without the physical-slot-keyed policy. The keyed policy also builds a
+        PhysicalSlotNoise, which raises for an invalid period, epoch or quantum.
+        """
         for name in (
             "range_noise_m",
             "range_noise_relative",
@@ -99,6 +114,12 @@ class StudySensorProfile:
         )
 
     def as_dict(self):
+        """Return the profile fields plus a scope statement as a dict.
+
+        For the sequential-v1 policy the randomness_policy, acquisition_epoch_s and
+        noise_time_quantum_s keys are removed. dropout_bursts_s is returned as nested
+        tuples of strings.
+        """
         record = dict(
             self.__dict__,
             scope="Processed synthetic products; no raw image/point-cloud or feature-association claim",
@@ -119,11 +140,19 @@ class StudySensorProfile:
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of as_dict()."""
         return fingerprint(self.as_dict())
 
 
 @dataclass(frozen=True)
 class SensorPacket:
+    """Immutable processed measurement with its deterministic error support.
+
+    acquisition_time_s and delivery_time_s are one-dimensional boxes in physical
+    seconds. acquired_q is the unwrapped-anomaly interval of the acquisition event.
+    deterministic_error_box bounds measurement minus true value componentwise.
+    """
+
     sequence: int
     agent_id: str
     sensor_id: str
@@ -139,6 +168,13 @@ class SensorPacket:
     orientation_operator_error: object = 0
 
     def __post_init__(self):
+        """Normalize acquired_q, value and orientation_operator_error and validate them.
+
+        Raises ValueError when a time box is not one-dimensional, the delivery lower
+        bound precedes the acquisition lower bound, the error box dimension differs
+        from len(value), orientation_operator_error is negative, or
+        sensor_model_fingerprint is empty.
+        """
         object.__setattr__(self, "acquired_q", bounds(self.acquired_q))
         object.__setattr__(self, "value", tuple(map(exact, self.value)))
         object.__setattr__(
@@ -156,9 +192,11 @@ class SensorPacket:
 
     @property
     def packet_id(self):
+        """Return the fingerprint of as_dict(), identifying the packet content."""
         return fingerprint(self.as_dict())
 
     def as_dict(self):
+        """Return the packet fields as a dict; exact values and bounds are strings."""
         return {
             "sequence": self.sequence,
             "agent_id": self.agent_id,
@@ -178,6 +216,12 @@ class SensorPacket:
 
 @dataclass(frozen=True)
 class NavigationEstimate:
+    """Immutable navigation product: state boxes, target pose bounds and provenance.
+
+    exact_event_q is the unwrapped-anomaly event and physical_time_box its
+    physical-time enclosure (s). status and reason report the filter state.
+    """
+
     exact_event_q: object
     physical_time_box: IntervalBox
     relative_state_box_by_agent: object
@@ -194,6 +238,7 @@ class NavigationEstimate:
     frame_id: str = FRAME
 
     def __post_init__(self):
+        """Replace relative_state_box_by_agent with a read-only copy of the mapping."""
         object.__setattr__(
             self,
             "relative_state_box_by_agent",
@@ -202,6 +247,10 @@ class NavigationEstimate:
 
     @property
     def point_relative_by_agent(self):
+        """Return a read-only mapping of agent to its relative-state box midpoint.
+
+        The midpoints are numerical representatives, not enclosures.
+        """
         return MappingProxyType(
             {
                 key: midpoint(box)

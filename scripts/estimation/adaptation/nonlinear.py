@@ -65,6 +65,19 @@ class NonlinearMissionAdaptation:
         membership_max_nuisance_cells=2,
         membership_max_flow_evaluations_per_candidate=256,
     ):
+        """Store the prior, belief, clock and build the physical candidate grid.
+
+        Candidates are prior_model copies whose sigma_target and sigma_chaser are
+        each split into equal sub-intervals (target_partitions x chaser_partitions).
+        The linked policy creates a LinkedObservationWindow and a
+        LinkedNonlinearMembershipContractor; the other policy creates a
+        NonlinearMembershipContractor. Initial orbit conditioning is enabled for
+        'enabled', or for 'legacy' when mode is 'adaptive'.
+
+        Raises:
+            ValueError: mode is not adaptive or frozen, the conditioning or policy
+            name is unknown, or a partition count is not a positive integer.
+        """
         if mode not in ("adaptive", "frozen"):
             raise ValueError("Select adaptive or frozen belief")
         if not isinstance(
@@ -118,6 +131,10 @@ class NonlinearMissionAdaptation:
             )
 
         def partitions(pair, count):
+            """Return count equal (lower, upper) sub-intervals of the interval pair.
+
+            Raises ValueError when count is not a positive integer (booleans refused).
+            """
             if isinstance(count, bool) or not isinstance(count, int) or count < 1:
                 raise ValueError(
                     "Physical candidate partitions must be positive integers"
@@ -204,6 +221,24 @@ class NonlinearMissionAdaptation:
             del self.pending_transitions[: -len(self.initial_relative_boxes)]
 
     def contract(self, transitions=None, *, update):
+        """Run membership over the candidates and narrow the controller drag belief.
+
+        In frozen mode only a FROZEN record is appended and True is returned.
+
+        Inputs:
+            transitions: observations to test; when None, the retained window
+                history or pending transitions are used.
+            update: label stored in the appended membership record.
+
+        Outputs:
+            Appends a record, then returns False if no candidate is retained
+            (candidates, active model and belief are left unchanged). Otherwise
+            replaces the candidates, sets the active model to the sigma hull, and
+            intersects the alpha and beta feasible sets with the hull scaled by
+            rho0 * reference_radius / 2, resetting estimates to the midpoints, and
+            returns True. Raises ValueError if rho0 is not a single value or an
+            intersection is empty.
+        """
         if self.mode == "frozen":
             self.membership_records.append(
                 {
@@ -268,6 +303,11 @@ class NonlinearMissionAdaptation:
         return True
 
     def metadata(self):
+        """Return a dict describing mode, conditioning, physical sets and candidates.
+
+        With a linked observation window it also reports the linked-membership
+        budgets and the retained observation count per agent.
+        """
         result = {
             "mode": self.mode,
             "initial_orbit_packets": sorted(self.initial_packet_ids),

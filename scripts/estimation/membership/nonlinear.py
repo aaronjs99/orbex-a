@@ -18,6 +18,10 @@ from orbexa.proofs.reachability import HeldInputRequest
 
 
 def _disjoint(left, right):
+    """Return True when the boxes are separated in at least one coordinate.
+
+    Raises ValueError if the boxes differ in dimension.
+    """
     if left.dimension != right.dimension:
         raise ValueError("Membership observation dimensions disagree")
     return any(
@@ -28,6 +32,12 @@ def _disjoint(left, right):
 
 @dataclass(frozen=True)
 class NonlinearTransitionObservation:
+    """One held-input transition: observed boxes, held input and clock interval.
+
+    start_q and width_q give the hold start and width in the declared clock.
+    target_observed, commanded_input and actuation_prior are optional.
+    """
+
     relative_initial: IntervalBox
     relative_observed: IntervalBox
     held_input: IntervalBox
@@ -48,6 +58,8 @@ class NonlinearTransitionObservation:
 
 @dataclass(frozen=True)
 class NonlinearMembershipResult:
+    """Retained models, discarded fingerprints, per-step records and overall status."""
+
     retained_models: tuple
     discarded_fingerprints: tuple
     records: tuple
@@ -55,7 +67,17 @@ class NonlinearMembershipResult:
 
 
 class NonlinearMembershipContractor:
+    """Discard candidate models only when an enclosure is proven disjoint from data.
+
+    Unproven enclosures and candidates beyond the budget are retained.
+    """
+
     def __init__(self, encloser=None, max_boxes=64):
+        """Set the flow encloser and the candidate budget.
+
+        Uses a NonlinearFlowEncloser when none is given. Raises ValueError if
+        max_boxes is not a positive integer.
+        """
         if (
             isinstance(max_boxes, bool)
             or not isinstance(max_boxes, int)
@@ -65,6 +87,19 @@ class NonlinearMembershipContractor:
         self.encloser, self.max_boxes = encloser or NonlinearFlowEncloser(), max_boxes
 
     def contract(self, candidate_models, transitions, observations=None, clock=None):
+        """Test each candidate model against the transitions; retain or discard it.
+
+        A candidate is discarded when a proven target endpoint is disjoint from
+        target_observed, or a proven relative endpoint is disjoint from
+        relative_observed. Candidates at index max_boxes or later are retained as
+        UNRESOLVED_BUDGET; unproven flows leave the candidate retained.
+
+        Outputs:
+            NonlinearMembershipResult with status INCONSISTENT when nothing is
+            retained, otherwise RETAINED. Raises ValueError if clock is None, the
+            candidates are empty or not NonlinearModelBounds, or observations is
+            given; TypeError if a transition is not a NonlinearTransitionObservation.
+        """
         if clock is None:
             raise ValueError("Supply the immutable commanded reference clock")
         models, transitions = tuple(candidate_models), tuple(transitions)
