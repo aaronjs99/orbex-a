@@ -30,6 +30,19 @@ if TYPE_CHECKING:
 def assign_docking_targets(
     target: TumblingCylinderTarget, initial_states: Sequence[np.ndarray]
 ) -> list[dict[str, Any]]:
+    """Assign each chaser a docking point on the cylinder side.
+
+    For one chaser the point is at its approach azimuth. For several, equally
+    spaced candidate azimuths are tried from a set of start azimuths and the
+    Hungarian assignment minimizing the total wrapped azimuth difference is kept.
+    Each point takes the chaser's own approach axial coordinate.
+
+    Inputs: initial_states are chaser states whose first three entries are the
+    LVLH position in m.
+    Outputs: a list of dicts, ordered by chaser index for several chasers, with
+    body_position (m), body_normal, azimuth (rad), surface, standoff (m) and
+    candidate_index. Returns an empty list when there are no states.
+    """
     count = len(initial_states)
     if count == 0:
         return []

@@ -15,6 +15,10 @@ from orbexa.common.solver_options import (
 
 
 def _positive_integer(value: Any, name: str, minimum: int = 1) -> None:
+    """Raise ValueError unless value is a non-bool integer of at least minimum.
+
+    Inputs: name labels the value in the error message.
+    """
     if (
         isinstance(value, bool)
         or not isinstance(value, (int, np.integer))
@@ -24,6 +28,11 @@ def _positive_integer(value: Any, name: str, minimum: int = 1) -> None:
 
 
 def _finite_vector(value: Any, name: str, size: int) -> np.ndarray:
+    """Return value as a float array of shape (size,).
+
+    Inputs: name labels the value in the error message.
+    Outputs: raises ValueError if the shape differs or an entry is not finite.
+    """
     array = np.asarray(value, dtype=float)
     if array.shape != (size,) or not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain {size} finite values")
@@ -31,6 +40,12 @@ def _finite_vector(value: Any, name: str, size: int) -> np.ndarray:
 
 
 def _bounds_list(bounds: list[dict[str, Any]], name: str, size: int) -> None:
+    """Validate a list of lower/upper bound mappings.
+
+    A missing or None lower or upper entry means unbounded. Raises ValueError
+    unless bounds holds size mappings whose entries are numeric, not NaN and
+    ordered lower <= upper. name labels the list in the error message.
+    """
     if not isinstance(bounds, (list, tuple)) or len(bounds) != size:
         raise ValueError(f"{name} must contain {size} bounds")
     for index, bound in enumerate(bounds):
@@ -90,6 +105,15 @@ class OrbitConfig:
     """Reference surface radius in meters; zero disables surface admissibility."""
 
     def __post_init__(self) -> None:
+        """Validate the orbit and store initial_conditions as a float vector.
+
+        Outputs: initial_conditions becomes a float array of 6 values. Raises
+        ValueError if mu or semi_major_axis is not finite and positive, eccentricity
+        is outside [0, 1), central_body_radius is negative or not finite, the
+        perigee radius does not exceed central_body_radius, a drag constant is
+        negative or not finite, time_periapsis is not finite, or initial_conditions
+        is not 6 finite values.
+        """
         if not (
             np.isfinite(self.mu)
             and self.mu > 0
@@ -161,6 +185,17 @@ class MPCConfig:
     terminal_dwell_updates: int = 5
 
     def __post_init__(self) -> None:
+        """Validate the MPC settings and normalize Q and R into square matrices.
+
+        Outputs: Q becomes a 6x6 and R a 3x3 float matrix. Raises ValueError if
+        horizon_steps (at least 2) or actuation_steps (at least 1) for rendezvous or
+        docking is not an integer, state_bounds or input_bounds is not 6 or 3 valid
+        bounds, Q is not finite, symmetric and positive semidefinite, R is not
+        finite, symmetric and positive definite, min_chaser_separation is not finite
+        and positive, goal_bounds is not two increasing nonnegative radii, a flag is
+        not a bool, terminal_dwell_updates is not a positive integer, or a docking
+        tolerance is not finite and positive.
+        """
         for phase in ("rendezvous", "docking"):
             _positive_integer(
                 self.horizon_steps[phase], f"mpc.horizon_steps.{phase}", 2
@@ -215,6 +250,7 @@ class MPCConfig:
             raise ValueError("Docking tolerances must be finite and positive")
 
     def bounds(self) -> tuple[list[dict[str, Any]], list[dict[str, float]]]:
+        """Return the state bounds and the input bounds as a pair."""
         return self.state_bounds, self.input_bounds
 
 
@@ -238,6 +274,14 @@ class TargetConfig:
     observation_error: dict[str, float]
 
     def __post_init__(self) -> None:
+        """Validate the target and store its vectors and inertia as float arrays.
+
+        Outputs: initial_orientation, initial_angular_velocity and center become
+        float vectors of 3 values and inertia a float 3x3 array. Raises ValueError
+        if a vector is not 3 finite values, inertia is not finite, symmetric and
+        positive definite, tolerance or docking_standoff is negative or not finite,
+        or, for a cylinder, radius or half_length is not finite and positive.
+        """
         self.initial_orientation = _finite_vector(
             self.initial_orientation, "target.initial_orientation", 3
         )
@@ -274,10 +318,16 @@ class TargetConfig:
 
     @property
     def radius(self) -> float:
+        """Return limits['target_radius'], else limits['r_T'], else 0.0."""
         return float(self.limits.get("target_radius", self.limits.get("r_T", 0.0)))
 
     @property
     def height(self) -> float:
+        """Return the target height from the limits.
+
+        Uses target_height, else twice target_half_length, half_length or l_T (first
+        present), else 0.0.
+        """
         if "target_height" in self.limits:
             return float(self.limits["target_height"])
         if "target_half_length" in self.limits:
@@ -290,6 +340,11 @@ class TargetConfig:
 
     @property
     def half_length(self) -> float:
+        """Return the target half-length from the limits.
+
+        Uses target_half_length, else half_length, else l_T (first present), else
+        half of height.
+        """
         if "target_half_length" in self.limits:
             return float(self.limits["target_half_length"])
         if "half_length" in self.limits:
@@ -300,10 +355,12 @@ class TargetConfig:
 
     @property
     def bounding_sphere_radius(self) -> float:
+        """Return sqrt(radius^2 + half_length^2), the enclosing sphere radius."""
         return float(np.sqrt(self.radius**2 + self.half_length**2))
 
     @property
     def rendezvous_radius(self) -> float:
+        """Return bounding_sphere_radius scaled by (1 + tolerance)."""
         return self.bounding_sphere_radius * (1.0 + self.tolerance)
 
     def collision_params(self, operation: str = "rendezvous") -> dict[str, Any]:
@@ -346,6 +403,16 @@ class TubeMPCConfig:
     membership_update_period: int = 5
 
     def __post_init__(self) -> None:
+        """Validate the tube settings.
+
+        Raises ValueError if run_tube is not a bool, bandwidth_0, sliding_gains or
+        boundary_layer_0 is not 3 finite positive values, bandwidth_range does not
+        satisfy 0 < lower <= upper with finite bounds, bandwidth_0 lies outside
+        bandwidth_range, feedback_substeps, membership_box_budget or
+        membership_update_period is not an integer of at least 1, or
+        numerical_reserve, membership_error_bound, bandwidth_rate_limit,
+        bandwidth_weight or tube_weight is negative or not finite.
+        """
         if not isinstance(self.run_tube, bool):
             raise ValueError("tube.run_tube must be a boolean")
         for name in ("bandwidth_0", "sliding_gains", "boundary_layer_0"):
@@ -397,6 +464,13 @@ class MissionPolicyConfig:
     terminal_activation_distance: float = 0.035
 
     def __post_init__(self) -> None:
+        """Validate the mission policy values.
+
+        Raises ValueError if a standoff, capture radius, tolerance, weight factor,
+        barrier buffer or terminal activation distance is not finite and positive,
+        target_safety_tolerance is negative or not finite, or
+        target_barrier_clearance_fraction is not in (0, 1].
+        """
         for name in (
             "rendezvous_standoff",
             "rendezvous_capture_radius",
@@ -427,6 +501,7 @@ class MissionPolicyConfig:
 
     @property
     def target_barrier_clearance(self) -> float:
+        """Return target_barrier_buffer scaled by target_barrier_clearance_fraction."""
         return self.target_barrier_buffer * self.target_barrier_clearance_fraction
 
 
@@ -449,6 +524,14 @@ class AdaptationConfig:
     window_intervals: int = 8
 
     def __post_init__(self) -> None:
+        """Validate the adaptation settings.
+
+        Raises ValueError if error_bound, prediction_error_threshold or
+        prior_eccentricity_half_width is not finite and positive, minimum_widths
+        lacks exactly eccentricity, alpha and beta or has a negative or non-finite
+        width, prior_drag_factors is not two finite values with 0 <= first <= 1 <=
+        second, or max_iter or window_intervals is not an integer of at least 1.
+        """
         for name in (
             "error_bound",
             "prediction_error_threshold",
@@ -488,6 +571,12 @@ class SolverConfig:
     """Optional reference corridor fixes component support normals; free is the default."""
 
     def __post_init__(self) -> None:
+        """Validate the solver options.
+
+        Raises ValueError if remote or disp is not a bool or max_iter is not an
+        integer of at least 1. max_memory and composite_geometry_mode are checked by
+        gekko_memory_exponent and composite_geometry_mode, whose errors propagate.
+        """
         if not isinstance(self.remote, bool) or not isinstance(self.disp, bool):
             raise ValueError("solver.remote and solver.disp must be booleans")
         _positive_integer(self.max_iter, "solver.max_iter")
@@ -495,6 +584,7 @@ class SolverConfig:
         composite_geometry_mode(self.composite_geometry_mode)
 
     def options(self) -> dict[str, Any]:
+        """Return the backend options as a dict of the five solver fields."""
         return {
             "remote": self.remote,
             "disp": self.disp,

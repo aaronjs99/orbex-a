@@ -27,6 +27,13 @@ from scipy.spatial.transform import Rotation
 
 @dataclass(frozen=True)
 class NonlinearTargetProposal:
+    """One uncommitted numerical target propagation over an anomaly interval.
+
+    Holds the dense solution from ``start_q`` to ``end_q`` (reference-clock
+    anomaly, rad) together with the initial 14-component state and the model and
+    clock fingerprints it was computed with, so a commit can detect staleness.
+    """
+
     start_q: object
     end_q: object
     initial_state: tuple
@@ -35,20 +42,57 @@ class NonlinearTargetProposal:
     clock_fingerprint: str
 
     def state_at(self, q):
+        """Return the full 14-component target state at anomaly ``q``.
+
+        Inputs:
+            q: Reference-clock anomaly, rad, within [start_q, end_q].
+
+        Outputs:
+            State array: inertial position (m), inertial velocity (m/s), scalar-last
+            body-to-inertial quaternion, body angular velocity (rad/s) and physical
+            time (s).
+
+        Raises ValueError when ``q`` lies outside [start_q, end_q].
+        """
         if not float(self.start_q) <= float(q) <= float(self.end_q):
             raise ValueError("Numerical target proposal queried outside its hold")
         return np.asarray(self.solution.sol(float(q)), dtype=float)
 
 
 def _skew(v):
+    """Return the 3x3 cross-product matrix of a length-three vector."""
     x, y, z = v
     return np.array(((0, -z, y), (z, 0, -x), (-y, x, 0)))
 
 
 class _NonlinearTargetQueries:
+    """Shared state, dynamics and query methods of nonlinear target motion.
+
+    The state is a 14-vector ordered as inertial position (m), inertial velocity
+    (m/s), scalar-last body-to-inertial quaternion, body angular velocity (rad/s)
+    and physical time (s), integrated against the reference-clock anomaly ``q``.
+    Inertial axes are the declared fixed initial-reference axes. Dense solutions
+    are stored as pieces; subclasses supply ``role`` and extend the pieces.
+    """
+
     reference_frame_id = "reference-orbit-frame-v1"
 
     def _initialize(self, template, clock, model, initial_q):
+        """Store the template, clock and model and set up dynamics and initial data.
+
+        Copies the template inertia (made read-only), gravity-gradient flag, initial
+        quaternion and initial body angular velocity, caches the clock constants,
+        sets ``initial_q`` and ``current_q`` to the exact initial anomaly and empties
+        the stored solution pieces and collision-declaration cache.
+
+        Inputs:
+            template: Target declaration providing geometry, inertia, gravity_gradient,
+                initial_quaternion and initial_body_angular_velocity.
+            clock: Reference clock giving eccentricity, alpha, mu, semi-major axis and
+                the finite q domain.
+            model: Physical plant model used by the nonlinear relative dynamics.
+            initial_q: Initial reference-clock anomaly, rad.
+        """
         self._template, self.reference_clock, self.model = template, clock, model
         self._dynamics = NonlinearRelativeDynamics(model, clock)
         self.inertia = inertia_matrix(template.inertia).copy()
@@ -74,6 +118,10 @@ class _NonlinearTargetQueries:
         self._collision_declarations = {}
 
     def __getattr__(self, name):
+        """Delegate selected static geometry attributes to the template.
+
+        Raises AttributeError for any name outside the delegated geometry set.
+        """
         # Only geometry/static declarations are delegated. Motion methods all
         # resolve on this class or explicitly call the local dynamic state.
         allowed = {
@@ -99,10 +147,12 @@ class _NonlinearTargetQueries:
 
     @property
     def initial_orientation(self):
+        """Return the initial quaternion converted by ``quaternion_to_euler``."""
         return quaternion_to_euler(self.initial_quaternion)
 
     @property
     def attitude_model(self):
+        """Return the attitude model name for the gravity-gradient flag."""
         return (
             "nonlinear_ephemeris_central_gravity_gradient"
             if self.gravity_gradient
@@ -110,6 +160,11 @@ class _NonlinearTargetQueries:
         )
 
     def _query(self, q):
+        """Validate an anomaly query and return it as a float.
+
+        Raises ValueError when ``q`` is not finite or lies outside the reference
+        clock q domain.
+        """
         value = float(q)
         if not np.isfinite(value):
             raise ValueError("Target query must be finite")
@@ -117,10 +172,19 @@ class _NonlinearTargetQueries:
         return value
 
     def anomaly_clock(self, q):
+        """Return ``(dq/dt, d(dq/dt)/dq)`` of the reference clock at anomaly ``q``."""
         point = self.reference_clock.point(q)
         return point.rate_s_inv, point.rate_s_inv * point.kappa
 
     def _full_state_at(self, q):
+        """Return the 14-component state at anomaly ``q``.
+
+        Searches the stored pieces from newest to oldest, then falls back to the
+        current state when ``q`` equals ``current_q``.
+
+        Raises ValueError when ``q`` is invalid or not covered by executed truth or
+        observed preview, and RuntimeError when the evaluated state is nonfinite.
+        """
         value = self._query(q)
         for lo, hi, solution in reversed(self._pieces):
             if lo <= value <= hi:
@@ -135,11 +199,22 @@ class _NonlinearTargetQueries:
         )
 
     def _state_at(self, q):
+        """Return physical time (s), normalized quaternion and body rate at ``q``.
+
+        Outputs:
+            Tuple of physical time (s), scalar-last body-to-inertial unit quaternion
+            and body angular velocity (rad/s).
+        """
         state = self._full_state_at(q)
         quaternion = state[6:10] / np.linalg.norm(state[6:10])
         return float(state[13]), quaternion, state[10:13].copy()
 
     def _body_torque_state(self, state):
+        """Return the body-frame gravity-gradient torque, N m, for a 14-component state.
+
+        Uses the inertial position and quaternion of ``state`` and the first value of
+        the model gravitational parameter. Returns zeros when gravity gradient is off.
+        """
         if not self.gravity_gradient:
             return np.zeros(3)
         radius = np.linalg.norm(state[:3])
@@ -148,6 +223,12 @@ class _NonlinearTargetQueries:
         return 3 * mu / radius**3 * np.cross(radial_body, self.inertia @ radial_body)
 
     def _rhs(self, q, state):
+        """Return the derivative of the 14-component state with respect to ``q``.
+
+        Combines the nonlinear translational target dynamics, quaternion kinematics,
+        rigid-body rate dynamics with the body torque, and elapsed physical time. The
+        attitude and time derivatives are divided by the reference-clock rate dq/dt.
+        """
         point = self.reference_clock.point(q)
         quaternion, omega = state[6:10], state[10:13]
         qdot = (
@@ -166,6 +247,14 @@ class _NonlinearTargetQueries:
         ]
 
     def _integrate(self, start, end, state):
+        """Integrate the target state from anomaly ``start`` to ``end``.
+
+        Uses DOP853 with dense output, max step min(0.002, end - start), rtol 1e-11
+        and atol 1e-12, and returns the SciPy solution object.
+
+        Raises ValueError when the interval leaves the clock q domain or ``end`` does
+        not exceed ``start``, and RuntimeError when integration fails or is nonfinite.
+        """
         self.reference_clock.check_domain((start, end))
         if end <= start:
             raise ValueError(
@@ -188,36 +277,60 @@ class _NonlinearTargetQueries:
         return result
 
     def physical_time_at(self, q):
+        """Return the physical time, s, at anomaly ``q``."""
         return self._state_at(q)[0]
 
     def inertial_quaternion_at(self, q):
+        """Return the scalar-last body-to-inertial unit quaternion at anomaly ``q``."""
         return self._state_at(q)[1]
 
     def orbital_position_inertial_at(self, q):
+        """Return the target inertial position, m, at anomaly ``q``."""
         return self._full_state_at(q)[:3].copy()
 
     def inertial_state_at(self, q):
+        """Return the target inertial position (m) and velocity (m/s) at ``q``."""
         return self._full_state_at(q)[:6].copy()
 
     def body_angular_velocity_at(self, q):
+        """Return the body angular velocity, rad/s, at anomaly ``q``."""
         return self._state_at(q)[2]
 
     def body_torque_at(self, q):
+        """Return the body-frame gravity-gradient torque, N m, at anomaly ``q``."""
         return self._body_torque_state(self._full_state_at(q))
 
     def _body_torque(self, q, inertial_quaternion):
+        """Return the body torque, N m, at ``q`` for a supplied inertial quaternion.
+
+        Evaluates the torque on the state at ``q`` with its quaternion replaced by
+        ``inertial_quaternion``.
+        """
         state = self._full_state_at(q).copy()
         state[6:10] = inertial_quaternion
         return self._body_torque_state(state)
 
     def rotation_matrix_at(self, q):
+        """Return the body-to-reference-orbit-frame rotation matrix at anomaly ``q``.
+
+        Computed as the transpose of the reference-clock rotation at ``q`` times the
+        body-to-inertial rotation.
+        """
         inertial = Rotation.from_quat(self.inertial_quaternion_at(q)).as_matrix()
         return np.asarray(self.reference_clock.point(q).rotation).T @ inertial
 
     def quaternion_at(self, q):
+        """Return the scalar-last quaternion of ``rotation_matrix_at(q)``."""
         return Rotation.from_matrix(self.rotation_matrix_at(q)).as_quat()
 
     def rotation_matrices(self, q):
+        """Return the rotation matrix and its first two ``q`` derivatives.
+
+        Outputs:
+            Tuple of ``rotation_matrix_at(q)`` and its first and second derivatives
+            with respect to anomaly, built from the body rate, its torque-driven
+            derivative and the reference-clock rate.
+        """
         rotation, omega = self.rotation_matrix_at(q), self.body_angular_velocity_at(q)
         rate, rate_prime = self.anomaly_clock(q)
         omega_dot = body_rate_derivative(omega, self.inertia, self.body_torque_at(q))
@@ -236,6 +349,12 @@ class _NonlinearTargetQueries:
     inertial_angular_momentum_at = RigidBodyMotion.inertial_angular_momentum_at
 
     def recorded_kinematics(self, anomalies):
+        """Return the sampled kinematics for ``anomalies`` with inertial states.
+
+        Extends ``RigidBodyMotion.recorded_kinematics`` with the inertial states
+        (position m, velocity m/s) at each anomaly, their position and velocity
+        columns, and a copy of the anomaly rate as ``reference_anomaly_rate_s_inv``.
+        """
         result = RigidBodyMotion.recorded_kinematics(self, anomalies)
         result["target_inertial_states"] = np.array(
             [self.inertial_state_at(q) for q in anomalies]
@@ -246,6 +365,12 @@ class _NonlinearTargetQueries:
         return result
 
     def collision_params(self, operation, anom):
+        """Return the template collision declaration updated with the current attitude.
+
+        The template declaration for ``operation`` is evaluated once at ``initial_q``
+        and cached. The returned copy carries the rotation matrix at ``anom``, the
+        attitude model, the reference frame id and the reference clock fingerprint.
+        """
         if operation not in self._collision_declarations:
             self._collision_declarations[operation] = copy.deepcopy(
                 self._template.collision_params(operation, float(self.initial_q))
@@ -260,6 +385,11 @@ class _NonlinearTargetQueries:
         return result
 
     def assign_docking_targets(self, initial_states):
+        """Assign docking targets to the chaser initial states.
+
+        Uses composite docking assignment when the template declares geometry;
+        otherwise delegates to the template.
+        """
         if getattr(self._template, "geometry", None) is not None:
             from orbexa.models.geometry.rendezvous import (
                 assign_composite_docking_targets,
@@ -269,6 +399,12 @@ class _NonlinearTargetQueries:
         return self._template.assign_docking_targets(initial_states)
 
     def as_dict(self):
+        """Return the template record extended with the nonlinear target declaration.
+
+        Adds the attitude and clock models, reference clock record and fingerprint,
+        physical plant record, role, integration settings, clock parameters, initial
+        and current anomalies and the modelling assumptions.
+        """
         result = dict(self._template.as_dict())
         result.update(
             attitude_model=self.attitude_model,
@@ -308,6 +444,8 @@ class _NonlinearTargetQueries:
 
 
 class NonlinearTargetTruth(_NonlinearTargetQueries):
+    """Executed numerical target truth advanced one committed interval at a time."""
+
     role = "executed_numerical_truth"
 
     def __init__(
@@ -320,6 +458,22 @@ class NonlinearTargetTruth(_NonlinearTargetQueries):
         initial_q=0,
         initial_time_s=0,
     ):
+        """Build the truth target from its initial inertial ephemeris.
+
+        The initial attitude is the template initial quaternion composed with the
+        reference-clock rotation at ``initial_q``.
+
+        Inputs:
+            template: Target declaration (see ``_initialize``).
+            clock: Reference clock.
+            point_model: Physical plant model.
+            initial_target_state: Six finite values, inertial position (m) then
+                velocity (m/s).
+            initial_q: Initial reference-clock anomaly, rad.
+            initial_time_s: Initial physical time, s.
+
+        Raises ValueError when ``initial_target_state`` is not six finite values.
+        """
         self._initialize(template, clock, point_model, initial_q)
         state = np.asarray(initial_target_state, dtype=float)
         if state.shape != (6,) or not np.all(np.isfinite(state)):
@@ -338,9 +492,15 @@ class NonlinearTargetTruth(_NonlinearTargetQueries):
         ]
 
     def advance(self, end_q):
+        """Propose and commit propagation to ``end_q``; return the new state."""
         return self.commit_interval(self.propose_interval(end_q))
 
     def propose_interval(self, end_q):
+        """Integrate from ``current_q`` to ``end_q`` without committing it.
+
+        Returns a ``NonlinearTargetProposal``; the committed state is unchanged.
+        Raises as ``_integrate`` does.
+        """
         end = exact(end_q)
         result = self._integrate(self.current_q, end, self._current_state)
         return NonlinearTargetProposal(
@@ -353,6 +513,15 @@ class NonlinearTargetTruth(_NonlinearTargetQueries):
         )
 
     def commit_interval(self, proposal):
+        """Commit a proposal, appending its solution and advancing the current state.
+
+        Sets ``current_q`` to the proposal end and the current state to its final
+        state, and returns a copy of that state.
+
+        Raises ValueError when ``proposal`` is not a ``NonlinearTargetProposal`` or its
+        start anomaly, initial state, model fingerprint or clock fingerprint differs
+        from the current ones.
+        """
         if (
             not isinstance(proposal, NonlinearTargetProposal)
             or proposal.start_q != self.current_q
@@ -374,6 +543,12 @@ class NonlinearTargetTruth(_NonlinearTargetQueries):
 
 
 class NonlinearTargetPreview(_NonlinearTargetQueries):
+    """Observation-driven numerical preview of the target over a finite horizon.
+
+    Integrates the midpoint model from the latest observed state; it never uses
+    future truth.
+    """
+
     role = "observation_driven_numerical_preview"
 
     def __init__(
@@ -387,6 +562,22 @@ class NonlinearTargetPreview(_NonlinearTargetQueries):
         preview_width_q=1,
         initial_time_s=0,
     ):
+        """Build the preview from the midpoint of an initial box and predict ahead.
+
+        The inertial state is the midpoint of ``initial_target_box``; the attitude is
+        the template initial quaternion composed with the reference-clock rotation.
+        Predicts through ``current_q + preview_width_q``.
+
+        Inputs:
+            template: Target declaration (see ``_initialize``).
+            clock: Reference clock.
+            model_bounds: Physical model bounds; their midpoint model is used.
+            initial_target_box: Six-dimensional box of inertial position (m) and
+                velocity (m/s).
+            initial_q: Initial reference-clock anomaly, rad.
+            preview_width_q: Anomaly width of each prediction, rad.
+            initial_time_s: Initial physical time, s.
+        """
         self.physical_model_bounds = model_bounds
         self._initialize(template, clock, model_bounds.midpoint_model(), initial_q)
         self.preview_width_q = exact(preview_width_q)
@@ -411,12 +602,36 @@ class NonlinearTargetPreview(_NonlinearTargetQueries):
         self._predict(self.current_q + self.preview_width_q)
 
     def _predict(self, end):
+        """Integrate from the current state to ``end`` and store the dense piece."""
         result = self._integrate(self.current_q, end, self._current_state)
         self._pieces.append((float(self.current_q), float(end), result.sol))
 
     def update_observation(
         self, navestimate, current_q=None, target_ephemeris_box=None, preview_end_q=None
     ):
+        """Reset the preview state from a navigation estimate and predict ahead.
+
+        Sets the state to the estimate ephemeris midpoint, the observed orientation
+        (composed with the reference-clock rotation) and angular-velocity midpoint,
+        and the physical-time midpoint. Pieces from ``q`` onward are discarded, and
+        ``pose_operator_error`` and ``observation_fingerprints`` are updated before
+        predicting to ``preview_end_q``.
+
+        Inputs:
+            navestimate: Navigation estimate with status "VALID" and matching clock and
+                model fingerprints.
+            current_q: Event anomaly, rad; must equal ``navestimate.exact_event_q``.
+            target_ephemeris_box: Optional six-dimensional replacement for the
+                estimate ephemeris box.
+            preview_end_q: Optional end anomaly, rad; default ``q + preview_width_q``.
+
+        Outputs:
+            This preview.
+
+        Raises ValueError when the estimate is not valid for this clock and model, the
+        event anomaly is relabeled or earlier than ``current_q``, or the ephemeris
+        box is not six-dimensional.
+        """
         if (
             navestimate.status != "VALID"
             or navestimate.clock_fingerprint != self.reference_clock.fingerprint

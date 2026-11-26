@@ -7,6 +7,10 @@ from __future__ import annotations
 
 
 def _target_signature(metadata):
+    """Return the subset of target metadata keys that identify the physical target.
+
+    Only the named keys present in metadata are copied.
+    """
     names = (
         "shape",
         "radius",

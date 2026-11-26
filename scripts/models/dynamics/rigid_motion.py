@@ -28,6 +28,19 @@ class RigidBodyMotion:
     """Shared dense physical motion; subclasses provide immutable configuration."""
 
     def _initialize_motion(self) -> None:
+        """Validate the subclass configuration, freeze it and integrate the attitude.
+
+        Reads ``initial_quaternion`` (scalar last, body to initial inertial),
+        ``initial_body_angular_velocity`` (rad/s), ``inertia`` (kg m^2),
+        ``gravity_gradient``, ``anomaly_domain`` (rad), ``eccentricity``, ``alpha``,
+        ``mu``, ``semi_major_axis`` and the ``integration_*`` tolerances.
+        State changes: sets the unit-norm quaternion, angular velocity and inertia
+        matrix as read-only arrays, ``gravity_gradient`` as a bool, ``anomaly_domain``
+        as a tuple of floats and ``_solution``, the dense DOP853 solution over the
+        anomaly domain of the state (physical time, quaternion, body rate).
+        Outputs: raises ValueError for an invalid quaternion, angular velocity,
+        inertia, ``gravity_gradient``, anomaly domain, clock parameter or integration
+        setting, and RuntimeError when the integration fails or is non-finite."""
         quaternion = finite_vector(self.initial_quaternion, "Initial quaternion", 4)
         scale = float(np.max(np.abs(quaternion)))
         if scale == 0.0:
@@ -82,6 +95,11 @@ class RigidBodyMotion:
         object.__setattr__(self, "anomaly_domain", (float(domain[0]), float(domain[1])))
 
         def rhs(anom, state):
+            """Return the derivative of the state with respect to the anomaly.
+
+            The state is physical time, scalar-last quaternion and body angular
+            velocity. Quaternion kinematics and the rigid-body rate derivative are
+            divided by the anomaly clock rate dq/dt."""
             rate, _ = self.anomaly_clock(anom)
             vector, scalar, body_rate = state[1:4], state[4], state[5:8]
             quaternion_dot = 0.5 * np.concatenate(
@@ -117,6 +135,9 @@ class RigidBodyMotion:
         object.__setattr__(self, "_solution", solution.sol)
 
     def _query(self, anom: float) -> float:
+        """Return ``anom`` as a float after checking it against the anomaly domain.
+
+        Raises ValueError unless ``anom`` is a finite scalar in ``anomaly_domain``."""
         value = np.asarray(anom, dtype=float)
         if (
             value.ndim != 0
@@ -147,6 +168,12 @@ class RigidBodyMotion:
         return float(rate), float(rate_prime)
 
     def _state_at(self, anom: float) -> tuple[float, np.ndarray, np.ndarray]:
+        """Return the dense state at ``anom``.
+
+        Outputs: tuple of physical time (s), unit scalar-last body-to-initial-inertial
+        quaternion and body angular velocity (rad/s). Raises ValueError for an invalid
+        ``anom`` and RuntimeError when the dense values are non-finite or the
+        quaternion norm is zero."""
         values = self._solution(self._query(anom))
         quaternion, omega = values[1:5].copy(), values[5:8].copy()
         norm = np.linalg.norm(quaternion)
@@ -186,6 +213,10 @@ class RigidBodyMotion:
 
     @property
     def attitude_model(self) -> str:
+        """Return the attitude model name used by this target.
+
+        The name is ``"gravity_gradient_rigid_body"`` when ``gravity_gradient`` is set
+        and ``"torque_free_rigid_body"`` otherwise."""
         return (
             "gravity_gradient_rigid_body"
             if self.gravity_gradient
@@ -211,6 +242,12 @@ class RigidBodyMotion:
         return radius * np.array([-np.sin(angle), np.cos(angle), 0.0])
 
     def _body_torque(self, anom: float, inertial_quaternion: np.ndarray) -> np.ndarray:
+        """Return the environmental torque in body coordinates, N m.
+
+        Inputs: ``anom`` in rad; ``inertial_quaternion`` is the scalar-last
+        body-to-initial-inertial quaternion.
+        Outputs: zeros without gravity gradient, otherwise the gravity-gradient torque
+        ``3 mu / r^3 * (r_hat x I r_hat)`` with ``r_hat`` the body-frame radial unit."""
         if not self.gravity_gradient:
             return np.zeros(3)
         position = self.orbital_position_inertial_at(anom)
@@ -280,6 +317,13 @@ class RigidBodyMotion:
         return body_rates_to_euler_rates(self.orientation_at(q), relative_body_rate)
 
     def docking_state(self, docking_point_body: np.ndarray, anom: float) -> np.ndarray:
+        """Return the docking point position and its q derivative in the LVLH frame.
+
+        Inputs: ``docking_point_body`` is the 3-vector body-fixed docking point;
+        ``anom`` is the anomaly in rad.
+        Outputs: 6-vector ``(R p, R' p)`` with ``R`` the body-to-LVLH rotation and the
+        prime the derivative with respect to q. Raises ValueError for an invalid point
+        or ``anom``."""
         point = finite_vector(docking_point_body, "Body-fixed docking point", 3)
         rotation, prime, _ = self.rotation_matrices(anom)
         return np.concatenate((rotation @ point, prime @ point))
@@ -287,6 +331,12 @@ class RigidBodyMotion:
     def docking_acceleration(
         self, docking_point_body: np.ndarray, anom: float
     ) -> np.ndarray:
+        """Return the docking point acceleration ``R'' p`` in the LVLH frame.
+
+        Inputs: ``docking_point_body`` is the 3-vector body-fixed docking point;
+        ``anom`` is the anomaly in rad.
+        Outputs: second derivative of the position with respect to q. Raises
+        ValueError for an invalid point or ``anom``."""
         point = finite_vector(docking_point_body, "Body-fixed docking point", 3)
         return self.rotation_matrices(anom)[2] @ point
 
