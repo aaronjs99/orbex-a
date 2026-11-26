@@ -24,6 +24,12 @@ import numpy as np
 
 
 def _real(value, name, *, nonnegative=False, positive=False):
+    """Return value as a float after checking it is a finite real scalar.
+
+    Inputs: name labels the value in error messages. positive requires value > 0
+    and nonnegative requires value >= 0. Raises ValueError for bool or non-real
+    input, a value not representable as a finite float, or a sign violation.
+    """
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
         raise ValueError(f"{name} must be a real numeric scalar")
     try:
@@ -40,6 +46,10 @@ def _real(value, name, *, nonnegative=False, positive=False):
 
 
 def _vector(value, size, name):
+    """Return value as a tuple of size floats, each checked by _real.
+
+    Raises ValueError when value is not iterable or does not have size components.
+    """
     try:
         values = tuple(value)
     except TypeError as error:
@@ -50,12 +60,22 @@ def _vector(value, size, name):
 
 
 def _identifier(value, name):
+    """Return value unchanged when it is a string with a non-whitespace character.
+
+    Raises ValueError otherwise; name labels the value in the message.
+    """
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a nonempty string")
     return value
 
 
 def _freeze(value):
+    """Return metadata as an immutable structure of JSON-compatible values.
+
+    Mappings with string keys become read-only MappingProxyType objects, lists and
+    tuples become tuples, numbers become finite floats, and str, bool and None are
+    kept. Raises ValueError for non-string keys or any other value type.
+    """
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise ValueError("Geometry metadata keys must be strings")
@@ -70,6 +90,7 @@ def _freeze(value):
 
 
 def _plain(value):
+    """Return metadata with mappings as dicts and tuples as lists, recursively."""
     if isinstance(value, Mapping):
         return {key: _plain(item) for key, item in value.items()}
     if isinstance(value, tuple):
@@ -99,6 +120,15 @@ class OBBComponent:
     provenance: Mapping = field(default_factory=dict)
 
     def __post_init__(self):
+        """Validate and normalize the declaration, then store it on the frozen instance.
+
+        Checks that id and role are nonempty strings, that center and half extents are
+        finite 3-vectors with positive half extents, that the rotation is 3 by 3 and a
+        proper orthogonal frame (exact Gram deviation of at most 1e-8, positive
+        determinant), and that uncertainty_m is finite and nonnegative. Freezes
+        provenance, stores the Gram deviation as _gram_deviation, and checks every
+        padded vertex has a finite float radius. Raises ValueError on any failure.
+        """
         object.__setattr__(self, "id", _identifier(self.id, "Component id"))
         object.__setattr__(self, "role", _identifier(self.role, "Component role"))
         center = _vector(self.center_m, 3, "Component center")
@@ -155,6 +185,11 @@ class OBBComponent:
                 raise ValueError("Occupied component vertices must remain finite")
 
     def _vertices(self, include_uncertainty):
+        """Return the eight box corners as exact Fraction triples, in m (body frame).
+
+        With include_uncertainty, each half extent is padded by uncertainty_m divided
+        by (1 - Gram deviation), so the padded box contains the uncertainty ball.
+        """
         center = tuple(map(Fraction, self.center_m))
         rotation = tuple(
             tuple(map(Fraction, row)) for row in self.rotation_component_to_body
@@ -182,9 +217,18 @@ class OBBComponent:
 
     @property
     def nominal_vertices_body_m(self):
+        """Return the eight nominal box corners, without padding, as floats in m."""
         return tuple(tuple(float(v) for v in row) for row in self._vertices(False))
 
     def signed_distance(self, point_body_m, *, include_uncertainty=True):
+        """Return the numerical signed distance from a body-frame point to the box.
+
+        Inputs: point_body_m in m. Output is in m.
+
+        The value is negative inside the box. With include_uncertainty, uncertainty_m
+        is subtracted so the distance is to the dilated box. Raises ValueError when
+        the point is not a finite 3-vector or the result is not finite.
+        """
         point = np.array(_vector(point_body_m, 3, "Body point"))
         with np.errstate(over="ignore", invalid="ignore"):
             local = np.asarray(self.rotation_component_to_body).T @ (
@@ -202,6 +246,13 @@ class OBBComponent:
         return result
 
     def closest_point(self, point_body_m, *, include_uncertainty=True):
+        """Return the point of the box nearest to a body-frame point, in m.
+
+        With include_uncertainty the box is dilated by uncertainty_m: a query within
+        that radius is returned unchanged, otherwise the point on the dilated surface
+        along the line to the query is returned. Raises ValueError when the point is
+        not a finite 3-vector or the arithmetic is not finite.
+        """
         point = np.array(_vector(point_body_m, 3, "Body point"))
         rotation, center, half = (
             np.asarray(self.rotation_component_to_body),
@@ -224,6 +275,11 @@ class OBBComponent:
         )
 
     def as_dict(self):
+        """Return a JSON-compatible dict of the declaration and its derived vertices.
+
+        Includes nominal vertices as floats and exact conservative vertices as
+        Fraction strings, both in the body frame in m.
+        """
         return {
             "id": self.id,
             "center_m": list(self.center_m),
@@ -244,6 +300,12 @@ class OBBComponent:
 
     @classmethod
     def from_dict(cls, value):
+        """Build a component from a dict from as_dict or an equivalent declaration.
+
+        Only declaration keys present in value are used. Serialized exact and nominal
+        vertices, when present, must equal the vertices computed from the declaration;
+        otherwise ValueError is raised.
+        """
         self = cls(
             **{
                 key: value[key]
@@ -292,6 +354,13 @@ class AttachmentPatch:
     provenance: Mapping = field(default_factory=dict)
 
     def __post_init__(self):
+        """Validate and normalize the patch declaration, then store it.
+
+        Checks nonempty string ids, finite 3-vector point, normal and tangents that
+        form a right-handed orthonormal frame (tolerance 1e-10), finite 2-vector half
+        extents, and a nonnegative edge margin smaller than both half extents. Freezes
+        provenance. Raises ValueError on any failure.
+        """
         for name in ("id", "component_id"):
             object.__setattr__(self, name, _identifier(getattr(self, name), name))
         for name in ("point_body_m", "normal_body", "tangent_u_body", "tangent_v_body"):
@@ -317,6 +386,12 @@ class AttachmentPatch:
         object.__setattr__(self, "provenance", _freeze(self.provenance))
 
     def contains(self, point_body_m, *, tolerance_m=1e-9):
+        """Return True when a body-frame point lies on the patch within tolerance_m.
+
+        The point must be within tolerance_m of the patch plane and inside the
+        rectangle whose half extents are reduced by margin_m, enlarged by tolerance_m.
+        Raises ValueError for an invalid point or tolerance.
+        """
         delta = np.array(_vector(point_body_m, 3, "Patch query")) - np.asarray(
             self.point_body_m
         )
@@ -330,6 +405,7 @@ class AttachmentPatch:
         )
 
     def as_dict(self):
+        """Return a JSON-compatible dict of the patch declaration, in the body frame."""
         return {
             "id": self.id,
             "component_id": self.component_id,
@@ -344,6 +420,7 @@ class AttachmentPatch:
 
     @classmethod
     def from_dict(cls, value):
+        """Build a patch from a dict, using only the declaration keys in value."""
         return cls(
             **{
                 key: value[key]
@@ -374,6 +451,14 @@ class SpacecraftGeometry:
     metadata: Mapping = field(default_factory=dict)
 
     def __post_init__(self):
+        """Validate the composite declaration, then store it with immutable containers.
+
+        Requires nonempty geometry_id and frame, a nonempty set of OBBComponent
+        solids with unique ids, and AttachmentPatch objects with unique ids. Each
+        patch must name an existing component, have a normal equal to an outward
+        face normal of that component, lie on that nominal face, and fit entirely
+        within it (tolerance 1e-8). Freezes metadata. Raises ValueError on any failure.
+        """
         object.__setattr__(
             self, "geometry_id", _identifier(self.geometry_id, "Geometry id")
         )
@@ -437,18 +522,25 @@ class SpacecraftGeometry:
         object.__setattr__(self, "metadata", _freeze(self.metadata))
 
     def component(self, component_id):
+        """Return the component with the given id; raise KeyError if there is none."""
         try:
             return next(c for c in self.components if c.id == component_id)
         except StopIteration as error:
             raise KeyError(f"Unknown component {component_id}") from error
 
     def attachment_patch(self, patch_id):
+        """Return the attachment patch with the given id; raise KeyError if absent."""
         try:
             return next(p for p in self.attachment_patches if p.id == patch_id)
         except StopIteration as error:
             raise KeyError(f"Unknown attachment patch {patch_id}") from error
 
     def component_clearances(self, point_body_m, *, include_uncertainty=True):
+        """Return a dict mapping each component id to its signed distance, in m.
+
+        The point is in the body frame in m; distances are in m as in
+        OBBComponent.signed_distance.
+        """
         return {
             c.id: c.signed_distance(
                 point_body_m, include_uncertainty=include_uncertainty
@@ -470,6 +562,11 @@ class SpacecraftGeometry:
         )
 
     def _payload(self):
+        """Return the schema-tagged dict that is serialized and fingerprinted.
+
+        Contains the schema name, ids, frame, components, patches and metadata, and
+        excludes the fingerprint.
+        """
         return {
             "schema": "orbexa.spacecraft-geometry.v1",
             "geometry_id": self.geometry_id,
@@ -481,6 +578,11 @@ class SpacecraftGeometry:
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 hex digest of the canonical JSON encoding of the payload.
+
+        The encoding uses sorted keys, compact separators and rejects NaN and
+        infinity.
+        """
         return hashlib.sha256(
             json.dumps(
                 self._payload(), sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -488,10 +590,17 @@ class SpacecraftGeometry:
         ).hexdigest()
 
     def as_dict(self):
+        """Return the payload dict with its fingerprint added."""
         return dict(self._payload(), fingerprint=self.fingerprint)
 
     @classmethod
     def from_dict(cls, value):
+        """Build a geometry from a dict produced by as_dict.
+
+        A dict wrapping the geometry under a "geometry" key is unwrapped. Raises
+        ValueError for an unsupported schema or when a supplied fingerprint differs
+        from the one computed from the declarations.
+        """
         if "geometry" in value and "components" not in value:
             value = value["geometry"]
         if (
@@ -517,4 +626,5 @@ class SpacecraftGeometry:
 
     @classmethod
     def from_json(cls, path):
+        """Read a UTF-8 JSON file at path and build the geometry with from_dict."""
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))

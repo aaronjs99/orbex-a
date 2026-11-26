@@ -37,6 +37,7 @@ def load_simulation_config(path: str | None = None, *, config_type=None):
 
     # Helper to convert list lists to numpy arrays
     def to_numpy(val):
+        """Return val as a numpy array if it is a list, else return it unchanged."""
         if isinstance(val, list):
             return np.array(val)
         return val

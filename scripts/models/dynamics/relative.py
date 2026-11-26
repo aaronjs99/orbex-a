@@ -25,10 +25,12 @@ _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def dot(a, b):
+    """Return the inner product of two sequences."""
     return sum(x * y for x, y in zip(a, b))
 
 
 def cross(a, b):
+    """Return the cross product ``a x b`` of two 3-vectors as a tuple."""
     return (
         a[1] * b[2] - a[2] * b[1],
         a[2] * b[0] - a[0] * b[2],
@@ -37,19 +39,32 @@ def cross(a, b):
 
 
 def matvec(matrix, vector):
+    """Return the product of a row-major matrix and a vector as a tuple."""
     return tuple(dot(row, vector) for row in matrix)
 
 
 def transpose(matrix):
+    """Return the transpose of a row-major matrix as a tuple of tuples."""
     return tuple(zip(*matrix))
 
 
 def z(vector):
+    """Return ``(-y, x, 0)`` for a 3-vector, the z axis crossed with it.
+
+    The third component is ``0 * vector[2]``, a zero of the component type."""
     return (-vector[1], vector[0], 0 * vector[2])
 
 
 @dataclass(frozen=True)
 class ExponentialAtmosphere:
+    """Declared radial exponential atmosphere, rigidly co-rotating, with wind.
+
+    Fields: ``rho0_kg_m3`` (kg/m^3, density at ``reference_radius_m``),
+    ``reference_radius_m`` (m), ``scale_height_m`` (m), ``rotation_rad_s`` (rad/s,
+    three components), ``wind_m_s`` (m/s, three components) and ``declaration``
+    (provenance text). Scalars and vector components may be given as a value or a
+    ``(lo, hi)`` interval."""
+
     rho0_kg_m3: object = "2e-11"
     reference_radius_m: object = 6_678_137
     scale_height_m: object = 50_000
@@ -58,6 +73,14 @@ class ExponentialAtmosphere:
     declaration: str = "Illustrative co-rotating radial exponential study atmosphere"
 
     def __post_init__(self):
+        """Convert the fields to exact intervals and validate the atmosphere.
+
+        State changes: replaces ``rho0_kg_m3`` and ``scale_height_m`` with ``(lo, hi)``
+        Fraction pairs, ``reference_radius_m`` with a Fraction and ``rotation_rad_s``
+        and ``wind_m_s`` with tuples of ``(lo, hi)`` pairs.
+        Outputs: raises ValueError when the density lower bound is negative, the scale
+        height lower bound or reference radius is not positive, a vector does not have
+        three components, or ``declaration`` is not a non-blank string."""
         for name in ("rho0_kg_m3", "scale_height_m"):
             object.__setattr__(self, name, bounds(getattr(self, name)))
         object.__setattr__(self, "reference_radius_m", exact(self.reference_radius_m))
@@ -78,6 +101,7 @@ class ExponentialAtmosphere:
             raise ValueError("Atmosphere provenance declaration is required")
 
     def as_dict(self):
+        """Return a JSON-serializable record of the atmosphere, numbers as strings."""
         return {
             "law": "radial-exponential-rigid-corotation-constant-wind-v1",
             "rho0_kg_m3": tuple(map(str, self.rho0_kg_m3)),
@@ -91,6 +115,17 @@ class ExponentialAtmosphere:
 
 @dataclass(frozen=True)
 class NonlinearModelBounds:
+    """Declared finite-domain plant: central gravity, J2 and vector drag.
+
+    Fields: ``mu_m3_s2`` (m^3/s^2), ``j2``, ``body_radius_m`` and
+    ``gravity_reference_radius_m`` (m), ``j2_axis`` (direction of the J2 axis),
+    ``atmosphere``, ``sigma_target`` and ``sigma_chaser`` (drag parameters that
+    multiply ``-rho * |v_rel| * v_rel / 2``), ``radius_domain_m`` (``(lo, hi)`` m
+    interval of allowed distance from the central body), ``relative_position_limit_m``
+    (m) and ``relative_velocity_limit_m_per_rad`` (m/rad) componentwise limits on
+    the relative state, and ``declaration`` (provenance text). Parameters given as
+    ``(lo, hi)`` intervals are the physical uncertainty bounds."""
+
     mu_m3_s2: object = "398600441800000"
     j2: object = "1.08262668e-3"
     body_radius_m: object = 6_378_137
@@ -105,6 +140,18 @@ class NonlinearModelBounds:
     declaration: str = "Finite synthetic central/J2/isotropic-drag study plant"
 
     def __post_init__(self):
+        """Convert the fields to exact values and validate the plant declaration.
+
+        State changes: replaces ``mu_m3_s2``, ``j2``, ``sigma_target`` and
+        ``sigma_chaser`` with ``(lo, hi)`` Fraction pairs, ``radius_domain_m`` likewise,
+        the length and limit fields with Fractions and ``j2_axis`` with a Fraction
+        tuple.
+        Outputs: raises ValueError when ``j2_axis`` is not a nonzero 3-vector, when
+        ``mu_m3_s2`` is not positive, a sigma or ``body_radius_m`` lower bound is
+        negative, ``gravity_reference_radius_m`` or a relative limit is not positive,
+        the lower ``radius_domain_m`` bound does not exceed ``body_radius_m``,
+        ``atmosphere`` is not an ``ExponentialAtmosphere``, or ``declaration`` is not a
+        non-blank string."""
         for name in ("mu_m3_s2", "j2", "sigma_target", "sigma_chaser"):
             object.__setattr__(self, name, bounds(getattr(self, name)))
         for name in (
@@ -135,6 +182,10 @@ class NonlinearModelBounds:
             raise ValueError("Invalid finite nonlinear plant declaration")
 
     def as_dict(self):
+        """Return a JSON-serializable record of the plant with numbers as strings.
+
+        The record holds the model name, the SHA-256 of this source file, every
+        declared field and the nested atmosphere record."""
         return dict(
             model="central-j2-exponential-vector-drag-v1",
             source_sha256=_SOURCE_SHA256,
@@ -164,10 +215,15 @@ class NonlinearModelBounds:
 
     @cached_property
     def fingerprint(self):
+        """Return the SHA-256 hex digest of ``as_dict()``."""
         return fingerprint(self.as_dict())
 
     @cached_property
     def target_fingerprint(self):
+        """Return the SHA-256 hex digest of the target-only part of ``as_dict()``.
+
+        ``sigma_chaser``, ``relative_position_limit_m`` and
+        ``relative_velocity_limit_m_per_rad`` are removed before hashing."""
         record = self.as_dict()
         for name in (
             "sigma_chaser",
@@ -203,6 +259,10 @@ def parameters(model, arithmetic):
     interval = getattr(arithmetic, "interval", None)
 
     def convert(pair):
+        """Return ``pair`` as an arithmetic interval, or as a scalar without one.
+
+        Outputs: raises ValueError when the arithmetic has no interval constructor and
+        the pair is not a single value (``lo != hi``)."""
         if interval is not None:
             return interval(pair)
         if pair[0] != pair[1]:
@@ -228,6 +288,9 @@ def parameters(model, arithmetic):
 
 
 def radial(position, model, arithmetic):
+    """Return the distance of ``position`` from the central body, in m.
+
+    Raises ValueError when the radius is not fully inside ``radius_domain_m``."""
     radius = arithmetic.sqrt(sum(arithmetic.square(value) for value in position))
     if not (
         radius >= arithmetic.scalar(model.radius_domain_m[0])
@@ -238,6 +301,10 @@ def radial(position, model, arithmetic):
 
 
 def gravity(position, radius, par, arithmetic):
+    """Return the central plus J2 gravitational acceleration at ``position``, m/s^2.
+
+    Inputs: ``position`` (m) and its distance ``radius`` (m); ``par`` is the
+    dictionary from ``parameters``."""
     mu, axis = par["mu"], par["axis"]
     projected = dot(position, axis)
     factor = 3 * par["j2"] * mu * par["re"] ** 2 / 2
@@ -251,6 +318,13 @@ def gravity(position, radius, par, arithmetic):
 
 
 def drag(state, radius, par, arithmetic, sigma):
+    """Return the drag acceleration of a spacecraft, m/s^2.
+
+    The acceleration is ``-sigma * rho * |v_rel| * v_rel / 2``. ``v_rel`` is the
+    state velocity minus the co-rotating air velocity ``omega x r`` and the wind,
+    and ``rho`` decays exponentially with ``radius`` above ``r0``.
+    Inputs: ``state`` is position (m) followed by velocity (m/s); ``sigma`` is the
+    drag parameter of the spacecraft."""
     air_rotation = cross(par["omega"], state[:3])
     relative = tuple(v - a - b for v, a, b in zip(state[3:], air_rotation, par["wind"]))
     speed = arithmetic.sqrt(sum(arithmetic.square(value) for value in relative))
@@ -259,6 +333,9 @@ def drag(state, radius, par, arithmetic, sigma):
 
 
 def acceleration(state, model, par, arithmetic, sigma):
+    """Return the gravity plus drag acceleration at ``state``, m/s^2.
+
+    Raises ValueError when the radius is outside ``radius_domain_m``."""
     radius = radial(state[:3], model, arithmetic)
     return tuple(
         a + b
@@ -281,6 +358,7 @@ def differential_acceleration(target, delta_r, delta_v, model, par, arithmetic):
     radius_delta = (2 * dot(r, delta_r) + dot(delta_r, delta_r)) / (other + radius)
 
     def inverse_difference(power):
+        """Return ``1/other**power - 1/radius**power`` without subtracting them."""
         polynomial = sum(other ** (power - 1 - k) * radius**k for k in range(power))
         return -radius_delta * polynomial / (other**power * radius**power)
 
@@ -348,6 +426,13 @@ def differential_acceleration(target, delta_r, delta_v, model, par, arithmetic):
 
 
 def target_field(q, state, model, clock, arithmetic, par=None):
+    """Return the derivative of the target state with respect to q.
+
+    Inputs: ``q`` is the unwrapped anomaly in rad; ``state`` is target position
+    (m) followed by velocity (m/s); ``par`` optionally supplies precomputed
+    ``parameters``.
+    Outputs: tuple of six components, velocity / rate then acceleration / rate,
+    where rate is dq/dt in 1/s from ``clock``."""
     par = parameters(model, arithmetic) if par is None else par
     _, rate, _ = clock.evaluate(q, arithmetic)
     force = acceleration(state, model, par, arithmetic, par["sigma_target"])
@@ -355,6 +440,15 @@ def target_field(q, state, model, clock, arithmetic, par=None):
 
 
 def relative_field(q, state, target, command, model, clock, arithmetic, par=None):
+    """Return the derivative of the relative state with respect to q.
+
+    The relative state is position ``p`` (m) and ``w``, the derivative of ``p``
+    with respect to q (m/rad), in the commanded orbit frame. The result is
+    ``(w, w')`` with ``w'`` combining the rotated differential acceleration divided
+    by rate squared, the rotating-frame terms, the ``kappa`` damping term and the
+    command ``u``, which is added unchanged.
+    Inputs: ``q`` in rad; ``state`` the six relative components; ``target`` the
+    target position (m) and velocity (m/s); ``command`` three components."""
     par = parameters(model, arithmetic) if par is None else par
     rotation, rate, kappa = clock.evaluate(q, arithmetic)
     p, w = state[:3], state[3:]
@@ -375,6 +469,10 @@ class NonlinearRelativeDynamics:
     """Binary64 study truth for an explicitly point-valued physical model."""
 
     def __init__(self, model, clock):
+        """Store the model, clock, float arithmetic and point parameters.
+
+        Raises TypeError when ``model`` is not ``NonlinearModelBounds``. Raises
+        ValueError when a model parameter is an interval rather than a single value."""
         if not isinstance(model, NonlinearModelBounds):
             raise TypeError("Supply NonlinearModelBounds")
         self.model, self.clock, self.arithmetic = model, clock, FloatArithmetic()
@@ -382,12 +480,20 @@ class NonlinearRelativeDynamics:
 
     @staticmethod
     def _state(value, count):
+        """Return ``value`` as a float array of shape ``(count,)``.
+
+        Raises ValueError when the shape differs or an entry is not finite."""
         value = np.asarray(value, dtype=float)
         if value.shape != (count,) or not np.all(np.isfinite(value)):
             raise ValueError(f"Expected finite {count}-vector")
         return value
 
     def target_rhs(self, q, target):
+        """Return the derivative of the 6-component target state with respect to q.
+
+        Inputs: ``q`` is the unwrapped anomaly in rad; ``target`` is position (m) and
+        velocity (m/s). Raises ValueError when ``q`` is outside the clock domain, the
+        target is not a finite 6-vector or its radius is outside the model domain."""
         self.clock.check_domain((q, q))
         return np.asarray(
             target_field(
@@ -401,6 +507,15 @@ class NonlinearRelativeDynamics:
         )
 
     def relative_rhs(self, q, relative, target, u):
+        """Return the derivative of the relative state with respect to q.
+
+        Inputs: ``q`` in rad; ``relative`` is position (m) and its q derivative (m/rad)
+        in the commanded orbit frame; ``target`` is position (m) and velocity (m/s);
+        ``u`` is the three-component command.
+        Outputs: array of six components. Raises ValueError when ``q`` is outside the
+        clock domain, an input has the wrong shape or is not finite, or a relative
+        component exceeds ``relative_position_limit_m`` or
+        ``relative_velocity_limit_m_per_rad`` in magnitude."""
         self.clock.check_domain((q, q))
         state = self._state(relative, 6)
         if np.max(np.abs(state[:3])) > float(

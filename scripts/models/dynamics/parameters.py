@@ -31,6 +31,7 @@ ADTMPC_PARAMETER_KEYS = ("eccentricity", "alpha", "beta")
 def specific_angular_momentum(
     mu: float, semi_major_axis: float, eccentricity: float
 ) -> float:
+    """Return sqrt(mu * semi_major_axis * (1 - eccentricity^2)) as a float."""
     return float(np.sqrt(mu * semi_major_axis * (1.0 - eccentricity**2)))
 
 
@@ -47,6 +48,12 @@ class OrbitalPlantTruth:
     time_periapsis: float
 
     def __post_init__(self) -> None:
+        """Validate the plant parameters.
+
+        Raises ValueError if eccentricity is not finite and in [0, 1), alpha or beta
+        is negative or not finite, mu, semi_major_axis or mean_motion is not finite
+        and positive, or time_periapsis is not finite.
+        """
         if not np.isfinite(self.eccentricity) or not 0 <= self.eccentricity < 1:
             raise ValueError("Plant eccentricity must belong to [0, 1)")
         for name in ("alpha", "beta"):
@@ -60,11 +67,13 @@ class OrbitalPlantTruth:
 
     @property
     def specific_angular_momentum(self) -> float:
+        """Return the specific angular momentum from mu, semi_major_axis and e."""
         return specific_angular_momentum(
             self.mu, self.semi_major_axis, self.eccentricity
         )
 
     def dynamics_params(self) -> dict[str, float]:
+        """Return the plant values and specific angular momentum as a dict."""
         return {
             "mean_motion": self.mean_motion,
             "eccentricity": self.eccentricity,
@@ -77,6 +86,7 @@ class OrbitalPlantTruth:
         }
 
     def as_dict(self) -> dict[str, float]:
+        """Return the plant values and specific angular momentum as floats in a dict."""
         return {
             "eccentricity": float(self.eccentricity),
             "alpha": float(self.alpha),
@@ -90,6 +100,10 @@ class OrbitalPlantTruth:
 
     @classmethod
     def from_config(cls, config: SimulationConfig) -> OrbitalPlantTruth:
+        """Build the plant from the orbit section of a simulation configuration.
+
+        Uses orbit.target_drag as alpha and orbit.chaser_drag as beta.
+        """
         return cls(
             eccentricity=float(config.orbit.eccentricity),
             alpha=float(config.orbit.target_drag),

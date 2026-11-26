@@ -51,6 +51,12 @@ class SimulationConfig:
     solver: SolverConfig = field(default_factory=SolverConfig)
 
     def __post_init__(self) -> None:
+        """Validate the scenario-level settings.
+
+        Raises ValueError if seed is not an integer of at least 0, num_chasers or
+        num_update_steps is not an integer of at least 1, decoupled_mode is not a
+        bool, or anom_step or total_anom is not finite and positive.
+        """
         _positive_integer(self.seed, "seed", 0)
         _positive_integer(self.num_chasers, "num_chasers")
         _positive_integer(self.num_update_steps, "num_update_steps")
@@ -66,9 +72,11 @@ class SimulationConfig:
 
     @property
     def iter_anomaly(self) -> float:
+        """Return the anomaly span of one update, num_update_steps * anom_step."""
         return self.num_update_steps * self.anom_step
 
     def dynamics_params(self) -> dict[str, float]:
+        """Return the orbit's dynamics parameters with anom_step added."""
         params = self.orbit.dynamics_params()
         params["anom_step"] = self.anom_step
         return params

@@ -47,17 +47,21 @@ class DynamicsModel:
     independent_variable: str = "true_anomaly"
 
     def as_tuple(self) -> tuple[Callable, Callable, np.ndarray, np.ndarray, Callable]:
+        """Return (A, B, Q, R, d)."""
         return self.A, self.B, self.Q, self.R, self.d
 
     def legacy_return(self):
+        """Return ((A, B, Q, R, d), (None, None), (state_bounds, input_bounds))."""
         return self.as_tuple(), (None, None), (self.state_bounds, self.input_bounds)
 
 
 def _backend(kwargs: dict[str, Any]):
+    """Return kwargs['solver'] if present, else kwargs['m'], else numpy."""
     return kwargs.get("solver", kwargs.get("m", np))
 
 
 def _exp(backend, value):
+    """Return exp(value) with backend.exp when the backend has one, else numpy.exp."""
     return backend.exp(value) if hasattr(backend, "exp") else np.exp(value)
 
 
@@ -116,6 +120,11 @@ def orbital_ellp_drag(
     theta0 = kwargs.get("theta0", theta0)
 
     def radius_terms(q, local_kwargs):
+        """Return (R, dR/dq, h) at anomaly q from orbital_radius_terms.
+
+        Uses the enclosing orbit and drag parameters and the backend selected by
+        local_kwargs.
+        """
         return orbital_radius_terms(
             q,
             eccentricity=eccentricity,
@@ -129,6 +138,12 @@ def orbital_ellp_drag(
         )
 
     def A_func(t, t_p=0.0, *args, **local_kwargs):
+        """Return the 6x6 state matrix of the relative dynamics at anomaly q.
+
+        Inputs: q is taken from local_kwargs['q'], else from t; t_p is unused.
+        Outputs: a nested list when local_kwargs contains 'm', otherwise an
+        object-dtype numpy array.
+        """
         q = local_kwargs.get("q", t)
         radius, radius_prime, h = radius_terms(q, local_kwargs)
         k = radius_prime / radius
@@ -146,9 +161,16 @@ def orbital_ellp_drag(
         return values if "m" in local_kwargs else np.array(values, dtype=object)
 
     def B_func(*args, **local_kwargs):
+        """Return the 6x3 input matrix, three zero rows above a 3x3 identity."""
         return np.vstack((np.zeros((3, 3)), np.eye(3)))
 
     def d_func(t, t_p=0.0, *args, **local_kwargs):
+        """Return the 6-element drift term from the drag difference beta - alpha.
+
+        Inputs: q is taken from local_kwargs['q'], else from t; t_p is unused.
+        Outputs: a list when local_kwargs contains 'm', otherwise an object-dtype
+        numpy array.
+        """
         q = local_kwargs.get("q", t)
         radius, radius_prime, _ = radius_terms(q, local_kwargs)
         gamma = beta - alpha

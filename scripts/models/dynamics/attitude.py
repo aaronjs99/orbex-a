@@ -15,6 +15,11 @@ from scipy.spatial.transform import Rotation
 
 
 def finite_vector(value, name: str, size: int) -> np.ndarray:
+    """Return a float copy of value as a vector of size entries.
+
+    Inputs: name labels the value in the error message.
+    Outputs: raises ValueError if the shape differs or an entry is not finite.
+    """
     array = np.asarray(value, dtype=float)
     if array.shape != (size,) or not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain {size} finite values")
@@ -22,6 +27,11 @@ def finite_vector(value, name: str, size: int) -> np.ndarray:
 
 
 def inertia_matrix(value) -> np.ndarray:
+    """Return a float copy of value as a 3x3 inertia matrix.
+
+    Outputs: raises ValueError unless value is finite, symmetric (absolute
+    tolerance 1e-12) and positive definite.
+    """
     matrix = np.asarray(value, dtype=float)
     if (
         matrix.shape != (3, 3)

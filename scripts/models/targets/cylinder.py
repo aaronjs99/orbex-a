@@ -65,6 +65,13 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
     _solution: Any = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        """Initialize the rigid-body motion and store the cylinder geometry.
+
+        Calls _initialize_motion, which validates the motion inputs and builds the
+        dense trajectory. Then stores a read-only TumblingCylinderTarget with the
+        initial orientation converted from the initial quaternion and zero prescribed
+        angular velocity. Raises ValueError for invalid inputs.
+        """
         self._initialize_motion()
         geometry = TumblingCylinderTarget(
             radius=self.radius,
@@ -126,45 +133,77 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
 
     @property
     def initial_orientation(self) -> np.ndarray:
+        """Return a copy of the geometry's initial Euler orientation, in rad."""
         return self._geometry.initial_orientation.copy()
 
     @property
     def height(self) -> float:
+        """Return the cylinder height, in m."""
         return self._geometry.height
 
     @property
     def bounding_sphere_radius(self) -> float:
+        """Return the radius of the sphere enclosing the cylinder, in m."""
         return self._geometry.bounding_sphere_radius
 
     @property
     def rendezvous_radius(self) -> float:
+        """Return the bounding-sphere radius enlarged by the tolerance, in m."""
         return self._geometry.rendezvous_radius
 
     def approach_azimuth(self, initial_state: np.ndarray) -> float:
+        """Return the azimuth, in rad, of the chaser's initial position about the axis.
+
+        Delegates to the cylinder geometry using the position in initial_state.
+        """
         return self._geometry.approach_azimuth(initial_state)
 
     def approach_position_body(self, initial_state: np.ndarray) -> np.ndarray:
+        """Return the chaser's initial position in the target body frame, in m."""
         return self._geometry.approach_position_body(initial_state)
 
     def approach_axial_coordinate(self, initial_state: np.ndarray) -> float:
+        """Return the chaser's initial axial body coordinate, in m, clipped.
+
+        The clip limits the value to the span used for side docking points.
+        """
         return self._geometry.approach_axial_coordinate(initial_state)
 
     def side_docking_geometry(
         self, azimuth: float, axial: float = 0.0
     ) -> tuple[np.ndarray, np.ndarray]:
+        """Return the body-frame side docking point (m) and outward unit normal.
+
+        Inputs: azimuth in rad about the cylinder axis; axial coordinate in m
+        along it.
+        """
         return self._geometry.side_docking_geometry(azimuth, axial)
 
     def docking_points_body(
         self, count: int, start_azimuth: float = 0.0
     ) -> list[np.ndarray]:
+        """Return count evenly spaced side docking points in the body frame, in m.
+
+        start_azimuth in rad sets the first point's azimuth.
+        """
         return self._geometry.docking_points_body(count, start_azimuth)
 
     def assign_docking_targets(
         self, initial_states: Sequence[np.ndarray]
     ) -> list[dict[str, Any]]:
+        """Return one side-docking assignment per chaser initial state.
+
+        Delegates to the cylinder geometry; see assign_docking_targets in docking.py.
+        """
         return self._geometry.assign_docking_targets(initial_states)
 
     def collision_params(self, operation: str, anom: float) -> dict[str, Any]:
+        """Return the cylinder collision parameters for an operation at an anomaly.
+
+        The prescribed angular velocity is dropped and the orientation (rad),
+        rotation matrix and attitude model are taken from the propagated rigid-body
+        attitude at anom.
+        """
         values = self._geometry.collision_params(operation, 0.0)
         values.pop("angular_velocity")
         values.update(
@@ -177,6 +216,11 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
     def cylinder_constraint(
         self, anom: float, tube_radius: float = 0.0
     ) -> CylinderConstraint:
+        """Return the CylinderConstraint for the attitude at anom.
+
+        Radius and half length are enlarged by the tolerance fraction; tube_radius is
+        in m.
+        """
         return CylinderConstraint(
             radius=self.radius * (1.0 + self.tolerance),
             half_length=self.half_length * (1.0 + self.tolerance),
@@ -185,6 +229,13 @@ class RigidBodyCylinderTarget(RigidBodyMotion):
         )
 
     def as_dict(self) -> dict[str, Any]:
+        """Return a dict describing the target, its motion model and its assumptions.
+
+        Merges the cylinder geometry description (without prescribed angular
+        velocity) with the initial quaternion, initial body angular velocity (rad/s),
+        inertia and principal moments (kg m^2), anomaly domain, clock parameters,
+        integrator settings and modelling assumptions.
+        """
         values = self._geometry.as_dict()
         values.pop("angular_velocity")
         values.update(

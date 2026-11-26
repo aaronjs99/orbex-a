@@ -42,6 +42,14 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
     shape: str = field(default="composite_spacecraft", init=False)
 
     def __post_init__(self):
+        """Validate the target declaration and initialize its rigid-body motion.
+
+        Requires a SpacecraftGeometry in the target_body_COM frame and finite
+        positive mass_kg and docking_standoff, which are stored as floats. Calls
+        _initialize_motion, then requires the inertia trace not to exceed
+        2 m r^2 (with a 1e-12 relative allowance), where r is the bounding radius.
+        Raises TypeError for a non-geometry input and ValueError for other failures.
+        """
         if not isinstance(self.geometry, SpacecraftGeometry):
             raise TypeError("Spacecraft target requires explicit SpacecraftGeometry")
         if self.geometry.frame != "target_body_COM":
@@ -63,10 +71,12 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
 
     @property
     def initial_orientation(self):
+        """Return the initial Euler orientation, in rad, from the initial quaternion."""
         return quaternion_to_euler(self.initial_quaternion)
 
     @property
     def bounding_sphere_radius(self):
+        """Return the largest distance from the body origin to an occupied vertex, m."""
         return max(
             float(np.linalg.norm([float(x) for x in p]))
             for c in self.geometry.components
@@ -79,6 +89,11 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         return self.bounding_sphere_radius
 
     def collision_params(self, operation: str, anom: float) -> dict[str, Any]:
+        """Return the composite collision parameters for an operation at an anomaly.
+
+        Includes the rotation matrix at anom, the serialized geometry and its
+        fingerprint, the docking standoff (m), and zero tube radius.
+        """
         return {
             "operation": operation,
             "shape": "composite",
@@ -93,6 +108,11 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         }
 
     def assign_docking_targets(self, initial_states: Sequence[np.ndarray]):
+        """Return docking assignments for the chaser initial states on this composite.
+
+        Delegates to assign_composite_docking_targets in
+        orbexa.models.geometry.rendezvous.
+        """
         from orbexa.models.geometry.rendezvous import (
             assign_composite_docking_targets,
         )
@@ -114,6 +134,13 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         docking_standoff=None,
         **integration_options,
     ):
+        """Build a target from a SimulationConfig plus explicit geometry and mass.
+
+        Inputs: mass_kg in kg, initial_body_angular_velocity in rad/s. Defaults come
+        from config for the quaternion, inertia (kg m^2) and docking standoff (m);
+        the anomaly domain runs from 0 to the last update plus its longest prediction
+        horizon. integration_options are forwarded to the constructor.
+        """
         end = (
             max(config.total_anom, config.iter_anomaly)
             + max(config.mpc.horizon_steps.values()) * config.anom_step
@@ -141,6 +168,12 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
         )
 
     def as_dict(self):
+        """Return a dict describing the target, geometry, motion model and assumptions.
+
+        Includes the geometry and fingerprint, mass (kg), radii (m), initial
+        quaternion, initial body angular velocity (rad/s), inertia and principal
+        moments (kg m^2), anomaly domain, clock parameters and integrator settings.
+        """
         return {
             "shape": self.shape,
             "geometry": self.geometry.as_dict(),
@@ -195,6 +228,12 @@ class RigidBodySpacecraftTarget(RigidBodyMotion):
 
     @classmethod
     def from_dict(cls, value):
+        """Build a target from a dict produced by as_dict.
+
+        Raises ValueError when shape is not composite_spacecraft, when the stored
+        geometry fingerprint differs from the rebuilt geometry, or when the clock
+        model or integrator is unsupported.
+        """
         if value.get("shape") != "composite_spacecraft":
             raise ValueError("Unsupported physical spacecraft target shape")
         geometry = SpacecraftGeometry.from_dict(value["geometry"])
