@@ -41,6 +41,25 @@ class BoundedNavigationFilter:
         sensor_fingerprints=(),
         initial_target_rate_box=None,
     ):
+        """Store the priors and validate them.
+
+        Inputs: initial_relative_boxes: agent to six-state IntervalBox;
+            target_ephemeris_box: six-state IntervalBox; clock, model: identity
+            sources for fingerprints; initial_q: unwrapped anomaly; initial_time_s:
+            physical-time enclosure in s (pair or IntervalBox); history_length:
+            maximum retained holds and observations per agent;
+            initial_target_rotation: 3x3 matrix; initial_target_rotation_error:
+            operator-error bound; target_rate_bound_rad_s and
+            target_acceleration_bound_rad_s2: norm bounds; encloser: flow encloser,
+            default NonlinearFlowEncloser(); sensor_fingerprints: allowed sensor
+            model fingerprints (if empty, the first admitted packet sets one);
+            initial_target_rate_box: body-rate box in rad/s, default a cube of
+            half-width target_rate_bound_rad_s.
+        Raises ValueError for an empty prior, a non-six-state box, a history_length
+        that is a bool or below 1, a negative error or bound, a rate box that is not
+        a three-dimensional IntervalBox, or a rate box whose norm exceeds
+        target_rate_bound_rad_s.
+        """
         from orbexa.proofs.nonlinear import NonlinearFlowEncloser
 
         self.boxes, self.target = dict(initial_relative_boxes), target_ephemeris_box
@@ -109,6 +128,20 @@ class BoundedNavigationFilter:
         )
 
     def predict(self, flows_by_agent, target_flow, commands=None):
+        """Advance every agent and the target through one proved simultaneous hold.
+
+        Inputs: flows_by_agent: agent to proved relative flow; target_flow: proved
+            target flow. commands is not used.
+        Outputs: the NavigationEstimate after prediction.
+        State: appends the hold to history, replaces the boxes with the flow
+        endpoints, moves q and the physical-time enclosure to the target flow's end,
+        propagates the rotation estimate, and widens the rate box by
+        target_acceleration_bound_rad_s2 times the elapsed physical time upper bound.
+        Raises ValueError when the filter is INCONSISTENT, flows do not cover exactly
+        the filter's agents, any flow is unproven, or a flow or target flow does not
+        match the retained prior, start anomaly, hold width, or model, clock and
+        target fingerprints.
+        """
         if self.status == "INCONSISTENT":
             raise ValueError("An inconsistent navigation filter cannot resume silently")
         if set(flows_by_agent) != set(self.boxes) or not target_flow.proven:
@@ -181,6 +214,14 @@ class BoundedNavigationFilter:
         return self.estimate()
 
     def _position_box(self, packet):
+        """Return the relative-position box implied by a range/bearing packet.
+
+        The packet error box is measurement minus true value, so the true range and
+        bearing components are the value minus the support. Position components are
+        the interval products of the range with each bearing component.
+        Raises ValueError when the packet does not have four components or the range
+        support is not proved positive.
+        """
         if len(packet.value) != 4:
             raise ValueError("Range/bearing packet has four components")
         # The packet support is measurement-minus-true, so invert by subtraction.
@@ -197,6 +238,10 @@ class BoundedNavigationFilter:
         )
 
     def _constrain(self, box, position):
+        """Intersect box with the box fixing its position part to position.
+
+        Outputs: IntervalBox with the velocity bounds of box kept, or None if empty.
+        """
         return intersect(
             box,
             IntervalBox(position.lower + box.lower[3:], position.upper + box.upper[3:]),
@@ -323,6 +368,10 @@ class BoundedNavigationFilter:
         )
 
     def _observation_state(self, box, position, velocity=None):
+        """Intersect box with the position constraint and, if given, the velocity one.
+
+        Outputs: IntervalBox, or None when any intersection is empty.
+        """
         constrained = self._constrain(box, position)
         if constrained is None or velocity is None:
             return constrained
@@ -335,6 +384,15 @@ class BoundedNavigationFilter:
         )
 
     def _delayed(self, packet, position, velocity=None):
+        """Replay a range/bearing observation from its acquisition event to q.
+
+        Outputs: (box, reason). (None, reason) retains the state without narrowing
+        when acquired_q is not a single event, the event is not the start of a
+        retained hold, or a replayed flow is not proven. (False, reason) means the
+        observation contradicts the box at its acquisition event. Otherwise box is
+        the intersection of the current agent box with the replayed candidate (None
+        if empty).
+        """
         if packet.acquired_q[0] != packet.acquired_q[1]:
             return None, "Uncertain acquisition event retained without narrowing"
         acquired = packet.acquired_q[0]
@@ -382,6 +440,14 @@ class BoundedNavigationFilter:
         ), "Delayed observation replayed through certified holds"
 
     def _gnss(self, packet):
+        """Return the target ephemeris box inferred from a chaser GNSS packet.
+
+        Outputs: the inferred box at the current event, or replayed through the
+        retained target holds to the current q for an earlier single acquisition
+        event. None when acquired_q is not a single event, the event is outside
+        history, or a replayed target flow is not proven. False when the inferred box
+        does not meet the target flow's initial state at the acquisition event.
+        """
         if packet.acquired_q == (self.q, self.q):
             return infer_target_ephemeris(
                 packet, self.boxes[packet.agent_id], self.clock
@@ -421,6 +487,22 @@ class BoundedNavigationFilter:
         return candidate
 
     def consume(self, packets, event_q=None, physical_time_box=None):
+        """Narrow the retained state with packets and return the resulting estimate.
+
+        Inputs: packets: iterable of SensorPacket; event_q: optional, must equal q;
+            physical_time_box: optional, must equal the retained time enclosure.
+        Outputs: NavigationEstimate. Packets already accepted are skipped. Packets
+        with an unsupported frame, acquisition after q, delivery after the lower
+        physical-time bound, or non-VALID quality are logged as
+        NOT_READY_OR_UNSUPPORTED. A packet whose resolution is unavailable is logged
+        UNRESOLVED and the loop continues. Accepted packets append to packet_ids and
+        events.
+        State: sets status INCONSISTENT and returns at once when a sensor fingerprint
+        is not allowed or an observation contradicts the retained enclosure.
+        Raises ValueError when the filter is already INCONSISTENT, event_q or
+        physical_time_box does not match, a velocity constraint is disjoint, or a
+        target pose packet does not have 12 components.
+        """
         if self.status == "INCONSISTENT":
             raise ValueError("An inconsistent navigation filter cannot resume silently")
         if event_q is not None and exact(event_q) != self.q:
@@ -582,6 +664,7 @@ class BoundedNavigationFilter:
         return self.estimate()
 
     def estimate(self):
+        """Return a NavigationEstimate snapshot of the current retained state."""
         return NavigationEstimate(
             self.q,
             self.time,
@@ -636,6 +719,7 @@ class BoundedNavigationFilter:
         )
 
         def refuse(reason):
+            """Set status INCONSISTENT with reason and raise ValueError(reason)."""
             self.status, self.reason = "INCONSISTENT", reason
             raise ValueError(reason)
 

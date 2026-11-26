@@ -33,6 +33,10 @@ PERSISTENCE = "fixed-affine-per-agent-v1"
 
 
 def _positive_integer(value, name):
+    """Return value if it is an integer of at least 1 (booleans refused).
+
+    Raises ValueError naming name otherwise.
+    """
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(name + " must be a positive integer")
     return value
@@ -52,6 +56,10 @@ class SharedAffineActuationCell:
     prior_fingerprint: str
 
     def __post_init__(self):
+        """Require twelve parameter coordinates and a nonempty prior fingerprint.
+
+        Raises ValueError otherwise.
+        """
         if self.parameters.dimension != 12 or not self.prior_fingerprint:
             raise ValueError(
                 "A shared affine cell needs twelve coordinates and its prior identity"
@@ -59,6 +67,13 @@ class SharedAffineActuationCell:
 
     @classmethod
     def from_prior(cls, prior):
+        """Build the cell covering the identity matrix and zero bias under the prior.
+
+        Each matrix entry is widened by tilt_rad * (1 + gain_error) +
+        round_relative, with gain_error added on the diagonal; each bias entry is
+        widened by bias_abs. Raises TypeError unless prior is exactly a
+        CommandDependentActuationPrior.
+        """
         if type(prior) is not CommandDependentActuationPrior:
             raise TypeError("Use the supported declared affine actuation prior")
         residual = prior.tilt_rad * (1 + prior.gain_error) + prior.round_relative
@@ -74,6 +89,7 @@ class SharedAffineActuationCell:
         return cls(IntervalBox(tuple(lower), tuple(upper)), prior.fingerprint)
 
     def as_dict(self):
+        """Return the parameters, prior fingerprint, coordinate layout, persistence."""
         return {
             "parameters": self.parameters.as_dict(),
             "prior_fingerprint": self.prior_fingerprint,
@@ -83,9 +99,19 @@ class SharedAffineActuationCell:
 
     @property
     def fingerprint(self):
+        """Return a fingerprint of as_dict()."""
         return fingerprint(self.as_dict())
 
     def applied_input(self, command, original_support):
+        """Return a box enclosing M u + b over the cell, within original_support.
+
+        A rounding allowance for the product is added before intersecting.
+
+        Outputs:
+            The intersection box, or None if it is empty. Raises ValueError if
+            command or original_support is not three-dimensional, or a command
+            component is not exactly a binary64 value.
+        """
         values = tuple(map(exact, command))
         if len(values) != 3 or original_support.dimension != 3:
             raise ValueError("A shared actuator requires three held command components")
@@ -151,6 +177,11 @@ class LinkedObservationWindow:
     """Bounded chronological history; no truth, sensor draw or point fit enters."""
 
     def __init__(self, agent_ids, holds_per_agent):
+        """Create one bounded deque of holds_per_agent observations per agent.
+
+        Raises ValueError if holds_per_agent is not a positive integer or no agent
+        is given.
+        """
         self.holds_per_agent = _positive_integer(holds_per_agent, "Window length")
         self.history = {
             str(agent): deque(maxlen=holds_per_agent) for agent in agent_ids
@@ -159,6 +190,12 @@ class LinkedObservationWindow:
             raise ValueError("Declare the finite observing fleet")
 
     def append(self, transitions):
+        """Append transitions to their agents' histories in order.
+
+        An item equal to the agent's latest one is skipped. Raises ValueError if an
+        item is not a NonlinearTransitionObservation, names an undeclared agent, or
+        starts before the previous hold ends.
+        """
         for item in transitions:
             if (
                 not isinstance(item, NonlinearTransitionObservation)
@@ -180,20 +217,26 @@ class LinkedObservationWindow:
             history.append(item)
 
     def transitions(self):
+        """Return all retained observations, grouped by agent in chronological order."""
         return tuple(item for history in self.history.values() for item in history)
 
 
 class _FlowBudget:
+    """Counters for flow and nuisance-cell evaluations against one maximum."""
+
     def __init__(self, maximum):
+        """Set the maximum and zero the used and cell counters."""
         self.maximum, self.used, self.cell_evaluations = maximum, 0, 0
 
     def take(self):
+        """Consume one flow evaluation; return False when the maximum is reached."""
         if self.used >= self.maximum:
             return False
         self.used += 1
         return True
 
     def take_cell(self):
+        """Count a cell evaluation; return False if either counter is at the maximum."""
         if self.cell_evaluations >= self.maximum or self.used >= self.maximum:
             return False
         self.cell_evaluations += 1
@@ -219,6 +262,12 @@ class LinkedNonlinearMembershipContractor:
         max_flow_evaluations_per_candidate=256,
         max_agents=8,
     ):
+        """Set the encloser and the candidate, cell, flow and fleet budgets.
+
+        Uses a NonlinearFlowEncloser when none is given. Each budget must be a
+        positive integer (ValueError otherwise). Starts with no declared fleet and
+        no surviving cells.
+        """
         self.encloser = encloser or NonlinearFlowEncloser()
         self.max_boxes = _positive_integer(max_boxes, "Candidate budget")
         self.max_nuisance_cells = _positive_integer(
@@ -233,6 +282,12 @@ class LinkedNonlinearMembershipContractor:
 
     @staticmethod
     def _supported(transitions):
+        """Return True only if every transition declares the fixed-affine setup.
+
+        Each needs an agent_id, a commanded_input, an exact
+        CommandDependentActuationPrior, the PERSISTENCE label, point-valued start_q
+        and width_q, and a positive width.
+        """
         for item in transitions:
             if (
                 not item.agent_id
@@ -247,6 +302,15 @@ class LinkedNonlinearMembershipContractor:
         return True
 
     def _target_sequence(self, model, transitions, clock, budget, records):
+        """Enclose the target flow of each transition of one agent, linking endpoints.
+
+        Contiguous holds intersect the previous endpoint with the next initial box.
+
+        Outputs:
+            (flows, False) with None for unproven holds; (None, True) when a
+            linked or observed target box is proven disjoint; (None, False) when
+            the flow budget is exhausted. Appends to records.
+        """
         result, endpoint, time_endpoint, previous_end = [], None, None, None
         for item in transitions:
             initial, initial_time = item.target_initial, item.physical_time_initial
@@ -302,6 +366,13 @@ class LinkedNonlinearMembershipContractor:
     def _evaluate_cell(
         self, cell, model, transitions, target_flows, clock, budget, records
     ):
+        """Return True if the actuator cell is proven inconsistent with the history.
+
+        Proof comes from a disjoint linked initial box, an empty applied-input
+        support, or a proven relative endpoint disjoint from the observation.
+        Returns False when none is proven, including when the flow budget runs out.
+        Appends one record per hold to records.
+        """
         endpoint, previous_end = None, None
         for item, target in zip(transitions, target_flows):
             initial = item.relative_initial
@@ -369,6 +440,23 @@ class LinkedNonlinearMembershipContractor:
         return False
 
     def contract(self, candidate_models, transitions, observations=None, clock=None):
+        """Discard candidate models proven inconsistent under shared actuator cells.
+
+        Falls back to the independent contractor, prefixing a record, when the
+        transitions lack the fixed-affine declaration. Otherwise, per candidate and
+        agent, the target flows are enclosed and the actuator cell is bisected under
+        the cell and flow budgets. A candidate is discarded only when a target is
+        proven inconsistent or every cell is; unresolved ones and candidates beyond
+        max_boxes are retained. Surviving cells are stored per candidate, agent and
+        prior, and entries for discarded candidates are dropped.
+
+        Outputs:
+            NonlinearMembershipResult, status INCONSISTENT when nothing is
+            retained. Raises ValueError if clock is None, candidates are empty or
+            untyped, the fleet exceeds max_agents or differs from the first declared
+            fleet, or an agent's window mixes priors or overlaps; TypeError if
+            observations is given or a transition is untyped.
+        """
         models, transitions = tuple(candidate_models), tuple(transitions)
         if (
             clock is None
