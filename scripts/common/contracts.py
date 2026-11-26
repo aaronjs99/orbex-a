@@ -52,6 +52,12 @@ class MPCProblem:
     input_reference: np.ndarray | None = None
 
     def __post_init__(self) -> None:
+        """Validate the step count and coerce the optional cost and reference arrays.
+
+        Outputs: stores the terminal cost matrix and the state and input
+        references as float arrays. Raises ValueError for fewer than two steps,
+        or for an array that is non-finite or has the wrong shape.
+        """
         if self.num_steps < 2:
             raise ValueError(
                 "MPC requires at least two state samples and one control interval"
@@ -79,10 +85,12 @@ class MPCProblem:
 
     @property
     def num_states(self) -> int:
+        """Number of states, taken from the length of ``initial_state``."""
         return len(self.initial_state)
 
     @property
     def num_inputs(self) -> int:
+        """Number of inputs, taken from the column count of ``input_matrix``."""
         return self.input_matrix.shape[1]
 
     @property
