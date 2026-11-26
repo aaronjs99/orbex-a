@@ -42,6 +42,11 @@ class GekkoSolver(SolverBase):
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
+        """Read the GEKKO options from config and clear the model state.
+
+        Outputs:
+            The max_memory option is validated by gekko_memory_exponent.
+        """
         super().__init__(config)
         self.remote = self.config.get("remote", False)
         self.max_iter = self.config.get("max_iter", 3000)

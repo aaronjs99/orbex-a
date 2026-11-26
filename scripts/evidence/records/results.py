@@ -71,10 +71,19 @@ class ADTMPCMissionResult:
     tube_diagnostics: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """Return a deep copy of the result's attributes as a dictionary."""
         return copy.deepcopy(self.__dict__)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ADTMPCMissionResult:
+        """Build a result from a dictionary, defaulting omitted optional histories.
+
+        Missing histories become empty lists or dictionaries; sample phases come from
+        metadata or default to "rendezvous"; active, physical and tightened margins
+        default to the recorded rendezvous or docking-cylinder margins. The input is
+        not modified. Raises TypeError if required fields are missing or unknown
+        fields are present.
+        """
         payload = copy.deepcopy(data)
         # Partial and older recorded runs can omit optional diagnostic histories.
         # No trajectory, physical context, or current-model identity is invented.
@@ -133,6 +142,11 @@ class MissionResultStore:
 
     @staticmethod
     def save(result: ADTMPCMissionResult, output_dir: Path) -> Path:
+        """Save the result as ``mission_data.json`` in output_dir and return its path.
+
+        Creates output_dir if needed and writes the schema-tagged payload with
+        ``save_data``. Raises OSError if that returns false.
+        """
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / MissionResultStore.filename
@@ -143,6 +157,7 @@ class MissionResultStore:
 
     @staticmethod
     def load(path: Path) -> ADTMPCMissionResult:
+        """Load a mission result from a file, with or without the schema wrapper."""
         payload = load_data(Path(path))
         if "result" in payload:
             return ADTMPCMissionResult.from_dict(payload["result"])

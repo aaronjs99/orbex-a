@@ -14,6 +14,17 @@ from orbexa.common.layout import ProjectLayout
 
 
 def main(argv=None):
+    """Run one arm of a predeclared nonlinear study from the command line.
+
+    Inputs:
+        argv: argument list, or None for sys.argv.
+
+    Outputs:
+        Prepends --proof-deps to sys.path when given, calls run_study_arm and
+        prints its result as JSON. Returns 0 when the result succeeded, else 2.
+        Exits through parser.error on OSError, ValueError, TypeError or
+        RuntimeError.
+    """
     parser = argparse.ArgumentParser(
         description="Run one explicit arm of a predeclared sensed nonlinear 2-by-2 study."
     )

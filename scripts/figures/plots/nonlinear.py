@@ -22,6 +22,7 @@ from orbexa.figures.style import _STYLE, chaser_color
 
 
 def _get(value, key, default=None):
+    """Return ``key`` from a mapping, or the attribute of that name otherwise."""
     return (
         value.get(key, default)
         if isinstance(value, Mapping)
@@ -30,6 +31,12 @@ def _get(value, key, default=None):
 
 
 def _array(value, shape, label):
+    """Return ``value`` as a float array of ``shape``.
+
+    Outputs:
+        Raises ValueError naming ``label`` if the shape differs or a value is
+        not finite.
+    """
     result = np.asarray(value, dtype=float)
     if result.shape != shape or not np.all(np.isfinite(result)):
         raise ValueError(
@@ -39,6 +46,12 @@ def _array(value, shape, label):
 
 
 def _box(value, dimension, label):
+    """Return the (lower, upper) arrays of a saved interval box of ``dimension``.
+
+    Outputs:
+        Raises ValueError naming ``label`` if ``value`` is not a mapping, an
+        array is misaligned or not finite, or any lower bound exceeds its upper.
+    """
     if not isinstance(value, Mapping):
         raise ValueError(label + " lacks its saved interval box")
     lower, upper = (
@@ -51,6 +64,7 @@ def _box(value, dimension, label):
 
 
 def _number(value):
+    """Return ``value`` as a float, parsing strings as exact fractions."""
     return float(Fraction(value)) if isinstance(value, str) else float(value)
 
 
@@ -77,6 +91,19 @@ class NonlinearMissionPlots:
     """
 
     def __init__(self, result, output_dir, *, dpi=180, lifecycle=None):
+        """Validate the saved result and store the aligned reference nodes and times.
+
+        Inputs:
+            result: saved nonlinear mission result, mapping or object.
+            output_dir: directory that receives figures and the manifest.
+            dpi: integer figure resolution, at least 50.
+            lifecycle: optional saved completion lifecycle result.
+
+        Outputs:
+            Raises ValueError for an invalid dpi, a model_version or state_frame
+            other than the nonlinear reference-orbit record, non-increasing
+            anomaly or elapsed times, or no chaser trajectories.
+        """
         if not isinstance(dpi, int) or isinstance(dpi, bool) or dpi < 50:
             raise ValueError("dpi must be an integer of at least 50")
         self.result, self.output_dir, self.dpi = result, Path(output_dir), dpi
@@ -116,6 +143,21 @@ class NonlinearMissionPlots:
 
     @classmethod
     def from_directory(cls, directory, output_dir, **kwargs):
+        """Build the plots from a saved run directory or a mission data file.
+
+        Reads approach/mission_data.json, and completion/lifecycle_data.json when
+        present and no ``lifecycle`` keyword is given, recording each file's path
+        and SHA-256 as the source.
+
+        Inputs:
+            directory: run directory, or a path to a saved approach file.
+            output_dir: directory that receives figures and the manifest.
+            **kwargs: forwarded to the constructor.
+
+        Outputs:
+            Raises ValueError if the lifecycle schema is not
+            orbexa.physical-mission-lifecycle.v1.
+        """
         from orbexa.evidence.records.results import MissionResultStore
 
         directory = Path(directory)
@@ -153,6 +195,11 @@ class NonlinearMissionPlots:
         return result
 
     def _save(self, figure, filename, label):
+        """Tighten the layout, save the figure into the output directory and clear it.
+
+        Outputs:
+            Writes the PNG at ``dpi`` and appends (path, label) to ``artifacts``.
+        """
         try:
             figure.tight_layout(rect=(0, 0.035, 1, 0.95))
             path = self.output_dir / filename
@@ -162,6 +209,7 @@ class NonlinearMissionPlots:
         self.artifacts.append((path, label))
 
     def _decorate(self, figure, title):
+        """Set the figure title and footnote, marking complete or prefix approaches."""
         complete = bool(
             _get(self.result, "success") and self.metadata.get("mission_complete")
         )
@@ -181,6 +229,7 @@ class NonlinearMissionPlots:
 
     @staticmethod
     def _axes(axes, xlabel="Elapsed simulated physical time (s)"):
+        """Grid every axes, set its x label and add a legend where labelled."""
         for axis in np.asarray(axes, dtype=object).flat:
             axis.grid(True, alpha=0.6)
             axis.set_xlabel(xlabel)
@@ -188,6 +237,16 @@ class NonlinearMissionPlots:
                 axis.legend(fontsize=7, ncol=4)
 
     def render(self):
+        """Write every available figure and the plot manifest.
+
+        A figure whose records are missing or misaligned is skipped, with the
+        error text kept in ``skipped_artifacts``.
+
+        Outputs:
+            Writes up to five PNG figures and nonlinear-plot-manifest.json into
+            ``output_dir``; resets and sets ``artifacts``, ``skipped_artifacts`` and
+            ``alignment``; returns the list of (path, label) artifacts.
+        """
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.artifacts, self.skipped_artifacts, self.alignment = [], {}, {}
         with plt.rc_context(_STYLE):
@@ -349,11 +408,17 @@ class NonlinearMissionPlots:
         return rows
 
     def _navigation(self):
+        """Plot navigation error and its saved bound against time, and their ratio.
+
+        Uses ``navigation_series``; nodes without a VALID record are gaps. Saves
+        nonlinear_navigation.png.
+        """
         rows = self.navigation_series()
         time = self.time
         indices = [row["index"] for row in rows]
 
         def matched(values):
+            """Return a NaN array over nodes with ``values`` at matched nodes."""
             result = np.full(len(self.q), np.nan)
             result[indices] = values
             return result
@@ -420,6 +485,15 @@ class NonlinearMissionPlots:
         )
 
     def _tubes(self):
+        """Plot saved position and sliding tube radii and bandwidth per chaser.
+
+        Reads tube_diagnostics omega, phi and bandwidth. Saves
+        nonlinear_tubes_bandwidth.png.
+
+        Outputs:
+            Raises ValueError if the diagnostics do not name the saved fleet, are
+            misaligned or are negative.
+        """
         diagnostics = _get(self.result, "tube_diagnostics", {})
         if set(diagnostics) != set(self.ids):
             raise ValueError("Tube diagnostics do not name the exact saved fleet")
@@ -471,6 +545,16 @@ class NonlinearMissionPlots:
         )
 
     def _widths(self):
+        """Plot recorded eccentricity, alpha and beta feasible-set marginal widths.
+
+        Reads feasible_set_history and the physical adaptation prior; alpha and
+        beta widths are divided by the reference density coefficient. Saves
+        nonlinear_physical_set_widths.png.
+
+        Outputs:
+            Raises ValueError if the history length differs from the saved nodes or
+            an interval is reversed.
+        """
         history = _get(self.result, "feasible_set_history", [])
         if len(history) != len(self.q):
             raise ValueError(
@@ -519,6 +603,15 @@ class NonlinearMissionPlots:
         )
 
     def _execution(self):
+        """Plot held command sources against reference anomaly and update timing.
+
+        Reads fleet_hold_records and update_wall_timing. Saves
+        nonlinear_execution_timeline.png.
+
+        Outputs:
+            Raises ValueError if holds are missing, not contiguous, lack a source
+            or width, or update indices do not increase.
+        """
         records = self.metadata.get("fleet_hold_records", [])
         if not records:
             raise ValueError("No exact completed hold index/records were retained")
@@ -647,6 +740,15 @@ class NonlinearMissionPlots:
         )
 
     def _contact(self):
+        """Plot the saved finite-contact trace of the supplied lifecycle.
+
+        Saves nonlinear_finite_contact.png.
+
+        Outputs:
+            Raises ValueError if no lifecycle was supplied, it does not bind the
+            plotted approach, it has no supported finite-contact trace, or the
+            trace is misaligned, reversed in time or has activation outside [0, 1].
+        """
         from orbexa.evidence.records.archive import semantic_sha256
 
         if self.lifecycle is None:

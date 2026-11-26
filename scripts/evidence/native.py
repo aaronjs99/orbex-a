@@ -32,6 +32,19 @@ def native_controller(directory, messages):
     counter_lock, current_call = threading.Lock(), threading.local()
 
     def retained_attempt(problem):
+        """Run one native GEKKO tube solve and log its working directory and files.
+
+        Numbers the attempt, adds IPOPT output-file options to the problem, calls the
+        original solve, and in all cases (including exceptions) appends a record with
+        the attempt number, controller call, directory, outcome, and per-file SHA-256
+        digests to ``native-attempts.jsonl``.
+
+        Inputs:
+            problem: GekkoDynamicTube problem whose ``model.solver_options`` is
+                extended in place.
+        Outputs:
+            Returns the original solve result; exceptions from it propagate.
+        """
         nonlocal attempts
         with counter_lock:
             attempts += 1
@@ -71,12 +84,24 @@ def native_controller(directory, messages):
     GekkoDynamicTube._solve_once = retained_attempt
 
     class TrackedController:
+        """MPCController wrapper reporting each solve_step call to a message queue."""
+
         solver_backend = "gekko"
 
         def __init__(self, **kwargs):
+            """Construct the wrapped MPCController from the keyword arguments."""
             self.inner = MPCController(**kwargs)
 
         def solve_step(self, **kwargs):
+            """Number the call, post solving and result messages, and delegate.
+
+            Inputs:
+                **kwargs: forwarded to ``MPCController.solve_step``; ``start_anom`` is
+                    also reported in the messages.
+            Outputs:
+                Puts two ``native`` messages on the queue (before and after the solve)
+                and returns the inner controller's result.
+            """
             nonlocal calls
             with counter_lock:
                 calls += 1

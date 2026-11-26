@@ -15,6 +15,12 @@ from orbexa.common.io.data import convert_numpy_to_list
 
 
 def _rotation(quaternion):
+    """Return the rotation matrix of a unit xyzw body-to-ECI quaternion.
+
+    Outputs:
+        Raises ValueError if the shape is not (4,), a value is not finite or the
+        norm differs from 1 by more than 1e-8.
+    """
     from scipy.spatial.transform import Rotation
 
     value = np.asarray(quaternion, dtype=float)
@@ -58,6 +64,13 @@ def _contact_projection(attachment, approach, approach_digest, assembly, first_s
     count = len(times)
 
     def states(name):
+        """Return the finite-contact history of one body as lists, with fuel in kg.
+
+        Outputs:
+            Raises ValueError if the state fields are not aligned and finite, a
+            quaternion is not unit, a sample time differs from the contact clock by
+            more than 1e-9 s, or fuel is not finite and nonnegative.
+        """
         values = [
             row["target"] if name == "target" else row["chasers"][name]
             for row in history
@@ -281,6 +294,11 @@ class LifecycleDataset:
     """Physical assembly histories with explicit fixture/mission provenance."""
 
     def __init__(self, result):
+        """Store the lifecycle result converted to plain lists and dicts.
+
+        Inputs:
+            result: lifecycle result object with ``to_dict``, or a mapping.
+        """
         # Match persistence's recursive NumPy conversion before hashing or
         # projecting live records, including arrays nested in approach metadata.
         self.result = convert_numpy_to_list(
@@ -288,6 +306,19 @@ class LifecycleDataset:
         )
 
     def to_dict(self):
+        """Return the replay dataset projected from the recorded lifecycle result.
+
+        Reads the approach, assembly history, attachment, detumbling, deorbit and
+        configuration records, and derives altitude and osculating perigee
+        altitude in m from the recorded positions and velocities. Nothing is
+        interpolated.
+
+        Outputs:
+            Dict with schema orbexa.lifecycle.studio.v1 and approach and lifecycle
+            SHA-256 digests. Raises ValueError if there is no assembly history, it
+            is misaligned, non-finite or not increasing in time, or masses, fuel,
+            orbital constants, surface contacts or body radii are not physical.
+        """
         r = self.result
         from orbexa.evidence.records.results import ADTMPCMissionResult
 
@@ -502,10 +533,23 @@ class LifecycleRenderer:
     """Export source-derived plots and a compact browser replay data file."""
 
     def __init__(self, output_dir: Path):
+        """Store the output directory and an empty skipped-artifact record."""
         self.output_dir = Path(output_dir)
         self.skipped_artifacts = {}
 
     def render(self, result, *, animate: bool = False, fps: int = 12):
+        """Write the replay data and lifecycle plot, and optionally an animation.
+
+        Inputs:
+            result: lifecycle result accepted by ``LifecycleDataset``.
+            animate: also write the animation files.
+            fps: animation frames per second.
+
+        Outputs:
+            Writes replay-data.json and mission-lifecycle.png into ``output_dir``;
+            returns a dict of the written paths (``data``, ``plot``, and the
+            animation entries when requested).
+        """
         import matplotlib
 
         matplotlib.use("Agg")
@@ -615,6 +659,20 @@ class LifecycleRenderer:
         return artifacts
 
     def _animation(self, data, fps):
+        """Write the GIF, an MP4 if encoding succeeds, and the provenance file.
+
+        Frames are evenly spaced samples plus every phase change. A failed MP4
+        encode is recorded in ``skipped_artifacts``.
+
+        Inputs:
+            data: replay dataset from ``LifecycleDataset.to_dict``.
+            fps: positive integer frames per second.
+
+        Outputs:
+            Writes mission-lifecycle.gif, optionally mission-lifecycle.mp4 and
+            animation-provenance.json; returns a dict of the GIF and MP4 paths.
+            Raises ValueError if ``fps`` is not a positive integer.
+        """
         import matplotlib.pyplot as plt
         from matplotlib.animation import FFMpegWriter, FuncAnimation, PillowWriter
 
@@ -668,6 +726,7 @@ class LifecycleRenderer:
             status = figure.suptitle("ORBEX-A")
 
             def draw(i):
+                """Move the marker and cursor to sample ``i`` and update the title."""
                 marker.set_data([p[i, 0]], [p[i, 1]])
                 cursor.set_xdata([t[i], t[i]])
                 prefix = (

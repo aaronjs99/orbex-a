@@ -17,6 +17,10 @@ def write_record(path, value):
     """Publish finite JSON only after its complete temporary record is written."""
 
     def convert(item):
+        """Convert dataclasses, paths, fractions and NumPy values for JSON output.
+
+        Raises TypeError for any other unsupported type.
+        """
         if is_dataclass(item):
             return asdict(item)
         if isinstance(item, (Path, Fraction)):
@@ -54,11 +58,18 @@ class StudyTelemetry:
     """Append small events and publish progress after archive acknowledgment."""
 
     def __init__(self, directory, started):
+        """Store the output directory, start time and a lock for progress writes.
+
+        Inputs:
+            directory: study output directory.
+            started: ``time.perf_counter()`` value at the start of the run.
+        """
         self.directory = Path(directory)
         self.started = started
         self.lock = threading.Lock()
 
     def put(self, value):
+        """Append one event as a JSON line to ``progress.jsonl`` under the lock."""
         # Native attempts have their own durable source transcript. Keep only
         # small progress events here, never trajectory or proof copies.
         with (
@@ -68,6 +79,19 @@ class StudyTelemetry:
             stream.write(json.dumps(value, allow_nan=False) + "\n")
 
     def checkpoint(self, archive, update, runner, outcome):
+        """Flush the archive, clear retained runner state, and publish progress.
+
+        Inputs:
+            archive: open proof archive.
+            update: update number stored in the record.
+            runner: mission runner supplying holds, state and recorder.
+            outcome: result whose ``control_sources`` are counted.
+        Outputs:
+            Clears ``runner.executor.journal`` and ``runner.executor.runtime.events``,
+            appends a checkpoint event to ``progress.jsonl`` and writes
+            ``progress.json``. Raises ValueError when the archive's hold count differs
+            from the runner's committed hold records.
+        """
         import numpy as np
 
         archive.flush()
@@ -119,6 +143,7 @@ class StudyTelemetry:
         write_record(self.directory / "progress.json", progress)
 
     def stage_completed(self, store, stage, result):
+        """Record a completed stage in the store and write ``stage-progress.json``."""
         store.record(stage, result)
         write_record(
             self.directory / "stage-progress.json",

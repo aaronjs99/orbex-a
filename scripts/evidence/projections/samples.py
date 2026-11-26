@@ -30,6 +30,18 @@ class MissionSamples:
     """
 
     def __init__(self, result: ADTMPCMissionResult):
+        """Align a recorded result's anomaly, trajectory, phase and target histories.
+
+        Inputs:
+            result: mission result object, or a mapping whose missing fields default
+                to empty values.
+        Outputs:
+            Sets the aligned arrays and metadata as attributes (``q``, ``states``,
+            ``ids``, ``phases``, ``orientation``, ``rates``, ``rotations``,
+            ``goals_body``, ``position_error``, ``velocity_error``, ``notes``). Samples
+            are cut at the first nonfinite value and at the shortest trajectory;
+            ``notes`` records each truncation, reconstruction or omission.
+        """
         if isinstance(result, Mapping):
             result = SimpleNamespace(
                 **{
@@ -229,6 +241,21 @@ class MissionSamples:
     def _target_history(
         self, history, saved_key: str, kind: str, *, q=None
     ) -> np.ndarray | None:
+        """Return an (N, 3) target orientation or rate history aligned to q, or None.
+
+        Inputs:
+            history: recorded per-sample rows of three values.
+            saved_key: key in the saved target giving the initial orientation or the
+                constant rate when the history is unusable.
+            kind: "orientation" or "rate"; orientation is rebuilt as the saved value
+                plus ``q`` times the saved ``angular_velocity``, rate as the saved value
+                repeated.
+            q: sample anomalies; defaults to ``self.q``.
+        Outputs:
+            The recorded rows when finite and long enough. Otherwise a reconstruction
+            that keeps finite recorded rows, with a note appended to ``self.notes``;
+            None when the saved values needed are missing or nonfinite.
+        """
         q = self.q if q is None else q
         if not len(q):
             return None
@@ -293,6 +320,12 @@ class MissionSamples:
         return center, omega
 
     def cylinder(self) -> tuple[float, float] | None:
+        """Return (radius, half_length) of the saved cylindrical target, or None.
+
+        Both dimensions are inflated by ``1 + tolerance``. Returns None when the
+        target shape is not "cylinder", a dimension is missing or malformed, or a
+        result is not positive and finite.
+        """
         target = self.target
         if target.get("shape", "cylinder") != "cylinder":
             return None

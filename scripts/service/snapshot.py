@@ -19,6 +19,11 @@ def _freeze_job(settings, directory):
     destination = directory / "runtime" / "orbexa"
 
     def inventory():
+        """Return the SHA-256 of each .py file under PACKAGE_ROOT.
+
+        Outputs:
+            A dict keyed by path relative to PACKAGE_ROOT, skipping __pycache__.
+        """
         return {
             str(path.relative_to(source)): _sha(path)
             for path in source.rglob("*.py")
