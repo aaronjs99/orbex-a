@@ -9,8 +9,9 @@ Earlier ORBEX-A versions adapted barrier, command-projection, residual-GP,
 consensus, connectivity, trajectory-hint and policy-training modules from that
 source. Those modules are no longer in the tree. `solvers/proposals.py` and
 `solvers/proposal_seed.py` keep only the affine-prediction and proposal-seeding
-interface, and ORBEX-A supplies its own dynamics, units, solver boundary,
-physical admission and mission orchestration.
+interface, which retains structure adapted from that source. ORBEX-A supplies
+its own dynamics, units, solver boundary, physical admission and mission
+orchestration.
 
 The source license is reproduced below. It does not change ORBEX-A's project license.
 

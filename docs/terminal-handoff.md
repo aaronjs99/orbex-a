@@ -18,14 +18,6 @@ runner = CompleteMissionRunner(options=CompleteMissionOptions(input_component_bo
 completion = runner.complete(approach, terminal_handoff=handoff)
 ```
 
-The maintained CLI accepts the same source pair:
-
-```powershell
-orbexa-complete-mission APPROACH/mission_data.json `
-  --terminal-execution TERMINAL/terminal-result.json.gz `
-  --input-component-bound 100 --output-dir NEW_OUTPUT_DIRECTORY
-```
-
 The bound `100` must cover every held translation input, including actuator
 uncertainty. It is checked against the explicit combined input intervals and
 recorded means/command centers; sparse means alone cannot establish a held

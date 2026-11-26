@@ -32,6 +32,7 @@ setup(
     author_email="aaronjs@g.ucla.edu",
     url="https://github.com/aaronjs99/orbex-a",
     license="GPL-2.0-only",
+    license_files=["LICENSE", "THIRD_PARTY_NOTICES.md"],
     python_requires=">=3.10",
     install_requires=["numpy", "scipy", "gekko", "matplotlib", "pyyaml"],
     extras_require={
