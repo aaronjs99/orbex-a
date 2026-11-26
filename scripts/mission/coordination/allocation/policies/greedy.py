@@ -37,12 +37,18 @@ class GreedySwapPolicy:
     def initialize(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
+        """Do nothing; this policy needs no initial memory."""
         return
 
     @staticmethod
     def _intersections_for(
         agent_w: AgentState, agents: list[AgentState], neighbors: Iterable[int]
     ) -> list[int]:
+        """Return the neighbor ids whose goal exchange with agent_w shortens the paths.
+
+        A neighbor qualifies when the summed start-to-goal distances of the two agents
+        after swapping goals are strictly smaller than before.
+        """
         w0 = agent_w.start_pos
         wT = agent_w.goal_pos
 
@@ -65,6 +71,12 @@ class GreedySwapPolicy:
         network: Network,
         agent_id: int,
     ) -> int:
+        """Swap goals with intersecting neighbors of agent_id and return the swap count.
+
+        Stores the current intersecting neighbors on the agent, then swaps goals with
+        each one in turn, recomputing after every swap and stopping once none remain.
+        Mutates goal_pos of the agent and the swapped neighbors.
+        """
         agent = agents[agent_id]
         nbrs = network.neighbors(agent_id)
 
@@ -87,6 +99,7 @@ class GreedySwapPolicy:
     def has_converged(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
+        """Return True when no agent has an intersecting neighbor."""
         for w in range(len(agents)):
             if self._intersections_for(agents[w], agents, network.neighbors(w)):
                 return False

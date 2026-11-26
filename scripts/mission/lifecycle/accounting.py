@@ -31,9 +31,18 @@ from orbexa.models.dynamics.reference_frame import exact
 
 @dataclass(frozen=True)
 class NonlinearPropellantBudget(ApproachPropellantBudget):
+    """Approach propellant budget that also carries the per-hold accounting record.
+
+    Inputs:
+        held_accounting: binding record produced by the translation accountant.
+    """
+
     held_accounting: dict = field(default_factory=dict)
 
     def to_dict(self):
+        """Return the base budget record with the nonlinear-hold method, scope and
+        held-input accounting added.
+        """
         record = super().to_dict()
         record.update(
             method="source-bound-nonlinear-admitted-hold-propellant-v1",
@@ -56,6 +65,20 @@ class NonlinearTranslationAccountant:
         expected_actuator_id=None,
         expected_sensor_id=None,
     ):
+        """Bind the approach to a full nonlinear journal and keep the bound fields.
+
+        Inputs:
+            approach: recorded approach result the journal must belong to.
+            model: physical truth model of the journal.
+            clock: committed reference clock.
+            hold_records: saved nonlinear hold records.
+            expected_actuator_id, expected_sensor_id: optional identities the
+                journal must carry.
+
+        Outputs:
+            Sets model, clock, records, source_hash, journal_hash, actuator_id and
+            sensor_id from ``bind_nonlinear_journal``; its failures propagate.
+        """
         binding = bind_nonlinear_journal(
             approach,
             model=model,
@@ -75,6 +98,26 @@ class NonlinearTranslationAccountant:
     def translation_budget(
         self, approach, *, options, attitude_tracker, terminal_handoff=None
     ):
+        """Return the conservative translation force and fuel debit of the journal.
+
+        For every verified hold, the body-force bound is
+        m_wet * rate**2 * sqrt(3 * sum(u**2)) with u the largest saved input
+        magnitude per axis; the impulse is that force times the upper hold
+        duration, and fuel is impulse / (g0 * Isp).
+
+        Inputs:
+            approach: recorded approach result, verified against the journal.
+            options: provides input_component_bound, translation_force_n and
+                specific_impulse_s.
+            attitude_tracker: supplies the per-chaser mass and body radius.
+            terminal_handoff: must be None.
+
+        Outputs:
+            NonlinearPropellantBudget with the peak force (N) and fuel debit (kg) per
+            chaser. Raises ValueError when a terminal handoff is supplied, a saved
+            input support exceeds the component bound, or a per-hold force exceeds
+            translation_force_n; timeline and hold verification failures propagate.
+        """
         _require(
             terminal_handoff is None,
             "a CH terminal continuation cannot be mixed with this nonlinear journal",

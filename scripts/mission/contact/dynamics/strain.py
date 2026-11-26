@@ -18,6 +18,14 @@ from orbexa.proofs.numerics.rigid_interval import (
 
 
 def initial_strain_boxes(model, time, combined, ar, supplied=None):
+    """Return the combined box extended with one seven-entry strain box per chaser.
+
+    Each strain box holds three displacement entries (m) from the rest
+    position and four quaternion entries from the rest rotation. A chaser with
+    no rest quaternion gets the point (0, 0, 0, 0, 0, 0, 1). `supplied`
+    entries are intersected with the computed boxes.
+    Outputs: `(joined, boxes)`.
+    Raises ValueError if a supplied strain box is not seven-dimensional."""
     _, diag = model.evaluate(ar.scalar(time), ar.vector(combined))
     result = []
     for k, row in enumerate(diag["rows"]):
@@ -49,6 +57,11 @@ def initial_strain_boxes(model, time, combined, ar, supplied=None):
 
 
 def potential_box(model, diag):
+    """Return an interval enclosure of the stored contact potential energy (J).
+
+    Sums pad compression energy and activation-scaled bond translational and
+    rotational strain energy over `diag["rows"]`. The result is clipped to be
+    nonnegative."""
     ar, options = model.ar, model.o
     value = ar.scalar(0)
     for row in diag["rows"]:

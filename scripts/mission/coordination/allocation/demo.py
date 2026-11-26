@@ -35,6 +35,12 @@ from orbexa.mission.coordination.allocation.system import (
 
 
 def plot_assignments(starts: Sequence[Vec], goals: Sequence[Vec], title: str) -> None:
+    """Plot a straight segment from each start to its goal and show the figure.
+
+    Inputs:
+        starts, goals: paired positions; the first two components are plotted.
+        title: figure title.
+    """
     plt.figure()
     for s, g in zip(starts, goals):
         s = np.asarray(s)
@@ -46,6 +52,13 @@ def plot_assignments(starts: Sequence[Vec], goals: Sequence[Vec], title: str) ->
 
 
 def demo_main() -> None:
+    """Run the greedy and auction policies on a fixed 10-agent example and plot both.
+
+    Each policy runs on a 4-nearest-neighbor network over the start positions, for up
+    to 100 (greedy) or 400 (auction) iterations, stopping at the first converged
+    iteration. Prints the iteration count on convergence and opens one plot window per
+    policy.
+    """
     start_positions = [
         [4, 6],
         [7, 2],

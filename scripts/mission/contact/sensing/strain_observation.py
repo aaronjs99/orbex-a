@@ -65,6 +65,19 @@ class ContactStrainConditioner:
         representative_diag,
         observation_identity,
     ):
+        """Contract the carried bond strain boxes with the measured pad wrenches.
+
+        Inputs: `time_s` is the exact elapsed time; `strains` the carried strain
+        boxes, one per chaser; `support` a `ContactObservationBounds`;
+        `representative_diag` the diagnostics of the executed numerical state.
+        Outputs: `(result, record)`, with the intersected strain boxes and a
+        record per member; engaged chasers with strictly positive activation
+        and a wrench channel are contracted, the others are recorded or left
+        unchanged.
+        Raises ValueError for untyped support, a bad observation clock, a carried
+        strain count that differs from the fleet, or a measurement that
+        contradicts the executed representative; raises `_ProofUnresolved` when
+        the strain meets the principal-log cut."""
         if not isinstance(support, ContactObservationBounds):
             raise ValueError(
                 "Bond strain conditioning requires typed bounded wrench supports"
@@ -95,6 +108,10 @@ class ContactStrainConditioner:
             target_inverse = transpose(diag["rotations"][0])
 
             def measured(vector, radius, name):
+                """Return the interval vector of half-width `radius` about a 3-vector.
+
+                Raises ValueError if `vector` is not finite; `name` labels the
+                error."""
                 vector = finite_vector(vector, name, 3)
                 return ar.vector(
                     IntervalBox.from_center_radius(

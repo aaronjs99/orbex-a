@@ -15,6 +15,7 @@ class SensorAcquisitionArchiveError(RuntimeError):
     """A measured batch exists but its audit write is not acknowledged."""
 
     def __init__(self, event, reason):
+        """Build the message from `reason` and keep the unconfirmed audit event."""
         super().__init__("Sensor audit publication failed: " + str(reason))
         self.event = event
 
@@ -36,6 +37,14 @@ class SensorAcquisitionAudit:
         truth_model_fingerprint,
         sink=None,
     ):
+        """Store the sensors, the sink and the clock and model fingerprints.
+
+        Inputs:
+        - sink: callable receiving each audit event, or None for an unarchived audit.
+
+        Outputs:
+        - Raises TypeError if the sink is neither callable nor None.
+        """
         if sink is not None and not callable(sink):
             raise TypeError("Sensor audit sink must be callable or None")
         self.sensors, self.sink = sensors, sink
@@ -48,12 +57,20 @@ class SensorAcquisitionAudit:
         self.unarchived_events = 0
 
     def require_confirmed(self):
+        """Raise SensorAcquisitionArchiveError if the last write is unconfirmed."""
         if self.unconfirmed_event is not None:
             raise SensorAcquisitionArchiveError(
                 self.unconfirmed_event, "previous write remains unconfirmed"
             )
 
     def _publish(self, event):
+        """Record an audit event and write it to the sink.
+
+        It first requires the previous write to be confirmed. Without a sink the event
+        is
+        counted as unarchived. With a sink the event stays unconfirmed until the sink
+        returns; a sink exception raises SensorAcquisitionArchiveError.
+        """
         self.require_confirmed()
         self.last_event = event
         if self.sink is None:
@@ -67,6 +84,18 @@ class SensorAcquisitionAudit:
         self.unconfirmed_event = None
 
     def acquired(self, packets, *, q=None, time_s=None, origin="GENERATED"):
+        """Publish a SENSOR_ACQUISITION audit event for a batch of measured packets.
+
+        The event lists each packet with its noise slot, the sensor profile and the
+        noise
+        field declaration.
+
+        Inputs:
+        - packets: measured packets of the batch.
+        - q, time_s: exact anomaly and physical time (s) of the acquisition; unused for
+          an INITIAL_SUPPLIED origin.
+        - origin: label of where the batch came from.
+        """
         profile = self.sensors.profile
         field = {
             "policy": profile.randomness_policy,
@@ -116,6 +145,12 @@ class SensorAcquisitionAudit:
         )
 
     def delivered(self, packets, navigation, *, estimate=None):
+        """Publish a delivery audit event for packets offered to navigation.
+
+        Without `estimate` the event kind is SENSOR_DELIVERY_ATTEMPT; with it the event
+        is SENSOR_DELIVERY_RESULT and adds the estimate status, the accepted packet ids
+        within the offered batch, and the reason.
+        """
         record = dict(
             archive_event_kind=(
                 "SENSOR_DELIVERY_ATTEMPT"
@@ -146,19 +181,38 @@ class SensorAcquisitionAudit:
 
 
 class MissionSensorDelivery:
+    """Hold pending and delivered sensor packets and drive their audited delivery.
+
+    Packets are sampled from truth into `pending` and handed to navigation once their
+    delivery time has passed.
+    """
+
     def __init__(self, initial_packets=(), *, acquisition_audit=None):
+        """Store the initial packets as pending, with an optional acquisition audit."""
         self.pending = list(initial_packets)
         self.delivered = []
         self.acquisition_audit = acquisition_audit
         self._initial_recorded = not bool(self.pending)
 
     def record_initial(self, q=None):
+        """Audit the initially supplied packets once, if there were any.
+
+        The `q` argument is not used.
+        """
         if not self._initial_recorded:
             if self.acquisition_audit is not None:
                 self.acquisition_audit.acquired(self.pending, origin="INITIAL_SUPPLIED")
             self._initial_recorded = True
 
     def sample(self, sensors, target, clock, relative_states):
+        """Sample the sensors at the target's current anomaly and queue the packets.
+
+        It requires the previous audit write to be confirmed and records the initial
+        packets first. The chaser inertial states are derived from the relative states
+        through the clock. New packets are appended to `pending`; an acquisition event
+        is
+        audited only if the sensors' last acquisition time changed.
+        """
         if self.acquisition_audit is not None:
             self.acquisition_audit.require_confirmed()
         self.record_initial()
@@ -186,6 +240,13 @@ class MissionSensorDelivery:
             )
 
     def consume_ready(self, navigation):
+        """Deliver the packets whose delivery time has passed to navigation.
+
+        A packet is ready if its delivery time upper bound is at most the lower bound of
+        the navigation time. Ready packets are audited as an attempt, consumed, and
+        audited again with the estimate. They are then removed from `pending` and
+        appended to `delivered`. Returns the navigation estimate.
+        """
         if self.acquisition_audit is not None:
             self.acquisition_audit.require_confirmed()
         self.record_initial()
@@ -207,6 +268,7 @@ class MissionSensorDelivery:
         return estimate
 
     def drain(self):
+        """Return the delivered packets as a tuple and clear the delivered list."""
         packets = tuple(self.delivered)
         self.delivered = []
         return packets

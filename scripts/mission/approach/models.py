@@ -39,6 +39,13 @@ class ChaserConfig:
     attachment_component_id: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate the fields and store copies of the arrays as float arrays.
+
+        Raises ValueError for an empty or non-string chaser_id, a non-finite or
+        wrong-length initial_state (6), docking_point_body or docking_normal_body
+        (3), a non-finite docking_azimuth, a non-finite or negative docking_standoff,
+        an empty attachment ID, or only one of the two attachment IDs set.
+        """
         if not isinstance(self.chaser_id, str) or not self.chaser_id:
             raise ValueError("chaser_id must be a nonempty string")
         for name, size in (
@@ -64,6 +71,10 @@ class ChaserConfig:
             )
 
     def assignment_metadata(self) -> dict[str, Any]:
+        """Return the assignment as a JSON-compatible mapping.
+
+        Attachment patch and component IDs are included only when set.
+        """
         result = {
             "chaser_id": self.chaser_id,
             "initial_state": self.initial_state.tolist(),

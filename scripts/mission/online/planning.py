@@ -35,6 +35,12 @@ class _PreparationRuntime(FleetAdmissionRuntime):
     """Algebra-only view; deliberately has no authority to decide or commit."""
 
     def __init__(self, snapshot):
+        """Build the view from a snapshot after checking it is complete and affordable.
+
+        Raises ValueError unless the plan passes integrity, is admissible, covers the
+        snapshot q, the fuel covers exactly the plan's agents with nonnegative values,
+        and the fuel meets the plan's remaining requirement from q.
+        """
         snapshot.plan.verify_integrity()
         if (
             not snapshot.plan.certificate.admissible
@@ -62,11 +68,13 @@ class _PreparationRuntime(FleetAdmissionRuntime):
         self._pending = None
 
     def decide(self, *args, **kwargs):
+        """Raise TypeError; a preparation view cannot issue a decision."""
         raise TypeError(
             "A detached preparation view cannot issue an actuation decision"
         )
 
     def commit(self, *args, **kwargs):
+        """Raise TypeError; a preparation view cannot commit motion or fuel."""
         raise TypeError(
             "A detached preparation view cannot commit physical motion or fuel"
         )
@@ -74,6 +82,8 @@ class _PreparationRuntime(FleetAdmissionRuntime):
 
 @dataclass(frozen=True)
 class FeedbackPreparationSnapshot:
+    """Detached copy of a runtime plan, clock, fuel and disturbance, with source id."""
+
     plan: FleetFallbackPlan
     q: Fraction
     remaining_fuel: tuple
@@ -81,6 +91,11 @@ class FeedbackPreparationSnapshot:
     source_id: str
 
     def __post_init__(self):
+        """Convert q and fuel values to exact values and validate the snapshot.
+
+        Raises ValueError unless plan is a FleetFallbackPlan, source_id is a nonempty
+        string and acceleration_disturbance is a three-dimensional IntervalBox.
+        """
         object.__setattr__(self, "q", _exact(self.q))
         object.__setattr__(
             self,
@@ -100,6 +115,11 @@ class FeedbackPreparationSnapshot:
 
     @classmethod
     def from_runtime(cls, runtime, *, source_id):
+        """Snapshot an idle FleetAdmissionRuntime under the given source_id.
+
+        Raises TypeError if runtime is not a FleetAdmissionRuntime or has a pending
+        decision.
+        """
         if (
             not isinstance(runtime, FleetAdmissionRuntime)
             or runtime._pending is not None
@@ -117,6 +137,7 @@ class FeedbackPreparationSnapshot:
 
     @property
     def context_id(self):
+        """Return the fingerprint of the source id, active plan id and disturbance."""
         return fingerprint(
             {
                 "source_id": self.source_id,
@@ -126,11 +147,14 @@ class FeedbackPreparationSnapshot:
         )
 
     def runtime_view(self):
+        """Return a _PreparationRuntime built from this snapshot."""
         return _PreparationRuntime(self)
 
 
 @dataclass(frozen=True)
 class FeedbackHoldExtensionTask:
+    """Inputs for extending the installed holding policy by extension_width."""
+
     snapshot: FeedbackPreparationSnapshot
     source_navigation: NavigationEstimate
     model: object
@@ -140,6 +164,13 @@ class FeedbackHoldExtensionTask:
     extension_width: Fraction
 
     def __post_init__(self):
+        """Convert extension_width to an exact value and validate the task.
+
+        Raises ValueError unless the snapshot and navigation estimate have the expected
+        types, the estimate is VALID, no later than the snapshot q, matches the clock,
+        model, frame and plan sensors and agents, and extension_width is positive. Also
+        checks the clock domain from the estimate time to the extended plan end.
+        """
         object.__setattr__(self, "extension_width", _exact(self.extension_width))
         nav = self.source_navigation
         if not isinstance(self.snapshot, FeedbackPreparationSnapshot) or not isinstance(

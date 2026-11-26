@@ -20,6 +20,17 @@ class BlackoutObservationPropagator:
     """
 
     def __init__(self, observations, *, maximum_blackout_q):
+        """Start from the observation enclosures, which must share one sample clock.
+
+        Inputs:
+        - observations: agent key to observation; all must have the same `q`.
+        - maximum_blackout_q: largest anomaly extent allowed since the last sensor
+          correction; must be positive.
+
+        Outputs:
+        - Raises ValueError if the observation clocks differ or the horizon is not
+          positive.
+        """
         self.boxes = {key: value.state_enclosure for key, value in observations.items()}
         self.q = next(iter(observations.values())).q
         if any(value.q != self.q for value in observations.values()):
@@ -30,6 +41,24 @@ class BlackoutObservationPropagator:
             raise ValueError("Declare a positive finite blackout horizon")
 
     def advance(self, decision, plan):
+        """Propagate every agent enclosure through one admitted fallback hold.
+
+        Each box is advanced over `decision.hold_width` with the applied input widened
+        by
+        the controller's proved drift mismatch. Each midpoint becomes a virtual
+        observation, and the controller of the next segment must accept it. State is
+        replaced only after all agents succeed; `last_sensor_q` is not changed.
+
+        Inputs:
+        - decision: admitted decision; its source must be FALLBACK_TRACK or
+          FALLBACK_HOLD and its start must equal the current `q`.
+        - plan: fallback plan giving the segments and controllers.
+
+        Outputs:
+        - Agent key to RefugeObservation at the new q. Raises ValueError for a
+          performance source, a noncontiguous start, an exhausted blackout horizon or a
+          controller without the zero-nominal drift adapter.
+        """
         if decision.source not in ("FALLBACK_TRACK", "FALLBACK_HOLD"):
             raise ValueError(
                 "Performance navigation requires its actual flow proof; this propagator retains fallback invariance only"
@@ -78,6 +107,12 @@ class BlackoutObservationPropagator:
         return observations
 
     def correct(self, observations):
+        """Intersect the propagated boxes with recovered sensor enclosures.
+
+        On success the boxes become the intersections and `last_sensor_q` becomes the
+        current `q`. Raises ValueError if the fleet or clock differs from the propagated
+        state, or if an intersection is empty; the state is then unchanged.
+        """
         if set(observations) != set(self.boxes) or any(
             value.q != self.q for value in observations.values()
         ):

@@ -68,11 +68,16 @@ def nonlinear_completion_source_identity():
 
 
 def _require(condition, message):
+    """Raise ValueError with the completion prefix when ``condition`` is false."""
     if not condition:
         raise ValueError("Nonlinear completion: " + message)
 
 
 def _identity(value, label):
+    """Return ``value`` when it is a 64-hex-digit SHA-256 string.
+
+    Raises ValueError naming ``label`` otherwise.
+    """
     _require(
         isinstance(value, str) and re.fullmatch("[0-9a-f]{64}", value) is not None,
         label + " must be a retained SHA-256 identity",
@@ -81,6 +86,10 @@ def _identity(value, label):
 
 
 def _pairs(value, ids, label):
+    """Return a dict from a mapping or pair sequence naming exactly ``ids``.
+
+    Raises ValueError naming ``label`` when the keys differ from ``ids``.
+    """
     items = tuple(value.items()) if isinstance(value, dict) else tuple(value)
     _require(
         len(items) == len(ids) and {key for key, _ in items} == set(ids),
@@ -90,6 +99,12 @@ def _pairs(value, ids, label):
 
 
 def _box(value, dimension):
+    """Return the IntervalBox of a saved record with the given dimension.
+
+    Uses exact_lower and exact_upper when present, else lower and upper. When
+    exact bounds are present, the display form must digest-match the record.
+    Raises ValueError for a non-dict, wrong dimension or disagreeing bounds.
+    """
     _require(isinstance(value, dict), "an exact saved interval box is required")
     result = IntervalBox(
         value.get("exact_lower", value.get("lower")),
@@ -105,6 +120,9 @@ def _box(value, dimension):
 
 
 def _sqrt_upper(value, bits=128):
+    """Return a Fraction not below sqrt(value), rounded up to a multiple of
+    2**-bits.
+    """
     scale = 1 << bits
     numerator = isqrt(value.numerator * scale * scale // value.denominator)
     if numerator * numerator * value.denominator < value.numerator * scale * scale:
@@ -113,11 +131,18 @@ def _sqrt_upper(value, bits=128):
 
 
 def _dyadic_upper(value, bits=128):
+    """Return ``value`` rounded up to a multiple of 2**-bits as a Fraction."""
     scale = 1 << bits
     return Fraction(-(-value.numerator * scale // value.denominator), scale)
 
 
 def _compact_hold(record):
+    """Return the compact projection of a full hold record.
+
+    Drops the decision geometry, replacing it with its fingerprint as
+    geometry_id, and replaces the runtime commit with its status and remaining
+    fuel.
+    """
     result = {
         key: copy.deepcopy(value)
         for key, value in record.items()

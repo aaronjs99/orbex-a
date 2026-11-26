@@ -74,16 +74,23 @@ class _ExtendedContingencyForecastRefusal(ValueError):
     """Only an optional longer proposal enlarged the refused forecast."""
 
     def __init__(self, reason, extended_width, legacy_width):
+        """Store the reason with the extended and legacy forecast widths."""
         super().__init__(reason)
         self.extended_width = extended_width
         self.legacy_width = legacy_width
 
 
 def radius(box):
+    """Return the per-axis half-widths of an interval box as a float array."""
     return np.array([float((hi - lo) / 2) for lo, hi in zip(box.lower, box.upper)])
 
 
 def _named(value, name):
+    """Return (name, value) pairs from a mapping or an iterable of pairs.
+
+    Raises ValueError if empty, if any name is not a nonblank string, or if names
+    repeat; name appears in the message.
+    """
     pairs = tuple(value.items()) if hasattr(value, "items") else tuple(value)
     if (
         not pairs
@@ -132,6 +139,11 @@ class ProspectiveFleetEndpoint:
         acceleration_disturbance=None,
         fuel_budget=None,
     ):
+        """Build an endpoint using the identities of model and clock.
+
+        acceleration_disturbance defaults to the zero point box. Raises as __post_init__
+        does, or if the clock domain does not contain [start_q, end_q].
+        """
         value = cls(
             flows,
             target_flow,
@@ -149,6 +161,16 @@ class ProspectiveFleetEndpoint:
         return value
 
     def __post_init__(self):
+        """Validate flows, target hold, contexts and observations; record identities.
+
+        Normalizes flows, observations and contexts to name pairs for one fleet. The
+        target hold must be a proved same-model, same-clock ephemeris of positive width
+        with a complete physical-time chain. Each flow must be proved, match its
+        context, contain its observation and use the declared held-input request with a
+        half-width of at least 300 on every axis. Raises ValueError (TypeError for wrong
+        types) on any mismatch. Sets _flow_ids, _target_id, _fuel_budget_id and
+        _identity.
+        """
         for name in ("flows", "observations", "contexts"):
             object.__setattr__(self, name, _named(getattr(self, name), name))
         ids = tuple(key for key, _ in self.contexts)
@@ -305,29 +327,39 @@ class ProspectiveFleetEndpoint:
 
     @property
     def start_q(self):
+        """Return the exact start of the target hold on the reference clock."""
         return self.target_flow.start_anomaly[0]
 
     @property
     def hold_width(self):
+        """Return the exact hold width on the reference clock."""
         return self.target_flow.hold_width[0]
 
     @property
     def end_q(self):
+        """Return the exact end of the hold, start_q plus hold_width."""
         return self.start_q + self.hold_width
 
     @property
     def ids(self):
+        """Return the agent names in context order."""
         return tuple(key for key, _ in self.contexts)
 
     @property
     def endpoint_boxes(self):
+        """Return a read-only mapping from agent name to its flow endpoint box."""
         return MappingProxyType({key: flow.endpoint for key, flow in self.flows})
 
     @property
     def fingerprint(self):
+        """Return the identity computed at construction."""
         return self._identity
 
     def verify_integrity(self):
+        """Raise ValueError if the target flow, flows or fuel budget changed.
+
+        The comparison uses the fingerprints recorded when the projection was prepared.
+        """
         if (
             self.target_flow.fingerprint != self._target_id
             or tuple((key, flow.fingerprint) for key, flow in self.flows)
@@ -340,6 +372,11 @@ class ProspectiveFleetEndpoint:
             )
 
     def as_dict(self, *, include_flows=True, include_identity=True):
+        """Return a record of the projection.
+
+        include_flows adds the full flows, target flow, source observations and
+        contexts; include_identity adds the identity fingerprint.
+        """
         result = {
             "method": "complete-global-held-flow-projection-v1",
             "exact_start_q": str(self.start_q),
@@ -385,6 +422,13 @@ class ProspectiveFleetEndpoint:
 
 @dataclass(frozen=True)
 class _SafetyInitialSet:
+    """Initial set from which a fleet refuge is proved.
+
+    Holds the exact event q, per-agent relative-state boxes, the target ephemeris and
+    physical-time boxes, the frame, the source kind and id, and the acceleration
+    disturbance box.
+    """
+
     exact_event_q: object
     relative_state_box_by_agent: object
     target_ephemeris_box: IntervalBox
@@ -398,6 +442,7 @@ class _SafetyInitialSet:
 
     @property
     def point_relative_by_agent(self):
+        """Return the midpoint of each agent's relative-state box."""
         return {
             key: tuple((a + b) / 2 for a, b in zip(box.lower, box.upper))
             for key, box in self.relative_state_box_by_agent.items()
@@ -421,6 +466,14 @@ class NonlinearSafetyPlanner:
         near_feedback_subdivisions=1,
         acceleration_contingency=None,
     ):
+        """Store the scenario, model, clock, enclosers and design, and derive resources.
+
+        Resolves target_proximity from the design geometry, builds the propulsion bounds
+        from the design chaser and study options, and starts an empty installations
+        list. Raises ValueError unless near_feedback_subdivisions is a positive int, and
+        TypeError if acceleration_contingency is neither None nor
+        AccelerationContingencyOptions.
+        """
         self.scenario, self.model, self.clock = scenario, model, clock
         self.encloser, self.options, self.design = encloser, study_options, design
         self.actuator_error_abs = tuple(actuator_error_abs)
@@ -462,6 +515,11 @@ class NonlinearSafetyPlanner:
         self.installations = []
 
     def observations(self, estimate):
+        """Return a RefugeObservation per agent from the estimate.
+
+        Each uses the event q, the box midpoint, the state box, the sensor id, the frame
+        id and the clock fingerprint.
+        """
         return {
             key: RefugeObservation(
                 estimate.exact_event_q,
@@ -475,6 +533,13 @@ class NonlinearSafetyPlanner:
         }
 
     def target_forecast(self, estimate, width):
+        """Return a proved target ephemeris enclosure over a hold of width.
+
+        Calls encloser.enclose_target from the estimate's target box and physical-time
+        box at its event q. Raises ValueError if the certificate differs from the
+        request, model, clock or backend source, or is unavailable;
+        _ForecastEnclosureRefusal (a ValueError) if it is unresolved.
+        """
         q, width = exact(estimate.exact_event_q), exact(width)
         value = self.encloser.enclose_target(
             estimate.target_ephemeris_box,
@@ -519,6 +584,15 @@ class NonlinearSafetyPlanner:
         near_target=None,
         certificate_sink=None,
     ):
+        """Build a fallback plan from the current estimate and wrap it in a runtime.
+
+        Inputs: estimate, a NavigationEstimate; flow_provider, passed to the runtime;
+            remaining_fuel, optional per-agent fuel that creates a FleetFuelBudget;
+            near_target, optional bool overriding the near or far choice;
+            certificate_sink, optional callable that receives the full witness.
+        Outputs: (runtime, record). Appends record to installations. Raises as
+            _check_sensing_prior and _build_plan do.
+        """
         self._check_sensing_prior(estimate)
         source_id = fingerprint(self._prior_record(estimate))
         initial = _SafetyInitialSet(
@@ -741,6 +815,11 @@ class NonlinearSafetyPlanner:
         )
 
     def _check_sensing_prior(self, estimate):
+        """Require a valid typed navigation estimate for this model, clock and frame.
+
+        The estimate must cover exactly the declared unique multi-chaser fleet. Raises
+        ValueError otherwise.
+        """
         from orbexa.estimation.navigation.records import NavigationEstimate
 
         if (
@@ -767,6 +846,11 @@ class NonlinearSafetyPlanner:
 
     @staticmethod
     def _prior_record(estimate):
+        """Return an exact-string record of the estimate used to compute identities.
+
+        It holds the event q, boxes, target orientation, packet and sensor ids, model,
+        clock and frame identities, and status.
+        """
         return {
             "exact_event_q": str(estimate.exact_event_q),
             "physical_time_box": estimate.physical_time_box.as_dict(),
@@ -895,6 +979,11 @@ class NonlinearSafetyPlanner:
 
     @staticmethod
     def _publish_witness(record, witness, certificate_sink, kind):
+        """Send the witness, tagged with kind, to certificate_sink and mark the record.
+
+        Does nothing when witness is None. Mutates record by setting archived_witness_id
+        and full_witness_archived.
+        """
         if witness is None:
             return
         witness = dict(witness, kind=kind)
@@ -914,6 +1003,23 @@ class NonlinearSafetyPlanner:
         allow_acceleration_prefix=True,
         _extended_near=False,
     ):
+        """Construct and check a finite fleet refuge plan for an initial set.
+
+        A close member selects the near patch search, otherwise the far braking search.
+        The target forecast, pose provider, geometry oracle, references, contexts, drift
+        bounds and tracking limits are built, and profiles are tried in order until one
+        plan is admissible, contains every initial state box and fits fuel_budget.
+
+        Inputs: estimate, a _SafetyInitialSet; sensing_prior, the current navigation
+            estimate; near_target, optional bool; make_witness, to build a full witness;
+            projection, a ProspectiveFleetEndpoint or None; fuel_budget;
+            allow_acceleration_prefix; _extended_near, to use the extra near holds.
+        Outputs: (plan, record, witness); witness is None unless make_witness. Raises
+            ValueError if no candidate fits the clock domain or is admissible, TypeError
+            for a fuel_budget that is not a FleetFuelBudget, and
+            _ExtendedContingencyForecastRefusal when only the extended acceleration-
+            prefix forecast was unresolved.
+        """
         q = exact(estimate.exact_event_q)
         points = {
             key: np.asarray(point, dtype=float)
@@ -967,6 +1073,7 @@ class NonlinearSafetyPlanner:
             )
 
             def rounded_width(value):
+                """Return value rounded up to a whole number of 64-hold windows."""
                 ratio = exact(value) / window
                 return (
                     (ratio.numerator + ratio.denominator - 1) // ratio.denominator
@@ -1091,6 +1198,11 @@ class NonlinearSafetyPlanner:
         )
 
         def forecast(initial, width):
+            """Return target_forecast(initial, width), marking extended refusals.
+
+            When the acceleration-prefix forecast is longer than the legacy one, an
+            unresolved enclosure raises _ExtendedContingencyForecastRefusal.
+            """
             try:
                 return self.target_forecast(initial, width)
             except _ForecastEnclosureRefusal as error:

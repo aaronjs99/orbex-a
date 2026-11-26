@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 
 @dataclass
 class ChaserPlan:
+    """One chaser's solver result, tube profile, tube specification and tube record."""
+
     result: SolverResult
     profile: TubeProfile
     spec: DynamicTubeSpec
@@ -49,6 +51,12 @@ class ChaserPlan:
 
 @dataclass
 class PlanningStep:
+    """Outcome of one planning update for the fleet.
+
+    Holds the dynamics matrices and parameters used, the plans and solver
+    attempts by chaser ID, an overall success flag and failure messages.
+    """
+
     matrices: tuple
     parameters: dict[str, float]
     plans: dict[str, ChaserPlan] = field(default_factory=dict)
@@ -61,6 +69,7 @@ class CoupledMissionPlanner:
     """Form one shared update; preserve sequential warm starts and joint checks."""
 
     def __init__(self, scenario: MissionScenario, controller: CoupledController):
+        """Store the scenario, its config and the controller that solves each step."""
         self.scenario = scenario
         self.config = scenario.config
         self.controller = controller
@@ -78,6 +87,13 @@ class CoupledMissionPlanner:
         chaser_id: str | None = None,
         center: np.ndarray | None = None,
     ) -> DynamicTubeSpec:
+        """Return the DynamicTubeSpec for count nodes starting at anomaly (rad).
+
+        For each of the count - 1 outer intervals, bounds the dynamics uncertainty
+        and the coefficient magnitudes and variation from the belief's feasible sets
+        and params. Initial phi, omega and bandwidth are the current tube state; the
+        terminal set is not enforced. chaser_id and center are not used here.
+        """
         tube = self.config.tube
         semi_major_axis, mu = params["semi_major_axis"], params["mu"]
         delta_a, delta_d, a_abs, a_variation, d_abs = [], [], [], [], []
@@ -134,6 +150,7 @@ class CoupledMissionPlanner:
         return 0.0
 
     def tube_profile_assumptions(self, spec):
+        """Return the sample-hold tube assumptions; spec is not used."""
         return TUBE_ASSUMPTIONS
 
     def configure_terminal(self, spec, phase, state, goal, key):
@@ -145,6 +162,7 @@ class CoupledMissionPlanner:
         )
 
     def planning_peer_ids(self, chasers, state):
+        """Return the IDs of all chasers in order; state is not used."""
         return [chaser.chaser_id for chaser in chasers]
 
     def plan(
@@ -157,6 +175,22 @@ class CoupledMissionPlanner:
         *,
         arrival_step=None,
     ) -> PlanningStep:
+        """Solve one coupled update, planning chasers in order with shared peer paths.
+
+        Each chaser is planned against the already planned or previous plan of every
+        peer, or a constant-velocity extrapolation when none exists, and is warm
+        started from its own previous plan. Planning stops at the first failed
+        chaser, which is recorded in the attempts and messages and clears success.
+        Numeric setup errors (ValueError, FloatingPointError, OverflowError) become a
+        failed attempt. After all plans succeed, the planned tube separation check
+        may add messages and clear success.
+        Inputs: state, belief, phase, chasers; previous_plans by chaser ID;
+        arrival_step, required for docking under an arrival policy and refused
+        otherwise.
+        Raises ValueError if arrival_step is missing, mismatched or given without a
+        docking arrival policy, or if the required terminal region cannot answer the
+        suffix queries.
+        """
         scenario, cfg = self.scenario, self.config
         q = state.anomaly
         count = scenario.reference.horizon_steps_for_phase(phase)

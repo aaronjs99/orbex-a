@@ -57,6 +57,14 @@ class CompositeDeploymentOptions:
     attachment_patch_ids: tuple[str, ...] | None = None
 
     def __post_init__(self):
+        """Normalise and validate the options.
+
+        Scales the release direction to a unit vector, converts points to tuples and
+        requires the listed lengths, durations, speeds and tolerances to be positive
+        (the reference tube radius may be zero). Raises ValueError for a zero release
+        direction or attachment patch IDs that are empty, repeated or not nonempty
+        strings.
+        """
         direction = _point(self.release_direction_body, "Release direction")
         if np.linalg.norm(direction) == 0:
             raise ValueError("Release direction must be nonzero")
@@ -119,6 +127,19 @@ class CompositePatchDeployment:
     """
 
     def __init__(self, config, target, *, body_radius_m, options=None):
+        """Build the release cluster, patch routes and anomaly schedule.
+
+        Inputs: config with num_chasers and mission/mpc settings; target with explicit
+        composite geometry; body_radius_m, the chaser body radius (m); options,
+        defaulting to CompositeDeploymentOptions().
+        Outputs: sets the release centre, initial body-frame positions, optional
+        carrier transfer, planned routes, per-chaser segment schedule and staging
+        anomaly (rad).
+        Raises TypeError if options has the wrong type. Raises ValueError for a
+        non-integer or nonpositive fleet size, a target without composite collision
+        geometry, a carrier release point inside an inflated component, or a target
+        anomaly domain that does not extend beyond the staging anomaly.
+        """
         self.config, self.target = config, target
         self.options = CompositeDeploymentOptions() if options is None else options
         if not isinstance(self.options, CompositeDeploymentOptions):
@@ -230,15 +251,23 @@ class CompositePatchDeployment:
 
     @property
     def transfer_anomaly(self):
+        """Return the carrier transfer duration (rad of anomaly); 0.0 without one."""
         return (
             0.0 if self.carrier_transfer is None else self.carrier_transfer.duration_rad
         )
 
     @property
     def staging_anomaly(self):
+        """Return the anomaly (rad) at which the last scheduled route segment ends."""
         return self._staging_anomaly
 
     def rotation_kinematics(self, anomaly):
+        """Return the target body-to-LVLH rotation and two anomaly derivatives.
+
+        Built from the target's docking state and acceleration of the three body unit
+        axes at anomaly (rad). Outputs: three 3x3 arrays. Raises ValueError if the
+        kinematics are not finite or have the wrong shape.
+        """
         states = np.array(
             [self.target.docking_state(axis, anomaly) for axis in np.eye(3)],
             dtype=float,
@@ -259,6 +288,14 @@ class CompositePatchDeployment:
         return states[:, :3].T, states[:, 3:].T, acceleration.T
 
     def body_kinematics(self, index, anomaly):
+        """Return one chaser's scheduled body-frame position, velocity and acceleration.
+
+        Position is in the target body frame (m); velocity and acceleration are
+        derivatives with respect to anomaly (rad). Holds the initial position up to
+        the first segment start, follows a quintic profile along each segment and
+        holds the staging point afterwards.
+        Raises ValueError for an index outside the fleet or a non-finite anomaly.
+        """
         if (
             isinstance(index, bool)
             or not isinstance(index, (int, np.integer))
@@ -278,6 +315,12 @@ class CompositePatchDeployment:
         return route.staging_point_body_m.copy(), np.zeros(3), np.zeros(3)
 
     def kinematics(self, index, anomaly):
+        """Return one chaser's LVLH state and its anomaly derivative at anomaly (rad).
+
+        Outputs: the 6-vector of position and velocity, and the 6-vector of velocity
+        and acceleration. Before transfer_anomaly the carrier transfer reference
+        supplies them; afterwards the body-frame route is rotated into LVLH.
+        """
         point, velocity, acceleration = self.body_kinematics(index, anomaly)
         rotation, derivative, second = self.rotation_kinematics(float(anomaly))
         if self.carrier_transfer is not None and anomaly < self.transfer_anomaly:
@@ -294,6 +337,11 @@ class CompositePatchDeployment:
         return np.r_[position, rate], np.r_[rate, force]
 
     def assignment(self, index, state):
+        """Return the ChaserConfig for chaser index with the given initial state.
+
+        The docking point, normal, patch and component come from that chaser's
+        planned route. Raises ValueError for an index outside the fleet.
+        """
         self.body_kinematics(index, 0.0)
         route = self.routes[index]
         return ChaserConfig(
@@ -312,6 +360,12 @@ class CompositePatchDeployment:
         )
 
     def scenario_metadata(self):
+        """Return the deployment provenance as a nested mapping.
+
+        Records options, geometry identity, release centre, staging anomaly and the
+        route order, waypoints and schedules. When a carrier transfer exists, adds
+        its centre, transfer end anomaly and initial LVLH states.
+        """
         metadata = {
             "deployment": {
                 "kind": "compact_component_aware_patch_routes",
@@ -376,6 +430,12 @@ class CompositePatchDeployment:
         return metadata
 
     def create_scenario(self, *, horizon_steps=None, **dependencies):
+        """Return a MissionScenario that uses this deployment's fleet and reference.
+
+        Inputs: horizon_steps for the reference policy; dependencies, forwarded to
+        MissionScenario. Raises ValueError if dependencies include config, target,
+        fleet or reference.
+        """
         from orbexa.mission.approach.deployment.component_policy import (
             CompositeDeploymentPolicy,
         )
@@ -395,11 +455,18 @@ class CompositePatchDeployment:
 
 
 class CompositeDeploymentFleet(FleetInitializer):
+    """Fleet initializer that issues the release states and routes of one deployment."""
+
     def __init__(self, deployment):
+        """Store the deployment and initialise the base fleet from its inputs."""
         super().__init__(deployment.config, deployment.target)
         self.deployment = deployment
 
     def single_chaser(self):
+        """Return the assignments of a one-chaser deployment.
+
+        Raises ValueError if the deployment has more than one chaser.
+        """
         if self.deployment.count != 1:
             raise ValueError(
                 "Use mission='multi' for a multi-agent composite deployment"
@@ -407,12 +474,18 @@ class CompositeDeploymentFleet(FleetInitializer):
         return self.multi_chasers()
 
     def multi_chasers(self):
+        """Return one assignment per chaser, from its release state at anomaly 0."""
         return [
             self.deployment.assignment(index, self.deployment.kinematics(index, 0.0)[0])
             for index in range(self.deployment.count)
         ]
 
     def multi_initial_states(self, count):
+        """Return each chaser's LVLH state at anomaly 0.
+
+        Raises ValueError if count is not an integer equal to the deployment's chaser
+        count.
+        """
         if (
             isinstance(count, bool)
             or not isinstance(count, (int, np.integer))
@@ -424,6 +497,11 @@ class CompositeDeploymentFleet(FleetInitializer):
         return [self.deployment.kinematics(index, 0.0)[0] for index in range(count)]
 
     def build_chaser_configs(self, initial_states):
+        """Return the assignments for initial_states, which must be the release states.
+
+        Raises ValueError if the states differ in shape or value from the
+        deployment's release states.
+        """
         states = np.asarray(initial_states, dtype=float)
         expected = np.asarray(self.multi_initial_states(self.deployment.count))
         if states.shape != expected.shape or not np.array_equal(states, expected):

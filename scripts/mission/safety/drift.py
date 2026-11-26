@@ -43,6 +43,14 @@ class NonlinearZeroDriftBounds:
         precision_bits=128,
         extra_acceleration_abs=(0, 0, 0),
     ):
+        """Store the model, clock and target provider, and validate the budgets.
+
+        Inputs: maximum_width is the widest proof sub-window in reference-clock units;
+            maximum_pieces bounds the number of sub-windows; precision_bits is the Arb
+            precision; extra_acceleration_abs is a nonnegative per-axis bound on the
+            additional anomaly-acceleration disturbance. Raises ValueError unless
+            maximum_width > 0, maximum_pieces >= 1 and precision_bits >= 64.
+        """
         self.model, self.clock, self.target_provider = model, clock, target_provider
         self.maximum_width = _exact(maximum_width)
         self.maximum_pieces, self.precision_bits = maximum_pieces, precision_bits
@@ -56,6 +64,7 @@ class NonlinearZeroDriftBounds:
 
     @staticmethod
     def nominal_drift(q, measurement):
+        """Return three exact zeros, the nominal drift; both arguments are ignored."""
         return (Fraction(0),) * 3
 
     def verify_certificate_source(self, certificate, required_extra):
@@ -130,6 +139,21 @@ class NonlinearZeroDriftBounds:
         return True
 
     def __call__(self, spec, reference, state_box, sensing_box):
+        """Return the actual nonlinear drift bounds of a tracking spec over its window.
+
+        The window is split into pieces no wider than maximum_width. On each piece the
+        relative field is enclosed with Arb over state_box and the target boxes of the
+        validated ephemeris, the enclosures are hulled, and extra_acceleration_abs is
+        added to their absolute bound. reference is not used.
+
+        Inputs: spec RefugeTrackingSpec; state_box and sensing_box IntervalBoxes.
+        Outputs: NonlinearDriftBounds with the zero nominal drift and a proof reference
+            bound to the target, model, clock, region, scope, extra bound and precision.
+            Raises ValueError if the context differs from this model or clock, if the
+            target provider does not return a proved same-model and same-clock
+            TargetEphemerisCertificate, or if the piece count would exceed
+            maximum_pieces; the region and clock-domain checks may also raise.
+        """
         import flint
 
         ctx, model, clock = spec.context, self.model, self.clock

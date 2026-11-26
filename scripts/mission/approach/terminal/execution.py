@@ -48,6 +48,7 @@ MIDPOINT_EXECUTION_SCHEMA = "orbexa.physical_terminal_execution.midpoint.v1"
 
 
 def _digest(value):
+    """Return the SHA256 hex digest of the canonical JSON encoding of value."""
     return hashlib.sha256(
         json.dumps(
             _encode(value), sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -138,7 +139,7 @@ def terminal_source_lineage(approach_record):
 
 
 class _TerminalSourceFailure(RuntimeError):
-    pass
+    """Raised when the caller-supplied acceleration source fails during propagation."""
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,11 @@ class TerminalObservation:
     state_enclosures: Sequence[IntervalBox]
 
     def __post_init__(self):
+        """Validate and freeze the per-member measurements and state enclosures.
+
+        Raises ValueError unless there is at least one finite six-state measurement
+        and one six-dimensional enclosure per member.
+        """
         measurements = tuple(
             _vector(value, 6, "Terminal measurement") for value in self.measurements
         )
@@ -165,11 +171,18 @@ class TerminalObservation:
         object.__setattr__(self, "state_enclosures", boxes)
 
     def as_dict(self):
+        """Return the measurements and enclosures in encoded form."""
         return _encode(vars(self))
 
 
 @dataclass(frozen=True)
 class PhysicalTerminalExecutionResult:
+    """Record of a terminal execution: status, histories, observations and holds.
+
+    anomaly_history holds exact clocks, actual_state_history the numerical fleet
+    states at each clock, and physical_duration_seconds the elapsed target time (s).
+    """
+
     status: str
     reason: str
     anomaly_history: tuple[Fraction, ...]
@@ -188,13 +201,19 @@ class PhysicalTerminalExecutionResult:
 
     @property
     def success(self):
+        """Return True only when status is COMPLETED_FINITE_WINDOW."""
         return self.status == "COMPLETED_FINITE_WINDOW"
 
     @property
     def final_states(self):
+        """Return the fleet states at the last recorded clock."""
         return self.actual_state_history[-1]
 
     def as_dict(self):
+        """Return the encoded record plus success and reset_performed False.
+
+        held_policy and schema are omitted when None.
+        """
         record = dict(vars(self))
         for key in ("held_policy", "schema"):
             if record[key] is None:
@@ -231,6 +250,19 @@ class PhysicalTerminalRunner:
         acceleration_source: Callable[[float, Any], Any] | None = None,
         source_context: dict | None = None,
     ):
+        """Check that fleet, target, truth and geometry agree, then set up the runner.
+
+        Inputs: builders (one per fleet member), target, a fixed-point truth, an
+        observation source, orientation_matrix_error and minimum_pair_center_distance
+        (nonnegative bounds), and optional reachability config, record sink,
+        acceleration source and caller source context.
+        Outputs: sets the fleet, policy, encloser, collision guard and source context.
+        Raises ValueError when callables or bounds are invalid, the truth lies outside
+        the retained prior or differs from the target clock, the target contradicts the
+        certified context, the geometry is unsupported or inconsistent, the window
+        leaves the target domain, the entry spin is not enclosed, or midpoint source
+        identities are missing or malformed.
+        """
         self.builders = tuple(builders)
         self.fleet = PhysicalTerminalFleet(self.builders)
         self.policy = self.fleet.controllers[0].certificate.policy
@@ -415,6 +447,12 @@ class PhysicalTerminalRunner:
 
     @staticmethod
     def _coefficients(anomaly, parameters):
+        """Return the numerical dynamics matrix (3 x 6) and affine term at anomaly.
+
+        Inputs: anomaly, the independent variable (unwrapped anomaly, not seconds), and
+        parameters holding eccentricity, alpha, beta, theta0, mu and semi-major axis.
+        Used for numerical replay only; proof coefficients are computed elsewhere.
+        """
         # Numerical replay only. All global bounds and continuous-flow proof
         # coefficients are independently evaluated by Arb in the proof layer.
         import numpy as np
@@ -447,6 +485,11 @@ class PhysicalTerminalRunner:
         return matrix, affine
 
     def references_at(self, anomaly) -> tuple[TerminalReferenceSample, ...]:
+        """Return one terminal reference sample per builder at the given anomaly.
+
+        Raises ValueError when converting the anomaly to binary64 exceeds a builder's
+        anomaly-evaluation error budget.
+        """
         q = _exact(anomaly)
         result = []
         for builder in self.builders:
@@ -509,6 +552,11 @@ class PhysicalTerminalRunner:
         return pairs
 
     def _policy_event(self, q, hold, pairs):
+        """Return the policy fields added to a hold record.
+
+        Empty for the start policy; for midpoint it holds the schema, exact midpoint and
+        end anomalies, context hashes, reference samples and error contracts.
+        """
         if self.policy is TerminalFeedforwardPolicy.START_V1:
             return {}
         return {
@@ -548,6 +596,10 @@ class PhysicalTerminalRunner:
 
     @staticmethod
     def _numerical_states(values, count):
+        """Return a copy of values as a finite (count, 6) float array.
+
+        Raises ValueError for any other shape or a nonfinite entry.
+        """
         import numpy as np
 
         states = np.asarray(values, dtype=float)
@@ -559,9 +611,16 @@ class PhysicalTerminalRunner:
 
     @staticmethod
     def _tuple_states(states):
+        """Return the states as nested tuples of floats."""
         return tuple(tuple(map(float, value)) for value in states)
 
     def _observation_reason(self, observation, states):
+        """Return why an observation is unusable, or an empty string when it is valid.
+
+        Checks the type and fleet size, that each enclosure contains the actual
+        numerical state, and that each measurement and enclosure stay within the
+        builder's sensing error budget.
+        """
         if not isinstance(observation, TerminalObservation) or len(
             observation.measurements
         ) != len(self.builders):
@@ -591,6 +650,16 @@ class PhysicalTerminalRunner:
         initial_observation: TerminalObservation,
         end_anomaly=None,
     ) -> PhysicalTerminalExecutionResult:
+        """Execute the terminal window hold by hold, proving each hold first.
+
+        Inputs: initial_anomaly (exact, must equal the certified start), initial_states
+        (one six-state per member), initial_observation, and optional end_anomaly.
+        Outputs: a PhysicalTerminalExecutionResult. A refused or failed hold returns
+        with its status and reason and no state reset; refused holds are appended to
+        the records and passed to record_sink. Raises ValueError for an entry that
+        is not the certified start, a bad end, malformed states or a missing
+        observation.
+        """
         import numpy as np
         from scipy.integrate import solve_ivp
 
@@ -623,6 +692,11 @@ class PhysicalTerminalRunner:
         )
 
         def finish(status, reason):
+            """Build the result from the current clocks, histories and records.
+
+            status and reason are given; the midpoint policy also records method,
+            policy and schema.
+            """
             duration = self.target.physical_time_at(
                 float(q)
             ) - self.target.physical_time_at(float(initial_q))
@@ -777,6 +851,13 @@ class PhysicalTerminalRunner:
                 return finish("REFUSED_COMMAND_CONVERSION", str(error))
 
             def rhs(anomaly, flat, control=control):
+                """Return the derivative of the flattened fleet state at anomaly.
+
+                Applies the truth dynamics, the held control and any acceleration source
+                disturbance. Raises _TerminalSourceFailure if the source raises, and
+                ValueError if its output has the wrong shape, is nonfinite or exceeds
+                the certified budget.
+                """
                 actual = flat.reshape(len(self.builders), 6)
                 matrix, affine = self._coefficients(anomaly, self.truth)
                 disturbance = np.zeros((len(self.builders), 3))

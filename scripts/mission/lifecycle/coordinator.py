@@ -50,6 +50,10 @@ COMPLETE_MISSION_SCHEMA = "orbexa.complete-mission.v1"
 
 
 def _outward_float(value: Fraction) -> float:
+    """Return the float at or above the exact Fraction ``value``.
+
+    Raises ValueError when the value is not representable as a finite float.
+    """
     number = float(value)
     if not np.isfinite(number):
         raise ValueError(
@@ -166,6 +170,10 @@ class CompleteMissionOptions:
     finite_contact: FiniteContactOptions = field(default_factory=FiniteContactOptions)
 
     def __post_init__(self):
+        """Require positive limits and an explicit FiniteContactOptions.
+
+        Raises TypeError when finite_contact is not a FiniteContactOptions.
+        """
         for name in (
             "input_component_bound",
             "translation_force_n",
@@ -189,6 +197,7 @@ class ApproachPropellantBudget:
     translation_force_limit_n: float
 
     def to_dict(self):
+        """Return the budget as a dict with its bound formula and scope statement."""
         return {
             "clock": self.clock,
             "force_l1_upper_n": self.force_l1_upper_n,
@@ -203,6 +212,11 @@ class ApproachPropellantBudget:
 
 @dataclass(frozen=True)
 class CompleteMissionResult:
+    """Outcome of a physical completion run with the records it produced.
+
+    The stage fields stay None for stages that were not reached.
+    """
+
     success: bool
     message: str
     approach: ADTMPCMissionResult
@@ -221,6 +235,7 @@ class CompleteMissionResult:
     completion_audit: dict | None = None
 
     def to_dict(self):
+        """Return the result as a dict with per-stage success flags and record paths."""
         failed_stage = (
             None if self.lifecycle is None else self.lifecycle.failure.get("stage")
         )
@@ -293,6 +308,12 @@ class CompleteMissionRunner:
         stage_sink: Callable[[str, object], None] | None = None,
         translation_accountant=None,
     ):
+        """Store the stage models and validate the capture options.
+
+        Raises ValueError when capture_options assume matched attitude or an
+        approach point that is the capture reference, and TypeError when
+        translation_accountant lacks a callable ``translation_budget``.
+        """
         self.options = options
         self.approach_runner = approach_runner
         self.attitude_tracker = attitude_tracker or ChaserAttitudeTracker()
@@ -321,12 +342,29 @@ class CompleteMissionRunner:
         self.translation_accountant = translation_accountant
 
     def _record(self, stage, result):
+        """Forward a stage result to the stage sink when one is set."""
         if self.stage_sink is not None:
             self.stage_sink(stage, result)
 
     def translation_budget(
         self, approach: ADTMPCMissionResult, *, terminal_handoff=None
     ) -> ApproachPropellantBudget:
+        """Return the conservative approach translation force and fuel debit.
+
+        Delegates to the translation accountant when one is set. Otherwise the
+        bound is 3 * m_wet * rate**2 * U per chaser over the enclosed orbital clock,
+        and fuel is that force times the upper physical duration over g0 * Isp.
+
+        Inputs:
+            approach: recorded approach result with anomaly history and truth.
+            terminal_handoff: optional verified handoff; its trajectory is used.
+
+        Outputs:
+            ApproachPropellantBudget. Raises ValueError for a non-increasing
+            anomaly history, recorded input means that are misaligned or exceed
+            the declared bound, an inconsistent committed clock or actuator limits,
+            or a force above translation_force_n.
+        """
         if self.translation_accountant is not None:
             return self.translation_accountant.translation_budget(
                 approach,
@@ -471,6 +509,10 @@ class CompleteMissionRunner:
         )
 
     def run(self, *, mission: str = "multi", steps: int = 550) -> CompleteMissionResult:
+        """Run the injected approach runner, then complete the mission.
+
+        Raises ValueError when no approach runner was injected.
+        """
         if self.approach_runner is None:
             raise ValueError(
                 "run requires an injected approach runner; use complete for a saved approach"
@@ -488,6 +530,22 @@ class CompleteMissionRunner:
         attitude_observations=None,
         contact_initial_enclosure=None,
     ) -> CompleteMissionResult:
+        """Run the physical stages after an approach and return the result.
+
+        Stages run in order: handoff verification, body-geometry binding,
+        translation budget, attitude tracking, then the capture, detumbling and
+        deorbit lifecycle. Each stage result is passed to the stage sink. An
+        unsuccessful approach, a rejected attitude stage, or a ValueError,
+        RuntimeError, ArithmeticError or ImportError yields an unsuccessful result
+        that keeps the records produced so far.
+
+        Inputs:
+            approach: recorded approach result.
+            terminal_handoff: optional PhysicalTerminalHandoff for this approach.
+            capture_truth, contact_feedback, contact_environment,
+            contact_initial_enclosure: passed to the lifecycle run.
+            attitude_observations: callback passed to the attitude tracker.
+        """
         self._record("approach", approach)
         if not approach.success or not approach.metadata.get("mission_complete", False):
             return CompleteMissionResult(
@@ -602,10 +660,15 @@ class CompleteMissionStore:
     filename = "complete_mission.json"
 
     def __init__(self, output_dir: Path):
+        """Create the output directory; raise FileExistsError if it already exists."""
         self.directory = Path(output_dir)
         self.directory.mkdir(parents=True, exist_ok=False)
 
     def record(self, stage: str, result):
+        """Save one stage result under the output directory.
+
+        Raises OSError when a save fails and ValueError for an unknown stage name.
+        """
         if stage == "approach":
             MissionResultStore.save(result, self.directory / "approach")
         elif stage == "lifecycle":
@@ -622,6 +685,10 @@ class CompleteMissionStore:
             raise ValueError(f"Unknown mission stage: {stage}")
 
     def finish(self, result: CompleteMissionResult) -> Path:
+        """Write the complete mission summary and return its path.
+
+        Raises OSError when the file cannot be saved.
+        """
         path = self.directory / self.filename
         if not save_data(
             path, {"schema": COMPLETE_MISSION_SCHEMA, "result": result.to_dict()}
@@ -631,6 +698,9 @@ class CompleteMissionStore:
 
     @staticmethod
     def save(result: CompleteMissionResult, output_dir: Path) -> Path:
+        """Record every present stage of ``result`` into a new ``output_dir`` and
+        return the summary path.
+        """
         store = CompleteMissionStore(output_dir)
         store.record("approach", result.approach)
         if result.terminal_handoff is not None:

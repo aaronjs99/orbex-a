@@ -33,7 +33,10 @@ _SOURCE = {
 
 
 class _ForceArithmetic:
+    """Arithmetic wrapper that gives the force algebra a nonnegative-norm sqrt."""
+
     def __init__(self, arithmetic):
+        """Wrap ``arithmetic`` and expose its scalar and interval constructors."""
         self.arithmetic = arithmetic
         self.scalar, self.interval = arithmetic.scalar, arithmetic.interval
 
@@ -41,6 +44,11 @@ class _ForceArithmetic:
         # All sqrt calls in this maintained force algebra are norms or the
         # fixed axis norm. Restrict their hull to the known nonnegative range
         # before taking endpoint roots, including exactly co-rotating motion.
+        """Return the interval square root of a quantity known to be a norm.
+
+        The hull is clipped to nonnegative values before endpoint roots are taken.
+        Raises _ProofUnresolved when the whole enclosure is negative.
+        """
         ar = self.arithmetic
         box = ar.box((value,))
         if box.upper[0] < 0:
@@ -53,14 +61,27 @@ class _ForceArithmetic:
 
     @staticmethod
     def exp(value):
+        """Return the exponential of ``value`` through its own ``exp`` method."""
         return value.exp()
 
     def square(self, value):
+        """Return the rigid-interval square of ``value``."""
         return square(value, self.arithmetic)
 
 
 @dataclass(frozen=True)
 class NonlinearEnvironmentEnclosure:
+    """Interval enclosure of the J2 and vector-drag extra acceleration.
+
+    Fields:
+        model: copy of the declared nonlinear model bounds.
+        dry_mass: sorted (name, exact dry mass in kg) pairs, including target.
+        drag_area: sorted (name, exact CdA in m^2) pairs, or None for the
+            model's constant sigma.
+        point_environment_fingerprint: fingerprint of the point environment
+            record it was built from.
+    """
+
     model: object
     dry_mass: tuple
     drag_area: tuple | None
@@ -68,6 +89,13 @@ class NonlinearEnvironmentEnclosure:
 
     @classmethod
     def from_environment(cls, environment):
+        """Build the enclosure from a NonlinearEnvironment.
+
+        Raises _ProofUnresolved unless the environment is exactly the maintained
+        NonlinearEnvironment with FloatArithmetic, its cached parameters equal its
+        declared model, the fleet includes the target with matching drag-area names,
+        and masses are positive and drag areas nonnegative.
+        """
         from orbexa.mission.lifecycle.environment.point import NonlinearEnvironment
 
         if (
@@ -115,6 +143,7 @@ class NonlinearEnvironmentEnclosure:
         )
 
     def as_dict(self):
+        """Return the enclosure as a dict with source-file hashes, model and masses."""
         return {
             "method": "typed-arb-j2-vector-drag-extra-acceleration-v1",
             "source_files": dict(_SOURCE),
@@ -128,10 +157,28 @@ class NonlinearEnvironmentEnclosure:
         }
 
     def force_parameters(self, ar):
+        """Return the model parameters and the force arithmetic built from ``ar``."""
         arithmetic = _ForceArithmetic(ar)
         return parameters(self.model, arithmetic), arithmetic
 
     def evaluate(self, name, position, velocity, fuel, ar, prepared=None):
+        """Return the interval J2 plus drag acceleration of one body.
+
+        The central term is not included.
+
+        Inputs:
+            name: body name from the declared fleet, or "target".
+            position, velocity: interval components in the physical ECI frame
+                (m, m/s).
+            fuel: interval fuel mass in kg; added to the dry mass when explicit CdA
+                values are declared.
+            ar: interval arithmetic.
+            prepared: optional result of ``force_parameters`` to reuse.
+
+        Outputs:
+            Tuple of three interval accelerations in m/s^2. Raises _ProofUnresolved
+            for a body outside the fleet or a drag mass not proved positive.
+        """
         if name not in dict(self.dry_mass):
             raise _ProofUnresolved(
                 "interval environment body is outside the declared fleet"

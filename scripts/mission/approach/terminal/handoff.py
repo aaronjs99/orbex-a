@@ -57,15 +57,18 @@ MIDPOINT_HANDOFF_METHOD = "verified-physical-midpoint-terminal-handoff-v1"
 
 
 def _require(condition, reason):
+    """Raise ValueError with a handoff prefix unless condition holds."""
     if not condition:
         raise ValueError("Physical terminal handoff: " + reason)
 
 
 def _box(value):
+    """Return the IntervalBox built from a record's exact_lower and exact_upper."""
     return IntervalBox(value["exact_lower"], value["exact_upper"])
 
 
 def _observation(value):
+    """Return the TerminalObservation rebuilt from a saved record."""
     return TerminalObservation(
         value["measurements"], tuple(map(_box, value["state_enclosures"]))
     )
@@ -140,10 +143,12 @@ def _builder(value, *, method, certificate):
 
 
 def _target(spec):
+    """Return the physical target rebuilt from a saved target snapshot."""
     return physical_target_from_snapshot(spec)
 
 
 def _readonly(values):
+    """Return a read-only float copy of values; ValueError if any is nonfinite."""
     value = np.array(values, dtype=float, copy=True)
     _require(np.all(np.isfinite(value)), "endpoint arrays must be finite")
     value.setflags(write=False)
@@ -151,6 +156,7 @@ def _readonly(values):
 
 
 def _outward(values):
+    """Return a read-only array with each value rounded outward (upward)."""
     return _readonly(tuple(_float_outward(value, True) for value in values))
 
 
@@ -194,6 +200,10 @@ class PhysicalTerminalHandoff:
     _integrity_digest: str = field(repr=False)
 
     def __init__(self, *args, **kwargs):
+        """Refuse direct construction; use from_files.
+
+        Raises TypeError always.
+        """
         raise TypeError(
             "Construct a verified physical terminal handoff with from_files"
         )
@@ -226,6 +236,14 @@ class PhysicalTerminalHandoff:
 
     @classmethod
     def _from_files(cls, approach_path, terminal_result_path):
+        """Verify the approach and terminal files together and build the handoff.
+
+        Reads both files, checks their hashes, lineage, target, clocks, states,
+        builders, body envelope, input limits, parameters and observations, then
+        recomputes global certificates, commands, continuous flows and swept
+        geometry for every hold. Raises ValueError on any mismatch. Also
+        compares an adjacent proof journal when present.
+        """
         approach_path, terminal_result_path = (
             Path(approach_path),
             Path(terminal_result_path),
@@ -701,6 +719,12 @@ class PhysicalTerminalHandoff:
         duration,
         discrepancy,
     ):
+        """Assemble the verified handoff from already checked records.
+
+        Builds the endpoint states, references, capture bounds, combined
+        approach-plus-terminal trajectory and summary, sets the fields on a new
+        instance, stores its integrity digest and re-verifies the approach.
+        """
         references = runner.references_at(clocks[-1])
         endpoints, centers, omega, phi, bounds = {}, {}, {}, {}, {}
         for key, state, reference, controller in zip(
@@ -915,6 +939,7 @@ class PhysicalTerminalHandoff:
         return self
 
     def _current_integrity(self):
+        """Return the digest of the summary, trajectory and endpoint data now held."""
         # Mappings used by consumers include nested metadata.  Detect any
         # accidental mutation before a downstream physical boundary is used.
         trajectory = dict(

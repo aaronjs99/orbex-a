@@ -44,19 +44,30 @@ class AgentState:
     winners: np.ndarray | None = None  # shape (N_tasks,) int agent ids
 
     def copy_goal(self) -> Vec:
+        """Return an independent copy of goal_pos."""
         return np.array(self.goal_pos, copy=True)
 
 
 class Network(Protocol):
-    def neighbors(self, agent_id: int) -> list[int]: ...
+    """Protocol for a communication topology over integer agent ids."""
 
-    def is_connected(self) -> bool: ...
+    def neighbors(self, agent_id: int) -> list[int]:
+        """Return the ids of the agents that agent_id can communicate with."""
+        ...
+
+    def is_connected(self) -> bool:
+        """Return whether the communication graph is connected."""
+        ...
 
 
 class Policy(Protocol):
+    """Protocol for a task-allocation policy that updates one agent per step."""
+
     def initialize(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
-    ) -> None: ...
+    ) -> None:
+        """Prepare per-agent policy memory before any step is taken."""
+        ...
 
     def step(
         self,
@@ -70,4 +81,6 @@ class Policy(Protocol):
 
     def has_converged(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
-    ) -> bool: ...
+    ) -> bool:
+        """Return whether the policy's convergence criterion currently holds."""
+        ...

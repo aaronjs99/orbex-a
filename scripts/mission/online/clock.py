@@ -15,6 +15,15 @@ PERFORMANCE_CLOCK = "perf-counter-ns-v1"
 
 
 def wall_time_ns(clock_id=MONOTONIC_CLOCK):
+    """Return the current time in integer nanoseconds from the selected clock.
+
+    Inputs:
+        clock_id: MONOTONIC_CLOCK (time.monotonic_ns) or PERFORMANCE_CLOCK
+            (time.perf_counter_ns).
+
+    Outputs:
+        Raises ValueError for any other clock id.
+    """
     if clock_id == MONOTONIC_CLOCK:
         return time.monotonic_ns()
     if clock_id == PERFORMANCE_CLOCK:

@@ -16,6 +16,13 @@ from scipy.optimize import linprog
 
 @dataclass(frozen=True)
 class AxialBurnPlan:
+    """Record the selected burn direction, its force capacity and thruster commands.
+
+    Holds the body-frame unit direction, the zero-torque capacity (N), the commanded
+    force (N), the minimum-L1 fuel flow (kg/s), both per-thruster command vectors (N)
+    and every candidate row examined.
+    """
+
     direction_body: tuple[float, float, float]
     capacity_n: float
     commanded_force_n: float
@@ -25,6 +32,10 @@ class AxialBurnPlan:
     candidates: tuple[dict, ...]
 
     def to_dict(self):
+        """Return the plan as a JSON-style dict with tuples converted to lists.
+
+        Adds a fixed "scope" string stating the limits of the recorded plan.
+        """
         return {
             "direction_body": list(self.direction_body),
             "capacity_n": self.capacity_n,
@@ -63,6 +74,12 @@ class AxialBurnPlanner:
     )
 
     def __post_init__(self):
+        """Validate and normalize the planner settings.
+
+        Raises ValueError if the command fraction is not in (0, 1), the residual
+        tolerance is not positive, a backoff scale is not a finite real number, or the
+        scales are not 1 to 16 strictly decreasing positive values starting at 1.0.
+        """
         fraction = positive(self.command_fraction, "Burn command fraction")
         if fraction >= 1:
             raise ValueError("Burn command fraction must leave actuator reserve")
@@ -90,6 +107,27 @@ class AxialBurnPlanner:
         object.__setattr__(self, "force_backoff_scales", scales)
 
     def select(self, assembly, state, propulsion, duration_s):
+        """Return the burn direction with the lowest actual fuel flow per unit force.
+
+        For each distinct body axis and nozzle direction, solve a zero-torque capacity
+        LP, back off the requested force through the declared scales until the allocator
+        meets the residual tolerance, then solve a minimum-L1 fuel-flow LP at that force
+        and check its residuals. Accepted candidates are ranked by actual allocator flow
+        per force, then by larger capacity, then by candidate order.
+
+        Inputs:
+            assembly: attached assembly model passed to the propulsion matrix and
+                allocator.
+            state: planning state; fuel_kg sets which thrusters are active.
+            propulsion: thruster system whose matrix and allocate methods are used.
+            duration_s: allocation hold duration (s); must be positive.
+
+        Outputs:
+            AxialBurnPlan with every candidate row, accepted or not.
+
+        Raises ValueError if the duration is not positive, active thrusters lack
+        six-axis wrench authority, or no direction is accepted.
+        """
         duration = positive(duration_s, "Planned allocation hold")
         matrix = propulsion.matrix(assembly, state.fuel_kg)
         limits = np.array(

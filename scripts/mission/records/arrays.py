@@ -46,6 +46,12 @@ class MissionRecorder:
         state: CoupledMissionState,
         initial_belief: ParameterBelief,
     ):
+        """Create the history containers and record each chaser's initial sample.
+
+        Outputs: per-chaser lists for actual and nominal trajectories, controls, solve
+        statistics, costs, tube profiles and diagnostics, the anomaly, phase, attitude
+        and belief histories, and the dense-interval minima; initial_belief is copied.
+        """
         self.scenario, self.config, self.chasers = scenario, scenario.config, chasers
         self.initial_belief = initial_belief.copy()
         self.ids = [c.chaser_id for c in chasers]
@@ -121,6 +127,10 @@ class MissionRecorder:
         self.policy_transition_history = []
 
     def tube_metadata(self, anom: float, profile) -> dict[str, Any]:
+        """Return the JSON-ready record of a tube profile.
+
+        Inputs: anom is the anomaly (rad) at which the profile starts.
+        """
         return {
             "start_anom": float(anom),
             "time_grid": profile.time_grid.tolist(),
@@ -153,6 +163,13 @@ class MissionRecorder:
         }
 
     def record_tube_sample(self, data, state, center, phi, omega, bandwidth) -> None:
+        """Append one tube sample for a chaser to its diagnostics lists.
+
+        Outputs: appends the centre, phi, omega, bandwidth, position error (state minus
+        centre), sliding error (velocity error plus gains times position error) and the
+        containment margin, the smaller of omega minus the absolute position error and
+        phi minus the absolute sliding error. Mutates data.
+        """
         error = state - center
         sliding = error[3:] + np.asarray(self.config.tube.sliding_gains) * error[:3]
         for key, value in {
@@ -169,6 +186,12 @@ class MissionRecorder:
         )
 
     def record_planning(self, planning: PlanningStep, anomaly: float) -> None:
+        """Record every solve attempt of a planning step at the given anomaly.
+
+        Outputs: appends statistics and cost for each attempt, adds the failed dynamic
+        tube for unsuccessful attempts, and for chasers with a plan appends the nominal
+        trajectory and tube metadata.
+        """
         for key, result in planning.attempts.items():
             self.stats[key].append(
                 {
@@ -196,5 +219,6 @@ class MissionRecorder:
                 )
 
     def record_belief(self, belief: ParameterBelief) -> None:
+        """Append the belief's serialized feasible ranges and estimates."""
         self.feasible.append(serial_ranges(belief.feasible_sets))
         self.estimates.append(serial_estimates(belief.estimates))

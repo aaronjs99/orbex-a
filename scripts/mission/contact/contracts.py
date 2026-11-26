@@ -16,6 +16,13 @@ from orbexa.models.dynamics.attitude import finite_vector
 
 @dataclass(frozen=True)
 class FiniteContactOptions:
+    """Frozen SI options for the finite compliant contact stage.
+
+    Inputs: lengths in m, speeds in m/s, accelerations in m/s^2, times in s,
+    forces in N, moments in N m, stiffnesses in N/m or N m/rad, dampings in
+    N s/m or N m s/rad, energy in J, power in W, frequencies in rad/s.
+    """
+
     handoff_rule: str = "load_bounded_finite_lock"
     max_duration_s: float = 60.0
     max_step_s: float = 0.005
@@ -65,6 +72,14 @@ class FiniteContactOptions:
     energy_relative_tolerance: float = 0.001
 
     def __post_init__(self):
+        """Validate the options and coerce every numeric field to a float.
+
+        Outputs: raises ValueError if handoff_rule is not load_bounded_finite_lock or
+        settled_passive, a field is not finite and positive (friction_coefficient and
+        minimum_bus_clearance_m may be zero), touch speed exceeds extension speed, the
+        settling, preload and bond dwells do not fit the maximum duration, or preload
+        does not fit within the stiffness times the maximum compression.
+        """
         if self.handoff_rule not in ("load_bounded_finite_lock", "settled_passive"):
             raise ValueError(
                 "Declare load_bounded_finite_lock or settled_passive contact handoff"
@@ -95,6 +110,13 @@ class FiniteContactOptions:
 
 @dataclass(frozen=True)
 class ContactBodyState:
+    """Frozen rigid-body state at one contact time, expressed in ECI.
+
+    Inputs: time_s in s, position_eci_m in m, velocity_eci_m_s in m/s,
+    quaternion_body_to_eci unitless, angular_velocity_body_rad_s in rad/s in the
+    body frame, fuel_kg in kg.
+    """
+
     time_s: float
     position_eci_m: np.ndarray
     velocity_eci_m_s: np.ndarray
@@ -103,6 +125,11 @@ class ContactBodyState:
     fuel_kg: float = 0.0
 
     def __post_init__(self):
+        """Validate the state, normalize the quaternion and freeze the arrays.
+
+        Outputs: raises ValueError if the time is not finite, a vector has the wrong
+        size or a non-finite entry, the quaternion is zero, or fuel is negative.
+        """
         object.__setattr__(self, "time_s", float(self.time_s))
         if not np.isfinite(self.time_s):
             raise ValueError("Contact time must be finite")
@@ -125,6 +152,7 @@ class ContactBodyState:
         )
 
     def to_dict(self):
+        """Return the fields as a dict with arrays converted to lists."""
         return {
             name: value.tolist() if isinstance(value, np.ndarray) else value
             for name, value in vars(self).items()
@@ -133,6 +161,13 @@ class ContactBodyState:
 
 @dataclass(frozen=True)
 class ContactMember:
+    """Frozen description of one chaser taking part in finite contact.
+
+    Inputs: surface_anchor_body_m in m and the unit axes normal_body, tangent_u_body
+    and tangent_v_body describe the attachment patch on the target and are expressed
+    in the target body frame, not the chaser's own frame; arm_reach_m in m.
+    """
+
     id: str
     properties: Any
     initial_state: ContactBodyState
@@ -144,6 +179,12 @@ class ContactMember:
     patch_id: str | None = None
 
     def __post_init__(self):
+        """Validate the member and freeze its body-frame vectors.
+
+        Outputs: raises ValueError if id is empty or not a string, a vector is not
+        three finite values, the tangent and normal axes are not right-handed
+        orthonormal, or arm_reach_m is not finite and positive.
+        """
         if not isinstance(self.id, str) or not self.id:
             raise ValueError("Contact member requires an id")
         for name in (
@@ -170,6 +211,13 @@ class ContactMember:
 
 @dataclass(frozen=True)
 class FiniteContactResult:
+    """Frozen outcome of a finite contact run.
+
+    Inputs: success and message report the outcome; final_target and final_chasers
+    hold the final body states; history, surface_contacts and audit hold the
+    recorded data.
+    """
+
     success: bool
     message: str
     final_target: ContactBodyState
@@ -179,6 +227,7 @@ class FiniteContactResult:
     audit: dict
 
     def to_dict(self):
+        """Return the result as a dict with body states converted to dicts."""
         return {
             "success": self.success,
             "message": self.message,

@@ -23,6 +23,10 @@ from orbexa.proofs.numerics.rigid_interval import (
 
 
 def intersect(left, right):
+    """Return the componentwise intersection of two interval boxes.
+
+    The result is not checked for emptiness; a coordinate with lower above
+    upper is returned as computed."""
     return IntervalBox(
         tuple(max(a, b) for a, b in zip(left.lower, right.lower)),
         tuple(min(a, b) for a, b in zip(left.upper, right.upper)),
@@ -30,6 +34,11 @@ def intersect(left, right):
 
 
 def initial_rotation_boxes(fleet, physical, ar, *, observation=None, support=None):
+    """Return one nine-entry rotation matrix box per body at the initial state.
+
+    Each box encloses the quaternion rotation of `physical`. If `observation`
+    is given, the measured rotation widened by the target or chaser pose error
+    (rad) from `support` is intersected with it."""
     states = (
         None
         if observation is None
@@ -63,6 +72,11 @@ def initial_rotation_boxes(fleet, physical, ar, *, observation=None, support=Non
 
 
 def rotation_derivative(rotation, spin):
+    """Return the flattened row-major product R[spin] for rotation R.
+
+    Inputs: `rotation` is a 3x3 nested sequence and `spin` a body-axis
+    angular velocity (rad/s). Outputs: nine entries of the time derivative
+    of R."""
     x, y, z = spin
     skew = ((0, -z, y), (z, 0, -x), (-y, x, 0))
     return tuple(
@@ -73,6 +87,14 @@ def rotation_derivative(rotation, spin):
 
 
 def auxiliary_initial(fleet, physical, ar, *, rotations=None, gaps=None):
+    """Append rotation and gap boxes to the physical initial box.
+
+    Inputs: `rotations` and `gaps`, if given, are carried supports that are
+    intersected with the rotation boxes and per-chaser gap boxes (m) derived
+    from `physical`.
+    Outputs: `(combined, rotation_boxes, gap_boxes)`, where `combined` is the
+    physical box extended by the rotation entries and then the gaps.
+    Raises ValueError if `rotations` does not give nine entries for every body."""
     source_rotations = initial_rotation_boxes(fleet, physical, ar)
     if rotations is not None:
         if len(rotations) != fleet.body_count or any(

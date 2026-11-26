@@ -26,6 +26,11 @@ class CarrierTransferReference:
     duration_rad: float
 
     def __post_init__(self):
+        """Validate the centres and duration and store the centres as float tuples.
+
+        Raises ValueError for a centre that is not a finite three-vector or a duration
+        that is not positive and finite.
+        """
         for name in ("center_lvlh_m", "close_center_body_m"):
             object.__setattr__(self, name, tuple(_point(getattr(self, name), name)))
         object.__setattr__(
@@ -35,6 +40,17 @@ class CarrierTransferReference:
         )
 
     def kinematics(self, anomaly, offset_body_m, rotation, derivative, second):
+        """Return the transfer kinematics of one dispenser point at an anomaly.
+
+        The blend s rises from 0 to 1 over duration_rad as a quintic in anomaly. The
+        position is (1 - s) times the LVLH centre plus the rotation applied to s times
+        the close centre plus the body offset.
+        Inputs: anomaly (rad), offset_body_m (m), and rotation, derivative and second,
+        the 3x3 rotation and its first and second anomaly derivatives.
+        Outputs: the position and velocity stacked, and the velocity and acceleration
+        stacked, with derivatives taken with respect to anomaly. Raises ValueError for a
+        non-finite anomaly, non-finite or mis-shaped matrices or a non-proper rotation.
+        """
         if not np.isfinite(anomaly):
             raise ValueError("Carrier transfer anomaly must be finite")
         offset = _point(offset_body_m, "Dispenser offset")

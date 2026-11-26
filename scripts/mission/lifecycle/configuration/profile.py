@@ -27,6 +27,19 @@ _CONTACT_HARDWARE = frozenset(
 
 
 def _options(value, kind, *, forbidden=frozenset()):
+    """Return ``value`` as an options object of type ``kind``.
+
+    An instance passes through; a mapping is checked and expanded into ``kind``.
+
+    Inputs:
+        value: options instance or mapping of field names to settings.
+        kind: options dataclass type.
+        forbidden: setting names refused in the mapping.
+
+    Outputs:
+        Instance of ``kind``. Raises TypeError when value is neither, and
+        ValueError for unknown names, forbidden names or boolean values.
+    """
     if isinstance(value, kind):
         return value
     if not isinstance(value, Mapping):
@@ -52,11 +65,16 @@ def _options(value, kind, *, forbidden=frozenset()):
 
 @dataclass(frozen=True)
 class MissionCompletionProfile:
+    """Contact, detumbling and deorbit options for the completion stages."""
+
     contact: FiniteContactOptions = field(default_factory=FiniteContactOptions)
     detumbling: DetumblingOptions = field(default_factory=DetumblingOptions)
     deorbit: DeorbitOptions = field(default_factory=DeorbitOptions)
 
     def __post_init__(self):
+        """Coerce each stage option into its options type, refusing contact
+        propulsion hardware settings.
+        """
         object.__setattr__(
             self,
             "contact",
@@ -69,6 +87,16 @@ class MissionCompletionProfile:
 
     @classmethod
     def from_declaration(cls, value=None):
+        """Return a profile from None, a profile or a mapping.
+
+        Inputs:
+            value: None for defaults, an existing profile, or a mapping with only
+                the contact, detumbling and deorbit keys.
+
+        Outputs:
+            MissionCompletionProfile. Raises ValueError for any other mapping keys
+            or non-mapping values.
+        """
         if value is None:
             return cls()
         if isinstance(value, cls):
@@ -84,6 +112,9 @@ class MissionCompletionProfile:
         return cls(**value)
 
     def as_dict(self):
+        """Return the profile as plain dicts, leaving out the contact propulsion
+        hardware fields.
+        """
         return {
             "contact": {
                 key: value

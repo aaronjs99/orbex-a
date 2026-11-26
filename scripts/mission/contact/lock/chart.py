@@ -19,6 +19,7 @@ from orbexa.proofs.numerics.rigid_interval import (
 
 
 def _minus_identity(matrix, ar):
+    """Return the matrix with the identity subtracted from it, entry by entry."""
     return tuple(
         tuple(value - ar.scalar(int(i == j)) for j, value in enumerate(row))
         for i, row in enumerate(matrix)

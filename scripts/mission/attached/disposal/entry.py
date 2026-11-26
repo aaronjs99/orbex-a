@@ -12,6 +12,14 @@ from orbexa.models.dynamics.reference_frame import fingerprint
 
 
 def radial_status(box, radius_m):
+    """Bound a state box against a sphere of radius radius_m about the origin.
+
+    Uses exact rational interval arithmetic on the position and velocity bounds of box
+    (positions in m, velocities in m/s). Reports whether the box lies entirely above or
+    entirely at or below the radius, the lower and upper bounds of the squared position
+    norm (m^2) as strings, the upper bound of the radial product r.v (m^2/s) as a
+    string, and whether that bound is negative (descending).
+    """
     radius_squared = Fraction(float(radius_m)) ** 2
     lower = sum(
         0 if lo <= 0 <= hi else min(lo * lo, hi * hi)
@@ -38,6 +46,7 @@ class EntryInterfaceMonitor:
     """A positive above-to-below bracket, with every intervening flow descending."""
 
     def __init__(self, radius_m):
+        """Store the entry radius (m) and clear anchor, intervals and certificate."""
         self.radius_m = float(radius_m)
         self.anchor = None
         self.intervals = []
@@ -52,6 +61,27 @@ class EntryInterfaceMonitor:
         self.parameter_fingerprint, self.certificate = None, None
 
     def interval(self, start, end, *, fuel_flow_kg_s):
+        """Add one held-flow interval and return the current certificate, or None.
+
+        Starts a bracket when the start box is entirely above radius_m, clears it when
+        the swept set is not descending, and otherwise appends the interval. When the
+        bracket has an anchor and intervals and the end box is entirely at or below
+        radius_m, it builds and stores a PROVEN certificate dict with an identity
+        fingerprint.
+
+        Inputs:
+            start: state at the start of the hold, with an enclosure.
+            end: state at the end of the hold, with an enclosure carrying last_swept.
+            fuel_flow_kg_s: per-owner fuel depletion (kg/s); every value must be zero.
+
+        Outputs:
+            The stored certificate dict, or None until one is proven. Updates last_end,
+            last_box, parameter_fingerprint and the interval list.
+
+        Raises ValueError if fuel flow is nonzero or mis-sized, an enclosure or swept
+        set is missing, the clocks are not contiguous and increasing, the parameter
+        fingerprint changes, or the start box is not contained in the previous end box.
+        """
         if len(fuel_flow_kg_s) != len(start.fuel_kg) or any(
             value != 0 for value in fuel_flow_kg_s
         ):

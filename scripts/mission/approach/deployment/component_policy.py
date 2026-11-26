@@ -12,11 +12,15 @@ from orbexa.mission.approach.references.policy import MissionReferencePolicy
 
 
 class CompositeDeploymentPolicy(MissionReferencePolicy):
+    """Reference policy that stages a composite deployment, then hands to docking."""
+
     def __init__(self, deployment, horizon_steps=None):
+        """Store the deployment and initialise the base policy from its inputs."""
         super().__init__(deployment.config, deployment.target, horizon_steps)
         self.deployment = deployment
 
     def initial_phase(self):
+        """Return the rendezvous phase named carrier_departure or deployment."""
         return MissionPhase(
             "carrier_departure"
             if self.deployment.carrier_transfer is not None
@@ -25,6 +29,12 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         )
 
     def select_phase(self, phase, state, chasers):
+        """Return the phase for the current fleet state.
+
+        A docking phase is kept. Otherwise: carrier_departure at anomaly 0.0 or
+        transfer before the transfer anomaly, deployment before the staging anomaly,
+        docking once every staging margin is nonnegative, and staging if not.
+        """
         if phase.operation == "docking":
             return phase
         if state.anomaly < self.deployment.transfer_anomaly:
@@ -39,6 +49,17 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         return MissionPhase("staging", "rendezvous")
 
     def staging_margins(self, state, chasers):
+        """Return named staging margins; a nonnegative value means satisfied.
+
+        Includes reference_staged (anomaly minus staging anomaly) and, per chaser,
+        nominal and actual position and velocity tolerance margins, signed distance
+        to the target components for the nominal centre (less tube radius) and the
+        actual state, and pair spacing for nominal and actual positions. Lengths in
+        m, velocities in m per rad of anomaly.
+        Raises ValueError if chasers are not the complete assigned fleet with unique
+        IDs, if state values have the wrong shape, are not finite or have negative
+        tube components, or if any margin is not finite.
+        """
         if len(chasers) != self.deployment.count or len(
             {c.chaser_id for c in chasers}
         ) != len(chasers):
@@ -120,6 +141,12 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         return {key: float(value) for key, value in margins.items()}
 
     def phase_reference_state(self, phase, chaser, state, anom, tube_radius=0.0):
+        """Return the reference state for a chaser at anomaly anom (rad).
+
+        Docking uses the target's docking state at the chaser's docking point;
+        otherwise the deployment's LVLH reference state is used. The state and
+        tube_radius arguments are not used.
+        """
         if phase.operation == "docking":
             return self.target.docking_state(chaser.docking_point_body, anom)
         return self.deployment.kinematics(chaser.docking_candidate_index, anom)[0]
@@ -134,6 +161,11 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         matrices,
         time_periapsis,
     ):
+        """Return the reference states and feedforward inputs over the horizon.
+
+        Docking delegates to the base policy. Otherwise the deployment reference is
+        sampled at horizon_steps anomalies from anom spaced by the anomaly step.
+        """
         if phase.operation == "docking":
             return super().phase_reference_preview(
                 phase,
@@ -155,4 +187,5 @@ class CompositeDeploymentPolicy(MissionReferencePolicy):
         )
 
     def scenario_metadata(self):
+        """Return the deployment's scenario metadata."""
         return self.deployment.scenario_metadata()

@@ -30,6 +30,12 @@ from scipy.spatial.transform import Rotation
 
 
 def _saved_box(value, dimension):
+    """Return the IntervalBox stored in a saved set record.
+
+    Inputs: value holds exact_lower/exact_upper, else lower/upper; dimension is the
+    required number of coordinates.
+    Outputs: raises ValueError if the box dimension differs.
+    """
     result = IntervalBox(
         value.get("exact_lower", value.get("lower")),
         value.get("exact_upper", value.get("upper")),
@@ -40,6 +46,10 @@ def _saved_box(value, dimension):
 
 
 def _intersection(left, right):
+    """Return the coordinate-wise intersection of two IntervalBox values.
+
+    Outputs: raises ValueError if any coordinate interval is empty.
+    """
     lower = tuple(max(a, b) for a, b in zip(left.lower, right.lower))
     upper = tuple(min(a, b) for a, b in zip(left.upper, right.upper))
     if any(a > b for a, b in zip(lower, upper)):
@@ -109,6 +119,12 @@ class TerminalContactBoundary:
     precision_bits: int = 128
 
     def __post_init__(self):
+        """Deep-copy the saved inputs, convert tube vectors to floats and validate.
+
+        Outputs: raises ValueError if the fleet ids differ between inputs, the
+        navigation status is not VALID, its clock fingerprint differs from the
+        clock, or an attitude or spin gate is not finite and nonnegative.
+        """
         for name in (
             "navigation",
             "nominal_centers",
@@ -151,6 +167,13 @@ class TerminalContactBoundary:
     def from_approach(
         cls, approach, clock, *, orientation_gate_rad=0.01, spin_gate_rad_s=0.001
     ):
+        """Build the boundary from the terminal entries of a recorded approach.
+
+        Inputs: approach supplies metadata, actual_trajectories and tube_diagnostics;
+        the last navigation record and the last tube sample of each chaser are used.
+        Outputs: raises ValueError if the navigation anomaly differs from the committed
+        terminal endpoint or the chaser assignments differ from the recorded fleet.
+        """
         from orbexa.models.geometry.mounting import mounting_frame
 
         metadata = approach.metadata

@@ -48,6 +48,12 @@ def _bounded_box(box):
 
 
 def _propagate(box, acceleration, width):
+    """Propagate a six-component state box over width under an acceleration box.
+
+    Positions advance as p + h*v + h*h*a/2 and velocities as v + h*a; lower bounds use
+    the lower acceleration and upper bounds the upper one. The result is rounded
+    outward by _bounded_box.
+    """
     h = _exact(width)
     return _bounded_box(
         IntervalBox(
@@ -66,6 +72,13 @@ def _propagate(box, acceleration, width):
 
 
 def _position(packet):
+    """Return a box on the relative position from a four-component packet.
+
+    Subtracts the deterministic error support from the packet value to get range and
+    three direction-component intervals, then bounds the products of the range with
+    each component. Raises ValueError if the packet or its support does not have four
+    components or the range lower bound is not positive.
+    """
     if len(packet.value) != 4 or packet.deterministic_error_box.dimension != 4:
         raise ValueError(
             "A processed relative range/bearing packet needs four components"
@@ -122,6 +135,14 @@ class OnlineRelativeObserver:
         history_length=512,
         event_sink=None,
     ):
+        """Validate and store the initial observations and sensing configuration.
+
+        Raises ValueError unless observations are complete, simultaneous
+        RefugeObservation values with the clock's fingerprint, physical_time_box is
+        one-dimensional, history_length is an integer >= 2, sensor_fingerprints is a
+        nonempty set of nonempty strings and maximum_blackout_q is positive. Raises
+        TypeError if event_sink is neither callable nor None.
+        """
         if (
             not observations
             or any(not isinstance(v, RefugeObservation) for v in observations.values())
@@ -183,10 +204,16 @@ class OnlineRelativeObserver:
         self.failed = None
 
     def _emit(self, record):
+        """Pass record to event_sink when one is set."""
         if self.event_sink is not None:
             self.event_sink(record)
 
     def observations(self):
+        """Return a RefugeObservation per agent at the current q.
+
+        Each value is the midpoint of that agent's current state box. Raises ValueError
+        if the observer has recorded an inconsistency.
+        """
         if self.failed is not None:
             raise ValueError(
                 "An inconsistent online observation boundary needs explicit recovery"
@@ -299,6 +326,11 @@ class OnlineRelativeObserver:
         )
 
     def _at(self, key, q):
+        """Return agent key's state box at q, or None if q is outside retained history.
+
+        Uses the current box at the current q, the stored start box of a hold beginning
+        at q, or a propagation within a retained hold that contains q.
+        """
         if q == self.q:
             return self.boxes[key]
         node = self._holds_by_start.get(q)
@@ -314,6 +346,12 @@ class OnlineRelativeObserver:
         return None
 
     def _moment_at(self, key, q):
+        """Return the stored acceleration moments for key at q, or None.
+
+        The four rows hold the integrals of the lower and upper acceleration and of q
+        times each. Values come from the stored table at hold boundaries and are
+        computed within a retained hold that strictly contains q.
+        """
         node = self._moments.get(q)
         if node is not None:
             return node[key]
@@ -334,6 +372,13 @@ class OnlineRelativeObserver:
         return None
 
     def _velocity(self, key, acquired, position):
+        """Return a velocity box at acquired q for key from linked position samples.
+
+        Intersects bounds from the oldest retained position sample and logarithmically
+        spaced later ones that precede acquired, each corrected by the acceleration
+        moments. Returns None if no sample is usable. Raises ValueError if the
+        intersection is empty.
+        """
         earliest = self.history[0].start if self.history else self.q
         samples = list(self.positions[key])
         indices = {0}
@@ -385,6 +430,11 @@ class OnlineRelativeObserver:
         return result
 
     def _carry(self, key, acquired, box):
+        """Propagate box from acquired q through retained holds up to the current q.
+
+        Returns None if a covering hold is missing or the current q is not reached
+        exactly.
+        """
         cursor = acquired
         while cursor < self.q:
             hold = self._holds_by_start.get(cursor)
@@ -509,6 +559,16 @@ class OnlineRelativeObserver:
         return tuple(events)
 
     def commit_hold(self, prediction, *, packets=()):
+        """Advance the observer through a prediction the actuator has applied.
+
+        Raises ValueError if the prediction is not current for this observer (owner,
+        generation, start, boxes or time differ). Otherwise stores the hold, moves the
+        boxes, q and time to the prediction's endpoint, increments the generation and
+        consumes packets.
+
+        Outputs:
+            The observations at the new q.
+        """
         if (
             not isinstance(prediction, SampledHoldPrediction)
             or prediction.owner_id != self._owner_id

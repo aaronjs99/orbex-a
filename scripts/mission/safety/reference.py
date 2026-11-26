@@ -28,6 +28,11 @@ from orbexa.control.fallback.refuge import (
 
 
 def _derivative(coefficients, order):
+    """Return the coefficients of the order-th derivative of a power-basis polynomial.
+
+    Order zero returns the input. A polynomial differentiated past its degree yields
+    (Fraction(0),).
+    """
     if type(order) is int and order == 0:
         return coefficients
     if type(order) is int and order > 0:
@@ -42,6 +47,10 @@ def _derivative(coefficients, order):
 
 
 def _polynomial(coefficients, value):
+    """Evaluate ascending-power coefficients at value by Horner's rule.
+
+    A single Fraction constant is returned as a new Fraction.
+    """
     iterator = reversed(coefficients)
     total = next(iterator, Fraction(0))
     if len(coefficients) == 1 and type(total) is Fraction:
@@ -53,6 +62,10 @@ def _polynomial(coefficients, value):
 
 
 def _fraction_scalars(value):
+    """Return (numerator, denominator) of a normalized exact Fraction.
+
+    Raises ValueError for a non-Fraction or a rational that is not normalized.
+    """
     if type(value) is not Fraction:
         raise ValueError("Polynomial source scalars must remain exact Fractions")
     numerator, denominator = value.numerator, value.denominator
@@ -67,6 +80,10 @@ def _fraction_scalars(value):
 
 
 def _coefficient_scalars(rows):
+    """Return (numerator, denominator) pairs for three tuple rows of 1 to 6 Fractions.
+
+    Raises ValueError for any other structure.
+    """
     if (
         type(rows) is not tuple
         or len(rows) != 3
@@ -100,11 +117,22 @@ def _bernstein(coefficients, lower, upper):
 
 @dataclass(frozen=True)
 class PolynomialReferencePiece:
+    """Three axis polynomials of the position on one finite reference-clock interval.
+
+    Coefficients are ascending powers of (q - start), at most six per axis; start, end
+    and q are unwrapped-anomaly reference-clock values.
+    """
+
     start: Any
     end: Any
     coefficients: Any
 
     def __post_init__(self):
+        """Convert the scope and coefficients to exact values and validate them.
+
+        Raises ValueError unless there are three nonempty rows of at most six
+        coefficients.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -114,6 +142,10 @@ class PolynomialReferencePiece:
         object.__setattr__(self, "coefficients", value)
 
     def jet(self, q, order):
+        """Return the exact order-th derivative of each axis polynomial at q.
+
+        Raises ValueError if q lies outside [start, end].
+        """
         q = _exact(q)
         if not self.start <= q <= self.end:
             raise ValueError("Polynomial query exceeds its finite piece")
@@ -137,6 +169,11 @@ class PolynomialReferencePiece:
         )
 
     def enclose(self, start, end, order):
+        """Return an IntervalBox enclosing the order-th derivative of each axis.
+
+        The range over [start, end] is bounded exactly by the Bernstein convex hull.
+        Raises ValueError unless self.start <= start <= end <= self.end.
+        """
         if not self.start <= start <= end <= self.end:
             raise ValueError("Polynomial range exceeds its finite piece")
         pairs = tuple(
@@ -162,6 +199,14 @@ class C2RefugeReference:
     """Exact continuous polynomial route with a final constant holding piece."""
 
     def __init__(self, pieces, *, frame, clock_id, reference_id=None):
+        """Store a finite route of pieces joined at exact common C2 jets.
+
+        Inputs: pieces, PolynomialReferencePiece items; frame and clock_id identities;
+            reference_id, which defaults to a fingerprint of the pieces, frame and
+            clock. Raises ValueError if pieces are empty or of another type, if
+            neighboring pieces do not meet with equal jets of orders 0 to 2, or if an
+            identity is invalid.
+        """
         self.pieces = tuple(pieces)
         if not self.pieces or any(
             not isinstance(piece, PolynomialReferencePiece) for piece in self.pieces
@@ -196,6 +241,13 @@ class C2RefugeReference:
         clock_id,
         reference_id=None,
     ):
+        """Build a quintic retreat piece followed by a constant hold at the refuge.
+
+        The quintic starts from initial_state (position then velocity in the frame) and
+        initial_acceleration at start, and reaches refuge_position at retreat_end with
+        zero velocity and zero acceleration. The constant piece holds that position
+        until hold_end. Raises ValueError for an invalid scope or vector size.
+        """
         start, retreat_end = _scope(start, retreat_end)
         _, hold_end = _scope(retreat_end, hold_end)
         x, goal = (
@@ -236,6 +288,12 @@ class C2RefugeReference:
         )
 
     def sample(self, q):
+        """Return the exact ReferenceJet of the route at q.
+
+        The piece containing q is used (the last piece at its end). Per-order jet calls
+        replace the combined evaluation when the piece or helper functions were
+        replaced. Raises ValueError if q is outside the route.
+        """
         q = _exact(q)
         piece = next((p for p in self.pieces if p.start <= q < p.end), None)
         if piece is None and q == self.pieces[-1].end:
@@ -331,6 +389,12 @@ class C2RefugeReference:
         return source
 
     def bounds(self, start, end):
+        """Return ReferenceBounds enclosing the route over [start, end].
+
+        Orders 0 to 2 give position, velocity and acceleration boxes; order 3 gives the
+        absolute one-sided jerk bound. Each is the hull of the Bernstein enclosures of
+        the overlapping pieces. Raises ValueError if the query leaves the route.
+        """
         start, end = _scope(start, end)
         if start < self.pieces[0].start or end > self.pieces[-1].end:
             raise ValueError("Reference bound query exceeds its finite route")
@@ -360,6 +424,11 @@ class C2RefugeReference:
         )
 
     def windows(self, maximum_width, maximum_windows=10000):
+        """Split every piece into equal windows no wider than maximum_width.
+
+        Returns a tuple of (start, end) pairs. Raises ValueError if maximum_width is not
+        positive or the window count would exceed maximum_windows.
+        """
         width = _exact(maximum_width)
         if width <= 0:
             raise ValueError("Positive finite reference bound width is required")

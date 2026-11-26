@@ -28,6 +28,10 @@ from orbexa.proofs.nonlinear import bound_nominal_coefficients
 
 
 def outward_upper(value):
+    """Return a float that is not below the exact rational ``value``.
+
+    The nearest float is stepped up by one ulp when it falls below ``value``.
+    """
     result = float(value)
     if Fraction(result) < value:
         result = np.nextafter(result, np.inf)
@@ -52,6 +56,16 @@ class NonlinearPlanningContext:
     navigation_fingerprint: str | None = None
 
     def __post_init__(self):
+        """Normalize and validate the context fields.
+
+        Outputs: replaces exact_q with an exact fraction, the error arrays with
+        read-only float copies and any contact constraints with a read-only mapping of
+        typed constraints. Raises ValueError when an uncertainty is malformed or
+        negative, the target preview is unbounded, the ephemeris start, clock or model
+        fingerprints differ, a goal error is invalid, or a contact constraint is
+        untyped, lacks a reach policy or differs from the navigation, clock, model or
+        target-flow sources.
+        """
         object.__setattr__(self, "exact_q", exact(self.exact_q))
         for name, size in (("observation_error_abs", 6), ("acceleration_error_abs", 3)):
             value = np.asarray(getattr(self, name), dtype=float)
@@ -162,6 +176,14 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         nominal_endpoint_error_abs=None,
         stage_peak_padding_abs=None,
     ):
+        """Bind the planner to an enclosure provider and error budgets.
+
+        Inputs: planning_workers is an integer from 1 to 8; the endpoint-error and
+        stage-peak-padding arguments are optional nonnegative finite six-vectors
+        (three position, three velocity, default zeros). Raises ValueError otherwise.
+        Outputs: stores read-only copies and empty context, regions, residuals,
+        arrival-deadline and operation state.
+        """
         super().__init__(scenario, controller)
         if (
             isinstance(planning_workers, bool)
@@ -208,6 +230,14 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         self.operation = None
 
     def plan(self, state, belief, phase, chasers, previous_plans, **kwargs):
+        """Plan the given chasers for the phase and record its operation.
+
+        Runs the parent planner when one worker is configured or at most one chaser is
+        given. Otherwise each chaser is solved by a single-worker planner on a thread
+        pool against the same prior plans, and the results are merged; planned
+        separations are then checked and any messages make the step unsuccessful.
+        Raises ValueError when keyword arguments are passed to the parallel path.
+        """
         self.operation = phase.operation
         if self.planning_workers == 1 or len(chasers) <= 1:
             return super().plan(state, belief, phase, chasers, previous_plans, **kwargs)
@@ -220,6 +250,12 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         # All pair constraints remain in each NLP. A simultaneous tube check
         # and independent nonlinear fleet admission gate the whole candidate.
         def solve(chaser):
+            """Plan one chaser with a fresh single-worker planner.
+
+            Outputs: the planning step, the worker's regions and its residual records. A
+            ValueError, ArithmeticError or TimeoutError during setup becomes an
+            unsuccessful step with a nonlinear_setup failure record.
+            """
             worker = NonlinearMissionPlanner(
                 self.scenario,
                 self.scenario.create_controller(),
@@ -277,9 +313,11 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         return outcome
 
     def planning_peer_ids(self, chasers, state):
+        """Return the identifiers of every chaser in the state."""
         return list(state.centers)
 
     def tube_profile_assumptions(self, spec):
+        """Return the fixed assumption strings stored with each tube profile."""
         return (
             "Shared exact scheduled-reference clock and acceleration-input mapping; the nonlinear plant, sensing and actuation stay inside their declared supports",
             "Arb regional nonlinear-minus-nominal residual and coefficient/variation bounds cover the entire executed hold",
@@ -288,6 +326,10 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         )
 
     def install_context(self, context):
+        """Install the planning context and clear regions and residuals.
+
+        Raises TypeError when context is not a NonlinearPlanningContext.
+        """
         if not isinstance(context, NonlinearPlanningContext):
             raise TypeError("Install an explicit nonlinear planning context")
         self.context, self.regions, self.residuals = context, {}, {}
@@ -305,6 +347,19 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         chaser_id=None,
         center=None,
     ):
+        """Build the dynamic tube specification for one chaser's horizon.
+
+        Inputs: center is the chaser's six-component nominal state at the start of the
+        horizon, phi, omega and bandwidth are the initial tube parameters, and count is
+        the number of horizon nodes.
+        Outputs: a DynamicTubeSpec with outward-rounded coefficient bounds and regional
+        residual bounds per stage. Stores the chaser's local domain in regions and its
+        residual records in residuals. Raises ValueError for a missing context, centre
+        or chaser_id, an empty local domain, an unresolved residual, a non-uniform
+        bandwidth under frozen bandwidth, an arrival deadline beyond the horizon, a
+        docking tolerance not exceeding its moving-goal error, or a missing contact
+        forecast for a docking terminal agent.
+        """
         ctx, cfg, tube = self.context, self.config, self.config.tube
         if ctx is None or center is None or not chaser_id:
             raise ValueError("Nonlinear planning requires an observed state/context")
@@ -448,6 +503,11 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         )
 
     def problem_bounds(self, chaser, state, spec):
+        """Return state and input bounds for one chaser's problem.
+
+        State bounds are the chaser's local region intersected with the configured
+        state bounds; input bounds are the configured ones.
+        """
         region = self.regions[chaser.chaser_id]
         lower, upper = region.float_bounds()
         bounds = []
@@ -461,6 +521,11 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         return bounds, self.config.mpc.input_bounds
 
     def configure_terminal(self, spec, phase, state, goal, key):
+        """Set whether the spec enforces its terminal constraint.
+
+        Outputs: spec.enforce_terminal is true only for the docking operation once an
+        absolute arrival deadline has been anchored.
+        """
         # Once anchored, neither a receding horizon nor a temporary retreat
         # disables or moves the inherited physical arrival requirement.
         spec.enforce_terminal = bool(
@@ -468,6 +533,10 @@ class NonlinearMissionPlanner(CoupledMissionPlanner):
         )
 
     def geometry_reserve(self, anomaly, count):
+        """Return the target position preview error (m) used as the geometry reserve.
+
+        Raises ValueError when no planning context is installed.
+        """
         if self.context is None:
             raise ValueError("No current target preview bound")
         return float(self.context.target_position_preview_error_m)

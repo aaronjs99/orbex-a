@@ -18,4 +18,5 @@ class FixedProofProvider:
     certificate: object
 
     def __call__(self, start, end):
+        """Return the stored certificate unchanged; start and end are ignored."""
         return self.certificate

@@ -31,6 +31,12 @@ from orbexa.models.dynamics.relative import ExponentialAtmosphere, NonlinearMode
 
 @dataclass(frozen=True)
 class NonlinearStudyOptions:
+    """Declared parameters of one simulated nonlinear mission study.
+
+    Distances are in m, rates in rad/s or per rad of anomaly, masses and areas as
+    m^2/kg, and times in s; the fields are validated and normalized on construction.
+    """
+
     release_distance_m: float = 300.0
     release_pitch_m: float = 1.8
     nominal_spin_deg_s: float = 2.4
@@ -85,6 +91,13 @@ class NonlinearStudyOptions:
     far_contingency: AccelerationContingencyOptions | None = None
 
     def __post_init__(self):
+        """Validate and normalize the declared study options.
+
+        Outputs: replaces list-like and mapping fields with canonical tuples or typed
+        options. Raises ValueError for non-positive or non-finite scalars, invalid
+        counts, policies, priors, spin vectors, durations or refuge holds, and
+        TypeError for an untyped deployment or far contingency.
+        """
         for key, value in vars(self).items():
             if key in (
                 "sensor",
@@ -267,6 +280,12 @@ class NonlinearStudyOptions:
             raise ValueError("Initial bandwidth must belong to its prospective range")
 
     def as_dict(self):
+        """Return the declaration as a dictionary.
+
+        Optional fields that are unset, and under the independent-holds policy the
+        membership fields and fields at their legacy defaults, are omitted so older
+        saved declarations keep their identity.
+        """
         result = asdict(self) | {
             "sensor": self.sensor.as_dict(),
             "scope": "Prospective bounded synthetic model, sensor products and vehicle study; no flight qualification",
@@ -313,10 +332,16 @@ class NonlinearStudyOptions:
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of the declaration returned by as_dict."""
         return fingerprint(self.as_dict())
 
     @property
     def nominal_spin_vector(self):
+        """Return the nominal body spin (rad/s) as a three-tuple.
+
+        This is the explicit vector when declared, otherwise a rotation about the third
+        axis at nominal_spin_deg_s converted to rad/s.
+        """
         return (
             (0.0, 0.0, math.radians(self.nominal_spin_deg_s))
             if self.nominal_body_spin_rad_s is None
@@ -324,6 +349,12 @@ class NonlinearStudyOptions:
         )
 
     def controller_config(self, base):
+        """Return a deep copy of base with this study's controller settings applied.
+
+        Sets the release state, sliding gains, bandwidth and its bounds and rate limit,
+        docking tolerances, horizon steps and terminal activation distance, then
+        re-runs the configuration's __post_init__.
+        """
         cfg = copy.deepcopy(base)
         cfg.orbit.initial_conditions = np.array(
             (0.0, 0.0, self.release_distance_m, 0.0, 0.0, 0.0)
@@ -350,6 +381,11 @@ class NonlinearStudyOptions:
 
 @dataclass(frozen=True)
 class IndependentTruthCase:
+    """One physical truth selection for a run: initial eccentricity, target and
+    chaser drag descriptors (m^2/kg), target spin (deg/s or body vector) and noise
+    seed, chosen independently of the controller prior.
+    """
+
     case_id: str
     initial_eccentricity: float
     target_sigma_m2_kg: float
@@ -359,6 +395,12 @@ class IndependentTruthCase:
     body_spin_rad_s: tuple | None = None
 
     def __post_init__(self):
+        """Validate the case and normalize the optional body spin.
+
+        Raises ValueError for an empty id, eccentricity outside [0, 1), a non-positive
+        sigma or spin, a non-integer seed or a body spin that is not three finite
+        rad/s components.
+        """
         if (
             not self.case_id
             or not 0 <= self.initial_eccentricity < 1
@@ -380,6 +422,11 @@ class IndependentTruthCase:
 
     @property
     def spin_vector(self):
+        """Return the truth body spin (rad/s) as a three-tuple.
+
+        This is body_spin_rad_s when given, otherwise a rotation about the third axis
+        at target_spin_deg_s converted to rad/s.
+        """
         return (
             (0.0, 0.0, math.radians(self.target_spin_deg_s))
             if self.body_spin_rad_s is None
@@ -420,6 +467,11 @@ def reference_environment(
 
 
 def reference_clock(config, options):
+    """Return the reference clock frame for the configured orbit.
+
+    The anomaly domain runs from 0 to (maximum_updates + 100) outer steps of
+    anom_step (rad).
+    """
     return ReferenceClockFrame(
         semi_major_axis_m=config.orbit.semi_major_axis,
         eccentricity=config.orbit.eccentricity,
@@ -430,12 +482,23 @@ def reference_clock(config, options):
 
 
 def initial_target_state(config, eccentricity):
+    """Return the initial six-component target state (m, m/s) for an eccentricity.
+
+    The position is at radius a(1 - e) along the second axis and the velocity is the
+    corresponding speed along the negative first axis.
+    """
     a, mu = config.orbit.semi_major_axis, config.orbit.mu
     r = a * (1 - eccentricity)
     return np.array((0.0, r, 0.0, -np.sqrt(mu * (1 + eccentricity) / r), 0.0, 0.0))
 
 
 def controller_prior(config, options=None):
+    """Return the controller's initial ParameterBelief.
+
+    The eccentricity, alpha and beta intervals come from the options' controller
+    prior when one is declared, otherwise from fixed defaults; each estimate is the
+    interval mean.
+    """
     ranges = (
         dict(options.controller_parameter_prior)
         if options is not None and options.controller_parameter_prior
@@ -451,6 +514,13 @@ def controller_prior(config, options=None):
 
 
 def compose_deployment(config, design, preview, options):
+    """Build the composite deployment and its mission scenario.
+
+    Uses options.deployment when declared; otherwise creates default deployment
+    options and sets the separation buffer so the requested release pitch is kept.
+    Outputs: the (CompositePatchDeployment, scenario) pair, with the scenario built
+    in adaptive mode from the controller prior and the vehicle design.
+    """
     deployment = options.deployment
     if deployment is None:
         deployment = CompositeDeploymentOptions(

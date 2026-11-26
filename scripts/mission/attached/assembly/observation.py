@@ -32,12 +32,19 @@ from scipy.spatial.transform import Rotation
 
 @dataclass(frozen=True)
 class AssemblySensorBounds:
+    """Deterministic error supports of the chaser-carried sensors.
+
+    Fields: gyro rate error norm (rad/s), star tracker angle error (rad), GNSS
+    position error (m) and GNSS velocity error (m/s).
+    """
+
     gyro_error_norm_rad_s: float = 0.00001
     star_tracker_error_rad: float = 0.0003
     gnss_position_error_m: float = 1.0
     gnss_velocity_error_m_s: float = 0.003
 
     def __post_init__(self):
+        """Raise ValueError unless every support is a positive finite number."""
         if any(
             isinstance(value, bool) or not np.isfinite(value) or value <= 0
             for value in vars(self).values()
@@ -45,6 +52,7 @@ class AssemblySensorBounds:
             raise ValueError("Declare positive finite attached-sensor supports")
 
     def as_dict(self):
+        """Return the supports with a method tag."""
         return dict(
             method="chaser-carried-rigid-assembly-sensor-support-v1", **vars(self)
         )
@@ -54,6 +62,11 @@ class BoundedAssemblyObserver:
     """Synthetic packet producer and a separate bounded-set consumer."""
 
     def __init__(self, support=None):
+        """Store the sensor supports and reset the update counter.
+
+        Inputs: support, an AssemblySensorBounds (default values if None).
+        Raises ValueError if support is not an AssemblySensorBounds.
+        """
         self.support = support or AssemblySensorBounds()
         if not isinstance(self.support, AssemblySensorBounds):
             raise ValueError(
@@ -62,6 +75,14 @@ class BoundedAssemblyObserver:
         self.calls = 0
 
     def acquire(self, assembly, state):
+        """Return a synthetic measurement packet for every non-target element.
+
+        Per chaser: body-frame gyro rate plus 0.95 of the gyro support, a star
+        tracker attitude rotated by 0.8 of the support angle (both along a fixed
+        Fibonacci-sphere direction per chaser), and ECI position and velocity offset by
+        fixed constants.
+        Raises ValueError if the assembly has no element other than "target".
+        """
         physical = assembly.component_states(state)
         names = tuple(
             element.name for element in assembly.elements if element.name != "target"
@@ -140,6 +161,10 @@ class BoundedAssemblyObserver:
         lower, upper = list(prior.lower), list(prior.upper)
 
         def narrow(start, box):
+            """Intersect the retained bounds from index start with box, in place.
+
+            State changes: overwrites that slice of the enclosing lower and upper lists.
+            """
             result = _intersection(
                 IntervalBox(
                     lower[start : start + box.dimension],
@@ -345,6 +370,7 @@ class BoundedAssemblyObserver:
         return physical_state, feedback, record
 
     def as_dict(self):
+        """Return a JSON-ready record of the observer, its call count and supports."""
         return {
             "method": "bounded-chaser-carried-rigid-assembly-observer-v1",
             "calls": self.calls,

@@ -40,6 +40,11 @@ def _rotation(quaternion):
 
 
 def _readonly_vector(value, name, size):
+    """Return a finite float vector of the given size with writing disabled.
+
+    Inputs: value, name for error messages, size (element count).
+    Outputs: read-only array; ValueError comes from finite_vector on a bad input.
+    """
     vector = finite_vector(value, name, size)
     vector.setflags(write=False)
     return vector
@@ -47,10 +52,21 @@ def _readonly_vector(value, name, size):
 
 @dataclass(frozen=True)
 class ChaserAttitudeInitialState:
+    """Initial bus attitude: unit body-to-ECI quaternion (xyzw) and body-frame spin.
+
+    Inputs: quaternion_body_to_eci (any finite nonzero scale, normalized on
+    construction) and angular_velocity_body_rad_s (rad/s, body frame).
+    """
+
     quaternion_body_to_eci: np.ndarray
     angular_velocity_body_rad_s: np.ndarray
 
     def __post_init__(self):
+        """Validate, normalize and freeze the quaternion and the angular velocity.
+
+        Outputs: replaces both fields with read-only arrays. Raises ValueError for a
+        nonfinite or wrong-sized input or a zero-norm quaternion.
+        """
         quaternion = finite_vector(
             self.quaternion_body_to_eci, "Initial bus quaternion", 4
         )
@@ -83,15 +99,22 @@ class ChaserAttitudeActuators:
     specific_impulse_s: float = 300.0
 
     def __post_init__(self):
+        """Require moment arm, nozzle force limit and Isp to be positive."""
         for name in ("moment_arm_m", "nozzle_force_limit_n", "specific_impulse_s"):
             object.__setattr__(self, name, positive(getattr(self, name), name))
 
     @property
     def torque_limit_nm(self):
+        """Return the per-axis torque limit, 2 * arm * nozzle force limit (N m)."""
         return 2 * self.moment_arm_m * self.nozzle_force_limit_n
 
     @property
     def positions_body_m(self):
+        """Return the six nozzle positions (m) in the body frame, as a (6, 3) array.
+
+        Each axis owns two positions, offset by plus and minus the moment arm along
+        the next body axis.
+        """
         axes = np.eye(3)
         return np.array(
             [
@@ -103,12 +126,24 @@ class ChaserAttitudeActuators:
 
     @property
     def directions_body(self):
+        """Return the six unit nozzle force directions in the body frame, (6, 3).
+
+        Each axis owns two directions, plus and minus the unit vector of the axis
+        two places along.
+        """
         axes = np.eye(3)
         return np.array(
             [sign * axes[(axis + 2) % 3] for axis in range(3) for sign in (-1, 1)]
         )
 
     def allocate(self, requested_torque_nm):
+        """Clip a requested body torque to the nozzle limit and report the loads.
+
+        Inputs: requested_torque_nm, body-frame torque (N m), three finite values.
+        Outputs: dict with the requested torque, the six signed nozzle commands (N),
+        the net body force (N), the realized body torque (N m), the propellant flow
+        (kg/s) and whether any axis command exceeded the nozzle force limit.
+        """
         requested = finite_vector(requested_torque_nm, "Requested bus torque", 3)
         requested_commands = requested / (2 * self.moment_arm_m)
         commands = np.repeat(
@@ -136,6 +171,7 @@ class ChaserAttitudeActuators:
         }
 
     def to_dict(self):
+        """Return the actuator parameters, derived torque limit and layout as a dict."""
         return {
             "moment_arm_m": float(self.moment_arm_m),
             "nozzle_force_limit_n": float(self.nozzle_force_limit_n),
@@ -149,6 +185,12 @@ class ChaserAttitudeActuators:
 
 @dataclass(frozen=True)
 class ChaserAttitudeOptions:
+    """Tracking gains, time steps, pass gates and sample budget for the attitude replay.
+
+    Inputs: times in s, natural frequency in rad/s, initial_misalignment_rotvec_rad
+    in rad, final error gates in rad and rad/s, and the mass-change fraction.
+    """
+
     control_period_s: float = 0.5
     max_integration_step_s: float = 0.25
     natural_frequency_rad_s: float = 0.25
@@ -162,6 +204,12 @@ class ChaserAttitudeOptions:
     max_samples: int = 500000
 
     def __post_init__(self):
+        """Validate the options and freeze the initial misalignment vector.
+
+        Raises ValueError unless the scalar options are positive, the mass-change
+        fraction is below one, max_samples is an integer of at least two, and the
+        initial misalignment rotation vector has norm below pi.
+        """
         for name in (
             "control_period_s",
             "max_integration_step_s",
@@ -205,6 +253,16 @@ class RecordedTargetAttitudeReference:
     """
 
     def __init__(self, approach):
+        """Build the interpolated target attitude reference from a saved approach.
+
+        Inputs: approach, whose metadata target_kinematics holds anomaly, physical_time
+        (s), inertial_quaternions (xyzw), body_angular_velocity (rad/s) and optional
+        body_angular_acceleration (rad/s^2).
+        Outputs: sets the time grid, rotations, SLERP, rates, accelerations and the
+        rate interpolation defect. Raises ValueError when the records are misaligned,
+        nonincreasing, nonfinite, not xyzw, not unit quaternions, have an ambiguous
+        shortest arc, or lack an acceleration source.
+        """
         kinematics = approach.metadata.get("target_kinematics", {})
         anomaly = np.asarray(approach.anom_history, dtype=float)
         saved_anomaly = np.asarray(kinematics.get("anomaly", []), dtype=float)
@@ -285,6 +343,13 @@ class RecordedTargetAttitudeReference:
         self.body_acceleration = self.body_acceleration.copy()
 
     def sample(self, times_s):
+        """Return target rotation matrices, body rates and body accelerations at times.
+
+        Inputs: times_s, 1-D physical times (s) inside the recorded interval.
+        Outputs: body-to-ECI matrices from SLERP, and linearly interpolated rates
+        (rad/s) and accelerations (rad/s^2). Raises ValueError for empty, nonfinite or
+        out-of-interval queries.
+        """
         queries = np.asarray(times_s, dtype=float)
         if (
             queries.ndim != 1
@@ -311,6 +376,7 @@ class RecordedTargetAttitudeReference:
         return self.slerp(queries).as_matrix(), rates, acceleration
 
     def to_dict(self):
+        """Return the interpolation methods, acceleration source and measured defect."""
         return {
             "pose_interpolation": "shortest-arc SLERP of recorded body-to-ECI quaternions",
             "rate_interpolation": "componentwise linear interpolation of recorded physical body rates",
@@ -323,6 +389,12 @@ class RecordedTargetAttitudeReference:
 
 @dataclass(frozen=True)
 class ChaserAttitudeResult:
+    """Outcome of an attitude replay: status, histories, audit and final fuel state.
+
+    histories maps each chaser id to its sampled quantities; capture_chasers holds
+    its physical properties with the remaining fuel.
+    """
+
     success: bool
     message: str
     times_s: np.ndarray
@@ -344,9 +416,11 @@ class ChaserAttitudeResult:
 
     @property
     def fuel_remaining_kg(self):
+        """Return the remaining fuel (kg) per chaser id."""
         return {key: value.fuel_kg for key, value in self.capture_chasers.items()}
 
     def to_dict(self):
+        """Return the result as plain lists and numbers for serialization."""
         return {
             "success": bool(self.success),
             "message": self.message,
@@ -382,6 +456,10 @@ class ChaserAttitudeTracker:
         chasers: Mapping[str, ChaserPhysicalProperties] | None = None,
         default_chaser: ChaserPhysicalProperties | None = None,
     ):
+        """Store the options, actuators and per-chaser physical properties.
+
+        Defaults are used for any of options, actuators or default_chaser left as None.
+        """
         self.options = options or ChaserAttitudeOptions()
         self.actuators = actuators or ChaserAttitudeActuators()
         self.chasers = dict(chasers or {})
@@ -416,6 +494,7 @@ class ChaserAttitudeTracker:
         state = np.r_[quaternion, omega, np.zeros(4)]
 
         def rhs(value):
+            """Return the derivative of [quaternion, rates, impulse, work]."""
             vector, scalar, rate = value[:3], value[3], value[4:7]
             quaternion_dot = (
                 0.5
@@ -515,6 +594,12 @@ class ChaserAttitudeTracker:
         histories, impulse, work, initial_momentum, initial_energy = {}, {}, {}, {}, {}
 
         def errors(key, index, quaternion, rate):
+            """Return the desired rotation and rate, orientation angle and spin errors.
+
+            Inputs: chaser key, sample index, current quaternion and body rate.
+            Outputs: desired body-to-ECI matrix, desired body rate, angle (rad) between
+            actual and desired attitude, and inertial spin difference norm (rad/s).
+            """
             desired_rotation = rotations[index] @ mounts[key]
             actual_rotation = _rotation(quaternion)
             desired_rate = mounts[key].T @ target_rates[index]
@@ -529,6 +614,7 @@ class ChaserAttitudeTracker:
             return desired_rotation, desired_rate, angle, spin
 
         def append_state(key, index):
+            """Append the current and desired state, errors and fuel to a history."""
             quaternion, rate = states[key]
             desired_rotation, desired_rate, angle, spin = errors(
                 key, index, quaternion, rate

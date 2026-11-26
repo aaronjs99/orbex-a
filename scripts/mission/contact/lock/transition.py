@@ -53,10 +53,12 @@ from orbexa.proofs.numerics.rigid_interval import (
 
 
 def _matrix(flat):
+    """Reshape nine row-major entries into a 3x3 tuple of tuples."""
     return tuple(tuple(flat[3 * i + j] for j in range(3)) for i in range(3))
 
 
 def _matmul(left, right):
+    """Return the product of two 3x3 nested-tuple matrices."""
     return tuple(
         tuple(sum(a * b for a, b in zip(row, column)) for column in transpose(right))
         for row in left
@@ -64,15 +66,21 @@ def _matmul(left, right):
 
 
 def _skew(value):
+    """Return the skew-symmetric cross-product matrix of a 3-vector."""
     x, y, z = value
     return ((0, -z, y), (z, 0, -x), (-y, x, 0))
 
 
 def _dot(left, right):
+    """Return the sum of products of two equal-length sequences."""
     return sum(a * b for a, b in zip(left, right))
 
 
 def _box(value):
+    """Return an `IntervalBox` from a serialized box, preferring exact bounds.
+
+    Uses `exact_lower` and `exact_upper` when present, otherwise `lower` and
+    `upper`."""
     return IntervalBox(
         value.get("exact_lower", value["lower"]),
         value.get("exact_upper", value["upper"]),
@@ -80,6 +88,9 @@ def _box(value):
 
 
 def _source_manifest():
+    """Return the SHA-256 hex digest of each source file the lock evidence depends on.
+
+    Keys are package-relative paths under `PACKAGE_ROOT`."""
     root = PACKAGE_ROOT
     names = (
         "mission/contact/lock/transition.py",
@@ -107,6 +118,13 @@ def _source_manifest():
 
 
 def _pad_inventory(contact, count):
+    """Return the trapped pad energy, strain and rest inventory from a contact result.
+
+    Reads the carried contact potential enclosure and the final strain and
+    rest sets from `contact.audit`.
+    Raises ValueError if the energy set is missing, not a nonnegative scalar,
+    or if the strain or rest sets are missing, not one per chaser, or have
+    the wrong dimensions."""
     energy = contact.audit.get("final_contact_potential_enclosure_j")
     if not isinstance(energy, dict):
         raise ValueError(
@@ -260,6 +278,9 @@ def _contact_history_provenance(contact, started):
 
 
 def _planned_outputs(audit):
+    """Remove and return the planned-output entries from an audit dictionary.
+
+    Only the listed keys that are present are popped; the audit is mutated."""
     names = (
         "final_set",
         "swept",
@@ -280,7 +301,23 @@ def _planned_outputs(audit):
 
 
 class _LockField:
+    """Interval dynamics of the prescribed finite lock in an initial-relative chart.
+
+    Builds relative positions, velocities, spins and attitude increments of
+    every body from an initial state box and evaluates the Newton-Euler
+    reactions, work and kinematics under the braking profile
+    f(t)=t-t^2/(2T)."""
+
     def __init__(self, fleet, options, initial, environment, ar, initial_gap_sets=None):
+        """Derive initial relative kinematics, momenta and tip anchors.
+
+        Inputs: `initial` is the complete carried contact endpoint box;
+        `initial_gap_sets`, if given, supplies one scalar gap box (m) per chaser
+        that is intersected with the geometric gap; `environment`, if given, is
+        converted to a nonlinear environment enclosure; `ar` is the Arb
+        arithmetic.
+        Raises ValueError if the gap sets are not one scalar per chaser, and
+        `_ProofUnresolved` if a carried gap contradicts the lock geometry."""
         self.fleet, self.o, self.ar = fleet, options, ar
         values = ar.vector(initial)
         n = fleet.body_count
@@ -468,6 +505,10 @@ class _LockField:
 
     def element_inertias(self, rotations):
         # Exact isotropy is an SO(3) identity, not a numerical tolerance.
+        """Return each body's inertia matrix for the given rotations.
+
+        Isotropic bodies keep their specific inertia scaled by mass without
+        rotation."""
         return tuple(
             tuple(tuple(m * x for x in row) for row in specific)
             if isotropic
@@ -481,6 +522,10 @@ class _LockField:
         )
 
     def inertia(self, offsets, inertias):
+        """Return the total inertia matrix of all bodies about the assembly COM.
+
+        Inputs: `offsets` are body positions relative to the COM and `inertias`
+        the per-body inertia matrices (parallel-axis terms are added)."""
         ar = self.ar
         return tuple(
             tuple(
@@ -500,6 +545,13 @@ class _LockField:
         )
 
     def shape(self, time, values):
+        """Return the prescribed motion profile quantities at a time in the lock.
+
+        Outputs: `(f, g, gd, offsets, velocities, accelerations, quaternions,
+        rotations, inertias)`, where f(t)=t-t^2/(2T), g=1-t/T and gd=-1/T for
+        lock duration T, the offsets and velocities follow the initial relative
+        motion scaled by f and g, and the attitudes combine the state's
+        increment quaternions with the initial relative attitudes."""
         ar, n = self.ar, self.fleet.body_count
         duration = ar.scalar(self.o.lock_duration_s)
         f, g, gd = (
@@ -539,6 +591,14 @@ class _LockField:
         )
 
     def evaluate(self, time, values):
+        """Return the interval state derivative and diagnostics at a time.
+
+        Inputs: `time` is the elapsed lock time (s); `values` is the lock state
+        (assembly COM position and velocity, target attitude quaternion, common
+        spin, relative-attitude increment quaternions and two work scalars).
+        Outputs: `(derivative, diag)`, where `diag` holds offsets, relative
+        velocities and accelerations, quaternions, rotations, pad forces and
+        couples, angular acceleration, g, gd, inertias and interface power."""
         ar, fleet = self.ar, self.fleet
         p, v, q, w = values[:3], values[3:6], values[6:10], values[10:13]
         _, g, gd, offsets, rdots, rddots, quaternions, rotations, inertias = self.shape(
@@ -771,6 +831,7 @@ class _LockField:
         return derivative, diag
 
     def kinetic(self, time, values):
+        """Return the interval kinetic energy (J) of the assembly in its COM frame."""
         _, g, _, offsets, rdots, _, _, _, inertias = self.shape(time, values)
         w = values[10:13]
         return (
@@ -944,6 +1005,11 @@ class _LockField:
 
 @dataclass(frozen=True)
 class FiniteLockResult:
+    """Outcome of a finite lock attempt with its state sets and audit record.
+
+    `state` and `numerical` hold the rigid state set and the numerical
+    endpoint, or None on refusal; `audit` carries the evidence."""
+
     success: bool
     message: str
     elapsed_s: float
@@ -958,7 +1024,23 @@ class FiniteLockTransition:
     """A finite active closure, with every held flow and load proved first."""
 
     def run(self, *, fleet, options, geometry, contact, environment=None):
+        """Prove the lock profile, then integrate it and return a `FiniteLockResult`.
+
+        Inputs: `fleet` and `options` define the bodies and the lock duration;
+        `geometry` supplies the occupied components; `contact` is the finished
+        contact result whose audit carries the endpoint set; `environment`,
+        if given, supplies extra wrenches.
+        Outputs: a refused result with zero elapsed time and
+        `physical_motion_committed` False when preflight fails; otherwise the
+        result of the independently reintegrated steps.
+        Raises ValueError for inconsistent carried contact history or clocks."""
+
         def declaration():
+            """Return the dictionary of inputs that identifies this lock request.
+
+            Collects source digests, contact history provenance, the carried sets,
+            options, geometry fingerprint, fleet arrays, member descriptions and
+            environment."""
             return {
                 "source_files": _source_manifest(),
                 "contact_history_provenance": _contact_history_provenance(
@@ -1180,7 +1262,15 @@ class FiniteLockTransition:
 
     @staticmethod
     def _numerical_step(model, ar, values, time, duration, body_count):
+        """Advance a numerical lock state by one RK4 step of the midpoint derivative.
+
+        Inputs: `values` is the point state at `time` (s) and `duration` the step
+        (s). The derivative is the midpoint of the interval evaluation at the
+        point state. The target and relative quaternions are renormalized.
+        Outputs: the new state array."""
+
         def rhs(at, state):
+            """Return the midpoint of the interval derivative at a point state."""
             derivative, _ = model.evaluate(
                 ar.scalar(at), ar.vector(IntervalBox.point(state))
             )
@@ -1200,6 +1290,15 @@ class FiniteLockTransition:
         return result
 
     def _preflight(self, *, fleet, options, geometry, contact, environment=None):
+        """Prove the whole lock profile before any motion.
+
+        Builds the interval lock model from the carried contact endpoint, takes
+        the planned steps and records the proof chain, work budget and checks in
+        the audit.
+        Outputs: a successful result with message
+        "finite_load_bounded_lock_completed", or an unsuccessful one whose
+        message starts "finite_lock_not_proven" and whose audit holds the refusal.
+        Raises ValueError if the carried endpoint has the wrong dimension."""
         initial = _box(contact.audit["continuous_enclosure"]["final_set"])
         numerical = contact.audit["continuous_enclosure"]["step_records"][-1][
             "numerical_endpoint"

@@ -14,7 +14,13 @@ from scipy.integrate import solve_ivp
 
 
 class NonlinearFleetPlant:
+    """Numerically propagate each chaser's relative truth over one hold.
+
+    It proposes the motion only; it commits no time or state.
+    """
+
     def __init__(self, target, relative_dynamics, actuator):
+        """Store the target, the relative dynamics and the actuator realization."""
         self.target, self.relative_dynamics, self.actuator = (
             target,
             relative_dynamics,
@@ -22,6 +28,24 @@ class NonlinearFleetPlant:
         )
 
     def propose_hold(self, relative_states, q, h, decision, navigation_supports):
+        """Integrate every agent's relative truth over one hold without committing it.
+
+        The target interval proposal is taken for (q, q + h). Each agent is integrated
+        over anomaly q to q + h with DOP853 at rtol 1e-11, atol 1e-10 and max step
+        min(h, 1e-4), using the realized actuator output as the applied input.
+
+        Inputs:
+        - relative_states: agent key to six-element relative state at q (not mutated).
+        - q, h: exact start anomaly and hold width.
+        - decision: admitted decision giving float commands and applied-input supports.
+        - navigation_supports: per-agent navigation actuation supports.
+
+        Outputs:
+        - (proposal, results, solutions): target proposal, final relative state per
+          agent and the dense solve_ivp solution per agent. Raises RuntimeError if an
+          integration fails or is nonfinite; ValueError from the right-hand side if an
+          actuator output is not finite, not 3 elements, or outside either support.
+        """
         proposal = self.target.propose_interval(q + h)
         commands, applied = decision.float_commands(), dict(decision.applied_inputs)
         results = {}
@@ -30,6 +54,14 @@ class NonlinearFleetPlant:
             command = np.asarray(commands[key])
 
             def rhs(value, relative, key=key, command=command):
+                """Return the relative-state derivative at anomaly `value`.
+
+                The realized actuator output must be a finite 3-vector inside the
+                admitted
+                applied-input support and the navigation actuation subset, otherwise
+                ValueError
+                is raised.
+                """
                 actual = np.asarray(
                     self.actuator.apply(key, command, value), dtype=float
                 )
@@ -70,6 +102,13 @@ class NonlinearFleetPlant:
 
 
 def sampled_clearance(state, q, phase, *, target, safety, composite_center):
+    """Return the diagnostic clearance (m) of a relative state at anomaly `q`.
+
+    With a composite center the state is rotated into the target body frame and the
+    signed distance to the target geometry minus the chaser body radius is returned;
+    otherwise the active margin of `safety` for the state and phase is returned. It
+    does not substitute for continuous fleet admission.
+    """
     # Same declared occupied-union distance as MissionSafety.composite_margin,
     # without copying a full serialized geometry for every offline sample.
     # This diagnostic never substitutes for continuous fleet admission.

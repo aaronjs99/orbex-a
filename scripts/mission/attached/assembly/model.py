@@ -45,6 +45,10 @@ def finite_scalar(value: float, name: str) -> float:
 
 
 def positive(value: float, name: str, *, allow_zero: bool = False) -> float:
+    """Return value as float; raise ValueError unless positive.
+
+    With allow_zero, zero is accepted (nonnegative).
+    """
     value = finite_scalar(value, name)
     if value < 0 if allow_zero else value <= 0:
         raise ValueError(
@@ -65,6 +69,7 @@ def physical_inertia(value) -> np.ndarray:
 
 
 def parallel_axis(offset) -> np.ndarray:
+    """Return |d|^2 I - d d^T for offset d (m); times mass (kg) gives kg m^2."""
     offset = np.asarray(offset, dtype=float)
     return np.dot(offset, offset) * np.eye(3) - np.outer(offset, offset)
 
@@ -85,6 +90,12 @@ class MassElement:
     rotation_element_to_assembly: np.ndarray = field(default_factory=lambda: np.eye(3))
 
     def __post_init__(self):
+        """Validate and freeze the element fields.
+
+        Raises ValueError for an empty name, non-positive dry mass, negative fuel,
+        non-physical inertia, bad position or a mounting rotation that is not proper
+        orthogonal. Arrays are stored read-only.
+        """
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("Mass element name must be nonempty")
         object.__setattr__(self, "dry_mass_kg", positive(self.dry_mass_kg, "Dry mass"))
@@ -116,9 +127,11 @@ class MassElement:
 
     @property
     def initial_mass_kg(self):
+        """Return dry mass plus initial fuel (kg)."""
         return self.dry_mass_kg + self.initial_fuel_kg
 
     def to_dict(self):
+        """Return a JSON-ready dict of the element fields."""
         return {
             "name": self.name,
             "dry_mass_kg": float(self.dry_mass_kg),
@@ -131,6 +144,12 @@ class MassElement:
 
 @dataclass(frozen=True)
 class AssemblyState:
+    """Assembly state: time, COM position and velocity in ECI, attitude, rates, fuel.
+
+    enclosure optionally carries the AssemblyStateEnclosure of the state; it is
+    excluded from repr and comparison.
+    """
+
     time_s: float
     position_eci_m: np.ndarray
     velocity_eci_m_s: np.ndarray
@@ -140,6 +159,12 @@ class AssemblyState:
     enclosure: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
+        """Validate and freeze the state; normalize the quaternion to unit norm.
+
+        Raises ValueError for non-finite or wrongly sized vectors, a zero quaternion,
+        fuel that is not a finite nonnegative 1-D vector, or an enclosure that is not
+        an AssemblyStateEnclosure whose box contains the packed state.
+        """
         object.__setattr__(self, "time_s", finite_scalar(self.time_s, "Assembly time"))
         for name, size in (
             ("position_eci_m", 3),
@@ -176,6 +201,7 @@ class AssemblyState:
                 )
 
     def to_dict(self):
+        """Return the state as floats and lists; the enclosure is added when present."""
         result = {
             name: float(value) if name == "time_s" else value.tolist()
             for name, value in vars(self).items()
@@ -188,6 +214,12 @@ class AssemblyState:
 
 @dataclass(frozen=True)
 class AttachedAssembly:
+    """Rigid assembly of MassElements with orbit constants and load limits.
+
+    Optional parts: gravity gradient, attachment load limits, an environment
+    callback and an interval parameter enclosure of the element geometry.
+    """
+
     elements: Sequence[MassElement]
     mu_m3_s2: float = 3.986004418e14
     earth_radius_m: float = 6378137.0
@@ -198,6 +230,13 @@ class AttachedAssembly:
     parameter_enclosure: object = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
+        """Validate and normalize the assembly declaration.
+
+        Raises ValueError for no elements or repeated names, non-positive constants,
+        attachment limits that are not unique element names with unit normals, or a
+        parameter enclosure that misses an element or omits its numerical geometry or
+        anchor. Raises TypeError if environment is not callable.
+        """
         elements = tuple(self.elements)
         if not elements or len({element.name for element in elements}) != len(elements):
             raise ValueError("Assembly needs uniquely named mass elements")
@@ -282,13 +321,23 @@ class AttachedAssembly:
 
     @property
     def initial_mass_kg(self):
+        """Return the total initial mass of all elements (kg)."""
         return sum(element.initial_mass_kg for element in self.elements)
 
     @property
     def initial_fuel_kg(self):
+        """Return the initial fuel of each element as an array (kg)."""
         return np.array([element.initial_fuel_kg for element in self.elements])
 
     def mass_properties(self, fuel_kg):
+        """Return (mass_kg, center_of_mass_body_m, inertia_body_kg_m2) for a fuel load.
+
+        The inertia is about the center of mass in body axes.
+
+        Inputs: fuel_kg, one value per element.
+        Raises ValueError if the shape differs, a value is non-finite, below -1e-12
+        or above installed capacity by more than 1e-10. Small negatives count as 0.
+        """
         fuel = np.asarray(fuel_kg, dtype=float)
         if (
             fuel.shape != (len(self.elements),)
@@ -316,12 +365,18 @@ class AttachedAssembly:
         return mass, center, inertia
 
     def angular_momentum_eci(self, state):
+        """Return the angular momentum about the COM in ECI (kg m^2/s)."""
         inertia = self.mass_properties(state.fuel_kg)[2]
         return Rotation.from_quat(state.quaternion_body_to_eci).apply(
             inertia @ state.angular_velocity_body_rad_s
         )
 
     def state_record(self, state):
+        """Return state.to_dict() plus mass, fuel, COM, inertia and momentum.
+
+        Added keys: mass_kg, total_fuel_kg, center_of_mass_body_m, inertia_body_kg_m2,
+        angular_momentum_eci_kg_m2_s, rotational_energy_j (J).
+        """
         mass, center, inertia = self.mass_properties(state.fuel_kg)
         result = state.to_dict()
         result.update(
@@ -376,6 +431,12 @@ class AttachedAssembly:
         )
 
     def _gravity_gradient_torque_body(self, position, rotation, inertia):
+        """Return the gravity-gradient torque in body axes (N m).
+
+        Inputs: position, ECI position (m); rotation, body-to-ECI matrix; inertia,
+        body inertia (kg m^2).
+        Raises ValueError if the position is zero.
+        """
         radius = np.linalg.norm(position)
         if radius <= 0:
             raise ValueError("Inertial orbital position must be nonzero")
@@ -451,6 +512,14 @@ class AttachedAssembly:
         time_s=None,
         fuel_kg=None,
     ):
+        """Return the time derivative of the 13-element state and the ECI torque.
+
+        values holds position, velocity, quaternion and body rate. The held force and
+        torque are in body axes (N, N m); the environment wrench and, if enabled, the
+        gravity gradient are added. Outputs: (derivative, total torque rotated to ECI).
+        Raises ValueError if the position is zero or an environment is set without
+        time_s and fuel_kg.
+        """
         position, velocity, q, omega = (
             values[:3],
             values[3:6],
@@ -496,6 +565,7 @@ class AttachedAssembly:
         commands_n=None,
         max_angular_rate_rad_s=None,
     ):
+        """Return the final state of advance_with_audit; arguments are the same."""
         return self.advance_with_audit(
             state,
             duration_s,
@@ -603,6 +673,11 @@ class AttachedAssembly:
         impulse, flux = np.zeros(3), np.zeros(3)
 
         def depletion(new_fuel):
+            """Set fuel to new_fuel, shifting the COM coordinate and accumulating flux.
+
+            State changes: updates values (position, velocity), fuel and flux in the
+            enclosing scope.
+            """
             nonlocal values, fuel, flux
             _, old_center, old_inertia = self.mass_properties(fuel)
             _, new_center, new_inertia = self.mass_properties(new_fuel)
@@ -689,6 +764,7 @@ class AttachedAssembly:
         return final, audit
 
     def to_dict(self):
+        """Return a JSON-ready declaration of the assembly."""
         result = {
             "elements": [element.to_dict() for element in self.elements],
             "mu_m3_s2": self.mu_m3_s2,

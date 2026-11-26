@@ -14,6 +14,12 @@ from orbexa.mission.approach.execution import ExecutionStep
 
 @dataclass(frozen=True)
 class BlackoutNavigationEstimate:
+    """Immutable navigation estimate produced during a sensor blackout.
+
+    It carries the event anomaly, physical time box, per-agent relative state boxes
+    and clock and model fingerprints, with status BLACKOUT_CONDITIONAL by default.
+    """
+
     exact_event_q: object
     physical_time_box: IntervalBox
     relative_state_box_by_agent: object
@@ -25,6 +31,7 @@ class BlackoutNavigationEstimate:
 
     @property
     def point_relative_by_agent(self):
+        """Return the midpoint of each agent's relative state box, keyed by agent."""
         return {
             key: midpoint(box) for key, box in self.relative_state_box_by_agent.items()
         }
@@ -32,6 +39,13 @@ class BlackoutNavigationEstimate:
 
 @dataclass
 class NonlinearExecutionStep(ExecutionStep):
+    """Record of one outer execution step, extending ExecutionStep.
+
+    The added fields hold control sources, actual truth, navigation estimate,
+    membership transitions, journal, fallback use, delivered packets, archive events,
+    committed anomaly and any failure event.
+    """
+
     control_sources: list = field(default_factory=list)
     actual_truth_relative: dict = field(default_factory=dict)
     navigation_estimate: object = None
@@ -58,6 +72,16 @@ class NonlinearExecutionFailure(RuntimeError):
         actual_truth_relative,
         target_state,
     ):
+        """Store the message with the outcome, event, archive and committed truth.
+
+        Inputs:
+        - outcome: execution step record at the failure.
+        - event: failure event record.
+        - staged_archive: staged admission record, or None if none was staged.
+        - actual_committed_q: exact anomaly the physical target had reached.
+        - actual_truth_relative: per-agent relative truth state copy.
+        - target_state: full target state array copy.
+        """
         super().__init__(message)
         self.outcome, self.event, self.staged_archive = outcome, event, staged_archive
         self.actual_committed_q = actual_committed_q
