@@ -26,6 +26,10 @@ from orbexa.proofs.reachability import (
 
 
 def _intersect(left, right):
+    """Return the componentwise intersection of two interval boxes.
+
+    Raises ValueError if the boxes do not overlap in some component.
+    """
     lower = tuple(max(a, c) for a, c in zip(left.lower, right.lower))
     upper = tuple(min(a, c) for a, c in zip(left.upper, right.upper))
     if any(a > c for a, c in zip(lower, upper)):
@@ -108,6 +112,24 @@ class FleetAdmissionRuntime:
         acceleration_disturbance: IntervalBox | None = None,
         performance_resource_bound: Callable | None = None,
     ):
+        """Start the runtime on an admitted fallback with initial observations.
+
+        Inputs:
+            active_fallback: admissible FleetFallbackPlan; the clock q starts at its
+                certificate start.
+            initial_observations: per-member observations with state_enclosure.
+            flow_provider: callable (member id, HeldInputRequest) returning a flow.
+            remaining_fuel: optional per-member fuel (kg); defaults to the first
+                segment's available_fuel.
+            flow_identity: optional callable; defaults to reading flow.model_bounds.
+            acceleration_disturbance: optional three-component IntervalBox; defaults
+                to zero.
+            performance_resource_bound: optional callable (key, input box, q, h).
+
+        Raises ValueError or TypeError if the plan is inadmissible, flow_provider is
+        not callable, the observed fleet or fuel fleet differs, the initial enclosure
+        is outside the entry region, or fuel does not cover the fallback.
+        """
         if (
             not isinstance(active_fallback, FleetFallbackPlan)
             or not active_fallback.certificate.admissible
@@ -163,6 +185,18 @@ class FleetAdmissionRuntime:
         self.events = []
 
     def _fallback(self, observations, q, h, attempt, reason, *, refine_resources=True):
+        """Build the HeldFleetDecision applying the stored fallback feedback for a hold.
+
+        Inputs:
+            observations: per-member observations. q, h: exact clock and hold length.
+            attempt: PerformanceAttempt retained in the decision. reason: text.
+            refine_resources: if True and a resource bound exists, charge the smaller
+                valid fuel bound instead of the uniform rate times h.
+
+        A resource callback failure or invalid bound falls back to the uniform
+        charge. Raises ValueError if the fleet differs or the charge plus the
+        remaining route fuel exceeds the reserve. Does not mutate the runtime.
+        """
         plan = self.active_fallback
         plan.verify_integrity()
         if set(observations) != set(plan.ids):
@@ -258,6 +292,20 @@ class FleetAdmissionRuntime:
         target_flow_fingerprint: str | None = None,
         refine_fallback_resources=True,
     ):
+        """Select a held fleet decision, trying the proposal after queuing the fallback.
+
+        Inputs:
+            observations: per-member observations at clock q. q, hold_width: exact.
+            proposal: optional PerformanceProposal. failed_attempt: attempt retained
+                when no proposal is given.
+            target_flow_fingerprint: trusted target-flow identity for the proposal.
+            refine_fallback_resources: bool, passed to the fallback charge.
+
+        Returns the PERFORMANCE decision if admission succeeds; otherwise the
+        fallback decision, retaining an ADMISSION_REFUSED attempt when admission
+        raised. Sets self._pending. Raises ValueError if a decision is pending or q
+        differs from self.q, and TypeError for a non-bool flag or a non-typed attempt.
+        """
         q, h = _exact(q), _exact(hold_width)
         if not isinstance(refine_fallback_resources, bool):
             raise TypeError("Fallback resource refinement must be an explicit boolean")
@@ -346,6 +394,16 @@ class FleetAdmissionRuntime:
         return resource.fuel_upper_kg
 
     def _admit(self, proposal, observations, q, h, target_flow_id):
+        """Check a proposal against the current plan and return (decision, endpoints).
+
+        Verifies the proposal matches q and h, the successor is admitted, covers
+        exactly q + h and keeps bodies and clearances, supports, observation and
+        context identities, input box limits, rounding and actuator error, per-member
+        flow certificates and identities, joint swept geometry, endpoint inclusion
+        in the successor entry region and fuel. Raises ValueError, or
+        PerformanceAdmissionRefusal with exact margins when the endpoint is outside
+        the entry region. Does not mutate the runtime.
+        """
         if (
             not isinstance(proposal, PerformanceProposal)
             or proposal.start != q

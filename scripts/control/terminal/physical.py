@@ -43,6 +43,15 @@ PHYSICAL_TERMINAL_METHOD = "arb-orbit-rigid-body-terminal-v1"
 
 
 def _vector(values, size, name, *, nonnegative=False, positive=False):
+    """Convert ``values`` to exact rationals and require ``size`` components.
+
+    Inputs:
+        nonnegative: require every component >= 0.
+        positive: require every component > 0.
+    Outputs:
+        Tuple of exact rationals. Raises ValueError naming ``name`` when the
+        length or a sign is invalid.
+    """
     result = tuple(map(_exact, values))
     if (
         len(result) != size
@@ -54,6 +63,11 @@ def _vector(values, size, name, *, nonnegative=False, positive=False):
 
 
 def _matrix(values, rows, columns, name, *, nonnegative=False):
+    """Convert ``values`` to a rows-by-columns tuple of exact rational rows.
+
+    Raises ValueError naming ``name`` when the row count differs from ``rows`` or
+    a row fails the ``_vector`` length and sign checks.
+    """
     result = tuple(
         _vector(row, columns, name, nonnegative=nonnegative) for row in values
     )
@@ -63,27 +77,35 @@ def _matrix(values, rows, columns, name, *, nonnegative=False):
 
 
 def _abs(ar, ball):
+    """Return the larger endpoint magnitude of the Arb ball's box enclosure."""
     enclosure = ar.box((ball,))
     return max(abs(enclosure.lower[0]), abs(enclosure.upper[0]))
 
 
 def _upper(ar, ball):
+    """Return the upper endpoint of the Arb ball's box enclosure."""
     return ar.box((ball,)).upper[0]
 
 
 def _sqrt_upper(ar, value):
+    """Return an upper bound of sqrt(value) for an exact squared magnitude.
+
+    Raises ValueError when ``value`` is negative.
+    """
     if value < 0:
         raise ValueError("A squared magnitude cannot be negative")
     return _upper(ar, ar.scalar(value).sqrt())
 
 
 def _dot(matrix, vector):
+    """Return the exact matrix-vector product of rational rows and a vector."""
     return tuple(
         sum((a * v for a, v in zip(row, vector)), Fraction(0)) for row in matrix
     )
 
 
 def _add(*vectors):
+    """Return the component-wise sum of equal-length vectors."""
     return tuple(map(sum, zip(*vectors)))
 
 
@@ -145,6 +167,7 @@ class OrbitalClockBounds:
     method: str = PHYSICAL_TERMINAL_METHOD
 
     def as_dict(self):
+        """Return the fields as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
@@ -199,6 +222,7 @@ def bound_orbital_clock(
 
 
 def _determinant(matrix):
+    """Return the exact determinant by Laplace expansion along the first row."""
     if len(matrix) == 1:
         return matrix[0][0]
     return sum(
@@ -218,6 +242,10 @@ def _determinant(matrix):
 
 
 def _positive_definite(matrix):
+    """Return True when the leading principal minors of size 1 to 3 are positive.
+
+    Applies Sylvester's criterion to the top-left 3x3 block of exact entries.
+    """
     return all(
         _determinant(
             tuple(tuple(matrix[i][j] for j in range(size)) for i in range(size))
@@ -309,6 +337,13 @@ class PhysicalTerminalErrorBounds:
     declaration: str = ""
 
     def __post_init__(self):
+        """Normalize the budgets to exact rationals and validate them.
+
+        Vector budgets must have their stated lengths (6 or 3) and nonnegative
+        entries, the nominal matrix error must be 3x6 and nonnegative, and the two
+        scalar errors must be nonnegative. ``declaration`` must be a non-blank
+        string. Raises ValueError otherwise.
+        """
         for name, size in (
             ("sensing_error_abs", 6),
             ("reference_state_error_abs", 6),
@@ -345,11 +380,20 @@ class PhysicalTerminalErrorBounds:
             )
 
     def as_dict(self):
+        """Return the budgets as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
 @dataclass(frozen=True)
 class PhysicalTerminalResult:
+    """Outcome of a physical terminal derivation.
+
+    ``status`` is "CONDITIONAL_PROVEN", "REFUSED" or "UNAVAILABLE"; ``reason``
+    explains it. ``certificate`` is the terminal certificate when one was
+    computed. ``derived`` holds the derived global bounds, ``assumptions`` the
+    encoded builder fields, and ``attempts`` one record per candidate bandwidth.
+    """
+
     status: str
     reason: str
     certificate: TerminalCertificate | None
@@ -360,6 +404,9 @@ class PhysicalTerminalResult:
 
     @property
     def admissible(self):
+        """Return True when the status is CONDITIONAL_PROVEN and the certificate is
+        present and admissible.
+        """
         return (
             self.status == "CONDITIONAL_PROVEN"
             and self.certificate is not None
@@ -367,6 +414,7 @@ class PhysicalTerminalResult:
         )
 
     def as_dict(self):
+        """Return the result as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
     def reference_values_reason(self, reference: TerminalReferenceSample) -> str:
@@ -490,6 +538,18 @@ class PhysicalTerminalBoundsBuilder:
     precision_bits: int = 160
 
     def __post_init__(self):
+        """Normalize and validate the builder fields.
+
+        Converts scalar parameters, ports, gains, bandwidth candidates and the
+        optional peer radius to exact rationals, and normalizes the inertia through
+        ``_inertia_bounds``. Raises ValueError when the window is not positive and
+        finite, a required positive or nonnegative scalar has the wrong sign, a box
+        is not three-dimensional, the port list or index is invalid, a candidate
+        bandwidth is missing or not positive, ``gravity_gradient`` is not a bool,
+        ``precision_bits`` is below 64, ``reference_id`` is blank, the nominal
+        parameters are not fixed points, or the target and nominal models differ
+        from the plant in mu or semi-major axis, or the inertia is rejected.
+        """
         for name in (
             "start_anomaly",
             "end_anomaly",
@@ -573,6 +633,15 @@ class PhysicalTerminalBoundsBuilder:
         object.__setattr__(self, "inertia", inertia)
 
     def build(self) -> PhysicalTerminalResult:
+        """Derive the global bounds and certify the selected port.
+
+        Outputs:
+            A PhysicalTerminalResult. Status is UNAVAILABLE when python-flint cannot
+            be imported, REFUSED when the derivation raises ValueError,
+            ZeroDivisionError or _ProofUnresolved, and otherwise the result of
+            ``_derive``. Runs under ``_ARB_LOCK`` at ``precision_bits`` and restores
+            the flint ``cap`` setting afterwards.
+        """
         assumptions = _encode(vars(self))
         try:
             import flint
@@ -615,12 +684,15 @@ class PhysicalTerminalBoundsBuilder:
         return distance, {}
 
     def _geometry_proof_reference(self):
+        """Return the proof identity of the geometry model (the cylinder method)."""
         return PHYSICAL_TERMINAL_METHOD
 
     def _terminal_proof_reference(self):
+        """Return the proof identity recorded in the certificate scope."""
         return self._geometry_proof_reference()
 
     def _terminal_policy(self):
+        """Return the held feedforward policy used for certification (START_V1)."""
         return TerminalFeedforwardPolicy.START_V1
 
     def _reference_jet_bounds(
@@ -638,11 +710,24 @@ class PhysicalTerminalBoundsBuilder:
         torque_factor,
         radius_log_prime,
     ):
+        """Return the reference position-jet bounds (p0, p1, p2, p3) and evidence.
+
+        The default implementation returns ``point_radius`` as p0 and
+        ``point_radius`` times each rotation derivative operator bound as
+        p1 to p3, with an empty evidence dict.
+        The other arguments are unused here and exist for overriding builders.
+        """
         return (point_radius,) + tuple(
             point_radius * value for value in rotation_derivatives
         ), {}
 
     def _feedforward_range(self, ar, nominal, p2, reference_state, matrix_abs):
+        """Return the box enclosing the feedforward input over the reference bounds.
+
+        Each component is the interval [-p2, p2] minus the nominal matrix row
+        (constant Taylor terms) applied to intervals [-x, x] of the reference state
+        bounds, minus the constant term of the nominal affine drift.
+        """
         state_balls = tuple(ar.interval((-value, value)) for value in reference_state)
         return ar.box(
             tuple(
@@ -664,6 +749,12 @@ class PhysicalTerminalBoundsBuilder:
         reference_error,
         matrix_abs,
     ):
+        """Return the componentwise input error caused by reference evaluation errors.
+
+        Sum of the acceleration error, the affine error, ``matrix_error`` applied
+        to reference state plus error state plus sensing error, and ``matrix_abs``
+        applied to ``reference_error``.
+        """
         return _add(
             acceleration_error,
             affine_error,
@@ -695,6 +786,20 @@ class PhysicalTerminalBoundsBuilder:
         return spin, discriminant, margin, {}
 
     def _derive(self, flint, ar, assumptions):
+        """Derive the global bounds over the query domain and try each bandwidth.
+
+        The query domain is the anomaly window widened by the anomaly evaluation
+        error. Computes Arb orbit jets for the target, plant and nominal models,
+        the physical duration, the spin and its derivatives, reference and
+        feedforward bounds, evaluation errors, and the port-to-target and
+        port-to-peer distance lower bounds. It then calls
+        ``certify_terminal_tracking`` for each candidate bandwidth in order.
+        Outputs:
+            CONDITIONAL_PROVEN with the first admissible certificate, otherwise
+            REFUSED with the last certificate. ``attempts`` records every try.
+            Raises ValueError from unproved positivity, geometry, or spin
+            conditions; ``build`` converts these to REFUSED.
+        """
         q_error = self.errors.anomaly_evaluation_error_abs
         domain = (self.start_anomaly - q_error, self.end_anomaly + q_error)
         target = _orbit_series(flint, ar, domain, self.target_orbit)
@@ -967,6 +1072,14 @@ class PhysicalTerminalController:
     """
 
     def __init__(self, builder: PhysicalTerminalBoundsBuilder):
+        """Rederive the global bounds from ``builder`` and recertify them.
+
+        Raises TypeError when ``builder`` is not a PhysicalTerminalBoundsBuilder.
+        Raises ValueError when the rebuilt result is not admissible, when the
+        method, policy or proof reference is unsupported or inconsistent, when
+        recertification is refused, or when its record differs from the built one.
+        Stores ``result``, ``certificate`` and ``anomaly_evaluation_error_abs``.
+        """
         if not isinstance(builder, PhysicalTerminalBoundsBuilder):
             raise TypeError(
                 "Supply the original builder so global bounds are rederived, not a stored status flag"
@@ -1015,6 +1128,21 @@ class PhysicalTerminalController:
         hold_width,
         hold_references: TerminalHoldReferences | None = None,
     ):
+        """Return the held command for one sample after membership checks.
+
+        Inputs:
+            measured_state: six-component measured state.
+            state_enclosure: IntervalBox enclosing the true state.
+            approximate_reference: reference sample at the actual sample anomaly.
+            hold_width: hold duration in anomaly units (rad).
+            hold_references: held reference pair; required for the midpoint policy.
+        Outputs:
+            A TerminalControlCommand. Raises ValueError when the hold references or
+            policy do not match, the hold is not positive or exceeds the maximum or
+            scope, reference values contradict the derived bounds, robust
+            membership fails, the measurement or enclosure exceeds the sensor
+            budget, or the applied command box leaves the input limits.
+        """
         b, reference = self.certificate.bounds, approximate_reference
         hold = _exact(hold_width)
         measured = _vector(measured_state, 6, "Measured state")
@@ -1105,12 +1233,20 @@ class PhysicalTerminalController:
 
 @dataclass(frozen=True)
 class PhysicalTerminalAdmission:
+    """Result of a joint fleet admission check.
+
+    ``admissible`` is True when no reason was recorded, ``reasons`` lists the
+    refusals, ``anomaly`` is the shared sample anomaly (None if undetermined)
+    and ``members_contained`` holds one robust-membership flag per member.
+    """
+
     admissible: bool
     reasons: tuple[str, ...]
     anomaly: Fraction | None
     members_contained: tuple[bool, ...]
 
     def as_dict(self):
+        """Return the admission record as a dict, encoded by ``_encode``."""
         return _encode(vars(self))
 
 
@@ -1125,6 +1261,15 @@ class PhysicalTerminalFleet:
     """
 
     def __init__(self, builders: Sequence[PhysicalTerminalBoundsBuilder]):
+        """Validate the member builders and build one controller per member.
+
+        Raises ValueError when the list is empty, the members do not share the
+        target, scope, inertia, spin, ports and geometry fields, composite
+        geometries are mixed or differ in fingerprint, a member's assumed peer
+        radius is below another member's omega radius, port indices are not a
+        one-to-one cover of the body ports, reference identities repeat, or the
+        controllers use different held policies.
+        """
         builders = tuple(builders)
         if not builders:
             raise ValueError(
@@ -1201,6 +1346,15 @@ class PhysicalTerminalFleet:
         state_enclosures: Sequence[IntervalBox],
         approximate_references: Sequence[TerminalReferenceSample],
     ) -> PhysicalTerminalAdmission:
+        """Check that every member state lies in its robust terminal set.
+
+        Inputs:
+            state_enclosures: one IntervalBox per member.
+            approximate_references: one reference sample per member.
+        Outputs:
+            A PhysicalTerminalAdmission. It is refused, with no anomaly, when the
+            counts differ from the fleet or the sample anomalies differ.
+        """
         states, references = tuple(state_enclosures), tuple(approximate_references)
         if len(states) != len(self.controllers) or len(references) != len(
             self.controllers
@@ -1241,6 +1395,13 @@ class PhysicalTerminalFleet:
         hold_width,
         hold_references=None,
     ):
+        """Return one held command per member after fleet admission.
+
+        Raises ValueError when admission is refused, the measurement count differs
+        from the fleet, or the number of held-reference pairs differs. Each command
+        is produced by the member controller's ``command`` with the shared
+        ``hold_width``.
+        """
         measurements, states, references = (
             tuple(measurements),
             tuple(state_enclosures),

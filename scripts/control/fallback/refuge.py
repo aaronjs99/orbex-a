@@ -24,6 +24,11 @@ REFUGE_METHOD = "exact-sampled-reference-refuge-v1"
 
 
 def _vec(values, length, name, *, nonnegative=False, positive=False):
+    """Return values as exact rationals after checking length and sign.
+
+    Raises ValueError unless there are `length` components, all nonnegative when
+    `nonnegative` is set and all positive when `positive` is set.
+    """
     value = tuple(map(_exact, values))
     if (
         len(value) != length
@@ -35,6 +40,11 @@ def _vec(values, length, name, *, nonnegative=False, positive=False):
 
 
 def _mat(value, name):
+    """Return a 3 by 3 tuple of exact rows with nonnegative entries.
+
+    Raises ValueError if a row is not a nonnegative 3-vector or the row count
+    is not three.
+    """
     rows = tuple(_vec(row, 3, name, nonnegative=True) for row in value)
     if len(rows) != 3:
         raise ValueError(f"{name} must be a nonnegative 3 by 3 matrix")
@@ -42,24 +52,29 @@ def _mat(value, name):
 
 
 def _dot(matrix, vector):
+    """Return the matrix-vector product as a tuple of row sums."""
     return tuple(sum(a * b for a, b in zip(row, vector)) for row in matrix)
 
 
 def _add(*vectors):
+    """Return the componentwise sum of the given equal-length vectors."""
     return tuple(sum(values) for values in zip(*vectors))
 
 
 def _absbox(box):
+    """Return the largest absolute endpoint of each component of an interval box."""
     return tuple(max(abs(lo), abs(hi)) for lo, hi in zip(box.lower, box.upper))
 
 
 def _identity(value, name):
+    """Return `value` if it is a non-blank string; otherwise raise ValueError."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"An explicit {name} is required")
     return value
 
 
 def _scope(start, end):
+    """Return start and end as exact rationals; raise ValueError unless start < end."""
     start, end = _exact(start), _exact(end)
     if start >= end:
         raise ValueError("A positive finite reference-clock scope is required")
@@ -90,6 +105,10 @@ def exact_record(value):
 
 
 def fingerprint(value):
+    """Return the SHA-256 hex digest of the canonical JSON of exact_record(value).
+
+    The JSON uses sorted keys and compact separators and rejects NaN.
+    """
     return hashlib.sha256(
         json.dumps(
             exact_record(value), sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -114,16 +133,20 @@ class ControlContext:
     fuel_domain_id: str
 
     def __post_init__(self):
+        """Require every field to be a non-blank string; raise ValueError otherwise."""
         for field in fields(self):
             _identity(getattr(self, field.name), field.name)
 
     @cached_property
     def fingerprint(self):
+        """Return the cached fingerprint of this context."""
         return fingerprint(self)
 
 
 @dataclass(frozen=True)
 class ReferenceJet:
+    """Reference position, velocity and acceleration at one reference-clock value q."""
+
     q: Any
     position: Sequence[Any]
     velocity: Sequence[Any]
@@ -133,6 +156,11 @@ class ReferenceJet:
     clock_id: str
 
     def __post_init__(self):
+        """Convert q and the three jets to exact rationals and check identities.
+
+        Raises ValueError if a jet is not a 3-vector or reference_id, frame or
+        clock_id is blank.
+        """
         object.__setattr__(self, "q", _exact(self.q))
         for name in ("position", "velocity", "acceleration"):
             object.__setattr__(self, name, _vec(getattr(self, name), 3, name))
@@ -162,6 +190,12 @@ class ReferenceBounds:
     proof_kind: str = "validated-interval-global"
 
     def __post_init__(self):
+        """Validate and normalise the bound window, boxes, jerk bound and proof source.
+
+        Raises ValueError unless start < end, the three boxes are three-dimensional
+        IntervalBox values, jerk_abs is a nonnegative 3-vector, the identities are
+        non-blank and the proof kind and assumptions are accepted.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -180,6 +214,9 @@ class ReferenceBounds:
 
     @property
     def is_constant(self):
+        """Return True when position is a single point, velocity and acceleration are
+        the zero point and jerk_abs is zero.
+        """
         return (
             self.position.lower == self.position.upper
             and self.velocity == IntervalBox.point((0, 0, 0))
@@ -189,11 +226,24 @@ class ReferenceBounds:
 
 
 class ReferenceProvider(Protocol):
-    def sample(self, q: Fraction) -> ReferenceJet: ...
-    def bounds(self, start: Fraction, end: Fraction) -> ReferenceBounds: ...
+    """Protocol for a reference source that can be sampled and bounded."""
+
+    def sample(self, q: Fraction) -> ReferenceJet:
+        """Return the ReferenceJet at reference-clock value q."""
+        ...
+
+    def bounds(self, start: Fraction, end: Fraction) -> ReferenceBounds:
+        """Return ReferenceBounds for the reference-clock window [start, end]."""
+        ...
 
 
 def _proof_source(kind, assumptions):
+    """Require an accepted proof kind and non-blank assumption strings.
+
+    Raises ValueError unless `kind` is "analytic-global" or
+    "validated-interval-global" and `assumptions` is a nonempty collection of
+    non-blank strings.
+    """
     if kind not in ("analytic-global", "validated-interval-global"):
         raise ValueError(
             "Global analytical or validated interval proof bounds are required"
@@ -237,6 +287,13 @@ class NonlinearDriftBounds:
     proof_kind: str = "validated-interval-global"
 
     def __post_init__(self):
+        """Validate and normalise the drift-bound window, domains and identities.
+
+        Raises ValueError unless start < end, the state, sensing, input and drift-range
+        boxes have dimensions 6, 6, 3 and 3, the error vectors are nonnegative
+        3-vectors, the Jacobian bounds are nonnegative 3 by 3 matrices, the
+        identities are non-blank and the proof source is accepted.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -274,6 +331,8 @@ class NonlinearDriftBounds:
 
 @dataclass(frozen=True)
 class RefugeTrackingSpec:
+    """Gains, tube widths, error budgets, input limits and fuel data for one scope."""
+
     start: Any
     end: Any
     context: ControlContext
@@ -294,6 +353,15 @@ class RefugeTrackingSpec:
     fuel_assumptions: tuple[str, ...]
 
     def __post_init__(self):
+        """Validate and normalise the tracking specification.
+
+        Raises ValueError unless start < end, omega, phi, lambda_gain and beta are
+        positive 3-vectors, the error and acceleration bounds are nonnegative vectors
+        of lengths 3, 6, 3, 3, 3 and 9, maximum_hold is positive, input_limits is a
+        three-dimensional IntervalBox, the fuel bounds are nonnegative, the fuel proof
+        reference is non-blank and fuel_assumptions are accepted. Raises TypeError
+        unless context is a ControlContext.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -334,6 +402,8 @@ class RefugeTrackingSpec:
 
 @dataclass(frozen=True)
 class RefugeObservation:
+    """One sensed sample: measurement, state enclosure and identities at clock q."""
+
     q: Any
     measurement: Sequence[Any]
     state_enclosure: IntervalBox
@@ -342,6 +412,11 @@ class RefugeObservation:
     clock_id: str
 
     def __post_init__(self):
+        """Convert q and the measurement to exact rationals and check the enclosure.
+
+        Raises ValueError unless measurement has six components, state_enclosure is a
+        six-dimensional IntervalBox and sensor_id, frame and clock_id are non-blank.
+        """
         object.__setattr__(self, "q", _exact(self.q))
         object.__setattr__(
             self, "measurement", _vec(self.measurement, 6, "measurement")
@@ -356,11 +431,18 @@ class RefugeObservation:
 
     @cached_property
     def fingerprint(self):
+        """Return the cached fingerprint of this observation."""
         return fingerprint(self)
 
 
 @dataclass(frozen=True)
 class RefugeCertificate:
+    """Result of RefugeBoundsBuilder.build: derived bounds, margins and reasons.
+
+    The certificate is admissible only when `reasons` is empty and `method` is
+    REFUGE_METHOD.
+    """
+
     spec: RefugeTrackingSpec
     reference_bounds: ReferenceBounds
     drift_bounds: NonlinearDriftBounds
@@ -379,13 +461,19 @@ class RefugeCertificate:
 
     @property
     def admissible(self):
+        """Return True when method is REFUGE_METHOD and no reason is recorded."""
         return self.method == REFUGE_METHOD and not self.reasons
 
     @cached_property
     def fingerprint(self):
+        """Return the cached fingerprint of this certificate."""
         return fingerprint(self)
 
     def as_dict(self):
+        """Return the exact record with status and identity.
+
+        Status is "CONDITIONAL_PROVEN" when admissible and "REFUSED" otherwise.
+        """
         return dict(
             status="CONDITIONAL_PROVEN" if self.admissible else "REFUSED",
             identity=self.fingerprint,
@@ -394,6 +482,7 @@ class RefugeCertificate:
 
 
 def _expanded(box, radius):
+    """Return a box whose bounds are widened by `radius` on each side per component."""
     return IntervalBox(
         tuple(lo - r for lo, r in zip(box.lower, radius)),
         tuple(hi + r for hi, r in zip(box.upper, radius)),
@@ -417,6 +506,12 @@ class RefugeBoundsBuilder:
         *,
         nominal_model_id: str,
     ):
+        """Store the spec and providers after checking their types and model identity.
+
+        Raises TypeError unless spec is a RefugeTrackingSpec and both providers are
+        callable. Raises ValueError if nominal_model_id differs from the spec
+        context's nominal_model_id.
+        """
         if (
             not isinstance(spec, RefugeTrackingSpec)
             or not callable(drift_bounds_provider)
@@ -437,6 +532,19 @@ class RefugeBoundsBuilder:
         self.nominal_model_id = nominal_model_id
 
     def build(self):
+        """Derive the tube, drift, margin, input and fuel bounds for the spec scope.
+
+        Queries the reference provider for bounds over [start, end] and the drift
+        provider for NonlinearDriftBounds, then evaluates the position, acceleration
+        and sliding margins, the held-input range and the fuel requirement in exact
+        rationals. Each failed inequality or identity/scope mismatch of the drift
+        bounds is appended to the certificate's `reasons` instead of raising.
+
+        Outputs: a RefugeCertificate. Raises TypeError if a provider does not return
+        ReferenceBounds or NonlinearDriftBounds, and ValueError if the reference bounds
+        do not cover the scope or differ in reference_id, frame or clock_id from the
+        context.
+        """
         b, reasons = self.spec, []
         r = self.reference_provider.bounds(b.start, b.end)
         if not isinstance(r, ReferenceBounds):
@@ -624,6 +732,8 @@ class RefugeBoundsBuilder:
 
 @dataclass(frozen=True)
 class CertifiedFeedbackCommand:
+    """One certified held feedback command with its applied-input interval."""
+
     q: Fraction
     hold_width: Fraction
     command: tuple[Fraction, ...]
@@ -635,6 +745,11 @@ class CertifiedFeedbackCommand:
     source: str = "CERTIFIED_FEEDBACK"
 
     def float_command(self):
+        """Return the command as binary64 floats after two checks.
+
+        Raises ValueError if any float differs from the exact command by more than
+        rounding_error_abs, or if the float vector is outside applied_input.
+        """
         values = tuple(float(value) for value in self.command)
         if any(
             abs(_exact(value) - exact) > error
@@ -652,6 +767,7 @@ class CertifiedFeedbackCommand:
         return values
 
     def as_dict(self):
+        """Return the exact record of this command."""
         return exact_record(self)
 
 
@@ -659,6 +775,11 @@ class RefugeController:
     """Rebuild global bounds once, then evaluate the held law without an NLP."""
 
     def __init__(self, builder: RefugeBoundsBuilder):
+        """Build the certificate from the builder and keep both.
+
+        Raises TypeError unless builder is a RefugeBoundsBuilder, and ValueError
+        (listing the reasons) if the built certificate is not admissible.
+        """
         if not isinstance(builder, RefugeBoundsBuilder):
             raise TypeError("Supply the original bounds builder for recertification")
         result = builder.build()
@@ -667,6 +788,13 @@ class RefugeController:
         self.builder, self.certificate = builder, result
 
     def reference_at(self, q):
+        """Return the reference jet at clock value q after consistency checks.
+
+        Raises ValueError if q is outside [start, end] of the spec, if the sampled jet
+        is not a ReferenceJet with the same q, reference_id, frame and clock_id, or if
+        a sampled component lies outside the certified jet bounds widened by
+        reference_error_abs.
+        """
         q, b = _exact(q), self.certificate.spec
         if not b.start <= q <= b.end:
             raise ValueError("Reference query lies outside the finite certified scope")
@@ -692,6 +820,15 @@ class RefugeController:
         return value
 
     def contains(self, state_box, q, hold_width=0):
+        """Return True if state_box fits the certified region for a hold starting at q.
+
+        Returns False, without raising, unless state_box is a six-dimensional
+        IntervalBox, 0 <= hold_width <= maximum_hold and [q, q + hold_width] lies in
+        the spec scope. Otherwise checks, per axis against the sampled reference, that
+        the position error plus reference_error_abs is within omega and the sliding
+        error plus its reference-error allowance is within phi. May raise ValueError
+        from reference_at.
+        """
         b, q, h = self.certificate.spec, _exact(q), _exact(hold_width)
         if (
             not isinstance(state_box, IntervalBox)

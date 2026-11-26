@@ -26,6 +26,12 @@ _SQRT_SCALE = 1 << 128
 
 
 def _scalar(value, name, *, nonnegative=False, positive=False):
+    """Return value as an exact number, requiring it to be finite.
+
+    Raises ValueError if value cannot be converted by exact(), is not finite as a
+    float, is negative when nonnegative is set, or is not positive when positive
+    is set.
+    """
     try:
         result = exact(value)
         finite = math.isfinite(float(result))
@@ -37,6 +43,12 @@ def _scalar(value, name, *, nonnegative=False, positive=False):
 
 
 def _vector(values, length, name, *, nonnegative=False):
+    """Return the exact finite components of values as a tuple of the given length.
+
+    Each component is checked by _scalar with the nonnegative option. Raises
+    ValueError if values is not iterable, a component is invalid, or the length
+    differs.
+    """
     try:
         result = tuple(
             _scalar(value, name, nonnegative=nonnegative) for value in values
@@ -49,12 +61,17 @@ def _vector(values, length, name, *, nonnegative=False):
 
 
 def _identity(value, name):
+    """Return value if it is a non-blank string; raise ValueError otherwise."""
     if not isinstance(value, str) or not value.strip():
         raise ValueError("An explicit " + name + " is required")
     return value
 
 
 def _box(value, dimension, name):
+    """Return value if it is an IntervalBox of the given dimension with finite bounds.
+
+    Raises ValueError otherwise.
+    """
     if not isinstance(value, IntervalBox) or value.dimension != dimension:
         raise ValueError(
             name + " requires a typed IntervalBox of the declared dimension"
@@ -78,6 +95,11 @@ def _norm_upper(values):
 
 
 def _outward(value, *, upper):
+    """Return value as a binary64 float rounded outward (up if upper, else down).
+
+    Raises ValueError if the value overflows float or the rounded result is not
+    finite.
+    """
     try:
         result = float(value)
     except OverflowError as error:
@@ -110,6 +132,11 @@ class ContactAdmissionSource:
     body_rate_frame: str = BODY_RATE_FRAME
 
     def __post_init__(self):
+        """Require non-blank identities, convert exact_q to exact, and check frames.
+
+        Raises ValueError if an identity is blank, exact_q is not finite, or frame or
+        body_rate_frame differs from the declared constants.
+        """
         for name in (
             "agent_id",
             "clock_fingerprint",
@@ -125,6 +152,7 @@ class ContactAdmissionSource:
             )
 
     def as_dict(self):
+        """Return the identities as a dict with exact_q as a string."""
         return {
             "agent_id": self.agent_id,
             "exact_q": str(self.exact_q),
@@ -158,6 +186,12 @@ class ContactReferenceKinematics:
     body_rate_frame: str = BODY_RATE_FRAME
 
     def __post_init__(self):
+        """Validate and convert fields to exact values.
+
+        Requires a finite 3x3 rotation matrix, a finite 3-component body rate, a
+        nonnegative operator error, a finite exact_q, non-blank goal_bound_id and
+        clock_fingerprint, and the declared frames. Raises ValueError otherwise.
+        """
         try:
             rotation = tuple(
                 _vector(row, 3, "Reference rotation") for row in self.rotation_matrix
@@ -192,6 +226,7 @@ class ContactReferenceKinematics:
             )
 
     def as_dict(self):
+        """Return the fields as a dict with numeric values as strings."""
         return {
             "rotation_matrix": tuple(
                 tuple(map(str, row)) for row in self.rotation_matrix
@@ -230,6 +265,11 @@ class ContactGoalSpeedBound:
     goal_speed_upper_m_s: Fraction
 
     def as_dict(self):
+        """Return the inputs, exact upper bounds and formula as a fingerprinted record.
+
+        Numeric values are strings. The record carries the source file hash, units and
+        assumption scope, and an identity from fingerprint().
+        """
         scalar_names = (
             "clock_rate_upper",
             "body_rate_norm_upper",
@@ -450,6 +490,13 @@ class ContactAdmissionInputs:
     max_relative_speed_m_s: object
 
     def __post_init__(self):
+        """Validate and convert fields to exact values.
+
+        Requires finite vectors of lengths 6, 6, 3, 3 and 3 (phi, omega and
+        lambda_gain nonnegative), nonnegative scalar bounds with a positive
+        max_relative_speed_m_s, typed clock and body-rate boxes, and a positive lower
+        clock rate. Raises ValueError otherwise.
+        """
         for name, length in (
             ("nominal_center", 6),
             ("observed_goal", 6),
@@ -490,6 +537,7 @@ class ContactAdmissionInputs:
             raise ValueError("The reference clock rate must be proved positive")
 
     def as_dict(self):
+        """Return the vectors, scalars and boxes as a dict of strings."""
         vectors = {
             name: tuple(map(str, getattr(self, name)))
             for name in (
@@ -522,6 +570,12 @@ class ContactAdmissionInputs:
 
 @dataclass(frozen=True)
 class ContactSpeedAdmission:
+    """Result of contact_speed_admission: inputs, intermediate norms and speed bound.
+
+    Vector fields are componentwise absolute values; scalar fields are exact upper
+    bounds. goal_speed_bounds is set only when reference kinematics were given.
+    """
+
     source: ContactAdmissionSource
     inputs: ContactAdmissionInputs
     nominal_position_error_abs: tuple
@@ -544,13 +598,21 @@ class ContactSpeedAdmission:
 
     @property
     def admissible(self):
+        """Return True when speed_upper_m_s does not exceed max_relative_speed_m_s."""
         return self.speed_upper_m_s <= self.inputs.max_relative_speed_m_s
 
     @property
     def margin_m_s(self):
+        """Return max_relative_speed_m_s minus speed_upper_m_s (m/s)."""
         return self.inputs.max_relative_speed_m_s - self.speed_upper_m_s
 
     def as_dict(self):
+        """Return the admission as a fingerprinted record.
+
+        Contains status SUFFICIENT or REFUSED, exact bounds as strings, outward
+        binary64 speed and margin, the formula and, when present, the goal speed
+        record. Raises ValueError if a displayed value has no finite binary64 form.
+        """
         vector_names = (
             "nominal_position_error_abs",
             "nominal_velocity_error_abs",
@@ -615,6 +677,7 @@ class ContactSpeedAdmission:
 
     @property
     def identity(self):
+        """Return the fingerprint of the as_dict() record."""
         return self.as_dict()["identity"]
 
 
@@ -736,6 +799,11 @@ class ContactReachPolicy:
     max_orientation_error_rad: object
 
     def __post_init__(self):
+        """Convert fields to exact values.
+
+        standoff_m and max_orientation_error_rad must be nonnegative and arm_reach_m
+        positive. Raises ValueError otherwise.
+        """
         for name in ("standoff_m", "arm_reach_m", "max_orientation_error_rad"):
             object.__setattr__(
                 self,
@@ -760,6 +828,7 @@ class ContactReachPolicy:
         return min(reach, gap)
 
     def as_dict(self):
+        """Return the policy as a fingerprinted record with values as strings."""
         result = {
             "method": "assigned-physical-contact-reach-policy-v1",
             "source_sha256": _SOURCE_SHA256,
@@ -774,10 +843,16 @@ class ContactReachPolicy:
 
     @property
     def identity(self):
+        """Return the fingerprint of the as_dict() record."""
         return self.as_dict()["identity"]
 
     @classmethod
     def from_dict(cls, record):
+        """Rebuild the policy from a record and require its fingerprint to match.
+
+        Raises ValueError if a field is missing or invalid, or if the record differs
+        from the rebuilt as_dict().
+        """
         try:
             rebuilt = cls(
                 **{
@@ -800,6 +875,11 @@ class ContactReachPolicy:
 
 @dataclass(frozen=True)
 class ContactReachAdmission:
+    """Result of contact_reach_admission: split position norms, tip gap and reach.
+
+    All fields are exact upper or lower bounds in m.
+    """
+
     source: ContactAdmissionSource
     inputs: ContactAdmissionInputs
     policy: ContactReachPolicy
@@ -815,21 +895,31 @@ class ContactReachAdmission:
 
     @property
     def reach_admissible(self):
+        """Return True when reach_upper_m does not exceed the policy arm reach."""
         return self.reach_upper_m <= self.policy.arm_reach_m
 
     @property
     def nonpenetration_admissible(self):
+        """Return True when gap_lower_m is nonnegative."""
         return self.gap_lower_m >= 0
 
     @property
     def admissible(self):
+        """Return True when both reach and nonpenetration are admissible."""
         return self.reach_admissible and self.nonpenetration_admissible
 
     @property
     def reach_margin_m(self):
+        """Return the policy arm reach minus reach_upper_m (m)."""
         return self.policy.arm_reach_m - self.reach_upper_m
 
     def as_dict(self):
+        """Return the reach admission as a fingerprinted record.
+
+        Contains status SUFFICIENT or REFUSED, exact bounds as strings, outward
+        binary64 reach, reach margin and gap, the formula and assumption scope. Raises
+        ValueError if a displayed value has no finite binary64 form.
+        """
         scalar_names = (
             "nominal_position_norm_upper",
             "tube_position_norm_upper",
@@ -880,6 +970,7 @@ class ContactReachAdmission:
 
     @property
     def identity(self):
+        """Return the fingerprint of the as_dict() record."""
         return self.as_dict()["identity"]
 
 

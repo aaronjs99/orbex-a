@@ -25,6 +25,7 @@ _TUBE_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
 def _upper(value):
+    """Return float(value), moved up one float if it is below the exact value."""
     result = float(value)
     return np.nextafter(result, np.inf) if Fraction(result) < value else result
 
@@ -169,6 +170,7 @@ class PhysicalTubeWitness:
     source: tuple
 
     def as_dict(self):
+        """Return the witness as a dict with a method tag and string-valued data."""
         return {
             "method": "conditional-sensed-physical-tube-induction-v1",
             "agent": self.agent,
@@ -185,10 +187,28 @@ class PhysicalTubeWitness:
 
     @cached_property
     def fingerprint(self):
+        """Return the cached fingerprint of as_dict()."""
         return fingerprint(self.as_dict())
 
 
 def stage_from_plan(state, plan, key, h, *, sliding_gains):
+    """Validate the first stage of a sensed plan and return its tube stage data.
+
+    Inputs: state holds phi, omega and centers indexed by `key`; plan supplies tube,
+    spec and result; h is the exact feedback hold width; sliding_gains must equal
+    spec.lambda_gain.
+
+    Raises ValueError if the tube model version is not the sensed v2 version or h
+    exceeds spec.hold_width, the gains differ, stage values are non-finite,
+    negative or misshaped, alpha leaves spec.alpha_bounds or A_variation changed,
+    the plan start differs from state beyond 1e-8, the stored terms differ from a
+    recomputed sample_hold_bounds beyond tolerance, or the nominal endpoint error
+    budget is not a nonnegative finite six-vector.
+
+    Outputs: dict of stage arrays in which input_reserve and disturbance_bound are
+    raised to at least the exact-rational upper values, with a proof_record and, for
+    a nonzero budget, the nominal endpoint error and hold.
+    """
     tube, spec = plan.tube, plan.spec
     if tube.get("tube_model_version") != SENSED_TUBE_MODEL_VERSION or h > exact(
         spec.hold_width
@@ -353,6 +373,9 @@ def feedback_evaluation(
 
 
 def measurement_radius(box, point):
+    """Return, per component, the upward-rounded largest distance from point to the
+    box endpoints.
+    """
     return np.array(
         [
             _upper(max(abs(lo - exact(v)), abs(hi - exact(v))))
@@ -362,6 +385,11 @@ def measurement_radius(box, point):
 
 
 def check_tube_observation(box, center, phi, omega, lam):
+    """Check a navigation box against the performance tube about `center`.
+
+    Raises ValueError if, on any axis, the position deviation exceeds omega or the
+    sliding deviation exceeds phi. Returns None otherwise.
+    """
     for i in range(3):
         position = max(
             abs(box.lower[i] - exact(center[i])), abs(box.upper[i] - exact(center[i]))

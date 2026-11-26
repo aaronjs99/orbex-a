@@ -23,6 +23,11 @@ _ZERO_POWER = (0,) * 9
 
 
 def _inverse(matrix):
+    """Return the exact inverse of a square Fraction matrix as a tuple of tuples.
+
+    Uses Gauss-Jordan elimination with the first nonzero pivot in each column.
+    Raises StopIteration if a column has no nonzero pivot (singular matrix).
+    """
     size = len(matrix)
     rows = [
         list(row) + [Fraction(int(i == j)) for j in range(size)]
@@ -41,6 +46,12 @@ def _inverse(matrix):
 
 
 def _euler_coefficients(inertia, inverse):
+    """Return exact coefficients of the quadratic part of the Euler equation.
+
+    Entry i maps a sorted index pair (j, k) to the Fraction coefficient of
+    omega_j * omega_k in the i-th component of -inverse * (omega x inertia * omega).
+    Zero coefficients are dropped.
+    """
     coefficients = [{} for _ in range(3)]
     for row, (a, b) in enumerate(((1, 2), (2, 0), (0, 1))):
         for column in range(3):
@@ -57,6 +68,10 @@ def _euler_coefficients(inertia, inverse):
 
 
 def _euler(ar, coefficients, omega, force):
+    """Return the three Arb components of omega_dot = quadratic terms + force.
+
+    Inputs: Arb spin components omega and Arb force (inverse inertia times torque).
+    """
     return tuple(
         sum(
             (ar.scalar(value) * omega[j] * omega[k] for (j, k), value in row.items()),
@@ -67,6 +82,10 @@ def _euler(ar, coefficients, omega, force):
 
 
 def _jacobian(ar, coefficients, omega):
+    """Return the 3x3 Arb Jacobian of the quadratic Euler terms with respect to omega.
+
+    The force term is constant in omega and does not appear.
+    """
     result = []
     for row in coefficients:
         derivative = []
@@ -83,6 +102,11 @@ def _jacobian(ar, coefficients, omega):
 
 
 def _norm(ar, values):
+    """Return an upper bound on the Euclidean norm of an Arb vector.
+
+    Squares the larger endpoint magnitude of each component box and takes the
+    upper square root.
+    """
     box = ar.box(values)
     return _sqrt_upper(
         ar, sum(max(abs(lo), abs(hi)) ** 2 for lo, hi in zip(box.lower, box.upper))
@@ -90,16 +114,23 @@ def _norm(ar, values):
 
 
 def _constant(value):
+    """Return the constant polynomial for value; the zero polynomial is empty.
+
+    A polynomial is a dict mapping a 9-tuple of exponents (omega, torque and
+    torque-derivative components) to a nonzero Fraction coefficient.
+    """
     return {_ZERO_POWER: value} if value else {}
 
 
 def _variable(index):
+    """Return the degree-one monomial in variable index (0 to 8) with coefficient 1."""
     power = list(_ZERO_POWER)
     power[index] = 1
     return {tuple(power): Fraction(1)}
 
 
 def _add(*items):
+    """Return the sum of the given polynomials with zero coefficients dropped."""
     result = {}
     for item in items:
         for power, value in item.items():
@@ -108,6 +139,7 @@ def _add(*items):
 
 
 def _scale(item, value):
+    """Return the polynomial multiplied by the Fraction value, dropping zero terms."""
     return {
         power: coefficient * value
         for power, coefficient in item.items()
@@ -116,6 +148,7 @@ def _scale(item, value):
 
 
 def _multiply(left, right):
+    """Return the exact product of two polynomials with zero coefficients dropped."""
     result = {}
     for power_a, value_a in left.items():
         for power_b, value_b in right.items():
@@ -125,6 +158,7 @@ def _multiply(left, right):
 
 
 def _differentiate(item, index):
+    """Return the partial derivative of a polynomial with respect to variable index."""
     result = {}
     for power, value in item.items():
         if power[index]:
@@ -135,6 +169,7 @@ def _differentiate(item, index):
 
 
 def _cross(left, right):
+    """Return the cross product of two 3-vectors of polynomials."""
     return tuple(
         _add(_multiply(left[j], right[k]), _scale(_multiply(left[k], right[j]), -1))
         for j, k in ((1, 2), (2, 0), (0, 1))
@@ -142,6 +177,11 @@ def _cross(left, right):
 
 
 def _evaluate(ar, item, variables):
+    """Evaluate a polynomial at Arb variable values.
+
+    Each monomial is formed by repeated multiplication, so no interval power
+    is used.
+    """
     result = ar.arb(0)
     for power, value in item.items():
         term = ar.scalar(value)
@@ -155,6 +195,17 @@ def _evaluate(ar, item, variables):
 
 
 def _port_jets(ar, coefficients, inverse, omega, torque, torque_dot, point):
+    """Return the fixed-body-port velocity, acceleration and jerk jets.
+
+    Builds exact polynomials in omega, torque and torque derivative for
+    omega x g, its first derivative and its second derivative, where g is the
+    fixed body port point and omega_dot follows the Euler equation with torque.
+
+    Inputs: coefficients and inverse from the inertia; Arb omega, torque and
+    torque_dot components; the exact body port point.
+    Outputs: (values, exact), where values holds three tuples of three Arb
+    evaluations and exact holds the same shape of {str(exponents): Fraction}.
+    """
     w = tuple(_variable(i) for i in range(3))
     t, td = (
         tuple(_variable(i + 3) for i in range(3)),
@@ -200,11 +251,14 @@ def _port_jets(ar, coefficients, inverse, omega, torque, torque_dot, point):
 
 @dataclass(frozen=True)
 class ComponentwiseTerminalJetBounds:
+    """Frozen result: reference norm bounds, evidence record and method name."""
+
     reference_norm_bounds: tuple[Fraction, Fraction, Fraction, Fraction]
     evidence: dict
     method: str = RIGID_BODY_TERMINAL_METHOD
 
     def as_dict(self):
+        """Return all fields encoded by _encode."""
         return _encode(vars(self))
 
 

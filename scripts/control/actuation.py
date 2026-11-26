@@ -21,12 +21,19 @@ _ACTUATION_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest
 
 @dataclass(frozen=True)
 class CommandActuationSupport:
+    """Hold the exact command-dependent support of one applied actuator input.
+
+    Inputs: ``command`` is the commanded input, ``error_abs`` the per-component
+    absolute error bound, ``applied_input`` the box command -/+ error, and
+    ``prior_fingerprint`` the fingerprint of the prior that produced them."""
+
     command: tuple
     error_abs: tuple
     applied_input: IntervalBox
     prior_fingerprint: str
 
     def as_dict(self):
+        """Return the JSON-ready record of this support with its method label."""
         return {
             "command": tuple(map(str, self.command)),
             "error_abs": tuple(map(str, self.error_abs)),
@@ -37,6 +44,7 @@ class CommandActuationSupport:
 
     @cached_property
     def fingerprint(self):
+        """Return the SHA-256 fingerprint of ``as_dict()`` (cached)."""
         return fingerprint(self.as_dict())
 
 
@@ -58,6 +66,11 @@ class CommandDependentActuationPrior:
     declaration: str = "Prospective bounded synthetic diagonal gain/axis tilt/bias study prior; no device qualification"
 
     def __post_init__(self):
+        """Convert the bounds to exact values and validate them.
+
+        Outputs: replaces each numeric field with its exact value. Raises ValueError
+        when a bound is negative, when ``gain_error`` is at least 1, when
+        ``command_abs_limit`` is not positive, or when ``declaration`` is blank."""
         for name in (
             "gain_error",
             "tilt_rad",
@@ -79,6 +92,10 @@ class CommandDependentActuationPrior:
             raise ValueError("Invalid declared gain/tilt/bias command prior")
 
     def as_dict(self):
+        """Return the JSON-ready record of the prior.
+
+        The record holds the exact bounds as strings, the declaration, the SHA-256 of
+        this source file, the units note and the error law."""
         return dict(
             model="declared-gain-tilt-bias-command-support-v1",
             source_sha256=_ACTUATION_SOURCE_SHA256,
@@ -100,9 +117,18 @@ class CommandDependentActuationPrior:
 
     @cached_property
     def fingerprint(self):
+        """Return the SHA-256 fingerprint of ``as_dict()`` (cached)."""
         return fingerprint(self.as_dict())
 
     def error_for_component_limits(self, limits):
+        """Return the per-component error bounds for command magnitude limits.
+
+        Inputs: ``limits`` are three nonnegative bounds on the absolute command
+        components, in command units.
+        Outputs: a tuple of three exact bounds, each
+        ``(tilt*(1+g)+round_relative)*sqrt_upper(sum(limit^2)) + bias + round_absolute
+        + g*limit_i``. Raises ValueError when there are not three limits or one is
+        negative or above ``command_abs_limit``."""
         values = tuple(map(exact, limits))
         if len(values) != 3 or any(
             value < 0 or value > self.command_abs_limit for value in values
@@ -117,6 +143,12 @@ class CommandDependentActuationPrior:
         return tuple(common + self.gain_error * value for value in values)
 
     def support(self, command):
+        """Return the command support for a commanded input.
+
+        Inputs: ``command`` is three command components.
+        Outputs: a CommandActuationSupport whose error bounds come from
+        ``error_for_component_limits`` on the absolute components. Raises ValueError
+        when a component magnitude exceeds ``command_abs_limit``."""
         values = tuple(map(exact, command))
         errors = self.error_for_component_limits(tuple(abs(value) for value in values))
         return CommandActuationSupport(
@@ -195,11 +227,21 @@ class CommandDependentActuationPrior:
 
 @dataclass(frozen=True)
 class AffineActuatorRealization:
+    """Hold a fixed three-dimensional affine actuator map ``matrix @ command + bias``.
+
+    Inputs: ``matrix`` is 3x3, ``bias`` has three entries and ``declaration`` is a
+    nonempty description. Entries are stored as exact values."""
+
     matrix: tuple = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
     bias: tuple = (0, 0, 0)
     declaration: str = "Explicit fixed study gain/axis/bias realization"
 
     def __post_init__(self):
+        """Convert ``matrix`` and ``bias`` to exact values and validate their shape.
+
+        Outputs: replaces ``matrix`` and ``bias`` with exact tuples. Raises ValueError
+        when the matrix is not 3x3, the bias does not have three entries, or
+        ``declaration`` is empty."""
         matrix = tuple(tuple(map(exact, row)) for row in self.matrix)
         bias = tuple(map(exact, self.bias))
         if (
@@ -216,6 +258,7 @@ class AffineActuatorRealization:
 
     @cached_property
     def fingerprint(self):
+        """Return the SHA-256 fingerprint of matrix, bias and declaration (cached)."""
         return fingerprint(
             {
                 "matrix": tuple(tuple(map(str, row)) for row in self.matrix),
@@ -225,6 +268,10 @@ class AffineActuatorRealization:
         )
 
     def apply(self, agent, command, q):
+        """Return ``matrix @ command + bias`` as a float array of three entries.
+
+        Inputs: ``command`` is three command components. ``agent`` and ``q`` are not
+        used. The entries are converted to float before the sums are formed."""
         return np.array(
             [
                 sum(float(a) * float(u) for a, u in zip(row, command)) + float(b)
