@@ -145,6 +145,9 @@ Files: `mission/execution/{coordinator,plant}.py`, `evidence/journal.py`, `solve
 
 - [ ] Physical-time mode: the plant advances during the measured planner, proof and archive latency. A proposal is admitted only when it is aged to the current state, and a stale one is refused.
 - [ ] Profile the complete command cycle. Attack the largest costs first: per-agent proof parallelism, warm starts, cached geometry and incremental admission.
+  - Measured on 2026-11-25 with a capped central adaptive/dynamic run (`--steps 3`, one machine, no hardware claim): 3 updates take about 40 to 70 s wall, depending on machine load. Per update, planning and proof take 3.2 to 4.8 s and execution qualification takes 4.6, 10.2 and 13 s for updates 0, 1 and 2.
+  - cProfile ranks `exact_record`/`fingerprint` (control/fallback/refuge.py) and `SpacecraftGeometry.fingerprint` (models/geometry/composite.py) highest, but both changes were tried and neither gave a reliable wall-clock gain (alternating base/new runs: 73.1 vs 67.1 s, then 66.9 vs 67.0 s). Both were dropped. cProfile overstates many small calls, so a profile rank alone is not a speed-up.
+  - Open lead: execution qualification grows with the update index. Find what scales with history before a 1200-update run.
 - [ ] Optional real-time proposal comparator (CasADi/RTI). It passes the same admission and GEKKO stays the reference.
 - [ ] Gate: report the deadline miss rate on the declared hardware, with fallback safety held on every missed hold. A full meet closes L7 as Demonstrated. Otherwise L7 closes as Bounded: measured latency plus proved fallback continuity.
 
