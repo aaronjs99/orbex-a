@@ -20,11 +20,13 @@ from orbexa.models.dynamics.reference_frame import fingerprint
 
 
 def _require(condition, message):
+    """Raise ValueError with the bridge prefix when ``condition`` is false."""
     if not condition:
         raise ValueError("Verified approach bridge: " + message)
 
 
 def _sha(path):
+    """Return the SHA-256 hex digest of the file at ``path``."""
     value = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -48,6 +50,10 @@ class VerifiedClosedApproachBoundary:
     record_identity: str
 
     def __init__(self, record, guarded_files, record_identity, *, _issuer=None):
+        """Store a deep copy of the record with its guarded files and identity.
+
+        Raises ValueError unless the private issuer token is supplied.
+        """
         _require(
             _issuer is _ISSUER,
             "construct this boundary from an independently passed receipt",

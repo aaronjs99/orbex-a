@@ -62,6 +62,13 @@ class SpacecraftMissionDesign:
     pointing_rate_gain_nm_s: float = 8000.0
 
     def __post_init__(self):
+        """Validate the vehicle design.
+
+        Raises TypeError for a non-explicit geometry or chaser, and ValueError when a
+        sizing value is not positive, the COM standoff does not clear the bus, the
+        nozzle arm exceeds the bus radius, the carried tip is outside the patch or its
+        reach, or the geometry metadata lacks target mass and inertia.
+        """
         if not isinstance(self.geometry, SpacecraftGeometry):
             raise TypeError("Vehicle design requires explicit SpacecraftGeometry")
         if not isinstance(self.chaser, ChaserPhysicalProperties):
@@ -101,6 +108,21 @@ class SpacecraftMissionDesign:
 
     @classmethod
     def from_json(cls, path: Path, **design_options):
+        """Load a vehicle design from a spacecraft JSON file.
+
+        A mission-wrapper record (schema orbexa.spacecraft-mission.v1) must declare
+        every vehicle_design field and chaser property and cannot be combined with
+        keyword overrides. Any other object is read as bare geometry, with
+        ``design_options`` supplying the vehicle fields.
+
+        Inputs:
+            path: JSON file.
+            design_options: vehicle field values for the bare-geometry form.
+
+        Outputs:
+            SpacecraftMissionDesign. Raises ValueError for malformed or incomplete
+            declarations.
+        """
         record = json.loads(Path(path).read_text(encoding="utf-8"))
         if not isinstance(record, dict):
             raise ValueError("Spacecraft JSON must declare an object")
@@ -165,6 +187,11 @@ class SpacecraftMissionDesign:
 
     @classmethod
     def from_dict(cls, geometry, record):
+        """Rebuild a design from its recorded dict for a given geometry.
+
+        Raises ValueError when the record's geometry fingerprint or id differs from
+        ``geometry``, or when the rebuilt target mass differs from the recorded one.
+        """
         if (
             record.get("geometry_fingerprint") != geometry.fingerprint
             or record.get("geometry_id") != geometry.geometry_id
@@ -194,11 +221,26 @@ class SpacecraftMissionDesign:
 
     @property
     def target_mass_kg(self):
+        """Return the source-qualified nominal target mass in kg from the geometry
+        metadata.
+        """
         return float(self.geometry.metadata["mass_properties"]["nominal_mass_kg"])
 
     def target(
         self, config, *, initial_body_spin_rad_s, anomaly_domain, gravity_gradient=True
     ):
+        """Return the rigid-body target built from ``config`` and this design.
+
+        Inputs:
+            config: mission configuration; its fleet size is validated first.
+            initial_body_spin_rad_s: initial body angular velocity in rad/s.
+            anomaly_domain: anomaly domain passed to the target.
+            gravity_gradient: whether gravity-gradient torque is modeled.
+
+        Outputs:
+            RigidBodySpacecraftTarget using the geometry, mass, inertia and the COM
+            standoff as docking standoff.
+        """
         self.validate_fleet(config)
         return RigidBodySpacecraftTarget.from_config(
             config,
@@ -222,6 +264,21 @@ class SpacecraftMissionDesign:
         translation_accountant=None,
         completion_profile=None,
     ):
+        """Return a CompleteMissionRunner configured from this design.
+
+        Builds the attitude tracker, capture, detumbling and deorbit models from the
+        declared hardware and gains, and takes the contact, detumbling and deorbit
+        settings from the completion profile.
+
+        Inputs:
+            input_component_bound: held translational command bound in m/rad**2.
+            approach_runner: optional approach runner for ``run``.
+            stage_sink: optional callback receiving each stage result.
+            translation_accountant: optional accountant replacing the default
+                translation budget.
+            completion_profile: None, profile or mapping for
+                ``MissionCompletionProfile.from_declaration``.
+        """
         from orbexa.mission.lifecycle.configuration.profile import (
             MissionCompletionProfile,
         )
@@ -267,6 +324,7 @@ class SpacecraftMissionDesign:
         )
 
     def as_dict(self):
+        """Return the declared vehicle design as a dict with its scope statement."""
         return dict(
             geometry_id=self.geometry.geometry_id,
             geometry_fingerprint=self.geometry.fingerprint,

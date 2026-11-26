@@ -31,6 +31,7 @@ _MISSING = object()
 
 
 def _same_code():
+    """Return True while the captured refuge and decision callables are unchanged."""
     return (
         refuge.exact_record is _EXACT_RECORD
         and refuge.fingerprint is _FINGERPRINT
@@ -43,10 +44,17 @@ class _GraphGuard:
     """Snapshot exact data, not a hash cached under object identity alone."""
 
     def __init__(self, value):
+        """Record the object graph reachable from value for later comparison."""
         self.nodes, self.classes, self.seen = [], {}, set()
         self._visit(value, root=True)
 
     def _visit(self, value, *, root=False):
+        """Record value and, recursively, its contents; each object is visited once.
+
+        Strings, numbers, booleans and None are skipped. Fractions, IntervalBox values,
+        orbexa dataclasses, tuples, lists and dicts are recorded. Raises TypeError for
+        any other type and for dicts with non-string keys.
+        """
         if id(value) in self.seen:
             return
         self.seen.add(id(value))
@@ -98,6 +106,12 @@ class _GraphGuard:
             self._visit(item)
 
     def valid(self):
+        """Return True if the recorded graph is unchanged.
+
+        Checks the captured callables, dataclass field names, and that every recorded
+        Fraction, attribute, sequence item and mapping item is still the identical
+        object.
+        """
         if not _same_code() or any(
             tuple(field.name for field in fields(kind)) != names
             for kind, names in self.classes.items()
@@ -145,15 +159,24 @@ class _GraphGuard:
 
 
 class _PreparedRecord:
+    """Exact record of a decision with its SHA-256 identity and a graph guard."""
+
     def __init__(self, decision):
         # The view owns this record; a weak reverse link avoids retaining one
         # complete decision/guard cycle per hold until a garbage collection.
+        """Hold a weak reference to decision and build its record."""
         self.decision, self.guard = weakref.ref(decision), None
         self._rebuild()
 
     def _rebuild(self):
         # Build privately before publication. A failure cannot replace a valid
         # decision by stale data or partially prepared evidence.
+        """Rebuild the record, identity and guard from the referenced decision.
+
+        The identity is the SHA-256 of the record as canonical JSON. All three values
+        are assigned only after every step succeeds. Raises ValueError if the decision
+        no longer exists.
+        """
         decision = self.decision()
         if decision is None:
             raise ValueError("The prepared decision owner no longer exists")
@@ -169,6 +192,11 @@ class _PreparedRecord:
         )
 
     def ready(self):
+        """Return whether the prepared record is usable, rebuilding it if stale.
+
+        Returns False if the captured callables changed or the rebuild raises TypeError
+        (the guard is then cleared).
+        """
         if not _same_code():
             return False
         if self.guard is None or not self.guard.valid():
@@ -190,12 +218,16 @@ class PreparedHeldFleetDecision(HeldFleetDecision):
 
     @property
     def fingerprint(self):
+        """Return the prepared identity when ready, else the original fingerprint."""
         prepared = self._prepared_record
         if prepared.ready():
             return prepared.identity
         return HeldFleetDecision.fingerprint.fget(self)
 
     def as_dict(self):
+        """Return the identity and a deep copy of the prepared record when ready,
+        otherwise the original record.
+        """
         prepared = self._prepared_record
         if prepared.ready():
             return dict(identity=prepared.identity, **deepcopy(prepared.record))

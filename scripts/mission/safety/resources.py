@@ -17,6 +17,14 @@ from orbexa.proofs.attitude import _sqrt_upper
 
 @dataclass(frozen=True)
 class StudyPropulsionBounds:
+    """Declare prospective study propulsion limits used to debit force and fuel.
+
+    Fields are the mass upper bound (kg), installed force (N), specific impulse lower
+    bound (s), available fuel (kg), attitude force allocation (N), standard gravity
+    (m/s^2) and a hardware declaration string. The declaration is not a thruster
+    qualification.
+    """
+
     mass_upper_kg: Any = 130
     installed_force_n: Any = 100
     specific_impulse_lower_s: Any = 300
@@ -26,6 +34,12 @@ class StudyPropulsionBounds:
     declaration: str = "Prospective study hardware; no physical thruster qualification"
 
     def __post_init__(self):
+        """Convert the numeric fields to exact values and validate them.
+
+        Mutates the fields to exact values. Raises ValueError unless mass, force,
+        specific impulse and gravity are positive, fuel and attitude allocation are
+        nonnegative, and the attitude allocation is below the installed force.
+        """
         for name in (
             "mass_upper_kg",
             "installed_force_n",
@@ -51,9 +65,23 @@ class StudyPropulsionBounds:
 
     @property
     def fingerprint(self):
+        """Return the fingerprint of this declaration."""
         return fingerprint(self)
 
     def input_resource(self, key, input_box, q, h, clock):
+        """Bound the force margin and fuel debit of a command box over one window.
+
+        key is not used in the computation. The force bound scales the largest applied
+        input by mass and the squared reference-clock rate upper bound, plus the
+        attitude allocation. The fuel debit is rounded up to a common denominator of
+        2**80 per unit of q, so it only increases.
+
+        Inputs: input_box applied-input IntervalBox; q window start and h window width
+            in the unwrapped-anomaly reference clock; clock supplying the rate bounds.
+        Outputs: CommandResourceBound with the fuel upper bound (kg) and the force
+            margin, installed force minus the force upper bound (N). Raises ValueError
+            if the clock rate lower bound is not positive.
+        """
         q, h = _exact(q), _exact(h)
         rate = clock.interval_bounds((q, q + h))["rate_s_inv"]
         lower, upper = rate.lower[0], rate.upper[0]
@@ -97,6 +125,7 @@ class StudyPropulsionBounds:
         )
 
     def callback(self, clock):
+        """Return a function (key, input_box, q, h) that calls input_resource."""
         return lambda key, input_box, q, h: self.input_resource(
             key, input_box, q, h, clock
         )

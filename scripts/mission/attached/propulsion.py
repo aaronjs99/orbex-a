@@ -25,6 +25,12 @@ from scipy.optimize import lsq_linear
 
 @dataclass(frozen=True)
 class Thruster:
+    """Fixed body-frame nozzle pair on one assembly element.
+
+    Holds the name, the owner element index, the body-frame position (m), the unit
+    body-frame direction, the force limit (N) and the specific impulse (s).
+    """
+
     name: str
     owner_index: int
     position_body_m: np.ndarray
@@ -33,6 +39,13 @@ class Thruster:
     specific_impulse_s: float
 
     def __post_init__(self):
+        """Validate and normalize the thruster fields.
+
+        Raises ValueError if the name is empty, the owner index is not a nonnegative
+        integer, the position or direction is not a finite 3-vector, the direction is
+        zero, or the force limit or specific impulse is not positive. The direction is
+        normalized and both vectors are made read-only.
+        """
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("Thruster name must be nonempty")
         if (
@@ -64,6 +77,7 @@ class Thruster:
         )
 
     def to_dict(self):
+        """Return the thruster fields as a JSON-style dict with vectors as lists."""
         return {
             "name": self.name,
             "owner_index": self.owner_index,
@@ -76,6 +90,13 @@ class Thruster:
 
 @dataclass(frozen=True)
 class WrenchAllocation:
+    """Result of a wrench allocation.
+
+    Holds the success flag and message, the signed commands (N), the achieved body force
+    (N) and torque (N m), the per-owner fuel flow (kg/s), the force and torque residual
+    norms against the request, the saturation flag and the attachment preflight record.
+    """
+
     success: bool
     message: str
     commands_n: np.ndarray
@@ -88,6 +109,10 @@ class WrenchAllocation:
     attachment_preflight: dict = field(default_factory=dict)
 
     def to_dict(self):
+        """Return the fields as a dict with arrays as lists.
+
+        The attachment preflight is omitted when it is empty.
+        """
         return {
             name: value.tolist() if isinstance(value, np.ndarray) else value
             for name, value in vars(self).items()
@@ -97,12 +122,24 @@ class WrenchAllocation:
 
 @dataclass(frozen=True)
 class ThrusterSystem:
+    """Set of thrusters with a bounded least-squares wrench allocator.
+
+    Holds the thrusters, the torque weight in the allocation (per m), the fraction of
+    attachment capacity admitted and the whole-hold command backoff scales.
+    """
+
     thrusters: tuple[Thruster, ...]
     torque_weight_per_m: float = 20.0
     attachment_capacity_fraction: float = 0.98
     attachment_backoff_scales: tuple[float, ...] = (1.0, 0.75, 0.5, 0.25, 0.125, 0.0)
 
     def __post_init__(self):
+        """Validate and normalize the thruster set and attachment settings.
+
+        Raises ValueError if there are no thrusters or names repeat, the torque weight
+        is not positive, the capacity fraction is not in (0, 1), or the backoff scales
+        are not 2 to 16 strictly decreasing values from 1 down to 0.
+        """
         thrusters = tuple(self.thrusters)
         if not thrusters or len({thruster.name for thruster in thrusters}) != len(
             thrusters
@@ -204,6 +241,13 @@ class ThrusterSystem:
         )
 
     def matrix(self, assembly, fuel_kg):
+        """Return the 6 x N matrix mapping signed commands (N) to force and torque.
+
+        Each column is the nozzle direction stacked on the torque (N m per N) about the
+        centre of mass for the given per-owner fuel (kg).
+
+        Raises ValueError if a thruster owner index is outside the assembly.
+        """
         center = assembly.mass_properties(fuel_kg)[1]
         if any(
             thruster.owner_index >= len(assembly.elements)
@@ -223,6 +267,12 @@ class ThrusterSystem:
         )
 
     def authority(self, assembly, fuel_kg):
+        """Return rank and limit data for the thrusters whose owners still hold fuel.
+
+        Reports the wrench rank and torque rank of the active columns, the number of
+        active actuators and every thruster's force limit (N). A thruster is active when
+        its owner's fuel exceeds 1e-10 kg.
+        """
         matrix = self.matrix(assembly, fuel_kg)
         active = np.array(
             [fuel_kg[thruster.owner_index] > 1e-10 for thruster in self.thrusters]
@@ -263,6 +313,7 @@ class ThrusterSystem:
         }
 
         def finite(loads):
+            """Return whether the maximum ratio and all member loads are finite."""
             return np.isfinite(loads["maximum_capacity_ratio"]) and all(
                 np.all(np.isfinite(member["force_body_n"]))
                 and np.all(np.isfinite(member["moment_at_pad_body_nm"]))
@@ -295,6 +346,12 @@ class ThrusterSystem:
             limits = {value["name"]: value for value in assembly.attachment_limits}
 
             def ratio(value):
+                """Return the largest capacity ratio at command scale value (0 to 1).
+
+                Interpolates each member's force and moment linearly between the
+                zero-command and candidate loads and evaluates tensile, compression,
+                shear and moment ratios against its declared limits.
+                """
                 maximum = 0.0
                 for name, first in baseline["members"].items():
                     last, limit = candidate["members"][name], limits[name]
@@ -402,6 +459,29 @@ class ThrusterSystem:
         )
 
     def allocate(self, assembly, state, force_body_n, torque_body_nm, duration_s):
+        """Return the bounded least-squares allocation of a force and torque request.
+
+        Solves a weighted bounded least squares over the active thrusters, then scales
+        all commands together so no tank is emptied during the hold. When attachment
+        limits are declared, applies the pre-motion joint-load dilation and the
+        whole-hold backoff; on refusal the commands are zero and success is False with a
+        message. Residuals, flow and the saturation flag are computed from the final
+        commands.
+
+        Inputs:
+            assembly: attached assembly (mass properties, attachment limits).
+            state: state supplying fuel (kg) per owner.
+            force_body_n: requested force (N) in the body frame.
+            torque_body_nm: requested torque (N m) in the body frame.
+            duration_s: hold duration (s); must be positive.
+
+        Outputs:
+            WrenchAllocation; success is False for a solver failure, an exhausted fuel
+            supply with a nonzero request, or a refused attachment-load check.
+
+        Raises ValueError if a request vector is not a finite 3-vector or the duration
+        is not positive.
+        """
         force = finite_vector(force_body_n, "Requested force", 3)
         torque = finite_vector(torque_body_nm, "Requested torque", 3)
         duration = positive(duration_s, "Allocation duration")
@@ -520,6 +600,7 @@ class ThrusterSystem:
         )
 
     def to_dict(self):
+        """Return the thrusters, settings and modelling assumptions as a dict."""
         return {
             "thrusters": [thruster.to_dict() for thruster in self.thrusters],
             "torque_weight_per_m": self.torque_weight_per_m,

@@ -49,6 +49,11 @@ class TargetPhysicalProperties:
     )
 
     def __post_init__(self):
+        """Validate the target mass and inertia and freeze the inertia matrix.
+
+        Outputs: raises ValueError if the mass is not finite and positive or the
+        inertia is not a physical (SPD, triangle-rule) inertia matrix.
+        """
         object.__setattr__(self, "mass_kg", positive(self.mass_kg, "Target mass"))
         matrix = physical_inertia(self.inertia_kg_m2)
         matrix.setflags(write=False)
@@ -57,12 +62,24 @@ class TargetPhysicalProperties:
 
 @dataclass(frozen=True)
 class ChaserPhysicalProperties:
+    """Frozen rigid spherical mass properties shared by a chaser bus.
+
+    Inputs: dry_mass_kg and fuel_kg in kg, body_radius_m and gripper_offset_m
+    (gripper tip to bus center of mass) in m.
+    """
+
     dry_mass_kg: float = 8.0
     fuel_kg: float = 4.0
     body_radius_m: float = 0.15
     gripper_offset_m: float = 0.16
 
     def __post_init__(self):
+        """Validate the chaser properties and coerce them to floats.
+
+        Outputs: raises ValueError if a value is not finite and positive (fuel and
+        gripper offset may be zero) or the gripper offset is smaller than the body
+        radius.
+        """
         object.__setattr__(
             self, "dry_mass_kg", positive(self.dry_mass_kg, "Chaser dry mass")
         )
@@ -86,15 +103,31 @@ class ChaserPhysicalProperties:
 
     @property
     def mass_kg(self):
+        """Return the total chaser mass, dry mass plus fuel, in kg."""
         return self.dry_mass_kg + self.fuel_kg
 
     @property
     def inertia_per_kg_m2(self):
+        """Return the 3x3 inertia per unit mass of a solid sphere, in m^2.
+
+        The matrix is 0.4 * body_radius_m**2 times the identity.
+        """
         return np.eye(3) * (0.4 * self.body_radius_m**2)
 
 
 @dataclass(frozen=True)
 class CaptureOptions:
+    """Frozen gates and assumption flags for the capture stage.
+
+    Inputs: arm_reach_m and minimum_bus_clearance_m in m, max_relative_speed_m_s
+    in m/s, max_orientation_error_rad in rad, max_spin_error_rad_s in rad/s,
+    earth_radius_m in m, max_integration_step_s in s. assume_attitude_matched and
+    assume_approach_point_is_capture_reference are explicit caller assumptions;
+    gravity_gradient None defers to the approach target record;
+    idealized_instantaneous selects the instantaneous latch instead of finite
+    contact.
+    """
+
     arm_reach_m: float = 0.010
     max_relative_speed_m_s: float = 0.001
     max_orientation_error_rad: float = 0.01
@@ -108,6 +141,11 @@ class CaptureOptions:
     idealized_instantaneous: bool = False
 
     def __post_init__(self):
+        """Validate the options and coerce the numeric fields to floats.
+
+        Outputs: raises ValueError if a gate or step is not finite and positive
+        (minimum_bus_clearance_m may be zero) or idealized_instantaneous is not a bool.
+        """
         for name in (
             "arm_reach_m",
             "max_relative_speed_m_s",
@@ -147,6 +185,13 @@ class CaptureTruth:
     mu_m3_s2: float
 
     def __post_init__(self):
+        """Validate the truth record, normalize the quaternion and freeze the arrays.
+
+        Outputs: raises ValueError if anomaly or time is not finite, the anomaly rate
+        or gravitational parameter is not finite and positive, a vector has the wrong
+        size or a non-finite entry, the quaternion is zero, or the LVLH-to-ECI rotation
+        is not a proper orthogonal 3x3 matrix.
+        """
         for name in ("anomaly", "time_s"):
             object.__setattr__(
                 self, name, finite_scalar(getattr(self, name), f"Capture truth {name}")
@@ -187,6 +232,13 @@ class CaptureTruth:
 
 @dataclass(frozen=True)
 class CaptureResult:
+    """Frozen outcome of a capture attempt.
+
+    Inputs: success and message report the outcome, gates and audit hold the
+    recorded checks, assumptions lists the declared assumptions; assembly and
+    state are optional and None by default.
+    """
+
     success: bool
     message: str
     gates: dict
@@ -196,6 +248,10 @@ class CaptureResult:
     state: AssemblyState | None = None
 
     def to_dict(self):
+        """Return the result as a serializable dict.
+
+        The assembly and final_state entries are None when no assembly was produced.
+        """
         return {
             "success": self.success,
             "message": self.message,
@@ -210,6 +266,12 @@ class CaptureResult:
 
 
 class CaptureModel:
+    """Admit a qualified approach and latch the recorded fleet to the target.
+
+    Holds the declared target and chaser properties and the capture, contact and
+    environment options used by capture().
+    """
+
     def __init__(
         self,
         *,
@@ -220,6 +282,12 @@ class CaptureModel:
         contact_options: FiniteContactOptions | None = None,
         contact_environment=None,
     ):
+        """Store the declared properties and options, using defaults when omitted.
+
+        Inputs: chasers maps chaser ids to properties; default_chaser applies to ids not
+        in chasers. State changes: sets target, chasers, default_chaser, options,
+        contact_options and contact_environment.
+        """
         self.target = target or TargetPhysicalProperties()
         self.chasers = dict(chasers or {})
         self.default_chaser = default_chaser or ChaserPhysicalProperties()
@@ -228,6 +296,14 @@ class CaptureModel:
         self.contact_environment = contact_environment
 
     def recorded_truth(self, approach) -> CaptureTruth:
+        """Return the CaptureTruth for the last sample of a recorded approach.
+
+        Reads the recorded rigid-body target kinematics and orbit clock parameters,
+        and builds the fixed ECI basis from the initial LVLH basis.
+        Outputs: raises ValueError if the target attitude model is not a recorded
+        rigid-body model, the target inertia, anomaly samples, clock parameters,
+        orbit truth, anomaly rate or rotation frames conflict with the record.
+        """
         metadata, target = approach.metadata, approach.target
         if target.get("attitude_model") not in (
             "torque_free_rigid_body",
@@ -345,6 +421,7 @@ class CaptureModel:
         gates, audit = {}, {}
 
         def refused(message):
+            """Return a failed CaptureResult with message and the gates and audit."""
             return CaptureResult(False, message, gates, audit, tuple(assumptions))
 
         meta = approach.metadata

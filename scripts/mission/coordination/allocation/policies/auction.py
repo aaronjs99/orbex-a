@@ -39,6 +39,12 @@ class DistributedAuctionPolicy:
     def initialize(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
+        """Set each agent's initial assignment, prices and winners.
+
+        Each agent receives assignment_idx = agent_id % number of tasks, zero prices
+        and winners of -1 for every task. Logs a warning if the network is not
+        connected. Raises ValueError if tasks is empty.
+        """
         n_tasks = len(tasks)
         if n_tasks == 0:
             raise ValueError("tasks must be non-empty")
@@ -55,6 +61,7 @@ class DistributedAuctionPolicy:
 
     @staticmethod
     def _utility(start: Vec, task: Vec) -> float:
+        """Return the negative Euclidean distance between start and task."""
         return -float(np.linalg.norm(np.asarray(start) - np.asarray(task)))
 
     def step(
@@ -64,6 +71,19 @@ class DistributedAuctionPolicy:
         network: Network,
         agent_id: int,
     ) -> int:
+        """Run one auction update for agent_id; return the neighbor-interaction count.
+
+        For each task the agent adopts the highest price among itself and its
+        neighbors, breaking price ties by the larger winner id. If the winner of its
+        current task is another agent, it rebids on the task with the largest utility
+        minus price: that price rises by the margin over the second-best net value plus
+        Gaussian noise of standard deviation epsilon_std, and the agent is recorded as
+        winner. Finally goal_pos is set to the task at assignment_idx.
+
+        Outputs:
+            Mutates the agent's prices, winners, assignment_idx and goal_pos.
+            The count adds the number of neighbors once per task.
+        """
         a = agents[agent_id]
         assert a.prices is not None and a.winners is not None
 
@@ -122,5 +142,6 @@ class DistributedAuctionPolicy:
     def has_converged(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
+        """Return True when no two agents hold the same assignment_idx."""
         assigns = [a.assignment_idx for a in agents]
         return len(assigns) == len(set(assigns))

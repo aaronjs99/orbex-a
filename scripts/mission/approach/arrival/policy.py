@@ -21,18 +21,31 @@ from orbexa.control.terminal.region import TerminalRegion, exact_scalar
 
 
 def _integer(value, name):
+    """Return value as an int, requiring a nonnegative integer that is not a bool.
+
+    Raises ValueError naming `name` otherwise.
+    """
     if isinstance(value, bool) or not isinstance(value, Integral) or value < 0:
         raise ValueError(f"{name} must be a nonnegative integer")
     return int(value)
 
 
 def _sha(value, name):
+    """Return value after requiring a 64-character lowercase hexadecimal SHA-256.
+
+    Raises ValueError naming `name` otherwise.
+    """
     if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
         raise ValueError(f"{name} must identify its exact source by SHA-256")
     return value
 
 
 def exact_outer_step(config):
+    """Return the exact outer step as a Fraction of unwrapped anomaly (rad).
+
+    The step is the exact value of anom_step divided by tube.feedback_substeps,
+    multiplied back by feedback_substeps.
+    """
     return (
         exact_scalar(config.anom_step / config.tube.feedback_substeps)
         * config.tube.feedback_substeps
@@ -41,11 +54,20 @@ def exact_outer_step(config):
 
 @dataclass(frozen=True)
 class ArrivalPolicyConfig:
+    """Immutable arrival-policy settings: mode, planning fraction, terminal region."""
+
     mode: str = "deadline_terminal_suffix"
     planning_fraction: float = 0.8
     required_terminal_region: TerminalRegion | None = None
 
     def __post_init__(self):
+        """Validate the policy and normalise planning_fraction and the region.
+
+        Converts planning_fraction to float and a dict region to a TerminalRegion.
+        Raises ValueError for an unsupported mode, a planning_fraction that is not a
+        finite real strictly between zero and one, or a region whose frame is not
+        physical-lvlh-v1.
+        """
         if self.mode != "deadline_terminal_suffix":
             raise ValueError("Unsupported arrival policy mode")
         if (
@@ -70,6 +92,7 @@ class ArrivalPolicyConfig:
             )
 
     def as_dict(self):
+        """Return the policy as a plain mapping, with the region serialised or None."""
         return {
             "mode": self.mode,
             "planning_fraction": self.planning_fraction,
@@ -80,12 +103,17 @@ class ArrivalPolicyConfig:
 
     @classmethod
     def from_dict(cls, value):
+        """Build a policy from an explicit mapping whose keys are the field names.
+
+        Raises TypeError if value is not a dict.
+        """
         if not isinstance(value, dict):
             raise TypeError("Arrival policy must be an explicit mapping")
         return cls(**value)
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 hex digest of the policy's sorted-key compact JSON."""
         return hashlib.sha256(
             json.dumps(self.as_dict(), sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -93,6 +121,12 @@ class ArrivalPolicyConfig:
 
 @dataclass(frozen=True)
 class ArrivalCommitment:
+    """Arrival deadline fixed at one update, tied to a policy and a retained candidate.
+
+    The deadline is stated both as update indices and as exact unwrapped
+    anomalies (rad); policy and candidate are identified by SHA-256 digests.
+    """
+
     policy_fingerprint: str
     commitment_update: int
     deadline_update: int
@@ -104,6 +138,14 @@ class ArrivalCommitment:
     schema: str = "orbexa.arrival_commitment.v1"
 
     def __post_init__(self):
+        """Validate the commitment and convert indices and anomalies to exact types.
+
+        Raises ValueError for an unsupported schema, a non-SHA-256 fingerprint or
+        transition identity, a negative or non-integer update index, a deadline
+        update not after the commitment update, a nonpositive outer step, or a
+        deadline anomaly that differs from the start anomaly plus the update
+        difference times the outer step.
+        """
         if self.schema != "orbexa.arrival_commitment.v1":
             raise ValueError("Unsupported arrival commitment schema")
         for name in ("policy_fingerprint", "candidate_fingerprint"):
@@ -130,6 +172,7 @@ class ArrivalCommitment:
             )
 
     def as_dict(self):
+        """Return the fields as a mapping, with Fraction values written as strings."""
         return {
             name: str(value) if isinstance(value, Fraction) else value
             for name, value in vars(self).items()
@@ -137,6 +180,10 @@ class ArrivalCommitment:
 
     @classmethod
     def from_dict(cls, value):
+        """Build a commitment from an explicit mapping whose keys are the field names.
+
+        Raises TypeError if value is not a dict.
+        """
         if not isinstance(value, dict):
             raise TypeError("Arrival commitment must be an explicit mapping")
         return cls(**value)
@@ -144,6 +191,8 @@ class ArrivalCommitment:
 
 @dataclass(frozen=True)
 class ArrivalPlanningStep:
+    """Exact deadline context for one planning update toward a committed deadline."""
+
     policy: ArrivalPolicyConfig
     current_update: int
     exact_anomaly: Fraction
@@ -153,6 +202,13 @@ class ArrivalPlanningStep:
     terminal_start_index: int
 
     def __post_init__(self):
+        """Validate the planning context and convert its values to exact types.
+
+        Raises TypeError if policy is not an ArrivalPolicyConfig. Raises ValueError
+        for a nonpositive outer step, a terminal_start_index that differs from
+        max(0, deadline_update - current_update), or a deadline anomaly that differs
+        from the current anomaly plus the update difference times the outer step.
+        """
         if not isinstance(self.policy, ArrivalPolicyConfig):
             raise TypeError("Arrival planning requires its typed policy")
         for name in ("current_update", "deadline_update", "terminal_start_index"):
@@ -172,6 +228,10 @@ class ArrivalPlanningStep:
             )
 
     def as_dict(self):
+        """Return the context as a mapping with exact values as strings.
+
+        Includes the policy fingerprint instead of the policy itself.
+        """
         return {
             "current_update": self.current_update,
             "exact_anomaly": str(self.exact_anomaly),

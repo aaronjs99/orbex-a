@@ -74,9 +74,16 @@ class AttachmentLoadCertificate:
 
     @property
     def passed(self):
+        """Return True when the status is "PROVEN"."""
         return self.status == "PROVEN"
 
     def as_dict(self):
+        """Return the certificate as a dict with a deep copy of its context and members.
+
+        Includes the backend source hashes, the swept angular velocity box (if any), the
+        maximum capacity ratio upper bound, the Picard iteration count and a fixed scope
+        string.
+        """
         return {
             "method": "arb-whole-held-attachment-loads-v1",
             "status": self.status,
@@ -105,6 +112,12 @@ class AttachmentLoadEncloser:
     max_step_s: float = 0.05
 
     def __post_init__(self):
+        """Validate the Arb precision and substep budgets.
+
+        Raises ValueError if precision_bits is not an int in 64..4096,
+        max_picard_iterations is not an int in 1..256, max_substeps is not an int in
+        1..4096, or max_step_s is not finite and positive.
+        """
         if (
             isinstance(self.precision_bits, bool)
             or not isinstance(self.precision_bits, int)
@@ -141,6 +154,33 @@ class AttachmentLoadEncloser:
         initial_fuel: IntervalBox | None = None,
         capacity_fraction=1.0,
     ):
+        """Return a certificate bounding the attachment loads over a whole held command.
+
+        Encloses the held rigid-body spin with a Picard inclusion over substeps of at
+        most max_step_s, then bounds the force and moment at each declared attachment
+        pad and compares the capacity-ratio upper bounds with capacity_fraction.
+        Statuses are PROVEN, UNRESOLVED (a bound or inclusion could not be established
+        or the loads exceed the capacity), and UNAVAILABLE (the Arb backend or the
+        interval environment model is missing). With no declared attachment limits the
+        result is PROVEN without evaluating loads.
+
+        Inputs:
+            assembly: attached assembly with elements, limits and optional environment.
+            state: AssemblyState at the start of the hold.
+            propulsion: thruster system whose nozzles the commands drive.
+            commands_n: one signed command per thruster (N), finite and within each
+                thruster's force limit.
+            duration_s: hold duration (s); must be positive.
+            initial_spin, initial_position, initial_velocity, initial_quaternion,
+                initial_fuel: optional start sets (body rate rad/s, ECI position m, ECI
+                velocity m/s, quaternion, fuel kg); each defaults to the point value in
+                state and must contain it.
+            capacity_fraction: fraction of each pad capacity admitted, in (0, 1].
+
+        Raises ValueError if the duration or fraction is not positive, the fraction
+        exceeds 1, the commands are mis-sized, non-finite or outside nozzle authority,
+        or a start set has the wrong dimension or does not contain the state.
+        """
         from orbexa.mission.attached.assembly.model import STANDARD_GRAVITY, positive
 
         duration = Fraction(positive(duration_s, "Attachment hold duration"))
@@ -280,9 +320,29 @@ class AttachmentLoadEncloser:
         g0,
         environment_model,
     ):
+        """Return the load certificate computed with the Arb arithmetic object ar.
+
+        Builds interval fuel, mass, centre-of-mass, inertia and nozzle wrenches for the
+        hold, encloses the body spin by Picard iteration over substeps, bounds the
+        orbital radial travel, and then bounds the reaction force and moment at each
+        attachment pad. Status is PROVEN when the largest capacity-ratio upper bound is
+        at most the requested capacity fraction, and UNRESOLVED otherwise.
+
+        Inputs:
+            h: hold duration (s) as a Fraction.
+            boxes: start sets for spin (rad/s), position (m) and velocity (m/s).
+            g0: standard gravity (m/s^2).
+            context: request dict that is extended with the proved quantities.
+
+        Raises _ProofUnresolved when a tank may empty during the hold, the radial domain
+        reaches the gravity singularity, the environment model does not match the
+        assembly or its velocity or radial bootstrap is not contained, or a finite
+        substep or Picard budget is exceeded.
+        """
         z, one = ar.scalar(0), ar.scalar(1)
 
         def norm_upper(vector):
+            """Return an upper bound on the Euclidean norm of an interval 3-vector."""
             box = ar.box(vector)
             squared = sum(
                 max(abs(lo), abs(hi)) ** 2 for lo, hi in zip(box.lower, box.upper)
@@ -290,12 +350,14 @@ class AttachmentLoadEncloser:
             return ar.box((ar.scalar(squared).sqrt(),)).upper[0]
 
         def square(value):
+            """Return an interval enclosure of the square of an interval value."""
             lo, hi = ar.box((value,)).lower[0], ar.box((value,)).upper[0]
             return ar.interval(
                 (0 if lo <= 0 <= hi else min(lo * lo, hi * hi), max(lo * lo, hi * hi))
             )
 
         def symmetric(radius):
+            """Return a 3-vector of intervals [-radius, radius]."""
             return tuple(ar.interval((-radius, radius)) for _ in range(3))
 
         n = len(assembly.elements)
@@ -465,6 +527,16 @@ class AttachmentLoadEncloser:
             )
 
         def environmental_wrenches(w):
+            """Return interval environment forces and wrench for body rate w (rad/s).
+
+            Result is (per-element body-frame forces, net force, net torque about the
+            centre of mass); all zeros when no environment model is set. Position,
+            velocity and orientation are swept over the hold from the start sets and the
+            already proved spin bound, and the interval environment model is evaluated
+            on them.
+
+            Raises _ProofUnresolved if the velocity bootstrap is not contained.
+            """
             if environment_model is None:
                 return (
                     tuple(tuple(z for _ in range(3)) for _ in masses),
@@ -527,6 +599,11 @@ class AttachmentLoadEncloser:
             return tuple(extra_forces), net_force, net_torque
 
         def acceleration(w):
+            """Return an enclosure of the angular acceleration for body rate w (rad/s).
+
+            Computes the inverse inertia applied to the nozzle torque, gravity-gradient
+            bound and environment torque minus the gyroscopic term w x (I w).
+            """
             _, _, environment_torque = environmental_wrenches(w)
             return _matvec(
                 inverse,

@@ -38,6 +38,11 @@ from orbexa.proofs.numerics.rigid_interval import (
 
 
 def packed_state(state):
+    """Return the packed state as one flat tuple.
+
+    Outputs: position_eci_m (3), velocity_eci_m_s (3), quaternion_body_to_eci (4),
+    angular_velocity_body_rad_s (3), then fuel_kg per element.
+    """
     return (
         tuple(state.position_eci_m)
         + tuple(state.velocity_eci_m_s)
@@ -49,6 +54,12 @@ def packed_state(state):
 
 @dataclass(frozen=True)
 class AssemblyStateEnclosure:
+    """Interval box enclosing the packed assembly state at an exact time.
+
+    Carries the parameter fingerprint, source record, number of completed held
+    flows, the SHA-256 proof chain and the last swept box.
+    """
+
     box: IntervalBox
     exact_time_s: Fraction
     parameter_fingerprint: str
@@ -58,6 +69,7 @@ class AssemblyStateEnclosure:
     last_swept: IntervalBox | None = None
 
     def as_dict(self):
+        """Return a JSON-ready record of the enclosure; source is deep-copied."""
         return {
             "method": "carried-rigid-assembly-state-set-v1",
             "box": self.box.as_dict(),
@@ -72,6 +84,17 @@ class AssemblyStateEnclosure:
         }
 
     def successor(self, certificate, numerical_state):
+        """Return the enclosure after one proved held flow.
+
+        The new box is the hull of the certificate endpoint and the packed numerical
+        state. Time advances by the certificate duration, the hold count increases by
+        one and the proof chain hashes the previous chain with the certificate.
+
+        Inputs: certificate, an AssemblyFlowCertificate started from this box;
+        numerical_state, the executed AssemblyState at the endpoint.
+        Outputs: a new AssemblyStateEnclosure; self is unchanged.
+        Raises ValueError if the certificate did not pass or started from another box.
+        """
         if not certificate.passed or certificate.initial != self.box:
             raise ValueError(
                 "A carried assembly successor requires its same-start proved flow"
@@ -95,6 +118,12 @@ class AssemblyStateEnclosure:
 
 @dataclass(frozen=True)
 class AssemblyFlowCertificate:
+    """Result of enclosing one held flow of the assembly from a carried box.
+
+    status is "PROVEN", "UNAVAILABLE" or "UNRESOLVED". endpoint and swept are set
+    only when the flow was proven.
+    """
+
     status: str
     reason: str
     context: dict
@@ -105,9 +134,14 @@ class AssemblyFlowCertificate:
 
     @property
     def passed(self):
+        """Return True when status is "PROVEN"."""
         return self.status == "PROVEN"
 
     def as_dict(self):
+        """Return a JSON-ready record of the certificate.
+
+        Includes the SHA-256 of this source file and a scope statement.
+        """
         return {
             "method": "arb-full-rigid-held-flow-and-split-fuel-v1",
             "status": self.status,
@@ -124,6 +158,11 @@ class AssemblyFlowCertificate:
 
 
 def assembly_parameter_fingerprint(assembly):
+    """Return the fingerprint of the assembly's flow-relevant declaration.
+
+    Covers the elements, parameter enclosure, gravity-gradient flag, mu_m3_s2 and
+    environment record.
+    """
     return fingerprint(
         {
             "elements": [element.to_dict() for element in assembly.elements],
@@ -143,7 +182,21 @@ def assembly_parameter_fingerprint(assembly):
 
 
 class _AssemblyField:
+    """Interval vector field of the assembly state under held nozzle commands.
+
+    Inputs are fixed at construction: assembly geometry (point or enclosed
+    parameters), per-element nozzle force and moment, and propellant flow.
+    """
+
     def __init__(self, assembly, propulsion, commands, ar):
+        """Build interval geometry and the held nozzle wrench of each element.
+
+        Inputs: assembly, propulsion (thruster list), commands_n (N, one per
+        thruster), ar (interval arithmetic context).
+        State changes: sets positions, specific inertias, mounting rotations,
+        per-element forces, moments about the body origin and propellant flow
+        (kg/s, exact).
+        """
         self.assembly, self.ar = assembly, ar
         self.environment = None
         if assembly.environment is not None:
@@ -209,6 +262,13 @@ class _AssemblyField:
             )
 
     def mass_properties(self, fuel):
+        """Return interval mass properties for the given fuel set.
+
+        Inputs: fuel, interval fuel_kg per element.
+        Outputs: (masses, total, center, offsets, inertia) with inertia about the
+        center of mass in body axes.
+        Raises _ProofUnresolved if the total mass is not provably positive.
+        """
         ar = self.ar
         masses = tuple(
             ar.scalar(element.dry_mass_kg) + value
@@ -268,6 +328,15 @@ class _AssemblyField:
         )
 
     def evaluate(self, values):
+        """Return the packed-state time derivative over an interval state set.
+
+        Includes central gravity, held nozzle force and torque, optional environment
+        differences about a common reference, and optional gravity gradient. The fuel
+        derivative is zero (fuel changes only in deplete).
+
+        Raises _ProofUnresolved if the mass set is not positive or the position set
+        includes the origin.
+        """
         ar, assembly = self.ar, self.assembly
         p, v, q, w, fuel = (
             values[:3],
@@ -345,12 +414,32 @@ class _AssemblyField:
 
 @dataclass(frozen=True)
 class AssemblyFlowEncloser:
+    """Encloses a held-command flow of the assembly with interval Picard steps.
+
+    precision_bits sets Arb precision; max_step_s, max_substeps and
+    max_picard_iterations bound the work per hold.
+    """
+
     precision_bits: int = 128
     max_step_s: float = 0.05
     max_substeps: int = 4096
     max_picard_iterations: int = 24
 
     def bound(self, *, assembly, state, propulsion, commands_n, duration_s):
+        """Return a certificate enclosing the held flow from the carried start set.
+
+        Each integration step of the assembly is split into half-depletion, Picard
+        inclusion substeps and half-depletion, matching the numerical integrator.
+
+        Inputs: assembly; state with a carried enclosure; propulsion; commands_n, one
+        physical command per thruster (N); duration_s, hold time (s).
+        Outputs: AssemblyFlowCertificate with status "PROVEN", "UNAVAILABLE" (flint
+        missing) or "UNRESOLVED" (budget, domain or arithmetic failure; reason holds
+        the message).
+        Raises ValueError for a non-positive hold, a missing start set, a changed
+        parameter fingerprint, a start set omitting the numerical state, commands of
+        the wrong shape or non-finite, or a command above a nozzle max_force_n.
+        """
         h = Fraction(float(duration_s))
         if h <= 0 or state.enclosure is None:
             raise ValueError(

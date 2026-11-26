@@ -31,12 +31,14 @@ def exact_norm_upper(values):
 
 
 def _norm_box(box):
+    """Return an outward Euclidean norm of the largest absolute component of a box."""
     return exact_norm_upper(
         max(abs(lo), abs(hi)) for lo, hi in zip(box.lower, box.upper)
     )
 
 
 def _multiply(left, right):
+    """Return the product of two 3 by 3 matrices given as nested tuples."""
     return tuple(
         tuple(sum(left[i][k] * right[k][j] for k in range(3)) for j in range(3))
         for i in range(3)
@@ -44,6 +46,7 @@ def _multiply(left, right):
 
 
 def _matrix_difference_norm(left, right, ar):
+    """Return an outward norm of the entrywise Arb box of left minus right (3 by 3)."""
     return _norm_box(
         ar.box(tuple(left[i][j] - right[i][j] for i in range(3) for j in range(3)))
     )

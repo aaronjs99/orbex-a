@@ -32,10 +32,15 @@ class FleetInitializer:
     """Deterministic initial states and explicit docking assignments."""
 
     def __init__(self, config: SimulationConfig, target: TargetGeometry):
+        """Store the simulation config and target geometry."""
         self.config = config
         self.target = target
 
     def chasers(self, mission: str) -> list[ChaserConfig]:
+        """Return the chaser assignments for mission "single" or "multi".
+
+        Raises ValueError for any other mission name.
+        """
         if mission == "single":
             return self.single_chaser()
         if mission == "multi":
@@ -43,12 +48,14 @@ class FleetInitializer:
         raise ValueError(f"Unknown ADTMPC mission: {mission}")
 
     def single_chaser(self) -> list[ChaserConfig]:
+        """Return one chaser assignment from config.orbit.initial_conditions."""
         initial_states = [
             np.asarray(self.config.orbit.initial_conditions, dtype=float),
         ]
         return self.build_chaser_configs(initial_states)
 
     def multi_chasers(self) -> list[ChaserConfig]:
+        """Return assignments for config.num_chasers chasers from generated starts."""
         return self.build_chaser_configs(
             self.multi_initial_states(int(self.config.num_chasers))
         )
@@ -104,6 +111,12 @@ class FleetInitializer:
     def build_chaser_configs(
         self, initial_states: Sequence[np.ndarray]
     ) -> list[ChaserConfig]:
+        """Return one ChaserConfig per initial state using the target's assignments.
+
+        Chaser IDs are chaser_1, chaser_2, and so on in input order.
+        Raises ValueError if there are no states, a state is not a finite 6-vector,
+        or the target does not assign exactly one docking point per chaser.
+        """
         initial_states = [np.asarray(value, dtype=float) for value in initial_states]
         if not initial_states or any(
             value.shape != (6,) or not np.all(np.isfinite(value))

@@ -38,6 +38,10 @@ class RefugeTargetGeometryRefusal(ValueError):
     """
 
     def __init__(self, message, evidence):
+        """Store the message and a copied exact evidence record as refusal_evidence.
+
+        The record carries the fingerprint of the evidence as identity.
+        """
         super().__init__(message)
         value = exact_record(evidence)
         self.refusal_evidence = dict(identity=fingerprint(value), **value)
@@ -48,6 +52,10 @@ def _target_preflight_indices(count, budget):
     indices, seen, maximum = [], set(), min(count, budget)
 
     def add(numerator, denominator):
+        """Append floor(count*numerator/denominator), capped at count - 1, if unseen.
+
+        Nothing is appended once the index budget is reached.
+        """
         value = min(count - 1, count * numerator // denominator)
         if value not in seen and len(indices) < maximum:
             seen.add(value)
@@ -314,6 +322,12 @@ def construct_refuge_plan(
 
 @dataclass(frozen=True)
 class PatchRefugeCandidateAttempt:
+    """Record of one patch candidate attempt.
+
+    Durations are reference-clock widths. status is REFUSED or CONDITIONAL_PROVEN,
+    reasons lists refusal causes, and plan_id is the plan fingerprint when proven.
+    """
+
     retreat_duration: Fraction
     holding_duration: Fraction
     tangent_offset: tuple[Fraction, Fraction]
@@ -324,6 +338,12 @@ class PatchRefugeCandidateAttempt:
 
 @dataclass(frozen=True)
 class PatchRefugeSearchResult:
+    """Outcome of a patch candidate search.
+
+    plan is the first admissible plan or None; references and contexts are (name, value)
+    pairs of that plan; attempts lists every candidate tried.
+    """
+
     plan: FleetFallbackPlan | None
     references: tuple[tuple[str, C2RefugeReference], ...]
     contexts: tuple[tuple[str, ControlContext], ...]
@@ -331,14 +351,17 @@ class PatchRefugeSearchResult:
 
     @property
     def admissible(self):
+        """Return True when a plan exists and its certificate is admissible."""
         return self.plan is not None and self.plan.certificate.admissible
 
     @property
     def reference_map(self):
+        """Return the references as a dict keyed by agent name."""
         return dict(self.references)
 
     @property
     def context_map(self):
+        """Return the control contexts as a dict keyed by agent name."""
         return dict(self.contexts)
 
     @property
@@ -348,6 +371,10 @@ class PatchRefugeSearchResult:
 
 
 def _patch_search_result(plan, references, contexts, attempts, early_refusals):
+    """Build a PatchRefugeSearchResult from the attempts.
+
+    early_refusals are attached as a private attribute only when nonempty.
+    """
     value = PatchRefugeSearchResult(plan, references, contexts, tuple(attempts))
     if early_refusals:
         object.__setattr__(value, "_early_refusals", tuple(early_refusals))

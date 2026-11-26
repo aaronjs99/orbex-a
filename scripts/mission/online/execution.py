@@ -29,6 +29,8 @@ from orbexa.mission.online.clock import MONOTONIC_CLOCK, wall_time_ns
 
 @dataclass(frozen=True)
 class OnlineHoldWindow:
+    """Exact hold interval with monotonic wall-clock release and deadlines."""
+
     start: Fraction
     hold_width: Fraction
     release_ns: int
@@ -37,6 +39,12 @@ class OnlineHoldWindow:
     wall_clock_id: str = MONOTONIC_CLOCK
 
     def __post_init__(self):
+        """Convert start and hold_width to exact values and validate the window.
+
+        Raises ValueError unless hold_width is positive, the three nanosecond values
+        are positive integers, and release_ns <= dispatch_deadline_ns <=
+        acknowledgement_deadline_ns. Also rejects an unsupported wall_clock_id.
+        """
         object.__setattr__(self, "start", _exact(self.start))
         object.__setattr__(self, "hold_width", _exact(self.hold_width))
         wall_time_ns(self.wall_clock_id)
@@ -57,11 +65,14 @@ class OnlineHoldWindow:
             )
 
     def now_ns(self):
+        """Return the current time in nanoseconds on this window's wall clock."""
         return wall_time_ns(self.wall_clock_id)
 
 
 @dataclass(frozen=True)
 class AppliedHoldReceipt:
+    """Acknowledgment that a hold was applied, with endpoint observations and timing."""
+
     decision_id: str
     exact_end_q: Fraction
     endpoint_observations: dict
@@ -70,6 +81,11 @@ class AppliedHoldReceipt:
     physical_adapter_id: str
 
     def __post_init__(self):
+        """Convert exact_end_q to an exact value and validate the receipt.
+
+        Raises ValueError if an identity is empty, endpoint_observations is not a dict,
+        dispatched_ns is not positive, or acknowledged_ns precedes dispatched_ns.
+        """
         object.__setattr__(self, "exact_end_q", _exact(self.exact_end_q))
         if (
             not self.decision_id
@@ -101,6 +117,11 @@ class SampledActuationReceipt:
     physical_adapter_id: str
 
     def __post_init__(self):
+        """Convert exact_end_q to an exact value, packets to a tuple, and validate.
+
+        Raises ValueError if an identity is empty, dispatched_ns is not positive, or
+        acknowledged_ns precedes dispatched_ns.
+        """
         object.__setattr__(self, "exact_end_q", _exact(self.exact_end_q))
         object.__setattr__(self, "packets", tuple(self.packets))
         if (
@@ -124,6 +145,11 @@ class SampledOnlineAdapter:
     """
 
     def __init__(self, observer, *, active_plan, actuate, receive=None):
+        """Store the observer and the plan, actuation and optional receive callbacks.
+
+        Raises TypeError unless observer is an OnlineRelativeObserver and the callbacks
+        are callable (receive may be None).
+        """
         from orbexa.mission.online.observation import OnlineRelativeObserver
 
         if (
@@ -145,6 +171,11 @@ class SampledOnlineAdapter:
         self.last_boundary_timing_ns = None
 
     def observe(self, q):
+        """Return the observer's observations at exact clock q.
+
+        If a receive callback exists, its packets for (q, observer time) are consumed
+        first. Raises ValueError if q differs from the observer's clock.
+        """
         if _exact(q) != self.observer.q:
             raise ValueError(
                 "Physical release and the sampled observation clock disagree"
@@ -154,6 +185,16 @@ class SampledOnlineAdapter:
         return self.observer.observations()
 
     def apply_hold(self, decision, window):
+        """Preflight a hold, actuate it and commit the returned packets to the observer.
+
+        Raises ValueError if preflight ends after the dispatch deadline, or if the
+        actuator's receipt does not match the decision fingerprint, the predicted end,
+        the preflight time or the current time. Records the preflight, actuate and
+        observation-commit durations (ns) in last_boundary_timing_ns.
+
+        Outputs:
+            An AppliedHoldReceipt with the post-commit observations.
+        """
         before = window.now_ns()
         prediction = self.observer.prepare_hold(decision, self.active_plan())
         prepared = window.now_ns()
@@ -189,7 +230,10 @@ class SampledOnlineAdapter:
 
 
 class OnlineExecutionFailure(RuntimeError):
+    """RuntimeError that carries the execution event record of the failure."""
+
     def __init__(self, message, *, record):
+        """Store the failure record on the exception."""
         super().__init__(message)
         self.record = record
 
@@ -224,6 +268,12 @@ class OnlineFiniteExecutor:
         maximum_retained_commits=1,
         prepare_decisions=False,
     ):
+        """Validate and store the runtime, worker and observation/actuation callbacks.
+
+        Raises TypeError unless runtime is an idle FleetAdmissionRuntime and the
+        callbacks are callable. Raises ValueError unless maximum_retained_commits is a
+        nonnegative integer.
+        """
         if (
             not isinstance(runtime, FleetAdmissionRuntime)
             or runtime._pending is not None
@@ -252,10 +302,16 @@ class OnlineFiniteExecutor:
         self._ready, self._failed, self.sequence = None, None, 0
 
     def _emit(self, record):
+        """Pass record to event_sink when one is set."""
         if self.event_sink is not None:
             self.event_sink(record)
 
     def _failure(self, reason, record):
+        """Mark the executor failed, emit the record and raise OnlineExecutionFailure.
+
+        Adds status, reason and continuation_authorized=False to record. If the sink
+        raises, the error text is stored in the record instead.
+        """
         record.update(
             status="ASSUMPTION_VIOLATION",
             reason=reason,
@@ -272,6 +328,14 @@ class OnlineFiniteExecutor:
         raise OnlineExecutionFailure(reason, record=record)
 
     def _candidate(self, window, record):
+        """Return a prepared replacement and a status for the current window.
+
+        Polls the worker without waiting and keeps its newest result. The status is
+        "READY" with the decoded product, or the reason it was not used (no or pending
+        proposal, future or stale activation, changed context or schedule, late result,
+        refused or invalid product). A consumed non-future result is not retained. Adds
+        worker and product details to record.
+        """
         try:
             result = self.worker.poll()
         except Exception as error:

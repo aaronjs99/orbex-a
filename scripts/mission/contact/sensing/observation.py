@@ -29,6 +29,11 @@ from scipy.spatial.transform import Rotation
 
 @dataclass(frozen=True)
 class ContactObservationBounds:
+    """Bounds on the errors of each contact observation channel.
+
+    Position, velocity, pose, rate, encoder, range and wrench errors carry the
+    units in their names (m, m/s, rad, rad/s, N, N m)."""
+
     common_position_error_m: float = 1.0
     common_velocity_error_m_s: float = 0.003
     relative_position_error_m: float = 0.003
@@ -44,6 +49,9 @@ class ContactObservationBounds:
     wrench_couple_error_nm: float = 0.0002
 
     def __post_init__(self):
+        """Validate that every bound is a finite, nonnegative number and not a bool.
+
+        Raises ValueError otherwise."""
         if any(
             isinstance(value, bool) or not np.isfinite(value) or value < 0
             for value in vars(self).values()
@@ -53,6 +61,7 @@ class ContactObservationBounds:
             )
 
     def as_dict(self):
+        """Return the bounds as a dictionary with a `method` identifier."""
         return dict(
             method="deterministic-current-contact-observation-support-v1",
             **asdict(self),
@@ -60,6 +69,8 @@ class ContactObservationBounds:
 
 
 class ContactSetConditioner:
+    """Narrow a contact state box with the bounded observation of the same event."""
+
     def condition(
         self,
         *,
@@ -72,6 +83,19 @@ class ContactSetConditioner:
         representative,
         exact_elapsed_time_s=None,
     ):
+        """Intersect the state box with the sensor supports and return it with a record.
+
+        Inputs: `initial` is the state box; `observation` the current estimates
+        (bodies, optional positioner encoders, contact gaps and wrenches);
+        `support` a `ContactObservationBounds`; `representative` the executed
+        numerical state, which must stay inside the result;
+        `exact_elapsed_time_s`, if given, sets the expected clock as the fleet
+        start plus that elapsed time (s).
+        Outputs: `(box, record)`, where the record has the support, the supported
+        gaps, rotation supports, the observation and fingerprints.
+        Raises ValueError if `support` is not typed, the observation fails the
+        fleet or clock check, the encoders do not name the fleet, or the result
+        excludes `representative`."""
         if not isinstance(support, ContactObservationBounds):
             raise ValueError(
                 "Contact conditioning requires explicit typed observation supports"
@@ -85,6 +109,7 @@ class ContactSetConditioner:
         lower, upper = list(initial.lower), list(initial.upper)
 
         def narrow(start, box):
+            """Intersect the state bounds slice at `start` with `box`."""
             current = IntervalBox(
                 lower[start : start + box.dimension],
                 upper[start : start + box.dimension],
@@ -96,6 +121,7 @@ class ContactSetConditioner:
             ) = result.lower, result.upper
 
         def centered(value, radius):
+            """Return the interval box of half-width `radius` about `value`."""
             return IntervalBox.from_center_radius(
                 tuple(map(Fraction, value)), (Fraction(radius),) * len(value)
             )

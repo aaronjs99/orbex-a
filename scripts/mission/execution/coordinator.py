@@ -57,6 +57,15 @@ from orbexa.proofs.reachability import HeldInputRequest, ValidatedFlowEncloser
 
 
 class NonlinearDenseExecutor:
+    """Execute the dense held-command loop with admission, truth, sensing and archive.
+
+    For each hold it asks the admission runtime for a decision, stages the admitted
+    record before motion, integrates numerical truth, commits the physical target,
+    delivers sensor packets to navigation and archives the completed hold. Planning
+    and feedback see navigation only; truth feeds the plant, the sensors and
+    post-command containment diagnostics.
+    """
+
     def __init__(
         self,
         scenario,
@@ -82,6 +91,23 @@ class NonlinearDenseExecutor:
         successor_preparer=None,
         completed_hold_sink=None,
     ):
+        """Validate the truth, navigation, actuation and sensing inputs; build services.
+
+        Inputs:
+        - truth_relative_by_agent: agent key to six-element relative truth state at the
+          truth target's current anomaly; copied.
+        - maximum_blackout_q: largest anomaly extent of a sensor blackout; positive.
+        - admission_runtime: optional FleetAdmissionRuntime installed at construction.
+        - retain_journal: whether completed holds are kept in the journal.
+
+        Outputs:
+        - Raises ValueError if the truth and navigation fleets or clocks differ, a truth
+          parameter escapes the declared bounds, or the blackout duration is not
+          positive; TypeError for a non-callable actuator, sink or preparer, a wrong
+          actuation prior type or a non-boolean `retain_journal`. It samples the sensors
+          if none were acquired, consumes ready packets and installs the runtime if
+        given.
+        """
         self.scenario, self.config, self.navigation = (
             scenario,
             scenario.config,
@@ -204,54 +230,72 @@ class NonlinearDenseExecutor:
     # Retain established execution attributes while their owners are explicit.
     @property
     def pending_packets(self):
+        """Return the sensor packets awaiting delivery."""
         return self.sensor_delivery.pending
 
     @pending_packets.setter
     def pending_packets(self, value):
+        """Replace the pending sensor packets."""
         self.sensor_delivery.pending = value
 
     @property
     def delivered_since_last_step(self):
+        """Return the packets delivered since they were last drained."""
         return self.sensor_delivery.delivered
 
     @delivered_since_last_step.setter
     def delivered_since_last_step(self, value):
+        """Replace the delivered packet list."""
         self.sensor_delivery.delivered = value
 
     @property
     def journal(self):
+        """Return the completed-hold journal entries of the archive."""
         return self.archive.completed
 
     @journal.setter
     def journal(self, value):
+        """Replace the completed-hold journal entries of the archive."""
         self.archive.completed = value
 
     @property
     def certificate_sink(self):
+        """Return the archive sink that receives certificate and audit events."""
         return self.archive.sink
 
     @certificate_sink.setter
     def certificate_sink(self, value):
+        """Set the sink of the execution archive and of the sensor acquisition audit."""
         self.archive.sink = value
         self.sensor_delivery.acquisition_audit.sink = value
 
     @property
     def last_archive_event(self):
+        """Return the last event published by the archive."""
         return self.archive.last_event
 
     @last_archive_event.setter
     def last_archive_event(self, value):
+        """Replace the last archive event."""
         self.archive.last_event = value
 
     @property
     def _nominal_services(self):
+        """Return the nominal hold proof service cache of the tube propagator."""
         return self.nominal_tube.services
 
     @_nominal_services.setter
     def _nominal_services(self, value):
+        """Replace the nominal hold proof service cache."""
         self.nominal_tube.services = value
 
     def _check_realization(self):
+        """Require the point-truth physical model to lie inside the declared bounds.
+
+        The gravitational parameter, J2, target and chaser sigma, atmosphere scalars and
+        atmosphere vectors must each be a point within the bounds, and the J2 axis and
+        reference radii must be identical. Raises ValueError naming the failed item.
+        """
         physical, bounds_model = self.point_truth.model, self.model
         for name in ("mu_m3_s2", "j2", "sigma_target", "sigma_chaser"):
             lo, hi = getattr(physical, name)
@@ -284,6 +328,13 @@ class NonlinearDenseExecutor:
             )
 
     def install_runtime(self, runtime):
+        """Install the admission runtime and attach this executor's flow provider to it.
+
+        Raises TypeError if `runtime` is not a FleetAdmissionRuntime, and ValueError if
+        its q differs from `observed_q` or the global actuation error support exceeds
+        the
+        actuator error of any fallback controller.
+        """
         if not isinstance(runtime, FleetAdmissionRuntime):
             raise TypeError("Install a complete FleetAdmissionRuntime")
         if runtime.q != self.observed_q:
@@ -305,13 +356,23 @@ class NonlinearDenseExecutor:
 
     @property
     def actual_committed_q(self):
+        """Return the anomaly the physical truth target has actually committed."""
         return self.truth_target.current_q
 
     @property
     def observed_q(self):
+        """Return the blackout observer anomaly during a blackout, else navigation q."""
         return self.blackout_observer.q if self.blackout_holds else self.navigation.q
 
     def observations(self):
+        """Return a RefugeObservation per agent at the current observation event.
+
+        The boxes come from the blackout observer while blackout holds exist, otherwise
+        from navigation; each measurement is the box midpoint. The sensor id is taken
+        from
+        the active fallback controller at that q when a runtime is installed, else from
+        `sensor_id`.
+        """
         if self.blackout_holds:
             boxes, q = self.blackout_observer.boxes, self.blackout_observer.q
         else:
@@ -336,6 +397,13 @@ class NonlinearDenseExecutor:
         }
 
     def flow_provider(self, agent, request):
+        """Return the cached relative flow enclosure for an agent and request.
+
+        The cache key combines the agent, the request fingerprint and the current target
+        flow fingerprint. Raises ValueError if no proven target flow exists, or, while a
+        performance hold is being checked, if a proven swept state leaves the agent's
+        prospective performance region.
+        """
         if self.current_target_flow is None or not self.current_target_flow.proven:
             raise ValueError("No currently proved nonlinear target hold")
         key = (
@@ -377,6 +445,7 @@ class NonlinearDenseExecutor:
         from orbexa.mission.safety.planner import ProspectiveFleetEndpoint
 
         def navigation_id(value):
+            """Return the fingerprint of a navigation estimate's attributes."""
             return source_fingerprint(
                 {
                     name: (dict(item) if isinstance(item, MappingProxyType) else item)
@@ -409,6 +478,14 @@ class NonlinearDenseExecutor:
         estimate_id = navigation_id(estimate)
 
         def check_current_state():
+            """Raise RuntimeError if runtime or navigation state changed since guarded.
+
+            It compares the runtime object, active fallback plan, q, remaining fuel,
+            pending
+            decision, acceleration disturbance and the navigation estimate fingerprint
+            with
+            the values captured before the prospective proof calls.
+            """
             if (
                 self.runtime is not authoritative_runtime
                 or self.runtime.active_fallback is not old_plan
@@ -512,6 +589,16 @@ class NonlinearDenseExecutor:
         acknowledged = {}
 
         def archive_witness(value):
+            """Validate a full successor witness and acknowledge it.
+
+            The witness must be a dict of kind fallback_successor bound to this
+            projection,
+            with a matching identity, projection and plan. It is written to the
+            certificate
+            sink if one is set, otherwise kept in `witnesses`. Raises TypeError for a
+            non-dict
+            and ValueError for a mismatch or a duplicate identity.
+            """
             if not isinstance(value, dict):
                 raise TypeError("Successor witness must be a full record")
             witness = copy.deepcopy(value)
@@ -608,6 +695,12 @@ class NonlinearDenseExecutor:
             check_current_state()
 
     def _navigation_actuation_supports(self, decision):
+        """Return the per-agent navigation actuation support for the admitted commands.
+
+        Raises ValueError if the actuation prior or actuator changed since validation,
+        or
+        a navigation support is not contained in the admitted applied-input support.
+        """
         if (
             self.actuation_prior.fingerprint != self._validated_actuation_prior_id
             or self.actuator.fingerprint
@@ -630,11 +723,13 @@ class NonlinearDenseExecutor:
         return result
 
     def _stage(self, state, plan, key, h):
+        """Build the tube stage of one agent's plan for hold width `h`."""
         return stage_from_plan(
             state, plan, key, h, sliding_gains=self.config.tube.sliding_gains
         )
 
     def _stage_bindings(self):
+        """Return a stage-binding checker for the current observation event."""
         return PerformanceStageBindings(
             config=self.config,
             clock=self.clock,
@@ -644,14 +739,17 @@ class NonlinearDenseExecutor:
         )
 
     def _bind_stage_sources(self, planning, planner, q0, stage):
+        """Bind the stages to their sources; see PerformanceStageBindings.bind."""
         return self._stage_bindings().bind(planning, planner, q0, stage)
 
     def _check_stage_sources(self, planning, planner, bindings):
+        """Check bound stage sources are unchanged; see PerformanceStageBindings."""
         return self._stage_bindings().check(planning, planner, bindings)
 
     def _feedback_evaluation(
         self, coefficients, measurement, center, phi, alpha, lam, u_nom, command
     ):
+        """Evaluate the feedback command with the configured numerical reserve."""
         return feedback_evaluation(
             coefficients,
             measurement,
@@ -666,12 +764,22 @@ class NonlinearDenseExecutor:
 
     @staticmethod
     def _measurement_radius(box, point):
+        """Return the radius of a state box about a point; see measurement_radius."""
         return measurement_radius(box, point)
 
     def _check_tube_observation(self, box, center, phi, omega, lam):
+        """Check a navigation box against the tube; see check_tube_observation."""
         return check_tube_observation(box, center, phi, omega, lam)
 
     def _tube_membership(self, key, q, observation, state, lam):
+        """Return the record that the observation lies in the agent's physical tube.
+
+        If the stored witness matches the agent, q, center, widths, gain, model and
+        clock,
+        the method is PRIOR_ADMITTED_PHYSICAL_TUBE. Otherwise the complete current
+        navigation box is checked against the tube, which can raise, and the method is
+        COMPLETE_CURRENT_NAVIGATION_BOX.
+        """
         witness = self._physical_tube_witnesses.get(key)
         bound = (
             tuple(map(exact, state.centers[key])),
@@ -712,6 +820,7 @@ class NonlinearDenseExecutor:
         }
 
     def _nominal(self, center, u, q, h, params, phi, omega, stage, lam):
+        """Propagate the nominal tube of one agent with this executor's settings."""
         return self.nominal_tube.propagate(
             center,
             u,
@@ -729,12 +838,14 @@ class NonlinearDenseExecutor:
         )
 
     def _numeric_hold(self, q, h, decision, navigation_supports):
+        """Propose the numerical truth motion over one hold without committing it."""
         plant = NonlinearFleetPlant(self.truth_target, self.point_truth, self.actuator)
         return plant.propose_hold(
             self.truth_relative_by_agent, q, h, decision, navigation_supports
         )
 
     def _numeric_clearance(self, state, q, phase):
+        """Return the diagnostic clearance (m) of a truth state at anomaly `q`."""
         return sampled_clearance(
             state,
             q,
@@ -745,17 +856,28 @@ class NonlinearDenseExecutor:
         )
 
     def _sample(self):
+        """Sample the sensors from the current truth and queue the packets."""
         return self.sensor_delivery.sample(
             self.sensors, self.truth_target, self.clock, self.truth_relative_by_agent
         )
 
     def _consume_ready(self):
+        """Deliver ready packets to navigation and return its estimate."""
         return self.sensor_delivery.consume_ready(self.navigation)
 
     def drain_delivered_packets(self):
+        """Return the packets delivered since the last drain and clear the list."""
         return self.sensor_delivery.drain()
 
     def _planning_model_valid(self, context):
+        """Return whether a planning context's model is admissible for this execution.
+
+        It requires the same clock. An identical model fingerprint is accepted.
+        Otherwise
+        the planning model's parameters must lie within the declared bounds with the
+        same
+        fixed axes and radii, and `planning_model_validator` must accept it.
+        """
         if context is None or context.clock.fingerprint != self.clock.fingerprint:
             return False
         if context.model.fingerprint == self.model.fingerprint:
@@ -793,6 +915,12 @@ class NonlinearDenseExecutor:
         )
 
     def _blackout_proposal(self, decision, plan, observations):
+        """Return (observer, time box, observations) for a blackout hold, uncommitted.
+
+        The observer is a new propagator, or a deep copy of the current one, advanced by
+        the decision. The physical time box adds the hold width divided by the proved
+        clock rate bounds to the current time box.
+        """
         observer = (
             BlackoutObservationPropagator(
                 observations, maximum_blackout_q=self.maximum_blackout_q
@@ -812,11 +940,22 @@ class NonlinearDenseExecutor:
         return observer, time, updated
 
     def _commit_blackout(self, proposal, decision):
+        """Install a blackout proposal and record the hold; return its observations."""
         self.blackout_observer, self.blackout_time, updated = proposal
         self.blackout_holds.append((decision, self.runtime.acceleration_disturbance))
         return updated
 
     def recover_navigation(self):
+        """Replay blackout holds through navigation and recover using delivered sensing.
+
+        Without blackout holds it returns the current estimate. Otherwise it works on a
+        copy of navigation: each hold's target and relative flows must be proven before
+        prediction. Ready packets are audited, consumed and must give a VALID estimate.
+        The blackout observer must accept the recovered boxes before navigation state is
+        replaced, the blackout state is cleared and consumed packets move to delivered.
+        Raises ValueError if a flow is unresolved or the sensing contradicts the
+        blackout.
+        """
         if not self.blackout_holds:
             return self.navigation.estimate()
         candidate = copy.deepcopy(self.navigation)
@@ -903,6 +1042,7 @@ class NonlinearDenseExecutor:
         navigation_flows=None,
         successor_witnesses=None,
     ):
+        """Publish an archive event of the given kind through the execution archive."""
         return self.archive.publish(
             kind,
             record,
@@ -933,6 +1073,13 @@ class NonlinearDenseExecutor:
         performance_tube_proofs=None,
         feedback_coefficients=None,
     ):
+        """Archive the admitted decision before any numerical or physical motion.
+
+        It builds the staged record, with the flows, supports, actuation identities and
+        successor and tube proofs, and fixes its identity. It stores the record in
+        `_active_staged`, sets the stage to ARCHIVE_BEFORE_MOTION and publishes
+        ADMITTED_BEFORE_MOTION.
+        """
         from orbexa.control.fallback.refuge import exact_record
 
         record = {
@@ -1020,6 +1167,14 @@ class NonlinearDenseExecutor:
         )
 
     def _raise_execution_failure(self, error):
+        """Mark the step failed, archive an ASSUMPTION_VIOLATION and raise the failure.
+
+        It records the committed anomaly, truth, target state and stage, retains already
+        applied motion and sets `last_assumption_violation`. An archive error is stored
+        in
+        the event rather than raised. Always raises NonlinearExecutionFailure from
+        `error`.
+        """
         actual_q = self.actual_committed_q
         truth = {
             key: value.copy() for key, value in self.truth_relative_by_agent.items()
@@ -1108,6 +1263,17 @@ class NonlinearDenseExecutor:
         lam,
         ids,
     ):
+        """Complete an admitted hold after the physical target has been committed.
+
+        In order it samples the sensors, then commits the blackout or updates navigation
+        from ready packets, commits the runtime, computes endpoint diagnostics
+        (containment, flow inclusion, clearance, membership transitions), and raises
+        ValueError if any inclusion failed. It then commits the controller state,
+        computes
+        spacing, archives APPLIED_HOLD_COMPLETE, records the hold in the ledger, calls
+        `completed_hold_sink` and stores the new tube witnesses. Returns the navigation
+        estimate.
+        """
         self._execution_stage = "SENSOR_GENERATION"
         self._sample()
         if blackout:
@@ -1414,6 +1580,19 @@ class NonlinearDenseExecutor:
         failed_attempt=None,
         proof_blackout=False,
     ):
+        """Advance one outer anomaly step and return its NonlinearExecutionStep.
+
+        Raises ValueError if an earlier run failed. Any other exception is converted to
+        NonlinearExecutionFailure after the staged and applied evidence is recorded.
+
+        Inputs:
+        - state: controller state committed after each hold.
+        - planning: performance planning result, or None.
+        - phase: phase label for clearance.
+        - planner: planning context and residual sources for performance holds.
+        - failed_attempt: prior failed PerformanceAttempt, if any.
+        - proof_blackout: force the blackout path, without performance holds.
+        """
         if self.last_assumption_violation is not None:
             raise ValueError(
                 "A failed physical run cannot resume without an explicit recovery contract"
@@ -1448,6 +1627,26 @@ class NonlinearDenseExecutor:
         failed_attempt=None,
         proof_blackout=False,
     ):
+        """Run the holds that cover one outer anomaly step.
+
+        Performance is attempted only with a successful plan, no blackout and a valid
+        stage-source binding; any refusal falls back to the fallback path. Each hold
+        takes the shortest of the feedback substep, the remaining outer step, the
+        segment
+        and the controller maximum hold, then: observes, proves the target flow, builds
+        the performance proposal, lets the runtime decide, proves flows and archives the
+        admitted hold. It then proposes numerical truth, commits the physical target and
+        completes the hold. The loop stops early if the outcome is unsuccessful.
+
+        Inputs:
+        - see `advance`.
+
+        Outputs:
+        - NonlinearExecutionStep with truth, estimate, delivered packets and
+          containment.
+          Raises ValueError for no installed runtime, no positive hold, or a failed
+          commit or inclusion.
+        """
         if self.runtime is None:
             raise ValueError("Install a complete admitted fleet fallback before motion")
         q0 = self.observed_q

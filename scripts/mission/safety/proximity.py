@@ -18,6 +18,11 @@ REFUGE_POSITION_COMPONENT_RADIUS_M = ".15"
 
 
 def _nonnegative(value, name, *, positive=False):
+    """Return value as an exact Fraction.
+
+    Raises ValueError for a bool, a non-numeric or non-finite value, a negative value,
+    or zero when positive is True; name appears in the message.
+    """
     if isinstance(value, bool) or not isinstance(value, Real) or not isfinite(value):
         raise ValueError(name + " must be a finite numeric declaration")
     result = Fraction(value)
@@ -65,6 +70,17 @@ class TargetProximityRegion:
         com_standoff_m,
         position_component_radius_m,
     ):
+        """Build a region from the complete geometry and declared radii (all in m).
+
+        Inputs: geometry SpacecraftGeometry; requested_radius_m target COM radius;
+            body_radius_m chaser body radius; target_clearance_m; com_standoff_m;
+            position_component_radius_m the three refuge position box radii.
+        Outputs: a region whose target_vertex_radius_m is the outward square root of the
+            largest squared body-frame vertex norm over all components and whose
+            position_support_m is the outward square root of the summed squared position
+            radii. Raises TypeError if geometry is not SpacecraftGeometry and ValueError
+            for an invalid declaration or a position radius list not of length three.
+        """
         if not isinstance(geometry, SpacecraftGeometry):
             raise TypeError("A proximity region needs complete SpacecraftGeometry")
         requested = _nonnegative(
@@ -100,6 +116,11 @@ class TargetProximityRegion:
 
     @property
     def geometry_lower_bound_m(self):
+        """Return the lower bound on the COM radius that clears the geometry (m).
+
+        It is the vertex radius, plus the larger of body radius plus clearance and the
+        COM standoff, plus the position support.
+        """
         return (
             self.target_vertex_radius_m
             + max(self.body_radius_m + self.target_clearance_m, self.com_standoff_m)
@@ -108,10 +129,12 @@ class TargetProximityRegion:
 
     @property
     def effective_radius_m(self):
+        """Return the larger of the requested radius and geometry lower bound (m)."""
         return max(self.requested_radius_m, self.geometry_lower_bound_m)
 
     @property
     def comparison_radius_m(self):
+        """Return effective_radius_m as a float, one ulp higher if below it."""
         value = float(self.effective_radius_m)
         return (
             nextafter(value, inf)
@@ -121,9 +144,14 @@ class TargetProximityRegion:
 
     @property
     def legacy_default(self):
+        """Return True when the requested and effective radii both equal 30 m."""
         return self.requested_radius_m == 30 and self.effective_radius_m == 30
 
     def as_dict(self):
+        """Return the method, identities, radii and scope text as a dict.
+
+        Radii are strings except comparison_radius_m, which is a float (m).
+        """
         return {
             "method": "whole-occupied-envelope-com-proximity-v1",
             "geometry_id": self.geometry_id,

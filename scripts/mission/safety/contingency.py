@@ -30,6 +30,12 @@ class AccelerationContingencyOptions:
     acceleration_limit_m_per_rad2: float = 50000.0
 
     def __post_init__(self):
+        """Validate the proposal options.
+
+        Raises ValueError unless coast_holds is a nonnegative int, transition_holds is a
+        positive int (booleans refused) and the acceleration limit is positive and
+        finite.
+        """
         for name in ("coast_holds", "transition_holds"):
             value = getattr(self, name)
             minimum = 0 if name == "coast_holds" else 1

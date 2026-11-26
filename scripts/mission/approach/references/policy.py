@@ -39,6 +39,11 @@ class MissionReferencePolicy:
         target: TargetGeometry,
         horizon_steps: int | None = None,
     ):
+        """Store the config and target and the optional fixed horizon.
+
+        Raises ValueError if horizon_steps is given and is not an integer of at least
+        two.
+        """
         if horizon_steps is not None and (
             isinstance(horizon_steps, bool)
             or not isinstance(horizon_steps, (int, np.integer))
@@ -78,6 +83,14 @@ class MissionReferencePolicy:
         anom: float,
         tube_radius: float = 0.0,
     ) -> np.ndarray:
+        """Return the 6-vector goal state for a chaser at anomaly anom (rad).
+
+        Docking: the target's docking state at the chaser's docking point.
+        Otherwise: a point at zero velocity on the sphere around the target in the
+        direction of the chaser position (+x if it is within 1e-9 m of the origin),
+        with radius the larger of the rendezvous radius plus standoff and the
+        rendezvous radius plus tube_radius plus 0.2 m.
+        """
         if phase.operation == "docking":
             return self.target.docking_state(chaser.docking_point_body, anom)
         direction = np.asarray(state[:3], dtype=float)
@@ -106,9 +119,11 @@ class MissionReferencePolicy:
         if phase.operation == "docking":
 
             def state_at(value):
+                """Return the docking-point state at anomaly value."""
                 return self.target.docking_state(chaser.docking_point_body, value)
 
             def derivative_at(value):
+                """Return the anomaly derivative of the docking-point state."""
                 state = state_at(value)
                 acceleration = self.target.docking_acceleration(
                     chaser.docking_point_body, value
@@ -117,9 +132,11 @@ class MissionReferencePolicy:
         else:
 
             def state_at(value):
+                """Return the fixed current reference, independent of value."""
                 return current_reference
 
             def derivative_at(value):
+                """Return zeros: the reference is held constant."""
                 return np.zeros_like(current_reference)
 
         anomalies = anom + np.arange(horizon_steps) * self.config.anom_step
@@ -137,6 +154,12 @@ class MissionReferencePolicy:
         states: dict[str, np.ndarray],
         chasers: Sequence[ChaserConfig],
     ) -> bool:
+        """Return True if every chaser meets the rendezvous hand-over conditions.
+
+        Each chaser must be at least the target rendezvous radius from the origin,
+        within the position tolerance of the larger of the standoff shell and the
+        capture radius, and moving no faster than the velocity tolerance.
+        """
         desired_radius = max(
             self.target.rendezvous_radius + self.config.mission.rendezvous_standoff,
             self.config.mission.rendezvous_capture_radius,
@@ -159,6 +182,11 @@ class MissionReferencePolicy:
         return True
 
     def phase_state_weights(self, phase: MissionPhase) -> np.ndarray:
+        """Return a copy of the MPC state weight matrix Q for the phase.
+
+        For docking, the position, velocity and cross blocks are scaled by the
+        configured docking weight factors (cross blocks by their geometric mean).
+        """
         weights = np.asarray(self.config.mpc.Q, dtype=float).copy()
         if phase.operation == "docking":
             position_factor = self.config.mission.docking_position_weight_factor
@@ -171,11 +199,21 @@ class MissionReferencePolicy:
         return weights
 
     def horizon_steps_for_phase(self, phase: MissionPhase) -> int:
+        """Return the horizon length in nodes for the phase.
+
+        The injected horizon_steps if set; otherwise config.mpc.horizon_steps for the
+        phase operation, defaulting to 10.
+        """
         if self.horizon_steps is not None:
             return int(self.horizon_steps)
         return int(self.config.mpc.horizon_steps.get(phase.operation, 10))
 
     def configured_horizon_metadata(self) -> dict[str, int]:
+        """Return the horizon lengths for the record.
+
+        {"all": n} for an injected horizon, otherwise the per-operation configured
+        values.
+        """
         if self.horizon_steps is not None:
             return {"all": int(self.horizon_steps)}
         return {key: int(value) for key, value in self.config.mpc.horizon_steps.items()}

@@ -34,6 +34,12 @@ class NonlinearMissionRecorder:
         case,
         streamed_hold_index=False,
     ):
+        """Create the recorder over truth, scenario and study declarations.
+
+        Array recording uses a view of the scenario and state that carries the truth
+        target and truth relative states; that view is not given to planning or
+        navigation. Raises TypeError when streamed_hold_index is not a bool.
+        """
         self.scenario, self.chasers = scenario, chasers
         self.truth_target, self.model_bounds, self.truth_model = (
             truth_target,
@@ -61,6 +67,10 @@ class NonlinearMissionRecorder:
         self._held_input_effort = {key: exact(0) for key in self.arrays.ids}
 
     def record_navigation(self, estimate):
+        """Append one navigation record built from a navigation estimate.
+
+        The packet_ids entry lists only the packets accepted since the previous record.
+        """
         self.navigation.append(
             {
                 "exact_q": str(estimate.exact_event_q),
@@ -93,6 +103,7 @@ class NonlinearMissionRecorder:
         self._last_packet_count = len(estimate.packet_ids)
 
     def record_planning(self, planning, state, phase, context_records):
+        """Record a planning step, its phase and a copy of its context records."""
         self.arrays.phases.append(phase.name)
         self.arrays.record_planning(planning, state.anomaly)
         self.planning_contexts.append(copy.deepcopy(context_records))
@@ -173,6 +184,14 @@ class NonlinearMissionRecorder:
     def record_execution(
         self, state, outcome, planning, phase, *, truth_relatives, hold_records=()
     ):
+        """Record the samples and dense-interval minima of one committed outer update.
+
+        Does nothing when the outcome is not committed. Raises ValueError when the
+        acknowledged hold ledger, hold lineage, hold widths or applied-control samples
+        do not match the outer update.
+        Inputs: hold_records is the update's hold journal; truth_relatives are the
+        actual relative states at its end.
+        """
         if not outcome.committed:
             return
         # Per-hold callbacks already own the ledger. This path records only
@@ -283,6 +302,12 @@ class NonlinearMissionRecorder:
         self._complete_outer_end = exact(hold_records[-1]["exact_end"])
 
     def record_terminal(self, bounds, *, admissible, phase):
+        """Record the whole-tube terminal bounds and update the dwell count.
+
+        Inputs: bounds maps each chaser id to (position bound m, velocity bound
+        m/rad). The dwell counter increments only when admissible during docking and
+        otherwise resets to zero.
+        """
         for key, (p, v) in bounds.items():
             self.arrays.diagnostics[key]["terminal_position_bound"].append(float(p))
             self.arrays.diagnostics[key]["terminal_velocity_bound"].append(float(v))
@@ -302,6 +327,11 @@ class NonlinearMissionRecorder:
         )
 
     def emit_progress(self, kind, result=None):
+        """Send a progress projection to the scenario's progress sink, if any.
+
+        Without a result an in-progress record is projected and its outcome label is
+        set to 'Computing nonlinear mission'.
+        """
         sink = self.scenario.progress_sink
         if sink is None:
             return
@@ -321,6 +351,12 @@ class NonlinearMissionRecorder:
         )
 
     def _record(self, valid, completed, messages, adaptation):
+        """Assemble the mission result record from the recorded history.
+
+        Computes safety margins and spacing against the truth target, the completed-hold
+        accounting and the metadata; success requires validity, completion, target and
+        pair safety, sampled tube containment and every hold certified.
+        """
         a, cfg = self.arrays, self.scenario.config
         # Offline truth geometry is a diagnostic. Execution proof identities
         # are retained independently for every shared hold.
@@ -519,4 +555,5 @@ class NonlinearMissionRecorder:
         )
 
     def result(self, *, valid, completed, messages, adaptation):
+        """Return the mission result record for the run so far."""
         return self._record(valid, completed, messages, adaptation)

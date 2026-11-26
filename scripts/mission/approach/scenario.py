@@ -33,20 +33,29 @@ from orbexa.models.targets.prescribed import TargetGeometry, TumblingCylinderTar
 
 
 class CoupledController(Protocol):
+    """Protocol for a coupled controller with a solver_backend name and solve_step."""
+
     solver_backend: str
 
-    def solve_step(self, **kwargs: Any) -> Any: ...
+    def solve_step(self, **kwargs: Any) -> Any:
+        """Solve one coupled MPC step and return the solver result."""
+        ...
 
 
 class ControllerFactory(Protocol):
+    """Protocol for a callable that builds a CoupledController."""
+
     def __call__(
         self, *, solver_backend: str, solver_config: dict[str, Any]
-    ) -> CoupledController: ...
+    ) -> CoupledController:
+        """Return a controller for the given solver backend and solver options."""
+        ...
 
 
 def default_controller_factory(
     *, solver_backend: str, solver_config: dict[str, Any]
 ) -> CoupledController:
+    """Return an MPCController for the backend, imported only when called."""
     from orbexa.solvers.controller import MPCController
 
     return MPCController(solver_backend=solver_backend, solver_config=solver_config)
@@ -82,6 +91,19 @@ class MissionScenario:
         approximation: str = "nonlinear",
         solver_backend: str = "gekko",
     ):
+        """Store the mission dependencies, building defaults for omitted ones.
+
+        Defaults are SimulationConfig.load(), the plant truth from config, the
+        tumbling cylinder target, FleetInitializer, MissionReferencePolicy,
+        MissionSafety and default_controller_factory.
+        Raises ValueError if both reference and horizon_steps are given, if
+        adaptation_mode is not "adaptive" or "frozen", if arrival_policy is set
+        without an execution_guard, if a reference-orbit target lacks a matching
+        reference clock, if a physical target clock disagrees with the plant truth or
+        the zero anomaly origin, or if actuation_steps is not the integer one.
+        Raises TypeError if initial_belief, progress_sink, arrival_policy or
+        vehicle_design have the wrong type.
+        """
         self.config = config if config is not None else SimulationConfig.load()
         if reference is not None and horizon_steps is not None:
             raise ValueError(
@@ -193,6 +215,13 @@ class MissionScenario:
         return metadata
 
     def require_coupled_execution(self) -> None:
+        """Raise ValueError unless the scenario supports coupled ADTMPC execution.
+
+        Requires the nonlinear approximation with the gekko backend, tube.run_tube
+        enabled, every actuation step count equal to one, and a docking goal clear of
+        the target (component clearance for geometry targets, standoff for the
+        cylinder).
+        """
         if self.approximation != "nonlinear" or self.solver_backend != "gekko":
             raise ValueError(
                 "ADTMPC missions require the nonlinear GEKKO coupled dynamic-tube controller"
@@ -234,6 +263,11 @@ class MissionScenario:
             )
 
     def create_controller(self) -> CoupledController:
+        """Return a controller from the factory, built with the gekko backend.
+
+        Raises ValueError if require_coupled_execution fails or the controller does
+        not report solver_backend "gekko".
+        """
         self.require_coupled_execution()
         controller = self.controller_factory(
             solver_backend="gekko", solver_config=self.config.solver.options()

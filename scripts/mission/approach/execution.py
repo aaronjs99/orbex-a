@@ -24,6 +24,13 @@ import numpy as np
 
 @dataclass
 class ExecutionStep:
+    """Outcome of one fleet interval from start_anomaly to end_anomaly.
+
+    Holds success, messages, per-chaser reserve ratios, applied inputs,
+    ancillary feedback, containment and clearance values, the minimum pair
+    spacing and the sampled-tube containment flag.
+    """
+
     start_anomaly: float
     end_anomaly: float
     success: bool = True
@@ -40,4 +47,5 @@ class ExecutionStep:
 
     @property
     def committed(self) -> bool:
+        """Return True if the interval advanced the anomaly (end differs from start)."""
         return self.end_anomaly != self.start_anomaly

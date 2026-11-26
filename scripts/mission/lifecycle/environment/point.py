@@ -37,6 +37,22 @@ class NonlinearEnvironment:
         drag_area_m2_by_name=None,
         minimum_altitude_m=80000.0,
     ):
+        """Validate the model and fleet and store the continuation environment.
+
+        Inputs:
+            model: NonlinearModelBounds of the approach.
+            target_mass_kg: target mass in kg.
+            chasers: mapping of chaser name to a properties object with dry_mass_kg.
+            drag_area_m2_by_name: optional explicit CdA in m^2 for every body,
+                including "target".
+            minimum_altitude_m: altitude in m above the body radius that lowers the
+                lower end of the radius domain when it is smaller.
+
+        Outputs:
+            Sets model, parameters, dry masses, drag areas and a call counter.
+            Raises ValueError when the model is untyped, the fleet is empty or
+            includes "target", or the drag-area names differ from the bodies.
+        """
         _require(
             isinstance(model, NonlinearModelBounds),
             "environment requires a typed point model",
@@ -79,6 +95,18 @@ class NonlinearEnvironment:
         self.calls = 0
 
     def __call__(self, time_s, bodies):
+        """Return the extra acceleration and torque of every body at ``time_s``.
+
+        Inputs:
+            time_s: physical time in s.
+            bodies: mapping of body name to ContactBodyState at that time.
+
+        Outputs:
+            Mapping of body name to acceleration_eci_m_s2 (full J2 and drag law
+            minus the central term, in m/s^2) and a zero torque_body_nm. Counts the
+            call. Raises ValueError for a non-finite time, changed body names, or
+            states that are not current ContactBodyState values.
+        """
         _require(
             np.isfinite(time_s) and set(bodies) == set(self.dry_mass),
             "environment body IDs or physical clock changed",
@@ -107,6 +135,7 @@ class NonlinearEnvironment:
         return result
 
     def as_dict(self):
+        """Return the environment record with its method, frame and scope."""
         return {
             "method": "same-declared-point-j2-vector-drag-minus-central-v1",
             "source_model": self.original_model.as_dict(),

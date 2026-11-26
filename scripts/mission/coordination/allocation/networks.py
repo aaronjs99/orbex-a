@@ -36,9 +36,13 @@ class StaticNeighborNetwork:
     neighbors_by_agent: list[list[int]]
 
     def neighbors(self, agent_id: int) -> list[int]:
+        """Return a copy of the adjacency list of agent_id."""
         return list(self.neighbors_by_agent[agent_id])
 
     def is_connected(self) -> bool:
+        """Return whether a depth-first search from agent 0 along the adjacency lists
+        reaches every agent; an empty network counts as connected.
+        """
         n = len(self.neighbors_by_agent)
         if n == 0:
             return True
@@ -65,6 +69,10 @@ class KNNNetwork:
     include_self: bool = False
 
     def neighbors(self, agent_id: int) -> list[int]:
+        """Return the k nearest agents to agent_id by Euclidean distance, nearest first.
+
+        agent_id itself is excluded unless include_self is True.
+        """
         x = np.asarray(self.positions[agent_id], dtype=float)
         dists: list[tuple[int, float]] = []
         for j, p in enumerate(self.positions):
@@ -76,6 +84,9 @@ class KNNNetwork:
         return [j for j, _ in dists[: self.k]]
 
     def is_connected(self) -> bool:
+        """Return whether the graph of nearest-neighbor lists reaches every agent from
+        agent 0.
+        """
         adj = [self.neighbors(i) for i in range(len(self.positions))]
         return StaticNeighborNetwork(adj).is_connected()
 
@@ -89,6 +100,11 @@ class RadiusNetwork:
     include_self: bool = False
 
     def neighbors(self, agent_id: int) -> list[int]:
+        """Return the ids, in index order, of agents within radius of agent_id.
+
+        Distance is Euclidean and the radius test is inclusive. agent_id itself is
+        excluded unless include_self is True.
+        """
         x = np.asarray(self.positions[agent_id], dtype=float)
         out: list[int] = []
         for j, p in enumerate(self.positions):
@@ -100,5 +116,8 @@ class RadiusNetwork:
         return out
 
     def is_connected(self) -> bool:
+        """Return whether the graph of radius neighbor lists reaches every agent from
+        agent 0.
+        """
         adj = [self.neighbors(i) for i in range(len(self.positions))]
         return StaticNeighborNetwork(adj).is_connected()

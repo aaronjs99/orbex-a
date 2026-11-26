@@ -68,16 +68,27 @@ _SOURCE = {
 
 
 def _max_zero(value, ar):
+    """Return an interval enclosing max(0, x) over the box of value."""
     box = ar.box((value,))
     return ar.interval((max(0, box.lower[0]), max(0, box.upper[0])))
 
 
 def _dot(a, b):
+    """Return the sum of elementwise products of two equal-length sequences."""
     return sum(x * y for x, y in zip(a, b))
 
 
 @dataclass(frozen=True)
 class ContactStepCertificate:
+    """Frozen record of one held-flow contact proof attempt.
+
+    status is PROVEN, UNRESOLVED or UNAVAILABLE and reason explains it. initial is
+    the start set; endpoint and swept are the sets at the end of the hold and over
+    the whole hold, and the remaining fields hold the matching auxiliary blocks
+    (rotation, gap, strain, potential, wrench). They are empty or None unless the
+    proof succeeded.
+    """
+
     status: str
     reason: str
     context: dict
@@ -98,9 +109,15 @@ class ContactStepCertificate:
 
     @property
     def passed(self):
+        """Return True when status is PROVEN."""
         return self.status == "PROVEN"
 
     def as_dict(self):
+        """Return the certificate as a serializable dict.
+
+        The dict includes the method name, the source file hashes, a deep copy of the
+        context and the scope statement; absent sets are None.
+        """
         return {
             "method": "arb-compliant-contact-held-flow-v1",
             "status": self.status,
@@ -129,6 +146,13 @@ class ContactStepCertificate:
 
 
 class _ContactField:
+    """Interval vector field of the held whole-contact flow.
+
+    Evaluates the time derivative of the packed target, chaser, positioner-tip and
+    auxiliary coordinates under held commands and the declared pad and bond laws,
+    using the supplied interval arithmetic.
+    """
+
     def __init__(
         self,
         fleet,
@@ -140,6 +164,18 @@ class _ContactField:
         environment_model=None,
         engagement_times=None,
     ):
+        """Validate the held actuation and convert the fleet data to interval scalars.
+
+        Inputs: fleet, options, bonds and actuation are the packed fleet, contact
+        options, bond state and held commands; ar is the interval arithmetic;
+        rest_enclosures, environment_model and engagement_times are optional.
+        State changes: sets the fleet data, controls, rest quaternions and positions,
+        and engagement times used by evaluate.
+        Outputs: raises _ProofUnresolved if the command shapes or values are invalid,
+        the target command is nonzero, a translation, torque or positioner acceleration
+        command exceeds its declared authority, the environment masses differ from the
+        fleet, or the engagement clocks do not match the bond state.
+        """
         self.fleet, self.o, self.bonds, self.actuation, self.ar = (
             fleet,
             options,
@@ -283,6 +319,12 @@ class _ContactField:
             self.rest_positions.append(ar.vector(rest_position))
 
     def unpack(self, values):
+        """Split a packed state into body blocks and positioner-tip blocks.
+
+        Outputs: a tuple (bodies, tips); each body block holds 14 entries read from
+        index 6 (relative position, velocity, quaternion, body spin, fuel mass) and each
+        tip block holds 6 entries read from fleet.tip_slice.start.
+        """
         fleet = self.fleet
         bodies = tuple(
             tuple(values[6 + 14 * k : 6 + 14 * (k + 1)])
@@ -296,6 +338,10 @@ class _ContactField:
         return bodies, tips
 
     def gravity(self, position):
+        """Return the point-mass gravity vector -mu * position / |position|^3.
+
+        Outputs: raises _ProofUnresolved if the position set is not proved nonzero.
+        """
         length = norm(position, self.ar)
         if not length > 0:
             raise _ProofUnresolved("contact gravity set includes the origin")
@@ -304,6 +350,15 @@ class _ContactField:
         )
 
     def evaluate(self, time, values):
+        """Evaluate the packed-state derivative over an interval of time.
+
+        Inputs: time is the physical time (s) or a time interval; values is the packed
+        state, whose length selects which auxiliary blocks (rotation, gap, strain,
+        wrench) are present.
+        Outputs: a tuple (derivative, diag); diag holds body, tips, rotations, spins,
+        masses and per-chaser contact rows. Raises _ProofUnresolved if a mass is not
+        proved positive or an environment or gravity evaluation is unresolved.
+        """
         fleet, o, ar = self.fleet, self.o, self.ar
         body, tips = self.unpack(values)
         rotation_start = fleet.ledger_start
@@ -612,12 +667,25 @@ class _ContactField:
 
 @dataclass(frozen=True)
 class ContactStepEncloser:
+    """Prove held-flow enclosures of the finite contact step with Picard inclusions.
+
+    Inputs: precision_bits is the arithmetic precision; max_picard_iterations and
+    max_substeps are iteration and substep budgets; max_step_s is the largest
+    substep in s.
+    """
+
     precision_bits: int = 128
     max_picard_iterations: int = 24
     max_substeps: int = 64
     max_step_s: float = 0.001
 
     def __post_init__(self):
+        """Validate the enclosure budgets.
+
+        Outputs: raises ValueError if precision_bits, max_picard_iterations or
+        max_substeps is not a positive int within its cap (4096, 256, 4096), if
+        precision_bits is below 64, or if max_step_s is not finite and positive.
+        """
         for name, maximum in (
             ("precision_bits", 4096),
             ("max_picard_iterations", 256),
@@ -642,6 +710,15 @@ class ContactStepEncloser:
             )
 
     def initial_box(self, fleet, initial_enclosure=None):
+        """Return the packed physical start set enclosing the unit-quaternion form.
+
+        Uses the point at fleet.initial_values when initial_enclosure is None. The
+        result is that set hulled with the box of its body quaternions normalized in
+        interval arithmetic at precision_bits.
+        Outputs: raises ValueError if the set is not an IntervalBox of dimension
+        fleet.ledger_start, does not contain the numerical representative, or has
+        nonzero target-local translation coordinates (indices 6 to 12).
+        """
         box = (
             IntervalBox.point(fleet.initial_values[: fleet.ledger_start])
             if initial_enclosure is None
@@ -777,6 +854,18 @@ class ContactStepEncloser:
         strain_initial=None,
         wrench_initial=None,
     ):
+        """Try to prove a held-flow enclosure from time_s over duration_s.
+
+        Inputs: time_s and duration_s in s; initial is the packed physical start set
+        without ledgers; the other arguments are the fleet, options, bond state, held
+        actuation, geometry, optional environment and optional auxiliary start sets.
+        Outputs: a ContactStepCertificate with status PROVEN when the Picard inclusion,
+        the substep budget and every guard succeed, UNRESOLVED when a proof step fails,
+        or UNAVAILABLE when the environment cannot be enclosed, the geometry lacks
+        components or the arb backend is missing. Raises ValueError if duration_s is
+        not positive or initial is not an IntervalBox of the packed physical dimension
+        on the zero target-local chart.
+        """
         time, h = Fraction(time_s), Fraction(duration_s)
         if (
             h <= 0
@@ -1077,6 +1166,16 @@ class ContactStepEncloser:
             return ContactStepCertificate("UNRESOLVED", str(error), context, initial)
 
     def _checks(self, model, diag, geometry, dt):
+        """Check the contact guards on one evaluated set and return their record.
+
+        Inputs: model is the _ContactField, diag its evaluate output, geometry the
+        occupied target geometry and dt the substep length in s.
+        Outputs: a dict of per-member upper bounds, the minimum geometry margin,
+        preload, quiet and finite-lock flags, and the rigidization energy bound.
+        Raises _ProofUnresolved if positioner reach or speed, pad compression, force or
+        power, adhesive capacity, component, peer or footprint separation, or
+        selected-face travel is not proved.
+        """
         fleet, o, ar = model.fleet, model.o, model.ar
         body, tips, rotations, rows = (
             diag["body"],
@@ -1091,6 +1190,14 @@ class ContactStepEncloser:
         maxima, margins, preload, quiet, rods, pads = {}, [], [], True, [], []
 
         def separated(point, component, radius):
+            """Prove point, inflated by radius, is separated from a component.
+
+            Tries directions toward the component's closest point and along its
+            axes, tests each against the exact occupied vertices, and appends
+            the first positive normalized margin to margins.
+            Outputs: raises _ProofUnresolved if no direction gives a positive
+            margin.
+            """
             box = ar.box(point)
             middle = np.array(
                 [float((lo + hi) / 2) for lo, hi in zip(box.lower, box.upper)]

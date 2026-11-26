@@ -76,6 +76,7 @@ class FiniteContactSimulator:
     """
 
     def __init__(self, options: FiniteContactOptions | None = None):
+        """Store the options, defaulting to `FiniteContactOptions()`."""
         self.options = options or FiniteContactOptions()
 
     def run(
@@ -92,6 +93,18 @@ class FiniteContactSimulator:
         initial_enclosure=None,
         certificate_sink: Callable | None = None,
     ) -> FiniteContactResult:
+        """Simulate the finite compliant contact and return a `FiniteContactResult`.
+
+        Inputs: `target_properties`, `target_state` and `members` define the
+        fleet; `geometry` supplies the occupied components; `mu_m3_s2` is the
+        gravitational parameter (m^3/s^2); `feedback` and `environment` are the
+        optional callables described in the class; `initial_enclosure` is a
+        state set or an object with `build(fleet)`; `certificate_sink`, if given,
+        receives step certificates.
+        Each step checks the guards, issues commands, takes the interval enclosure
+        step and advances the state; the run ends in success when the settling
+        dwell is reached, or with a failure message on a guard failure, the
+        duration limit or a caught proof or value error."""
         o = self.options
         fleet = ContactFleet.create(
             target_properties=target_properties,
@@ -156,6 +169,7 @@ class FiniteContactSimulator:
         }
 
         def finish(success, message, diag):
+            """Return the recorder's result for the current time, state and counters."""
             return recorder.finish(
                 success,
                 message,

@@ -24,6 +24,12 @@ LIFECYCLE_SCHEMA = "orbexa.physical-mission-lifecycle.v1"
 
 @dataclass(frozen=True)
 class MissionLifecycleResult:
+    """Outcome of the attachment, detumbling and deorbit stages.
+
+    Stages that were not reached stay None. ``failure`` names the stage that
+    raised or exceeded a capacity, when there is one.
+    """
+
     success: bool
     message: str
     approach: dict
@@ -35,6 +41,11 @@ class MissionLifecycleResult:
     failure: dict = field(default_factory=dict)
 
     def to_dict(self):
+        """Return the result as a dict with stage records, assembly history and units.
+
+        The assembly history joins the attachment state with the detumbling and
+        deorbit records after their initial entries.
+        """
         history = []
         if self.capture.state is not None:
             history.append(
@@ -94,13 +105,21 @@ class MissionLifecycle:
         deorbit: DeorbitSimulator | None = None,
         propulsion_factory: Callable | None = None,
     ):
+        """Store the stage models, using defaults for those not supplied."""
         self.capture = capture or CaptureModel()
         self.detumbling = detumbling or DetumblingSimulator()
         self.deorbit = deorbit or DeorbitSimulator()
         self.propulsion_factory = propulsion_factory or ThrusterSystem.for_assembly
 
     def configuration(self):
+        """Return the options and policies of each stage as a dict.
+
+        Dataclass policies are recorded with their parameters; other policies are
+        recorded by implementation name only.
+        """
+
         def policy(value):
+            """Return the implementation name and parameters of a stage policy."""
             return {
                 "implementation": f"{type(value).__module__}.{type(value).__qualname__}",
                 "parameters": asdict(value)
@@ -149,10 +168,26 @@ class MissionLifecycle:
         contact_environment=None,
         contact_initial_enclosure=None,
     ) -> MissionLifecycleResult:
+        """Run attachment, detumbling and deorbit in order and return the result.
+
+        Stops at the first stage that fails. An attachment, propulsion setup,
+        detumbling or deorbit exception (ValueError, RuntimeError, ArithmeticError
+        or ImportError), an unsuccessful stage result, a missing finite-contact
+        report, or allocated nozzle loads above a declared pad capacity yields an
+        unsuccessful result that keeps the earlier stage results.
+
+        Inputs:
+            approach: recorded approach result.
+            capture_truth, chaser_attitudes, contact_feedback, contact_environment,
+            contact_initial_enclosure: passed to the capture stage.
+            terminal_handoff: optional PhysicalTerminalHandoff, verified against the
+                approach before capture.
+        """
         configuration = self.configuration()
         expected = (ValueError, RuntimeError, ArithmeticError, ImportError)
 
         def failure(stage, error):
+            """Return the failure record of ``stage`` for ``error``."""
             return {
                 "stage": stage,
                 "exception_type": type(error).__name__,
@@ -321,10 +356,17 @@ class MissionLifecycle:
 
 
 class MissionLifecycleStore:
+    """Read and write the lifecycle record file."""
+
     filename = "lifecycle_data.json"
 
     @staticmethod
     def save(result: MissionLifecycleResult, output_dir: Path) -> Path:
+        """Write the result to lifecycle_data.json under ``output_dir``.
+
+        Outputs:
+            Path of the file. Raises OSError when the save fails.
+        """
         path = Path(output_dir) / MissionLifecycleStore.filename
         path.parent.mkdir(parents=True, exist_ok=True)
         if not save_data(
@@ -335,6 +377,10 @@ class MissionLifecycleStore:
 
     @staticmethod
     def read(path: Path) -> dict:
+        """Return the saved lifecycle result from ``path``.
+
+        Raises ValueError when the file's schema is not the lifecycle schema.
+        """
         payload = load_data(Path(path))
         if payload.get("schema") != LIFECYCLE_SCHEMA:
             raise ValueError("Unsupported mission lifecycle record schema")

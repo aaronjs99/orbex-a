@@ -83,6 +83,18 @@ class NonlinearMissionRunner:
         streamed_hold_index=False,
         retain_journal=True,
     ):
+        """Build every component of one case/arm run.
+
+        Constructs the reference clock, model and truth model, flow enclosers, target
+        preview, deployment scenario, navigation filter, adaptation, planner, recorder,
+        dense executor and safety planner from config, design, case and options, and
+        records the initial navigation estimate.
+        Inputs: adaptation_mode is 'adaptive' or 'frozen' and bandwidth_mode is
+        'dynamic' or 'fixed'; solver_failure_updates lists updates with an injected
+        solver failure. Raises ValueError for an unknown arm, a streamed hold index
+        without a certificate sink or an initial spin prior that does not cover the
+        case, and TypeError for a non-case or non-callable controller_factory.
+        """
         if adaptation_mode not in ("adaptive", "frozen") or bandwidth_mode not in (
             "dynamic",
             "fixed",
@@ -431,6 +443,11 @@ class NonlinearMissionRunner:
         return stage + ": " + str(error)
 
     def _validate_contracted_model(self, model, global_model):
+        """Return whether a contracted model is consistent with the runner.
+
+        True when the global model matches the runner's model, the contracted model
+        matches the adaptation's active model and the adaptation has candidates.
+        """
         return (
             global_model.fingerprint == self.model.fingerprint
             and model.fingerprint == self.adaptation.active_model.fingerprint
@@ -438,6 +455,14 @@ class NonlinearMissionRunner:
         )
 
     def _planning_context(self, estimate, phase):
+        """Build the planning context and its record for a navigation estimate.
+
+        Encloses the observed target forecast and its preview error, derives the
+        observation allowance and, for docking, prospective contact constraints.
+        Outputs: the (NonlinearPlanningContext, record) pair. Raises ValueError when a
+        forecast is unresolved, navigation is not valid for docking or the contact
+        sources change during construction.
+        """
         cfg = self.config
         q = exact(estimate.exact_event_q)
         count = self.scenario.reference.horizon_steps_for_phase(phase)
@@ -560,6 +585,7 @@ class NonlinearMissionRunner:
                 )
 
         def navigation_identity(value):
+            """Return the fingerprint of the estimate's attributes."""
             return source_fingerprint(
                 {
                     **vars(value),
@@ -742,6 +768,14 @@ class NonlinearMissionRunner:
         return context, record
 
     def _terminal(self, estimate, phase):
+        """Evaluate whole-tube terminal admission for the current estimate.
+
+        Bounds each chaser's position and velocity against its observed goal, applies
+        the docking tolerances and contact-speed admission, tracks first entry and the
+        arrival deadline, and records the result.
+        Outputs: True when entry was by the deadline, the deadline was not missed and
+        the dwell reaches the configured terminal dwell updates.
+        """
         bounds = {}
         observed_goals = {}
         valid = (
@@ -865,6 +899,15 @@ class NonlinearMissionRunner:
         )
 
     def run(self, *, mission="multi", steps=None):
+        """Run the update loop and return the mission result.
+
+        Each update navigates, selects the phase, prepares or reuses a fallback runtime,
+        plans, executes and records. The loop stops on completion, an invalid update,
+        a refusal or the update budget; the result metadata gains timing, planning
+        schedule and arrival state.
+        Inputs: mission must be 'multi'; steps overrides the update budget.
+        Raises ValueError for another mission or a budget below 1.
+        """
         if mission != "multi":
             raise ValueError(
                 "This profile qualifies the complete eight-agent deployment"

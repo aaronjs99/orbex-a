@@ -39,6 +39,12 @@ class MissionSafety:
         *,
         chaser_body_radius: float = 0.0,
     ):
+        """Store the config and target and derive the spacing and tolerance values.
+
+        chaser_body_radius is the chaser bounding radius (m). Raises ValueError if it
+        is not finite and nonnegative, or if the minimum pair separation is below
+        twice that radius.
+        """
         self.config = config
         self.target = target
         if not np.isfinite(chaser_body_radius) or chaser_body_radius < 0:
@@ -52,6 +58,11 @@ class MissionSafety:
         self.target_safety_tolerance = float(config.mission.target_safety_tolerance)
 
     def clip_control(self, control: np.ndarray) -> np.ndarray:
+        """Return a copy of control clipped to the configured input bounds.
+
+        Only the first len(control) bounds are used; a bound given as the string
+        "-Inf" or "+Inf" is skipped.
+        """
         clipped = np.asarray(control, dtype=float).copy()
         for idx, bound in enumerate(self.config.mpc.input_bounds[: len(clipped)]):
             lower = bound.get("lower", -np.inf)
@@ -65,6 +76,13 @@ class MissionSafety:
     def active_margin_for_state(
         self, state: np.ndarray, anom: float, phase: MissionPhase
     ) -> float:
+        """Return the target margin for a state at anomaly anom (rad).
+
+        The chaser body radius is included. Uses the composite geometry margin
+        when the target has geometry; otherwise the larger of the cylinder radial
+        and axial margins in docking, or the spherical rendezvous margin in any
+        other phase.
+        """
         position = np.asarray(state[:3], dtype=float)
         if getattr(self.target, "geometry", None) is not None:
             return self.composite_margin(position, anom, self.chaser_body_radius)
@@ -200,6 +218,10 @@ class MissionSafety:
     def active_target_margins_safe(
         self, active_margins: dict[str, Sequence[float]]
     ) -> bool:
+        """Return True unless some margin is below minus the target safety tolerance.
+
+        NaN values are ignored and empty sequences are accepted.
+        """
         for values in active_margins.values():
             arr = np.asarray(values, dtype=float)
             if arr.size and float(np.nanmin(arr)) < -self.target_safety_tolerance:
@@ -209,6 +231,11 @@ class MissionSafety:
     def pairwise_spacing_safe(
         self, pairwise_spacing: Sequence[dict[str, float]]
     ) -> bool:
+        """Return True if every finite pair spacing is at least the minimum separation.
+
+        A tolerance equal to the target safety tolerance is allowed. Returns True when
+        no finite spacing is present.
+        """
         values = [
             float(value)
             for entry in pairwise_spacing
@@ -224,6 +251,12 @@ class MissionSafety:
         actual: dict[str, list[list[float]]],
         anom_history: Sequence[float],
     ) -> list[dict[str, float]]:
+        """Return, for each sample in anom_history, the pair distances between chasers.
+
+        Keys are "<left_id>:<right_id>" in the order of actual; values are position
+        distances (m). A chaser with fewer samples than anom_history repeats its last
+        state.
+        """
         chaser_ids = list(actual.keys())
         spacing = []
         for idx in range(len(anom_history)):

@@ -47,6 +47,14 @@ class ContactFleet:
         mu_m3_s2,
         gravity_gradient=False,
     ):
+        """Build the fleet layout and packed initial state.
+
+        Inputs: `mu_m3_s2` is the gravitational parameter (m^3/s^2). The packed
+        state starts with the target COM position and velocity in ECI, then
+        per-body local position, velocity, quaternion, spin and fuel, then tip
+        extension and velocity, then 19 zeroed ledger values.
+        Raises ValueError for an empty or duplicate-id fleet, for initial clocks
+        that differ from the target clock, or for a nonpositive `mu_m3_s2`."""
         members = tuple(members)
         if not members or len({m.id for m in members}) != len(members):
             raise ValueError(
@@ -107,13 +115,19 @@ class ContactFleet:
 
     @property
     def body_count(self):
+        """Return the number of integrated bodies: the target plus every chaser."""
         return len(self.members) + 1
 
     @property
     def chaser_count(self):
+        """Return the number of chasers."""
         return len(self.members)
 
     def gravity(self, position):
+        """Return the central-gravity acceleration at an ECI position.
+
+        Inputs: `position` in m. Outputs: acceleration in m/s^2.
+        Raises ValueError if the radius is not finite and positive."""
         mu = self.mu
         radius = np.linalg.norm(position)
         if not np.isfinite(radius) or radius <= 0:
@@ -121,12 +135,23 @@ class ContactFleet:
         return -mu * position / radius**3
 
     def unpack(self, values):
+        """Return writable views of the body and tip blocks of a packed state.
+
+        Outputs: `(bodies, tips)` shaped (body_count, 14) and (chaser_count, 6)."""
         return (
             values[self.body_slice].reshape(self.body_count, 14),
             values[self.tip_slice].reshape(self.chaser_count, 6),
         )
 
     def snapshot(self, t, values, diag=None):
+        """Return the physical observation dictionary for a packed state.
+
+        Inputs: `t` is elapsed time (s); `diag`, if given, supplies pad gaps and
+        contact wrenches, otherwise gaps are computed from geometry and wrenches
+        are zero.
+        Outputs: a dictionary with target and chaser `ContactBodyState` values in
+        ECI at clock `started + t`, positioner encoder products, per-chaser
+        contact wrenches in ECI and contact gaps (m)."""
         started, members = self.started, self.members
         mounts, anchors, normals = self.mounts, self.anchors, self.normals
         unpack = self.unpack
@@ -177,6 +202,10 @@ class ContactFleet:
         }
 
     def check_observation(self, observation, clock):
+        """Validate an observation against the fleet and a physical clock.
+
+        Raises ValueError if the chaser ids differ from the fleet ids, or if any
+        state is not a `ContactBodyState` stamped within 1e-8 s of `clock`."""
         members = self.members
         if set(observation["chasers"]) != {member.id for member in members}:
             raise ValueError("Contact observations must name the exact fleet")
@@ -202,6 +231,9 @@ class ContactActuation:
 
     @classmethod
     def create(cls, body_count, chaser_count):
+        """Return zeroed commands with unset gap and frozen-extension channels.
+
+        The sensed gap is initialised to infinity and the frozen extension to NaN."""
         return cls(
             np.zeros((body_count, 6)),
             np.zeros((chaser_count, 3)),
@@ -224,6 +256,9 @@ class ContactBondState:
 
     @classmethod
     def create(cls, count):
+        """Return bond state for `count` chasers with no engagement.
+
+        Engagement times start at infinity and touch records at NaN."""
         return cls(
             np.full(count, np.inf),
             np.zeros(count),
@@ -234,6 +269,15 @@ class ContactBondState:
         )
 
     def advance_engagement(self, t, dt, diag, actuation, options):
+        """Update first-touch records and start bond engagement after preload dwell.
+
+        Inputs: `t` is elapsed time (s), `dt` the step (s), `diag` the mechanics
+        diagnostics, `actuation` the sensed channels and `options` the contact
+        options. Mutates `first_touch`, `first_touch_speed`, `preload`,
+        `engagement`, `bond_rest` and `rotation_rest`. The preload timer counts
+        steps where sensed normal force is at least 0.8 of `preload_n`, sensed gap
+        is within `range_error_bound_m` and the pad is compressed; it resets
+        otherwise. Engagement starts when it reaches `preload_dwell_s`."""
         o = options
         engagement, preload = self.engagement, self.preload
         bond_rest, rotation_rest = self.bond_rest, self.rotation_rest

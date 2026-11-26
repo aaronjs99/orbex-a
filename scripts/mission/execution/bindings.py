@@ -16,11 +16,40 @@ from orbexa.models.dynamics.reference_frame import exact, fingerprint
 
 
 class PerformanceStageBindings:
+    """Bind each optimized tube stage to independently recomputed source records.
+
+    It holds the configuration, clock, admission runtime and observation event, and
+    exposes `snapshot`, `bind` and `check`. It does not commit motion or navigation
+    state.
+    """
+
     def __init__(self, *, config, clock, runtime, observed_q, precision_bits):
+        """Store the configuration, clock, runtime, observation event and precision.
+
+        Inputs:
+        - observed_q: exact anomaly of the current observation event.
+        - precision_bits: Arb precision (bits) used for nominal coefficient bounds.
+        """
         self.config, self.clock, self.runtime = config, clock, runtime
         self.observed_q, self.precision_bits = observed_q, precision_bits
 
     def snapshot(self, planning, planner, key, *, _target_identity=None):
+        """Return the identity-bearing record of one agent's stage sources.
+
+        The record holds the exact spec fields, nominal parameters, the first column of
+        the nominal control trajectory, planner context identifiers, numerical reserve,
+        the actuator error of the active fallback controller at `observed_q`, the
+        acceleration disturbance, the region and a deep copy of the residual proof.
+
+        Inputs:
+        - key: agent key in `planning.plans`.
+        - _target_identity: optional (target_flow, fingerprint) pair captured by the
+          caller. When None the fingerprint is read from the planner context.
+
+        Outputs:
+        - A dict. Raises ValueError if `_target_identity` is given and the context
+          target flow is a different object.
+        """
         from orbexa.control.fallback.refuge import exact_record
 
         spec = planning.plans[key].spec
@@ -87,6 +116,26 @@ class PerformanceStageBindings:
         }
 
     def bind(self, planning, planner, q0, stage):
+        """Verify each stage against independent source bounds and record the binding.
+
+        For every stage it requires a PROVEN residual whose backend source, plant,
+        clock,
+        target flow, nominal parameters, q interval, region and input box match the
+        planning context, that the applied-input tightening covers the installed
+        actuator support, and that the stage coefficients, forcing and eta dominate the
+        independently computed bounds over (q0, q0 + anom_step).
+
+        Inputs:
+        - q0: exact anomaly at the start of the stage.
+        - stage: per-agent stage dicts; each gains `source_binding`,
+          `proof_record["source_binding_id"]` and a recomputed
+        `proof_record["identity"]`.
+
+        Outputs:
+        - (bindings, matrix): bindings maps agent key to (snapshot fingerprint,
+          planning.matrices[0]); matrix is the nominal drag dynamics matrix generator.
+          Raises ValueError when the Arb source is unavailable or any check fails.
+        """
         from orbexa.models.dynamics.orbital import orbital_ellp_drag
         from orbexa.proofs.nonlinear import (
             _SOURCE_SHA256 as residual_source,
@@ -229,6 +278,14 @@ class PerformanceStageBindings:
         return bindings, matrix
 
     def check(self, planning, planner, bindings):
+        """Raise ValueError if any bound stage source changed since `bind`.
+
+        It compares the agent keys, the identity of the `planning.matrices[0]` callback
+        and the recomputed snapshot fingerprint of each agent, all against one target
+        proof fingerprint captured before the batch, then requires that target object
+        and
+        its fingerprint are unchanged after the batch. It mutates nothing.
+        """
         # Every member shares the same complete prospective target proof.
         # Hash its full current payload before and after this synchronous
         # batch, while retaining every per-agent mutable-source snapshot.

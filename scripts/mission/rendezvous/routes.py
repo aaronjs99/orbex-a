@@ -18,6 +18,11 @@ from scipy.optimize import linear_sum_assignment
 
 
 def _positive(value, name, *, zero=False):
+    """Return value as a float, requiring it finite and positive.
+
+    Zero is accepted when zero=True. Raises ValueError for a bool, non-finite or
+    negative value, or zero when not allowed.
+    """
     if isinstance(value, (bool, np.bool_)):
         raise ValueError(name + " must be a finite scalar with the required sign")
     value = float(value)
@@ -27,6 +32,10 @@ def _positive(value, name, *, zero=False):
 
 
 def _point(value, name):
+    """Return a float copy of value as a finite body-frame three-vector.
+
+    Raises ValueError otherwise.
+    """
     result = np.asarray(value, dtype=float)
     if result.shape != (3,) or not np.all(np.isfinite(result)):
         raise ValueError(name + " must be a finite body-frame three-vector")
@@ -34,6 +43,7 @@ def _point(value, name):
 
 
 def segment_point_distance(start, end, point):
+    """Return the distance from point to the closed segment start-end."""
     delta = end - start
     squared = float(delta @ delta)
     progress = (
@@ -46,6 +56,12 @@ def segment_point_distance(start, end, point):
 
 @dataclass(frozen=True)
 class AttachmentRoute:
+    """One chaser's assigned attachment patch and its route.
+
+    Points are in the target body frame (m); release_order is the sequence in which
+    the route was planned and length_m is the polyline length.
+    """
+
     chaser_index: int
     patch_index: int
     patch_id: str
@@ -79,6 +95,12 @@ class CompositeAttachmentPlanner:
         minimum_pair_separation_m,
         route_buffer_m=0.05,
     ):
+        """Build the enlarged component boxes and the clear waypoint set.
+
+        Raises TypeError when geometry is not a SpacecraftGeometry and ValueError for
+        an invalid radius, clearance, buffer or a pair separation below twice the bus
+        radius. Lengths are in m.
+        """
         from orbexa.models.geometry.composite import SpacecraftGeometry
 
         if not isinstance(geometry, SpacecraftGeometry):
@@ -139,6 +161,7 @@ class CompositeAttachmentPlanner:
 
     @staticmethod
     def _unique(points):
+        """Return the points as float arrays with exact duplicates removed, in order."""
         result, seen = [], set()
         for point in points:
             key = tuple(map(float, point))
@@ -189,6 +212,7 @@ class CompositeAttachmentPlanner:
         )
 
         def free(first, second):
+            """Return whether the segment avoids components and stationary points."""
             return self.segment_clear(first, second) and all(
                 segment_point_distance(first, second, point) > self.pair_radius
                 for point in stationary
@@ -238,11 +262,26 @@ class CompositeAttachmentPlanner:
 
     @staticmethod
     def length(route):
+        """Return the polyline length (m) of a route."""
         return float(np.sum(np.linalg.norm(np.diff(route, axis=0), axis=1)))
 
     def plan(
         self, initial_points_body_m, *, com_standoff_m, staging_offset_m, patch_ids=None
     ):
+        """Assign chasers to patches and route them sequentially.
+
+        Patches with a clear corridor between their staging and final points are
+        candidates; chasers are matched to minimize total route length, and the matching
+        is rejected when selected final or staging points are within the pair radius.
+        Routes are then planned one at a time, shortest first, with the other chasers
+        held at their current points.
+        Inputs: initial_points_body_m is an (n, 3) array in m; com_standoff_m and
+        staging_offset_m are normal distances (m) with staging larger; patch_ids
+        optionally restricts the patches.
+        Outputs: a tuple of AttachmentRoute sorted by chaser index. Raises
+        ValueError for invalid input, too few accessible patches, no complete
+        matching, close selected points or an exhausted route search.
+        """
         starts = np.asarray(initial_points_body_m, dtype=float)
         if (
             starts.ndim != 2

@@ -20,6 +20,14 @@ from orbexa.proofs.rotation import all_rotation_component_bounds
 
 @dataclass(frozen=True)
 class TargetPoseEnclosure:
+    """Whole-window enclosure of the target rotation and center in one frame.
+
+    rotation_entries holds nine row-major rotation entries and center the three center
+    coordinates (m), both as boxes valid over [start, end]. The remaining fields
+    identify the geometry, target model, frame, clock and proof, and list the
+    assumptions.
+    """
+
     start: Any
     end: Any
     rotation_entries: IntervalBox
@@ -32,6 +40,11 @@ class TargetPoseEnclosure:
     assumptions: tuple[str, ...]
 
     def __post_init__(self):
+        """Convert the scope to exact values and validate the enclosure.
+
+        Raises ValueError unless the rotation box has dimension 9, the center box
+        dimension 3, every identity is valid and nonblank assumptions are given.
+        """
         start, end = _scope(self.start, self.end)
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "end", end)
@@ -63,10 +76,15 @@ class AnyProperTargetPose:
     """
 
     def __init__(self, *, geometry_id, target_model_id, frame, clock_id):
+        """Store the geometry, target model, frame and clock identities."""
         self.geometry_id, self.target_model_id = geometry_id, target_model_id
         self.frame, self.clock_id = frame, clock_id
 
     def __call__(self, start, end):
+        """Return a TargetPoseEnclosure with every rotation entry in [-1, 1].
+
+        The center is fixed at the origin, and the result does not depend on the window.
+        """
         return TargetPoseEnclosure(
             start,
             end,
@@ -91,6 +109,7 @@ class CompositeOccupiedBoundsProvider:
     """Transform every exact expanded component vertex by a proved pose box."""
 
     def __init__(self, geometry, pose_provider):
+        """Store the geometry and pose provider; the numeric cache starts empty."""
         self.geometry, self.pose_provider = geometry, pose_provider
         self._numeric_payload = None
 
@@ -117,12 +136,18 @@ class CompositeOccupiedBoundsProvider:
 
     @staticmethod
     def _payload_box(payload):
+        """Rebuild a new IntervalBox of Fractions from (numerator, denominator) rows."""
         # Fresh boxes/Fractions prevent a caller's forced output mutation from
         # changing the privately retained numeric payload.
         return IntervalBox(*(tuple(Fraction(n, d) for n, d in row) for row in payload))
 
     @staticmethod
     def _bounds(start, end, pose, components, projections):
+        """Wrap component boxes and support projections as OccupiedGeometryBounds.
+
+        The proof reference is derived from the fingerprint of pose, and its assumptions
+        are extended with the vertex-enclosure statements.
+        """
         return OccupiedGeometryBounds(
             start,
             end,
@@ -141,6 +166,16 @@ class CompositeOccupiedBoundsProvider:
         )
 
     def __call__(self, start, end):
+        """Return occupied-geometry bounds over [start, end] from the pose enclosure.
+
+        The pose provider must return a TargetPoseEnclosure covering the window for the
+        same geometry. Each component's uncertainty-expanded vertices are transformed by
+        the rotation-entry and center boxes into an enclosing box, and fixed direction
+        projections are enclosed the same way. With an unmodified AnyProperTargetPose,
+        all_rotation_component_bounds is used instead. The last numeric result is reused
+        when geometry, pose boxes and provider kind agree exactly. Raises ValueError if
+        the pose does not cover the window or belongs to another geometry.
+        """
         pose = self.pose_provider(start, end)
         geometry_id = self.geometry.fingerprint
         if (
@@ -313,6 +348,11 @@ class AttitudePoseBoundsProvider:
         clock,
         precision_bits=128,
     ):
+        """Store the attitude provider, identities, clock and bounded caches.
+
+        Raises ValueError unless clock.fingerprint equals clock_id and precision_bits is
+        at least 64.
+        """
         self.attitude_provider, self.geometry_id = attitude_provider, geometry_id
         self.target_model_id, self.frame, self.clock_id = (
             target_model_id,
@@ -329,6 +369,18 @@ class AttitudePoseBoundsProvider:
             )
 
     def __call__(self, start, end):
+        """Return a TargetPoseEnclosure over [start, end] from a proved attitude flow.
+
+        The flow must be an AttitudeFlowCertificate that is proven, matches the target
+        model, clock and frame, and covers the window. Its segment chain is checked once
+        per attitude identity. Each swept quaternion box overlapping the window is
+        turned into rotation entries with the reference-clock rotation using Arb, and
+        the boxes are hulled. The center is fixed at the origin. For flows other than
+        the maintained unit-quaternion model, a quaternion box that may contain zero
+        gives the all-proper-rotation box. Raises ValueError for a mismatched, unproven
+        or non-covering flow, a broken segment chain or domain coverage, a maintained
+        flow with no unit initial quaternion, or no segment in the window.
+        """
         from orbexa.proofs.attitude import (
             _SOURCE_SHA256 as attitude_source,
         )

@@ -13,10 +13,21 @@ from orbexa.models.dynamics.attitude import finite_vector
 
 @dataclass(frozen=True)
 class ApoapsisBurnWindow:
+    """Decide whether a sensed orbit state lies inside the apoapsis request window.
+
+    With half_angle_rad of None the window is always active. minimum_eccentricity is the
+    dimensionless threshold below which the orbit is treated as near circular.
+    """
+
     half_angle_rad: float | None = None
     minimum_eccentricity: float = 1e-8
 
     def __post_init__(self):
+        """Validate and normalize the window settings.
+
+        Raises ValueError if half_angle_rad is given and is not a finite real in (0,
+        pi], or if minimum_eccentricity is not a finite real strictly between 0 and 1.
+        """
         if self.half_angle_rad is not None:
             if isinstance(self.half_angle_rad, (bool, np.bool_)) or not isinstance(
                 self.half_angle_rad, Real
@@ -38,6 +49,24 @@ class ApoapsisBurnWindow:
         object.__setattr__(self, "minimum_eccentricity", value)
 
     def evaluate(self, position, velocity, mu):
+        """Return the window status for a position, velocity and mu.
+
+        Always active without a half angle, and active for a near-circular orbit.
+        Otherwise active when the cosine of the true anomaly is at most -cos(half
+        angle).
+
+        Inputs:
+            position: position vector (m) in an inertial frame.
+            velocity: velocity vector (m/s) in the same frame.
+            mu: gravitational parameter (m^3/s^2).
+
+        Outputs:
+            Dict with "active" and "rule", plus eccentricity and cosine values when
+                computed.
+
+        Raises ValueError if the vectors are not finite 3-vectors, mu or the radius is
+        not positive, or the orbit is unbound or radial (when a half angle is set).
+        """
         if self.half_angle_rad is None:
             return {"active": True, "rule": "continuous_requested_burn"}
         r, v = (
@@ -79,6 +108,7 @@ class ApoapsisBurnWindow:
         }
 
     def as_dict(self):
+        """Return the window settings and a fixed scope string as a dict."""
         return {
             "half_angle_rad": self.half_angle_rad,
             "minimum_eccentricity": self.minimum_eccentricity,
@@ -118,6 +148,7 @@ def bounded_hold_duration(
     admitted = min(Fraction(requested), remaining)
 
     def rounded_down(value):
+        """Return float(value), moved one ulp toward zero if it exceeds value."""
         result = float(value)
         return math.nextafter(result, 0.0) if Fraction(result) > value else result
 

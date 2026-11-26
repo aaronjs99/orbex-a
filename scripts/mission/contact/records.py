@@ -31,6 +31,10 @@ class ContactRecorder:
         feedback=None,
         environment=None,
     ):
+        """Store the collaborators and start empty history and contact records.
+
+        `extrema` and `minimum_clearances` are the guard extrema mappings, kept as
+        `maxima` and `minima`; `original` holds the initial diagnostics."""
         self.fleet = fleet
         self.options = options
         self.geometry = geometry
@@ -45,6 +49,11 @@ class ContactRecorder:
         self.contact_records = {}
 
     def record(self, t, values, diag, force=False):
+        """Append one history row for the current state.
+
+        Inputs: `t` is elapsed time (s), `values` the packed state and `diag` the
+        mechanics diagnostics. A row is skipped when `force` is False and less
+        than `history_step_s` has passed since the last row. Mutates `history`."""
         fleet, o = self.fleet, self.options
         started, members, ledger_start = (
             fleet.started,
@@ -94,6 +103,17 @@ class ContactRecorder:
     def finish(
         self, success, message, *, t, y, diag, dwell, lock_energy, saturation_count
     ):
+        """Close the run and return the `FiniteContactResult` with its audit.
+
+        Inputs: `success` and `message` give the proposed outcome; `t` is elapsed
+        time (s), `y` the packed state, `diag` the final diagnostics, `dwell` the
+        settling dwell (s), `lock_energy` the rigidization energy (J) and
+        `saturation_count` the number of saturated control steps.
+        Records the final history row, computes momentum and energy balance
+        residuals against the initial diagnostics and the ledgers, and builds the
+        per-chaser contact records and the audit. If the balances exceed the
+        tolerances, `success` becomes False with message
+        "finite_contact_balance_tolerance_failed"."""
         fleet, o = self.fleet, self.options
         n, count, members = fleet.body_count, fleet.chaser_count, fleet.members
         started, ledger_start = fleet.started, fleet.ledger_start

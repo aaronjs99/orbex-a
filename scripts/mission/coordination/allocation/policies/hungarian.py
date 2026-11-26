@@ -35,10 +35,12 @@ class LocalHungarianPolicy:
     def initialize(
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> None:
+        """Do nothing; this policy needs no initial memory."""
         return
 
     @staticmethod
     def _cost_matrix(starts: list[Vec], goals: list[Vec]) -> np.ndarray:
+        """Return Euclidean distances: starts along rows, goals along columns."""
         C = np.zeros((len(starts), len(goals)))
         for i, s in enumerate(starts):
             for j, g in enumerate(goals):
@@ -52,6 +54,14 @@ class LocalHungarianPolicy:
         network: Network,
         agent_id: int,
     ) -> int:
+        """Reassign the goals of agent_id and its neighbors to minimize total distance.
+
+        Solves a linear sum assignment (scipy) between the cluster's start positions
+        and its current goals, then overwrites each member's goal_pos.
+
+        Outputs:
+            The number of neighbors, or 0 when the agent has none (nothing changes).
+        """
         w = agent_id
         nbrs = network.neighbors(w)
         if not nbrs:
@@ -74,4 +84,5 @@ class LocalHungarianPolicy:
         self, agents: list[AgentState], tasks: Sequence[Vec], network: Network
     ) -> bool:
         # Heuristic policy; no strong convergence check.
+        """Return False; the policy defines no convergence check."""
         return False

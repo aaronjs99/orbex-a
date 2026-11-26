@@ -12,6 +12,9 @@ class ContactGuards:
     """Apply declared endpoint/travel-reserve guards in their original order."""
 
     def __init__(self, *, fleet, options, geometry):
+        """Store the fleet, options and geometry and start the extrema records.
+
+        `maxima` starts at 0.0 and `minima` at infinity for each tracked key."""
         self.fleet = fleet
         self.options = options
         self.geometry = geometry
@@ -34,6 +37,11 @@ class ContactGuards:
         }
 
     def cylinder_distance(self, point):
+        """Return the signed distance (m) from a body-frame point to the cylinder.
+
+        Inputs: `point` is a body-frame position (m); the geometry mapping supplies
+        `radius` and `half_length` (m), with the axis along body z. The result is
+        negative inside the cylinder."""
         geometry = self.geometry
         radial = np.linalg.norm(point[:2]) - float(geometry["radius"])
         axial = abs(point[2]) - float(geometry["half_length"])
@@ -43,6 +51,16 @@ class ContactGuards:
         )
 
     def check(self, t, values, diag, dt):
+        """Check the held-step guards and return the first failure reason, or None.
+
+        Inputs: `t` is elapsed time (s), `values` the packed state, `diag` the
+        mechanics diagnostics and `dt` the step length (s).
+        Outputs: a string of the form "<id>: <reason>" (or "<id>|<id>: <reason>"
+        for peer pairs) naming the first exceeded limit, or None when all pass.
+        Updates `maxima` and `minima` with the observed extremes. Checks cover
+        positioner reach, speed, force and power, pad compression, adhesive
+        capacity, bus and positioner clearance, patch footprint margin and
+        peer clearance."""
         fleet, o = self.fleet, self.options
         members, count = fleet.members, fleet.chaser_count
         normals, unpack = fleet.normals, fleet.unpack

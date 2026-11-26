@@ -27,16 +27,21 @@ from orbexa.mission.online.clock import MONOTONIC_CLOCK, wall_time_ns
 
 
 def _digest(value):
+    """Return the SHA-256 hex digest of value."""
     return hashlib.sha256(value).hexdigest()
 
 
 def _positive_int(value, name):
+    """Return value if it is a positive integer (not a bool); otherwise raise ValueError
+    named by name.
+    """
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(name + " must be a positive integer")
     return value
 
 
 def _mapping_proxy(value):
+    """Return a read-only mapping proxy of value."""
     return MappingProxyType(value)
 
 
@@ -60,6 +65,13 @@ def serialize_product(value):
 
 
 def _handler(spec):
+    """Import a "module:function" worker spec and return the callable and a digest.
+
+    Outputs:
+        The function and the SHA-256 of its module's source file.
+        Raises ValueError unless spec is module:name with no dot in name, and
+        TypeError if the attribute is not callable or the module has no source file.
+    """
     module_name, separator, name = spec.partition(":")
     if not separator or not module_name or not name or "." in name:
         raise ValueError("Use an importable module:top_level_function worker")
@@ -72,6 +84,8 @@ def _handler(spec):
 
 @dataclass(frozen=True)
 class PlanningRequest:
+    """Immutable request for a prepared product, with exact clock strings, deadline."""
+
     request_id: str
     context_id: str
     activation_q: str
@@ -82,6 +96,13 @@ class PlanningRequest:
     wall_clock_id: str = MONOTONIC_CLOCK
 
     def __post_init__(self):
+        """Validate the request fields.
+
+        Raises ValueError unless the identities and clock strings are nonblank, the
+        hold width is positive, submitted_ns and deadline_ns are positive integers with
+        the deadline not before submission, and payload is bytes. Also rejects an
+        unsupported wall_clock_id.
+        """
         from fractions import Fraction
 
         if any(
@@ -107,6 +128,7 @@ class PlanningRequest:
 
     @property
     def fingerprint(self):
+        """Return the SHA-256 of the request's canonical JSON, payload by digest."""
         return _digest(
             json.dumps(
                 {
@@ -127,6 +149,8 @@ class PlanningRequest:
 
 @dataclass(frozen=True)
 class PlanningResult:
+    """Worker outcome for a request, with status, timing, payload and process id."""
+
     request: PlanningRequest
     worker_spec: str
     worker_source_sha256: str
@@ -145,6 +169,12 @@ class PlanningResult:
         return pickle.loads(self.payload)
 
     def as_dict(self):
+        """Return a JSON-compatible record of the result.
+
+        Includes request identity, status, worker identity, times in nanoseconds, the
+        product digest and size, and whether a READY product was completed and received
+        by the declared deadline.
+        """
         return {
             "schema": "orbexa.online-planning-result.v1",
             "request_id": self.request.request_id,
@@ -241,6 +271,16 @@ class ProcessPlanningWorker:
         maximum_result_bytes=32 * 1024 * 1024,
         maximum_request_bytes=4 * 1024 * 1024,
     ):
+        """Bind the worker to a source-backed spec and set buffer limits.
+
+        Inputs:
+            worker_spec: "module:function".
+            maximum_result_bytes, maximum_request_bytes: size limits in bytes; the
+                result buffer must be at least 4096.
+
+        Outputs:
+            Raises ValueError for a non-positive limit or a result limit under 4096.
+        """
         _positive_int(maximum_result_bytes, "Result buffer size")
         _positive_int(maximum_request_bytes, "Request size limit")
         if maximum_result_bytes < 4096:
@@ -255,6 +295,7 @@ class ProcessPlanningWorker:
         self._retired = []
 
     def _reap(self):
+        """Join and close retired processes that have exited; keep those still alive."""
         remaining = []
         for process in self._retired:
             if process.is_alive():
@@ -266,9 +307,17 @@ class ProcessPlanningWorker:
 
     @property
     def busy(self):
+        """Return whether a planning process is currently active."""
         return self._process is not None
 
     def submit(self, request):
+        """Start a spawned process that runs the worker on request.
+
+        Raises ValueError if a retired process is still alive, a request is already
+        active, the request is not a PlanningRequest within maximum_request_bytes, or
+        its deadline has passed. If the process fails to start, state is cleared and
+        the error is re-raised.
+        """
         self._reap()
         if self._retired:
             raise ValueError(
@@ -397,7 +446,9 @@ class ProcessPlanningWorker:
         self._buffer = self._length = self._completed = None
 
     def __enter__(self):
+        """Return the worker."""
         return self
 
     def __exit__(self, *_):
+        """Close the worker on exit."""
         self.close()

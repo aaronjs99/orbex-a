@@ -13,6 +13,12 @@ from scipy.spatial.transform import Rotation
 
 
 def _limit(vector, maximum):
+    """Scale a vector to at most a Euclidean norm of `maximum`, rounded inward.
+
+    Inputs: `vector` and the scalar `maximum` share the same physical unit.
+    Outputs: the scaled array, whose exact squared norm does not exceed
+    `maximum` squared.
+    Raises ValueError if eight inward float steps cannot reach that bound."""
     norm = float(np.linalg.norm(vector))
     result = np.asarray(vector) * min(1.0, maximum / max(norm, 1e-30))
     squared_limit = Fraction(float(maximum)) ** 2
@@ -33,6 +39,13 @@ class ContactController:
     def __init__(
         self, *, fleet, options, bonds, actuation, initial_values, feedback=None
     ):
+        """Store the collaborators and fix each chaser's reference pose.
+
+        Inputs: `initial_values` is the packed state; `feedback`, if given, maps
+        (clock, observation) to an estimated observation. The first observation
+        is taken at t=0, checked against the fleet and used to record
+        `reference_offsets` (m) and `reference_rotations` in the estimated target
+        body axes. `saturation_count` starts at 0."""
         self.fleet = fleet
         self.options = options
         self.bonds = bonds
@@ -63,6 +76,18 @@ class ContactController:
         self.reference_rotations = reference_rotations
 
     def command(self, t, values, diag):
+        """Compute actuator commands for one step and return the observation used.
+
+        Inputs: `t` is the elapsed physical time (s) since the fleet start,
+        `values` the packed state and `diag` the mechanics diagnostics for it.
+        Outputs: the (possibly feedback-estimated) observation. Mutates the
+        actuation arrays (`controls`, `extension_acceleration`,
+        `sensed_normal_force`, `sensed_gap`), `frozen_extension` and
+        `saturation_count`. Stationkeeping force and torque are clipped to the
+        option limits and scaled by one minus the bond activation; positioner
+        acceleration is limited to `extension_acceleration_m_s2`.
+        Raises ValueError for non-finite measurements or encoders that do not name
+        the exact fleet."""
         fleet, o = self.fleet, self.options
         target_properties, members = fleet.target_properties, fleet.members
         mounts, anchors, normals = fleet.mounts, fleet.anchors, fleet.normals

@@ -31,6 +31,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class CoupledMissionState:
+    """Fleet state at one shared anomaly.
+
+    Per chaser ID: actual state, nominal centre, tube phi and omega, and
+    bandwidth. Optionally holds the arrival commitment.
+    """
+
     anomaly: float
     states: dict[str, np.ndarray]
     centers: dict[str, np.ndarray]
@@ -43,6 +49,12 @@ class CoupledMissionState:
     def initialize(
         cls, chasers: Sequence[ChaserConfig], config: SimulationConfig
     ) -> CoupledMissionState:
+        """Return the state at anomaly 0.0 for the given chasers.
+
+        States and centres start at each chaser's initial_state, phi and bandwidth at
+        the configured tube initial values and omega at zero. Raises ValueError for
+        an empty fleet or repeated chaser IDs.
+        """
         ids = [c.chaser_id for c in chasers]
         if not ids or len(set(ids)) != len(ids):
             raise ValueError(

@@ -150,9 +150,15 @@ def terminal_contact_speed_record(
     )
 
     class SavedPointPreview:
+        """Preview of the saved numerical reference that answers only at event q.
+
+        Every query at another time raises ValueError.
+        """
+
         current_q = q
 
         def rotation_matrix_at(self, query):
+            """Return the saved reference rotation matrix when ``query`` equals q."""
             _require(
                 float(query) == float(q),
                 "contact-speed preview queried at another event",
@@ -160,12 +166,18 @@ def terminal_contact_speed_record(
             return rotation
 
         def body_angular_velocity_at(self, query):
+            """Return the saved reference body rate when ``query`` equals q."""
             _require(
                 float(query) == float(q), "contact-speed rate queried at another event"
             )
             return rates
 
         def docking_state(self, point, query):
+            """Return the saved goal state of the chaser assigned to ``point``.
+
+            Raises ValueError when ``query`` differs from q or the point does not match
+            an assigned docking point with a single goal state.
+            """
             _require(
                 float(query) == float(q), "contact-speed point queried at another event"
             )
@@ -331,6 +343,11 @@ def verify_nonlinear_arrival(approach, *, clock):
     )
 
     def q_value(value, label):
+        """Return the exact clock value of a saved string.
+
+        Raises ValueError when ``value`` is not a non-empty string or cannot be
+        parsed as an exact value.
+        """
         _require(
             isinstance(value, str) and bool(value.strip()),
             label + " must be an exact saved clock string",
@@ -341,6 +358,7 @@ def verify_nonlinear_arrival(approach, *, clock):
             raise ValueError("Nonlinear completion: malformed " + label) from error
 
     def integer(value):
+        """Return True when ``value`` is an int and not a bool."""
         return isinstance(value, int) and not isinstance(value, bool)
 
     deadline = q_value(arrival.get("exact_deadline"), "arrival deadline")

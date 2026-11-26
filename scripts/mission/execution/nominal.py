@@ -26,7 +26,13 @@ from orbexa.proofs.reachability import OrbitalModelBounds
 
 
 class NominalTubePropagator:
+    """Propagate the certified nominal endpoint and transfer the physical tube to it.
+
+    It keeps one proof service per nominal source and enclosure configuration.
+    """
+
     def __init__(self):
+        """Create an empty cache of nominal hold proof services."""
         self.services = {}
 
     def propagate(
@@ -46,6 +52,29 @@ class NominalTubePropagator:
         nominal_config,
         precision_bits,
     ):
+        """Prove the nominal hold endpoint and transfer the physical tube across it.
+
+        The endpoint is certified with the cached proof service; its midpoint is the
+        chosen center and the enclosure radius is the defect. If the stage has a
+        prospective endpoint budget, `h` must lie in (0, budget hold] and the budget is
+        scaled by h / budget hold, which the defect must not exceed. The initial and
+        transferred tube widths must stay within the stage peaks. On success the
+        transfer
+        record is stored in `stage["last_transfer"]`.
+
+        Inputs:
+        - center, u: nominal center and nominal input at anomaly `q`.
+        - q, h: exact start anomaly and hold width.
+        - params: nominal orbital parameters; phi, omega: current tube widths.
+        - stage: stage dict (peaks, alpha, disturbance bound, budget, proof record).
+        - lam: sliding gains; input_bounds, clock_domain, nominal_config and
+          precision_bits configure the proof service and Arb comparison.
+
+        Outputs:
+        - (chosen, next_phi, next_omega, certificate, defect). Raises ValueError for an
+          unresolved endpoint, a budget or peak violation (peak failures carry
+          `execution_details`), or invalid shortened-hold rates.
+        """
         budget = stage.get("nominal_endpoint_error_abs")
         h = exact(h)
         prospective_budget, prospective_hold = None, None

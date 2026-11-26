@@ -37,6 +37,8 @@ from orbexa.models.dynamics.relative import NonlinearModelBounds
 
 @dataclass(frozen=True)
 class NonlinearJournalBinding:
+    """Model, clock, hold records and identities bound to one approach."""
+
     model: NonlinearModelBounds
     clock: ReferenceClockFrame
     records: NonlinearHoldArchive | tuple[dict, ...]
@@ -48,6 +50,8 @@ class NonlinearJournalBinding:
 
 @dataclass(frozen=True)
 class NonlinearJournalTimeline:
+    """Fleet ids, exact start and end anomaly, and saved sample anomalies."""
+
     ids: tuple[str, ...]
     start: Fraction
     end: Fraction
@@ -56,6 +60,10 @@ class NonlinearJournalTimeline:
 
 @dataclass(frozen=True)
 class AuthenticatedNonlinearHold:
+    """One authenticated hold: exact anomaly interval, input boxes and delivered
+    inputs per chaser.
+    """
+
     exact_start: Fraction
     exact_end: Fraction
     input_boxes: dict[str, IntervalBox]
@@ -80,6 +88,24 @@ def bind_nonlinear_journal(
     expected_actuator_id=None,
     expected_sensor_id=None,
 ):
+    """Bind a full hold journal to the approach that saved its compact form.
+
+    Checks that the journal is non-empty, has the same number of holds as the
+    approach's fleet_hold_records, and that each hold projects to the saved
+    compact record. Takes the actuator and sensor identities from the arguments
+    or the first saved hold.
+
+    Inputs:
+        approach: recorded approach result.
+        model, clock: physical model and reference clock.
+        hold_records: NonlinearHoldArchive or sequence of full hold records.
+        expected_actuator_id, expected_sensor_id: optional identities.
+
+    Outputs:
+        NonlinearJournalBinding with the source and journal hashes. Raises
+        ValueError on any mismatch; the endpoint check of
+        ``capture_truth_from_nonlinear`` also propagates.
+    """
     capture_truth_from_nonlinear(approach, model=model, clock=clock)
     records = (
         hold_records
@@ -126,6 +152,13 @@ def bind_nonlinear_journal(
 
 
 def verify_nonlinear_timeline(approach, *, binding):
+    """Recheck the binding and return the journal timeline.
+
+    Raises ValueError when the approach or journal hash changed, not every hold
+    was admitted by the continuous execution certificate, the release clock
+    differs from the first sample, or the saved anomaly history or fleet
+    trajectories are invalid.
+    """
     current_journal = (
         binding.records.identity
         if isinstance(binding.records, NonlinearHoldArchive)
@@ -166,6 +199,23 @@ def verify_nonlinear_timeline(approach, *, binding):
 
 
 def verified_nonlinear_holds(approach, *, binding, timeline, body_radii):
+    """Yield each journal hold after authenticating it in order.
+
+    Per hold it checks the contiguous exact clock, decision identity and
+    uniqueness, committed admission, actuator, sensor and navigation status,
+    fleet-wide identities, nonnegative fuel, matching geometry admission with
+    whole-hold component and peer separation coverage, finite bus radii at least
+    ``body_radii``, the command source and, for performance holds, the flow
+    identities. Delivered endpoints must equal the saved trajectory samples.
+    Failing a check raises ValueError when the generator reaches that hold; the
+    journal must also end exactly at the timeline end with every sample used.
+
+    Inputs:
+        approach: recorded approach result.
+        binding: NonlinearJournalBinding.
+        timeline: result of ``verify_nonlinear_timeline``.
+        body_radii: required minimum bus radius per chaser (m).
+    """
     metadata, ids = approach.metadata, timeline.ids
     start, end, samples = timeline.start, timeline.end, timeline.samples
     q, sample_index, decision_ids = start, 1, set()

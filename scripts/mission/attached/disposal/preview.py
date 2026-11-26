@@ -29,6 +29,12 @@ class FiniteBurnThrottlePlanner:
     residual_tolerance: float = 1e-7
 
     def __post_init__(self):
+        """Validate and normalize the preview settings.
+
+        Raises ValueError if the capacity fractions are empty, repeated or not strictly
+        between 0 and 1, if the fuel reserve is not in [0, 1), or if the residual
+        tolerance is not positive.
+        """
         values = tuple(
             positive(v, "Preview capacity fraction") for v in self.capacity_fractions
         )
@@ -50,6 +56,32 @@ class FiniteBurnThrottlePlanner:
         )
 
     def select(self, assembly, state, propulsion, axis_plan, options):
+        """Preview each declared throttle as a finite burn from osculating apoapsis.
+
+        Builds an apoapsis state from the current orbit, allocates a static force along
+        the planned body axis for each capacity fraction, and integrates two-body motion
+        with total mass and a retrograde-transverse thrust while the burn window is
+        active. Integration stops at the target perigee, the entry radius or the owner
+        fuel reserve. The candidate that predicts the target perigee with the least fuel
+        used (ties by shorter duration) is selected. Nothing is committed to the mission
+        state.
+
+        Inputs:
+            assembly: attached assembly model (mu, Earth radius, mass properties).
+            state: current state with ECI position (m), velocity (m/s) and fuel (kg).
+            propulsion: thruster system used for the static allocation.
+            axis_plan: AxialBurnPlan supplying the body axis and force references (N).
+            options: deorbit options (window angle, target and entry altitudes, step and
+                maximum burn durations in s).
+
+        Outputs:
+            Dict with the window, force references, per-candidate rows, the selected
+            candidate index and force (None when no candidate predicts the perigee), and
+            the initial predicted state.
+
+        Raises ValueError if the orbit is unbound, the body axis is not a unit vector,
+        or the commanded force is not positive or exceeds the installed capacity.
+        """
         orbit = orbital_elements(
             state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2
         )
@@ -145,6 +177,15 @@ class FiniteBurnThrottlePlanner:
             total_flow = float(np.sum(flow))
 
             def derivative(time, values, force=force, total_flow=total_flow):
+                """Return d/dt of [position, velocity, mass, active burn time].
+
+                Applies point-mass gravity, and while the burn window is active a thrust
+                of force divided by mass opposite the transverse velocity direction and
+                a mass loss of total_flow. The independent variable is physical time
+                (s).
+
+                Raises ValueError for a nonphysical state or a zero transverse velocity.
+                """
                 r, v, m = values[:3], values[3:6], values[6]
                 norm = np.linalg.norm(r)
                 if norm <= 0 or m <= 0:
@@ -166,6 +207,7 @@ class FiniteBurnThrottlePlanner:
                 ]
 
             def perigee_event(time, values):
+                """Return the osculating perigee radius minus the target radius (m)."""
                 return (
                     orbital_elements(values[:3], values[3:6], assembly.mu_m3_s2)[
                         "perigee_radius_m"
@@ -174,9 +216,11 @@ class FiniteBurnThrottlePlanner:
                 )
 
             def entry_event(time, values):
+                """Return the geocentric radius minus the entry-interface radius (m)."""
                 return np.linalg.norm(values[:3]) - entry_radius
 
             def reserve_event(time, values, fuel_duration=fuel_duration):
+                """Return the reserve burn-time limit minus the active burn time (s)."""
                 return fuel_duration - values[7]
 
             reserve_event.terminal, reserve_event.direction = True, -1

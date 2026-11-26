@@ -38,6 +38,12 @@ from scipy.spatial.transform import Rotation
 
 
 def _rate_within(state, limit):
+    """Return whether the body angular rate (rad/s) is within limit.
+
+    Uses the norm of the point angular velocity without an enclosure; otherwise checks
+    the worst-case squared rate over the enclosure's angular-rate bounds (exact rational
+    arithmetic).
+    """
     if state.enclosure is None:
         return bool(np.linalg.norm(state.angular_velocity_body_rad_s) <= limit)
     angular = state.enclosure.box.slice(10, 13)
@@ -80,6 +86,19 @@ def orbital_elements(position_eci_m, velocity_eci_m_s, mu_m3_s2=3.986004418e14):
 
 
 def time_to_apoapsis_s(position, velocity, mu):
+    """Return the time (s) until the next apoapsis for an inertial state.
+
+    Solves Kepler's equation from the Cartesian state; returns 0.0 for an orbit with
+    eccentricity below 1e-8 or when the state is within 1e-9 rad of apoapsis in mean
+    anomaly.
+
+    Inputs:
+        position: position vector (m) in an inertial frame.
+        velocity: velocity vector (m/s) in the same frame.
+        mu: gravitational parameter (m^3/s^2).
+
+    Raises ValueError if the orbit is not a bound ellipse.
+    """
     elements = orbital_elements(position, velocity, mu)
     a, e = elements["semi_major_axis_m"], elements["eccentricity"]
     if a is None or a <= 0 or e >= 1:
@@ -99,12 +118,24 @@ def time_to_apoapsis_s(position, velocity, mu):
 
 @dataclass(frozen=True)
 class ThrustPointingPolicy:
+    """Attitude control law that points a body axis retrograde with PD torque.
+
+    Holds the proportional gain (N m/rad), rate gain (N m s/rad), whether to cancel the
+    gravity-gradient torque, and the unit body-frame thrust axis.
+    """
+
     attitude_gain_nm: float = 0.2
     rate_gain_nm_s: float = 20.0
     compensate_gravity_gradient: bool = False
     thrust_axis_body: tuple[float, float, float] = (1.0, 0.0, 0.0)
 
     def __post_init__(self):
+        """Validate and normalize the policy settings.
+
+        Raises ValueError if a gain is not positive or the thrust axis is not a finite
+        nonzero vector, and TypeError if the gravity-gradient flag is not a bool. The
+        thrust axis is stored as a unit-vector tuple.
+        """
         object.__setattr__(
             self,
             "attitude_gain_nm",
@@ -126,9 +157,27 @@ class ThrustPointingPolicy:
         object.__setattr__(self, "thrust_axis_body", tuple(map(float, normalized)))
 
     def with_thrust_axis(self, axis):
+        """Return a copy of the policy with the given body thrust axis, renormalized."""
         return replace(self, thrust_axis_body=tuple(axis))
 
     def command(self, assembly, state):
+        """Return the body torque and pointing errors for tracking a retrograde burn.
+
+        Builds the desired attitude from the inertial position and velocity (thrust axis
+        opposite the transverse velocity, orbit normal for the third axis) and computes
+        the torque from attitude and rate error, a gyroscopic term and a feedforward
+        term, minus the gravity-gradient torque when compensation is enabled.
+
+        Inputs:
+            assembly: attached assembly for mass properties and gravity-gradient torque.
+            state: assembly state; quaternion body-to-ECI, body rate (rad/s), ECI
+                position (m) and velocity (m/s).
+
+        Outputs:
+            Tuple of the body-frame torque (N m), the angle (rad) between the thrust
+                axis
+            and the retrograde direction, and the norm (rad/s) of the body-rate error.
+        """
         r, v = state.position_eci_m, state.velocity_eci_m_s
         radial = r / np.linalg.norm(r)
         normal = np.cross(r, v)
@@ -175,6 +224,12 @@ class ThrustPointingPolicy:
 
 @dataclass(frozen=True)
 class DeorbitOptions:
+    """Declare deorbit altitudes, durations, tolerances and burn settings.
+
+    Altitudes are in m, durations in s, angles in rad, rates in rad/s and burn_force_n
+    in N (None selects the planned force). max_coast_orbits is in orbital periods.
+    """
+
     target_perigee_altitude_m: float = 80000.0
     entry_interface_altitude_m: float = 120000.0
     control_step_s: float = 2.0
@@ -192,6 +247,12 @@ class DeorbitOptions:
     burn_window_half_angle_rad: float | None = None
 
     def __post_init__(self):
+        """Validate the options and require a target perigee below the entry interface.
+
+        Every field that is not None must be positive (the target perigee altitude may
+        be zero). Raises ValueError otherwise, if the burn window half angle is invalid,
+        or if the target perigee altitude is not below the entry interface altitude.
+        """
         ApoapsisBurnWindow(self.burn_window_half_angle_rad)
         for name, value in vars(self).items():
             if value is not None:
@@ -210,6 +271,12 @@ class DeorbitOptions:
 
 @dataclass(frozen=True)
 class DeorbitResult:
+    """Outcome of a deorbit run: success flag, message, final state and records.
+
+    Holds the final AssemblyState, the state history, the control records and the audit
+    dict.
+    """
+
     success: bool
     message: str
     final_state: AssemblyState
@@ -218,6 +285,7 @@ class DeorbitResult:
     audit: dict
 
     def to_dict(self):
+        """Return the result as a dict, converting the final state with its to_dict."""
         return {
             "success": self.success,
             "message": self.message,
@@ -229,6 +297,13 @@ class DeorbitResult:
 
 
 class DeorbitSimulator:
+    """Simulate an apoapsis finite-burn deorbit ending at the entry interface.
+
+    run coasts to apoapsis, aligns the thrust axis, burns in held control steps until
+    the target perigee or the entry interface is reached, then coasts to the entry
+    interface. Optional planners select the thrust axis and throttle.
+    """
+
     def __init__(
         self,
         *,
@@ -237,12 +312,17 @@ class DeorbitSimulator:
         burn_axis_planner=None,
         burn_throttle_planner=None,
     ):
+        """Store the options, pointing policy and optional axis and throttle planners.
+
+        Defaults to DeorbitOptions() and ThrustPointingPolicy() when not supplied.
+        """
         self.options = options or DeorbitOptions()
         self.pointing_policy = pointing_policy or ThrustPointingPolicy()
         self.burn_axis_planner = burn_axis_planner
         self.burn_throttle_planner = burn_throttle_planner
 
     def _record(self, assembly, state, phase):
+        """Return the state record extended with phase, orbit and altitudes (m)."""
         record = assembly.state_record(state)
         elements = orbital_elements(
             state.position_eci_m, state.velocity_eci_m_s, assembly.mu_m3_s2
@@ -269,6 +349,30 @@ class DeorbitSimulator:
         entry_monitor=None,
         record_retainer=None,
     ):
+        """Propagate a zero-thrust coast and append its samples to history.
+
+        Delegates to _carried_coast when the state has an enclosure. Otherwise
+        integrates the assembly dynamics with DOP853, stopping at a descending
+        entry-interface crossing when stop_at_entry is set, and records a state every
+        coast sample step.
+
+        Inputs:
+            assembly: attached assembly model.
+            initial: state at the start of the coast.
+            duration: coast length (s); at most 1e-9 returns the initial state
+                unchanged.
+            history: list that receives the sampled state records.
+            phase: phase label stored on each record.
+            propulsion, observer, entry_monitor, record_retainer: used only by the
+                carried path.
+
+        Outputs:
+            Tuple of the final state, whether the entry interface was crossed, and a
+                dict
+            of relative energy and angular-momentum drift with a scope string.
+
+        Raises RuntimeError if the integration fails or returns non-finite values.
+        """
         if duration <= 1e-9:
             return (
                 initial,
@@ -297,6 +401,11 @@ class DeorbitSimulator:
         ]
 
         def rhs(elapsed, state):
+            """Return the packed-state derivative with zero thrust and torque.
+
+            The independent variable is the elapsed time (s) since the coast start; the
+            packed state is position, velocity, quaternion and body rate.
+            """
             return assembly.derivative(
                 state,
                 mass,
@@ -308,6 +417,7 @@ class DeorbitSimulator:
             )[0]
 
         def entry(_, state):
+            """Return the geocentric altitude minus the entry-interface altitude (m)."""
             return (
                 np.linalg.norm(state[:3])
                 - assembly.earth_radius_m
@@ -403,6 +513,12 @@ class DeorbitSimulator:
         monitor = entry_monitor or EntryInterfaceMonitor(entry_radius)
 
         def conclude(refusal=None):
+            """Return the final state, crossing flag and audit of the carried coast.
+
+            The audit holds the energy and angular-momentum drift, the carried enclosure
+            and the entry certificate. When refusal is given it adds a refusal record
+            noting that the proposed hold was not applied.
+            """
             before = orbital_elements(
                 initial.position_eci_m, initial.velocity_eci_m_s, assembly.mu_m3_s2
             )
@@ -490,6 +606,27 @@ class DeorbitSimulator:
         observer=None,
         record_sink=None,
     ) -> DeorbitResult:
+        """Run the deorbit and return a DeorbitResult with history, controls and audit.
+
+        Refuses with success False for an initial state that is not detumbled, not above
+        the entry interface, unbound, or lacking propellant or six-axis authority. An
+        orbit that already intersects the entry interface is only coasted. Otherwise it
+        coasts to apoapsis, plans the axis and throttle when planners are set, then
+        steps held allocations, applying the burn only while aligned and inside the burn
+        window. Each hold is checked against the burn-time limit, the body-rate limit
+        and, when declared, the attachment loads; a refused step ends the run
+        unsuccessfully. Held steps are cut at the target perigee or entry interface, and
+        a final coast continues to the entry interface. With an enclosure, success
+        requires a proven entry-interface certificate.
+
+        Inputs:
+            assembly: attached assembly model.
+            initial: initial state; an enclosure makes the run carry whole-state sets.
+            propulsion: installed thruster system.
+            observer: optional state observer; a bounded observer is created when the
+                initial state has an enclosure.
+            record_sink: optional sink for retained stage records.
+        """
         options, state = self.options, initial
         records = StageRecordRetainer(record_sink)
         burn_window = ApoapsisBurnWindow(options.burn_window_half_angle_rad)
@@ -544,6 +681,12 @@ class DeorbitSimulator:
         force_residual, torque_residual, burn_time = 0.0, 0.0, 0.0
 
         def finish(success, message):
+            """Record the final audit fields and return the DeorbitResult.
+
+            Fails a successful run when an enclosure is carried and no entry-interface
+            certificate exists. Writes elapsed time (s), fuel used (kg), final orbit,
+            burn time, thrust delta-v and the allocation residual maxima into the audit.
+            """
             if entry_monitor is not None:
                 audit["entry_interface_certificate"] = entry_monitor.certificate
                 if success and entry_monitor.certificate is None:
@@ -919,6 +1062,10 @@ class DeorbitSimulator:
                 return finish(False, f"deorbit_{allocation.message}")
 
             def propagate(dt, state=state, allocation=allocation):
+                """Advance the actual state by dt (s) under the held allocation.
+
+                Returns the state unchanged for dt of zero or less.
+                """
                 if dt <= 0:
                     return state
                 return assembly.advance(
@@ -933,6 +1080,11 @@ class DeorbitSimulator:
                 )
 
             def predict(dt, feedback_state=feedback_state, allocation=allocation):
+                """Advance the sensed feedback state by dt (s) under the allocation.
+
+                Drops the enclosure first and calls advance without the propulsion
+                argument. Returns the feedback state unchanged for dt of zero or less.
+                """
                 if dt <= 0:
                     return feedback_state
                 estimate = replace(feedback_state, enclosure=None)
@@ -986,6 +1138,10 @@ class DeorbitSimulator:
                 if previous_rp > rp:
 
                     def perigee_event(dt):
+                        """Return predicted perigee radius after dt (s) minus target.
+
+                        The result is in m.
+                        """
                         candidate = predict(dt)
                         return (
                             orbital_elements(

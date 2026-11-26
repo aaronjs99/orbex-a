@@ -15,6 +15,7 @@ class ContactMechanics:
     """Physical plant depending only on fleet, pad options, bond and actuator state."""
 
     def __init__(self, *, fleet, options, bonds, actuation, environment=None):
+        """Store the fleet, options, bond and actuation state, and environment."""
         self.fleet = fleet
         self.options = options
         self.bonds = bonds
@@ -22,6 +23,19 @@ class ContactMechanics:
         self.environment = environment
 
     def evaluate(self, t, values):
+        """Return the packed-state derivative and diagnostics at one physical time.
+
+        Inputs: `t` is elapsed time (s) since the fleet start and `values` the
+        packed state. `environment`, if present, must return an extra wrench for
+        the target and every chaser.
+        Outputs: `(derivative, diag)`. `diag` holds per-chaser pad rows (gap,
+        compression, forces in ECI and patch axes, couple, activation, tip state),
+        body rotations, spins, masses, inertias, contact potential, kinetic energy,
+        linear and angular momentum, internal force and torque residual norms,
+        fuel flow and accelerations. The derivative includes the balance ledgers
+        in the entries from `ledger_start`.
+        Raises ValueError if the environment does not name every body or returns
+        non-finite values."""
         fleet, o = self.fleet, self.options
         members, n = fleet.members, fleet.body_count
         dry, specific = fleet.dry, fleet.specific

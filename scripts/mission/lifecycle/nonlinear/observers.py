@@ -25,6 +25,23 @@ class PastNavigationAttitudeObserver:
     """Causal past accepted pose/rate prediction and bounded own-bus sensing."""
 
     def __init__(self, approach, *, model, clock):
+        """Build the causal navigation predictor from the approach's saved history.
+
+        The prediction model is the midpoint of the public declared nonlinear bounds,
+        not the point realization used by the physical continuation. Each VALID
+        navigation record becomes (physical-time upper end, midpoint time, state of
+        position, velocity, quaternion and rate, accepted packet count, exact q).
+
+        Inputs:
+            approach: recorded approach result with navigation history.
+            model: physical model (the public bounds are read from the metadata).
+            clock: reference clock; its fingerprint must match every record.
+
+        Outputs:
+            Sets the model, inertia, gravity-gradient flag, records and counters.
+            Raises ValueError when the public model, clock, frame or model
+            fingerprint differs, or the records are empty or not ordered.
+        """
         self.clock = clock
         # Prediction uses the public prior, never the independently chosen
         # point realization that is supplied to the physical continuation.
@@ -115,6 +132,17 @@ class PastNavigationAttitudeObserver:
         self._cached = None
 
     def _rhs(self, time_s, state):
+        """Return the time derivative of the target state used for prediction.
+
+        Inputs:
+            time_s: physical time in s (unused by the dynamics).
+            state: 13 values: ECI position (m), velocity (m/s), body-to-ECI
+                quaternion xyzw, body angular velocity (rad/s).
+
+        Outputs:
+            Derivative of the same 13 values; includes gravity-gradient torque when
+            the target declares it.
+        """
         rotation = Rotation.from_quat(state[6:10]).as_matrix()
         torque = np.zeros(3)
         if self.gravity_gradient:
@@ -138,6 +166,23 @@ class PastNavigationAttitudeObserver:
         ]
 
     def __call__(self, time_s, snapshot):
+        """Return the predicted target attitude and perturbed own-bus sensing.
+
+        Propagates the latest VALID navigation record whose physical-time upper end
+        is not after ``time_s``; no later record is used. Chaser attitude and rate
+        are the snapshot values plus a fixed bounded deviation.
+
+        Inputs:
+            time_s: physical time in s.
+            snapshot: mapping with a "chasers" entry of sensed body-to-ECI
+                quaternions and body angular velocities.
+
+        Outputs:
+            Dict with the target rotation, angular velocity and acceleration in the
+            body frame and per-chaser quaternion and rate. Updates the call count,
+            maximum prediction age and used records. Raises ValueError when no past
+            record exists or the propagation fails.
+        """
         eligible = [
             index
             for index, record in enumerate(self.records)
@@ -199,6 +244,7 @@ class PastNavigationAttitudeObserver:
         return result
 
     def as_dict(self):
+        """Return the observer record with its rule, error bounds and usage counts."""
         return {
             "method": "past-accepted-navigation-rigid-body-extrapolation-v1",
             "rule": "latest VALID navigation record whose physical-time upper endpoint is no later than the replay query",
@@ -221,9 +267,22 @@ class BiasedContactObserver:
     """Truth-side synthetic sensor realization; commands see only its outputs."""
 
     def __init__(self):
+        """Start the call counter at zero."""
         self.calls = 0
 
     def __call__(self, time_s, snapshot):
+        """Return the deterministically biased synthetic contact observation.
+
+        Inputs:
+            time_s: physical time in s.
+            snapshot: true states of the target and chasers, contact gaps (m),
+                contact wrenches in ECI and positioner encoder readings.
+
+        Outputs:
+            Mapping with measured target and chaser ContactBodyState values, gaps
+            raised by 1 mm, wrenches and encoders offset by the fixed biases reported
+            in ``as_dict``. Increments the call count.
+        """
         common_p, common_v = np.array((0.35, -0.4, 0.2)), np.array((0.001, -0.001, 0.0))
         target = snapshot["target"]
         target_rotation = Rotation.from_quat(
@@ -282,6 +341,7 @@ class BiasedContactObserver:
         return measured
 
     def as_dict(self):
+        """Return the observer record with its method, call count and bias values."""
         return {
             "method": "declared-biased-synthetic-contact-observations-v1",
             "calls": self.calls,
@@ -303,6 +363,7 @@ class BiasedContactObserver:
         }
 
     def observation_support(self):
+        """Return the default ContactObservationBounds."""
         from orbexa.mission.contact.sensing.observation import (
             ContactObservationBounds,
         )

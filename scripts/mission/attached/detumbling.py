@@ -18,9 +18,13 @@ from orbexa.mission.attached.propulsion import ThrusterSystem
 
 
 class DetumblingPolicy(Protocol):
+    """Protocol for a policy that requests an external body torque."""
+
     def torque_body_nm(
         self, assembly: AttachedAssembly, state: AssemblyState
-    ) -> np.ndarray: ...
+    ) -> np.ndarray:
+        """Return the requested external torque in body axes (N m)."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,11 @@ class RateDampingPolicy:
     compensate_gravity_gradient: bool = False
 
     def __post_init__(self):
+        """Validate the gain and flag.
+
+        Raises ValueError if the gain is not positive and finite, TypeError if
+        compensate_gravity_gradient is not a bool.
+        """
         object.__setattr__(
             self, "gain_nm_s", positive(self.gain_nm_s, "Rate damping gain")
         )
@@ -38,6 +47,11 @@ class RateDampingPolicy:
             raise TypeError("Gravity-gradient compensation must be a boolean")
 
     def torque_body_nm(self, assembly, state):
+        """Return -gain times the body rate (N m), body axes.
+
+        When compensation is enabled, the assembly gravity-gradient torque at the
+        state is subtracted.
+        """
         torque = -self.gain_nm_s * state.angular_velocity_body_rad_s
         if self.compensate_gravity_gradient:
             torque -= assembly.gravity_gradient_torque_body(state)
@@ -46,12 +60,21 @@ class RateDampingPolicy:
 
 @dataclass(frozen=True)
 class DetumblingOptions:
+    """Detumbling limits: rate tolerance (rad/s), dwell, maximum duration and
+    control step (s).
+    """
+
     rate_tolerance_rad_s: float = 1e-5
     dwell_s: float = 30.0
     max_duration_s: float = 1200.0
     control_step_s: float = 1.0
 
     def __post_init__(self):
+        """Validate the options.
+
+        Raises ValueError if any field is not positive and finite, or if dwell_s
+        exceeds max_duration_s.
+        """
         for name in vars(self):
             object.__setattr__(self, name, positive(getattr(self, name), name))
         if self.dwell_s > self.max_duration_s:
@@ -60,6 +83,11 @@ class DetumblingOptions:
 
 @dataclass(frozen=True)
 class DetumblingResult:
+    """Outcome of a detumbling run.
+
+    Holds the success flag, message, final state, history, controls and audit.
+    """
+
     success: bool
     message: str
     final_state: AssemblyState
@@ -68,6 +96,7 @@ class DetumblingResult:
     audit: dict
 
     def to_dict(self):
+        """Return a JSON-ready dict; the final state is converted with its to_dict."""
         return {
             "success": self.success,
             "message": self.message,
@@ -79,12 +108,18 @@ class DetumblingResult:
 
 
 class DetumblingSimulator:
+    """Runs held-thrust detumbling of an assembly with a torque policy."""
+
     def __init__(
         self,
         *,
         options: DetumblingOptions | None = None,
         policy: DetumblingPolicy | None = None,
     ):
+        """Store the options and policy.
+
+        Inputs: options (default DetumblingOptions); policy (default RateDampingPolicy).
+        """
         self.options = options or DetumblingOptions()
         self.policy = policy or RateDampingPolicy()
 
@@ -96,6 +131,24 @@ class DetumblingSimulator:
         *,
         observer=None,
     ) -> DetumblingResult:
+        """Run detumbling until the rate dwell completes or a stop condition occurs.
+
+        Each control step lasts at most control_step_s. It optionally observes the
+        state (a BoundedAssemblyObserver is created when the start state carries an
+        enclosure and no observer is given), asks the policy for a torque, allocates
+        thruster commands with zero force, advances the assembly with audit and, if
+        limits are declared, checks attachment loads at the endpoint. A step counts
+        toward the dwell only if the rate is within tolerance at its start and end
+        (and, with an enclosure, throughout the swept rate set).
+
+        Inputs: assembly; initial state; propulsion (ThrusterSystem); observer,
+        optional object with update(assembly, state).
+        Outputs: DetumblingResult. success is False, with a message, when torque
+        rank is below 3, observation, allocation or the held flow is refused
+        (ValueError, RuntimeError, ArithmeticError, ImportError are caught),
+        allocation fails, attachment capacity is exceeded, fuel is exhausted or
+        the duration limit is reached.
+        """
         options, state = self.options, initial
         history, controls, refused_allocations = [assembly.state_record(state)], [], []
         authority = propulsion.authority(assembly, state.fuel_kg)
@@ -112,6 +165,11 @@ class DetumblingSimulator:
             observer = BoundedAssemblyObserver()
 
         def finish(success, message):
+            """Return the DetumblingResult for the current state with its audit record.
+
+            The momentum residual is final minus initial angular momentum, external
+            impulse and fuel co-rotation flux (ECI, kg m^2/s).
+            """
             residual = assembly.angular_momentum_eci(state) - initial_h - impulse - flux
             return DetumblingResult(
                 success,
