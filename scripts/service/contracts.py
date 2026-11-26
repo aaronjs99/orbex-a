@@ -38,11 +38,18 @@ PARAMETER_LIMITS = {
 
 @dataclass(frozen=True)
 class LiveParameters:
+    """Immutable, validated study knobs for one live run."""
+
     release_distance_m: float = 300.0
     cluster_spacing_m: float = 1.8
     target_spin_deg_s: float = 2.4
 
     def __post_init__(self):
+        """Validate every field against PARAMETER_LIMITS and store it as a float.
+
+        Raises:
+            ValueError: a field is a bool, non-numeric, non-finite or outside its range.
+        """
         for name, (lower, upper) in PARAMETER_LIMITS.items():
             value = getattr(self, name)
             if (
@@ -58,6 +65,13 @@ class LiveParameters:
 
     @classmethod
     def from_dict(cls, value):
+        """Build parameters from a dict holding only the PARAMETER_LIMITS keys.
+
+        Omitted keys keep their defaults.
+
+        Raises:
+            ValueError: the value is not a dict, has other keys or a field is invalid.
+        """
         if not isinstance(value, dict) or set(value) - set(PARAMETER_LIMITS):
             raise ValueError(
                 "Supply only release_distance_m, cluster_spacing_m and target_spin_deg_s"
@@ -65,17 +79,30 @@ class LiveParameters:
         return cls(**value)
 
     def as_dict(self):
+        """Return the three parameters as a plain dict."""
         return asdict(self)
 
 
 @dataclass(frozen=True)
 class LiveServiceSettings:
+    """Resolved input paths and update cap for the live service."""
+
     output_dir: Path
     config_path: Path
     spacecraft_path: Path
     maximum_updates: int = 1200
 
     def __post_init__(self):
+        """Resolve the paths, check the input files and the update cap.
+
+        Inputs:
+            output_dir, config_path and spacecraft_path are expanded and resolved
+            in place; the last two must be existing files.
+
+        Raises:
+            ValueError: an input file is missing, maximum_updates is not an int in
+                [1, 1200], or ProjectLayout.require_output refuses output_dir.
+        """
         for name in (
             "output_dir",
             "config_path",

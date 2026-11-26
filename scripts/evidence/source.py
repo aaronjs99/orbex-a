@@ -16,6 +16,7 @@ from pathlib import Path
 
 
 def hash_file(path):
+    """Return the SHA-256 hex digest of the file at path, read in 1 MiB blocks."""
     result = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -64,9 +65,24 @@ class StudySourceFreezer:
     """Reserve one new output directory and bind its executable source bytes."""
 
     def __init__(self, package_source):
+        """Store the directory holding the package's Python source."""
         self.package_source = Path(package_source)
 
     def freeze(self, request):
+        """Create the output directory, copy source and inputs, and record hashes.
+
+        Inputs:
+            request: StudyArmRequest giving the output directory, the config,
+                spacecraft and study files, and the case, adaptation, bandwidth and
+                steps.
+        Outputs:
+            Creates ``request.output_dir`` (it must not exist), copies every ``.py``
+            file outside ``__pycache__`` to ``runtime/orbexa``, copies the three inputs
+            to ``inputs/``, and writes ``source-manifest.json``. Returns the copied
+            package directory and a dictionary of frozen input paths and run settings.
+            Raises FileExistsError if the directory exists and RuntimeError if any
+            source or input file changes or differs from its hash during the copy.
+        """
         directory = request.output_dir
         directory.mkdir(parents=True, exist_ok=False)
         source = self.package_source

@@ -19,12 +19,24 @@ class _WorkerTree:
     """Windows job lifetime includes APMonitor descendants, not other jobs."""
 
     def __init__(self, process):
+        """Attach to the worker process; on Windows put it in a job object.
+
+        On Windows the job kills its processes when its handle closes.
+
+        Inputs:
+            process: the started multiprocessing process.
+
+        Raises:
+            OSError: Windows job creation or process assignment fails.
+        """
         self.process, self.handle, self.kernel = process, None, None
         if os.name != "nt":
             return
         from ctypes import wintypes as w
 
         class Basic(ctypes.Structure):
+            """ctypes layout of the Windows basic job-object limit record."""
+
             _fields_ = [
                 ("process_time", ctypes.c_int64),
                 ("job_time", ctypes.c_int64),
@@ -38,6 +50,8 @@ class _WorkerTree:
             ]
 
         class IO(ctypes.Structure):
+            """ctypes layout of the Windows job-object I/O counters."""
+
             _fields_ = [
                 (name, ctypes.c_uint64)
                 for name in (
@@ -51,6 +65,8 @@ class _WorkerTree:
             ]
 
         class Extended(ctypes.Structure):
+            """ctypes layout of the Windows extended job-object limit record."""
+
             _fields_ = [
                 ("basic", Basic),
                 ("io", IO),
@@ -105,6 +121,16 @@ class _WorkerTree:
         self.handle, self.kernel = handle, kernel
 
     def close(self, *, cancel=False):
+        """Release the worker tree and wait for the process to exit.
+
+        Inputs:
+            cancel: when True, terminate the job object (Windows) or send SIGTERM to
+                the process group (elsewhere), falling back to terminate().
+
+        Outputs:
+            Joins the process for 3 s and, if cancelling and it is still alive, kills
+            it and joins for 3 s more.
+        """
         if self.handle is not None:
             if cancel:
                 self.kernel.TerminateJobObject(self.handle, 1)
@@ -125,6 +151,20 @@ class _WorkerTree:
 
 
 def _run_job(settings, parameters, directory, messages, run_event, launch_event):
+    """Worker entry point run in the spawned process.
+
+    Inputs:
+        settings, parameters: frozen LiveServiceSettings and LiveParameters.
+        directory: job directory; stdout and stderr go to worker.log in it.
+        messages: queue for events; run_event: pause gate; launch_event: set by
+            the parent once the worker is isolated.
+
+    Outputs:
+        Waits for launch_event, replaces loaded orbexa modules with the frozen
+        package under directory/runtime/orbexa and runs the nonlinear job. On
+        Exception it logs the traceback, writes worker-result.json and queues an
+        "error" message.
+    """
     if os.name != "nt":
         os.setsid()
     launch_event.wait()

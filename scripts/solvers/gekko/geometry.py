@@ -31,6 +31,21 @@ class GekkoCompositeGeometry:
     """
 
     def __init__(self, target, rotations, center):
+        """Build the geometry, reserves and optional attachment-corridor patch.
+
+        Inputs:
+            target: Mapping with the required "geometry" (SpacecraftGeometry or its
+                dict) and optional "safety_reserve" (m), "orientation_matrix_error"
+                (dimensionless matrix error), "center_radius_m" (m),
+                "robust_attachment_corridor", "attachment_patch_id" and
+                "attachment_component_id".
+            rotations: Target body-to-world rotation matrices, one per node.
+            center: Target center position (m), subtracted from the chaser position.
+        Outputs:
+            Raises ValueError if the geometry is missing, a reserve is not a finite
+            nonnegative scalar, or the corridor IDs are missing or name a patch of
+            another component.
+        """
         from orbexa.models.geometry.composite import SpacecraftGeometry
 
         payload = target.get("geometry")
@@ -74,6 +89,7 @@ class GekkoCompositeGeometry:
 
     @staticmethod
     def _nonnegative(value, name):
+        """Return value as a float; reject booleans, non-finite and negative values."""
         if isinstance(value, (bool, np.bool_)):
             raise ValueError(name + " must be a finite nonnegative scalar")
         value = float(value)
@@ -83,6 +99,11 @@ class GekkoCompositeGeometry:
 
     @staticmethod
     def _initial_normal(local, half_extents):
+        """Return a unit outward normal for a box-local point.
+
+        Outside the box the normal points from the nearest box point to the point.
+        On or inside the box it is the signed axis of least penetration.
+        """
         displacement = local - np.clip(local, -half_extents, half_extents)
         norm = np.linalg.norm(displacement)
         if norm > 1e-12:
@@ -94,6 +115,12 @@ class GekkoCompositeGeometry:
         return normal
 
     def _component_reserve(self, component):
+        """Return the reserve (m) added to a component's support inequality.
+
+        It is the safety reserve plus the center error plus the rotation error times
+        the largest nominal vertex norm plus the component uncertainty. Results are
+        cached under a key of the exact built-in component inputs when one exists.
+        """
         # The declared component matrix is used as an affine map. Include its
         # small permitted departure from orthogonality in the rotation reserve.
         key = self._component_reserve_key(component)
@@ -263,6 +290,12 @@ class GekkoCompositeGeometry:
         return margins
 
     def summary(self, margins):
+        """Return a summary dict of the free-normal geometry check.
+
+        Inputs:
+            margins: Non-empty list of rows from numerical_margins; the minimum
+                "separation_margin_m" (m) is reported.
+        """
         return {
             "model": "per-component-unit-support-plane-v1",
             "geometry_id": self.geometry.geometry_id,
@@ -292,6 +325,15 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
     """
 
     def __init__(self, target, rotations, center):
+        """Validate the reference-corridor inputs and initialize witness storage.
+
+        Inputs:
+            target, rotations, center: As for GekkoCompositeGeometry.
+        Outputs:
+            Raises ValueError if the geometry frame is not "target_body_COM", the
+            rotations are not finite numeric (T,3,3) proper rotations, or the center
+            is not three finite real scalars.
+        """
         super().__init__(target, rotations, center)
         if self.geometry.frame != "target_body_COM":
             raise ValueError("The reference corridor requires target_body_COM geometry")
@@ -322,6 +364,10 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
 
     @staticmethod
     def _vector(value, name, *, nonnegative=False):
+        """Return value as a float array of three finite real numbers.
+
+        Raises ValueError otherwise, or if nonnegative is set and any entry is negative.
+        """
         raw = np.asarray(value)
         if raw.shape != (3,) or raw.dtype.kind not in "iuf":
             raise ValueError(name + " requires three real numeric scalars")
@@ -332,6 +378,7 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
 
     @classmethod
     def _unit(cls, value):
+        """Return value as a unit 3-vector (1e-12 tolerance); else raise ValueError."""
         value = cls._vector(value, "Reference-corridor normal")
         norm = math.hypot(*value)
         if not math.isfinite(norm) or abs(norm - 1.0) > 1e-12:
@@ -342,6 +389,7 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
 
     @staticmethod
     def _numeric_dot(matrix, vector):
+        """Return matrix @ vector, summing only the nonzero matrix entries."""
         # Match the scalar operation order of the original support expression.
         return np.array(
             [
@@ -354,6 +402,12 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
     def _reference_margin(
         cls, normal, offset, half, local, omega, uncertainty, target_local, reserve
     ):
+        """Return the initial-iterate separation margin (m) of a fixed support normal.
+
+        Normal projection of the offset minus the box, tube, uncertainty and reserve
+        supports. Raises ValueError if an input is invalid or the margin is negative
+        or not finite.
+        """
         normal = cls._unit(normal)
         offset = cls._vector(offset, "Reference-corridor component displacement")
         half = cls._vector(
@@ -379,6 +433,20 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
     def add_node(
         self, backend, node, position_minus_target_center, omega, reference_position
     ):
+        """Add the fixed-normal support constraints of every component at one node.
+
+        Inputs:
+            backend: GEKKO backend whose model receives the constraints.
+            node: Prediction node index.
+            position_minus_target_center: Chaser position expressions relative to the
+                target center (m).
+            omega: Tube half-width variables (m); their current values seed the check.
+            reference_position: Initial-iterate chaser position (m) used to pick the
+                normals.
+        Outputs:
+            Raises ValueError if node is not a prediction node, an input is invalid,
+            a witness does not separate its seed tube, or the arithmetic overflows.
+        """
         if (
             isinstance(node, (bool, np.bool_))
             or not isinstance(node, Integral)
@@ -426,6 +494,12 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
         body_reference,
         component,
     ):
+        """Add one component's fixed-normal support constraint and record its witness.
+
+        The normal is the unit initial-iterate face normal, held as GEKKO parameters.
+        Also adds the optional attachment-corridor face constraint for the corridor
+        component, the constant geometry objective terms and the witness record.
+        """
         component_rotation = np.asarray(
             component.rotation_component_to_body, dtype=float
         )
@@ -514,6 +588,11 @@ class GekkoReferenceCorridorGeometry(GekkoCompositeGeometry):
         )
 
     def summary(self, margins):
+        """Return the base summary updated with reference-corridor witness fields.
+
+        Includes a SHA-256 fingerprint over the geometry fingerprint, target center,
+        rotations and witnesses, and the minimum initial-iterate seed-tube margin (m).
+        """
         context = {
             "geometry_fingerprint": self.geometry.fingerprint,
             "target_center_m": self.center.tolist(),

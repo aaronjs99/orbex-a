@@ -24,6 +24,14 @@ class LiveSimulationService:
     """One replaceable worker, retained job directories and monotone revisions."""
 
     def __init__(self, settings: LiveServiceSettings):
+        """Create an idle service that writes jobs under settings.output_dir.
+
+        Inputs:
+            settings: LiveServiceSettings; output_dir is created if missing.
+
+        Raises:
+            TypeError: settings is not a LiveServiceSettings.
+        """
         if not isinstance(settings, LiveServiceSettings):
             raise TypeError("Inject LiveServiceSettings")
         self.settings = settings
@@ -48,9 +56,19 @@ class LiveSimulationService:
 
     @property
     def worker_alive(self):
+        """Return True when a worker process exists and is alive."""
         return self._process is not None and self._process.is_alive()
 
     def state(self, *, after=None, timeout=0.0):
+        """Return a deep copy of the current state, optionally long-polling.
+
+        Inputs:
+            after: revision integer in [0, 2**63); waits until the revision exceeds it.
+            timeout: wait limit in s, in [0, 20].
+
+        Raises:
+            ValueError: after or timeout is invalid.
+        """
         if after is not None and (
             isinstance(after, bool)
             or not isinstance(after, int)
@@ -71,6 +89,14 @@ class LiveSimulationService:
             return copy.deepcopy(self._state)
 
     def _publish(self, **changes):
+        """Merge changes into the state, bump the revision and wake waiters.
+
+        When the state has an output_dir, writes job-status.json there without the
+        projection and lifecycle.
+
+        Outputs:
+            A deep copy of the new state.
+        """
         with self._condition:
             self._state.update(changes)
             self._state["revision"] += 1
@@ -88,6 +114,11 @@ class LiveSimulationService:
         return snapshot
 
     def _stop(self, message):
+        """Close the current worker tree and clear the worker references.
+
+        Cancels a live worker; if the job was not in a terminal status, publishes
+        "cancelled" with the given message.
+        """
         if self._tree is not None:
             alive = self.worker_alive
             terminal = self._state["status"] in ("completed", "stopped", "failed")
@@ -99,6 +130,22 @@ class LiveSimulationService:
         self._messages = None
 
     def start(self, parameters):
+        """Replace any running job with a new one and spawn its worker.
+
+        Inputs:
+            parameters: LiveParameters or a dict accepted by LiveParameters.from_dict.
+
+        Outputs:
+            Creates a job directory under output_dir with parameters.json and the
+            frozen snapshot, spawns a worker process and a collector thread, and
+            returns the state. Writes job-status.json with status "failed" if the
+            snapshot fails.
+
+        Raises:
+            ValueError: parameters are invalid.
+            OSError, RuntimeError: the snapshot fails; process start or isolation
+                failures are published as "failed" and re-raised.
+        """
         parameters = (
             parameters
             if isinstance(parameters, LiveParameters)
@@ -188,6 +235,13 @@ class LiveSimulationService:
             return self.state()
 
     def _collect(self, job_id, process, messages):
+        """Consume worker messages for one job and publish them as state changes.
+
+        Runs in a daemon thread until the queue is empty and the worker has exited,
+        or the job is no longer current or is cancelled or idle. If the worker ends
+        without a "finished" or "error" message, publishes "failed". Closes the
+        queue on exit.
+        """
         terminal = False
         try:
             while True:
@@ -266,6 +320,15 @@ class LiveSimulationService:
             messages.close()
 
     def pause(self, paused=None):
+        """Pause or resume the running worker at its next outer boundary.
+
+        Inputs:
+            paused: True, False, or None to toggle.
+
+        Raises:
+            RuntimeError: no worker is running.
+            ValueError: paused is not a bool or None.
+        """
         with self._operation:
             if not self.worker_alive or self._run_event is None:
                 raise RuntimeError("There is no running job to pause")
@@ -283,6 +346,13 @@ class LiveSimulationService:
             )
 
     def reset(self):
+        """Stop the current worker and return the state to idle.
+
+        Retained job directories are not deleted.
+
+        Outputs:
+            The published idle state.
+        """
         with self._operation:
             self._stop(
                 "Reset requested; worker/solver descendants terminated and outputs retained"
@@ -301,5 +371,6 @@ class LiveSimulationService:
             )
 
     def close(self):
+        """Stop the current worker; outputs are preserved."""
         with self._operation:
             self._stop("Loopback service closed; outputs preserved")

@@ -23,6 +23,18 @@ class ProposalSeededSolver(SolverBase):
     def __init__(
         self, delegate, provider, *, replace_existing=False, maximum_preparation_s=None
     ):
+        """Wrap a solver backend and a hint provider.
+
+        Inputs:
+            delegate: SolverBase backend that formulates and solves the problem.
+            provider: Object with propose(MPCProblem) returning controls and source.
+            replace_existing: Replace a caller-supplied state/control guess when True.
+            maximum_preparation_s: Optional time budget (s) for preparing the hint.
+        Outputs:
+            Raises TypeError if delegate is not a SolverBase or provider has no
+            callable propose; raises ValueError if the budget is not finite and
+            positive.
+        """
         if not isinstance(delegate, SolverBase) or not callable(
             getattr(provider, "propose", None)
         ):
@@ -45,6 +57,14 @@ class ProposalSeededSolver(SolverBase):
         self.proposal_record = None
 
     def setup(self, problem):
+        """Prepare an optional initial guess and set up the delegate with it.
+
+        A caller-supplied state or control guess is kept unless replace_existing is
+        set. The provider controls must have shape (num_inputs, num_steps - 1), be
+        finite and lie inside the input bounds; states are rebuilt from the problem
+        model. A hint that is invalid or finishes after the time budget is discarded.
+        The outcome is stored in proposal_record.
+        """
         self._problem = problem
         record = {
             "status": "PRESERVED_CALLER_GUESS",
@@ -99,6 +119,11 @@ class ProposalSeededSolver(SolverBase):
         self._is_setup = True
 
     def solve(self):
+        """Solve with the delegate and attach the proposal record to its solver_info.
+
+        Outputs:
+            The delegate SolverResult; raises RuntimeError if setup was not called.
+        """
         if not self._is_setup:
             raise RuntimeError("Set up the decorated solver first")
         result = self.delegate.solve()
@@ -106,5 +131,6 @@ class ProposalSeededSolver(SolverBase):
         return result
 
     def cleanup(self):
+        """Clean up the delegate solver, then this wrapper."""
         self.delegate.cleanup()
         super().cleanup()

@@ -90,6 +90,18 @@ def _viewer_server(root, *, port=8881):
 
 
 def main(argv=None):
+    """Serve the local Studio viewer and the live simulator API.
+
+    Inputs:
+        argv: argument list, or None for sys.argv.
+
+    Outputs:
+        Binds the UI port, builds the live service and API server, exports the
+        viewer under results/studio, prints one JSON line with the URLs and
+        paths, then serves the API until interrupted. Closes the service and
+        servers on exit and returns 0. Exits through parser.error on OSError,
+        ValueError, TypeError or ImportError (including equal UI and API ports).
+    """
     parser = argparse.ArgumentParser(
         description="Serve the local Studio at127.0.0.1:8881/studio/ and real API at127.0.0.1:8882."
     )

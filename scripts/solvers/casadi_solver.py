@@ -48,6 +48,11 @@ class CasadiSolver(SolverBase):
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
+        """Read the solver options from config.
+
+        Outputs:
+            Raises ImportError if the casadi package is not installed.
+        """
         if not CASADI_AVAILABLE:
             raise ImportError("CasADi not installed. Run: pip install casadi")
 

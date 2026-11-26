@@ -60,6 +60,15 @@ def run_study_arm(request: StudyArmRequest):
 def _execute_arm(
     *, config, spacecraft, study, case, adaptation, bandwidth, output_dir, steps
 ):
+    """Run one study arm in this process and return its summary.
+
+    Inputs:
+        Keyword arguments naming the frozen config, spacecraft and study files, the
+        case, adaptation, bandwidth, output directory and steps cap.
+    Outputs:
+        Returns the result of ``StudyArmExecution.run``. Raises RuntimeError if an
+        arm has already started in this process; sets the module's started flag.
+    """
     global _ARM_STARTED
     if _ARM_STARTED:
         raise RuntimeError("Run each study arm in a separate process")

@@ -36,6 +36,7 @@ class ScipySolver(SolverBase):
     """
 
     def __init__(self, config: dict[str, Any] | None = None):
+        """Read the SciPy method, iteration, tolerance and display options."""
         super().__init__(config)
         self.method = self.config.get("method", "SLSQP")
         self.max_iter = self.config.get("max_iter", 1000)

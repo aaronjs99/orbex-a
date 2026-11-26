@@ -31,6 +31,17 @@ class StudyArmExecution:
         output_dir,
         steps,
     ):
+        """Store the arm's inputs and initialise run state.
+
+        Inputs:
+            config, spacecraft, study: input file paths.
+            case, adaptation, bandwidth: selected arm.
+            output_dir: study output directory.
+            steps: execution cap on updates, or None.
+        Outputs:
+            Starts the wall-clock timer; runner, approach, completion, source and error
+            start as None.
+        """
         self.config_path = config
         self.spacecraft_path = spacecraft
         self.study_path = study
@@ -45,6 +56,11 @@ class StudyArmExecution:
         self.error = None
 
     def run(self):
+        """Prepare, run the approach, complete the mission, and return the summary.
+
+        An exception in any phase is kept by ``_retain_failure`` rather than raised.
+        Raises RuntimeError if called more than once.
+        """
         if self._run_started:
             raise RuntimeError("Run each study arm in a separate process")
         self._run_started = True
@@ -57,6 +73,13 @@ class StudyArmExecution:
         return self._finalize()
 
     def _prepare(self):
+        """Load the declaration, config and design and validate them before any motion.
+
+        Sets the options, selected case, config, design, spin prior, update cap,
+        telemetry, native controller and completion store. Raises ValueError for remote
+        solver use, a non-composite target, an invalid spin prior, a cap above the
+        declared update limit, or an unselected case.
+        """
         # Load the complete execution dependency set before any physical motion.
         # Later stage-local imports make each stage's dependencies explicit and
         # resolve from this same, already loaded frozen package.
@@ -126,6 +149,12 @@ class StudyArmExecution:
         self.store = CompleteMissionStore(self.directory / "completion")
 
     def _run_approach(self):
+        """Run the approach with a proof archive and save its result.
+
+        Writes ``study-manifest.json``, streams certificates to
+        ``nonlinear-certificates.jsonl.zst``, closes the archive, adds the archive and
+        source-binding hashes to the result metadata, and saves it under ``approach``.
+        """
         from orbexa.evidence.records.archive import NonlinearProofArchive
         from orbexa.evidence.records.results import MissionResultStore
         from orbexa.mission.runner import NonlinearMissionRunner
@@ -164,6 +193,7 @@ class StudyArmExecution:
         MissionResultStore.save(self.approach, self.directory / "approach")
 
     def _write_manifest(self):
+        """Write ``study-manifest.json`` with the selected arm and resolved settings."""
         write_record(
             self.directory / "study-manifest.json",
             {
@@ -196,6 +226,14 @@ class StudyArmExecution:
         )
 
     def _complete(self):
+        """Complete the mission accounting and record its stages.
+
+        Runs ``complete_nonlinear_mission``. If no translation budget results and
+        more than one anomaly sample exists, attempts a whole-prefix budget; on
+        ValueError, RuntimeError, ArithmeticError or ImportError it writes
+        ``fuel-bound-refused.json`` with status UNAVAILABLE. Records the approach in the
+        store when it was unsuccessful or incomplete, then finishes the store.
+        """
         from dataclasses import replace
 
         from orbexa.mission.approach.physical.attitude import ChaserAttitudeTracker
@@ -259,6 +297,14 @@ class StudyArmExecution:
         self.store.finish(self.completion)
 
     def _retain_failure(self, exception):
+        """Keep a failure: write the traceback and save the approach prefix if possible.
+
+        Writes ``execution-error.txt`` and sets ``self.error``. If the runner exists
+        but no approach result does, builds an invalid, incomplete result with failure
+        and timing metadata and saves it under ``approach``; a failure while doing so is
+        stored as ``prefix_recording_error``. Must be called while handling the
+        exception.
+        """
         self.error = {"type": type(exception).__name__, "message": str(exception)}
         (self.directory / "execution-error.txt").write_text(
             traceback.format_exc(), encoding="utf-8"
@@ -304,6 +350,11 @@ class StudyArmExecution:
                 self.error["prefix_recording_error"] = str(recording_error)
 
     def _finalize(self):
+        """Write study metrics and the run result, and return the run summary.
+
+        Writes ``study-metrics.json`` (a METRICS_REFUSED record when collection fails)
+        and ``run-result.json`` in the output directory.
+        """
         try:
             metrics = collect_study_metrics(
                 self.approach, self.completion, self.runner, self.directory, self.error

@@ -16,6 +16,15 @@ import numpy as np
 
 @dataclass(frozen=True)
 class AffinePrediction:
+    """Per-interval affine prediction x[k+1] = A[k] x[k] + B[k] u[k] + d[k].
+
+    Attributes:
+        state_matrices: Step matrices A[k], shape (intervals, states, states).
+        input_matrices: Input matrices B[k], shape (intervals, states, inputs).
+        offsets: Affine terms d[k], shape (intervals, states).
+        initial_state: State at the first node, shape (states,).
+    """
+
     state_matrices: np.ndarray
     input_matrices: np.ndarray
     offsets: np.ndarray
@@ -23,6 +32,15 @@ class AffinePrediction:
 
     @classmethod
     def from_problem(cls, problem):
+        """Build the affine step maps of an MPCProblem over its prediction intervals.
+
+        Each step is the problem's one-interval map (RK4 over anom_step for
+        continuous dynamics, one application for discrete), evaluated at
+        start_anom + k * anom_step (rad) and identified from basis vectors.
+        Outputs:
+            Raises ValueError if anom_step is not positive and finite, coefficients,
+            input matrix or initial state are invalid, or dynamics_type is unknown.
+        """
         n, m, h = problem.num_states, problem.num_inputs, float(problem.anom_step)
         if not np.isfinite(h) or h <= 0:
             raise ValueError("Prediction step must be positive and finite")
@@ -32,6 +50,10 @@ class AffinePrediction:
         d_function = problem.extra_params.get("disturbance_callable")
 
         def coefficients(q):
+            """Return the dynamics matrix and disturbance vector at anomaly q (rad).
+
+            Raises ValueError if their shapes are wrong or entries are not finite.
+            """
             a = np.asarray(
                 a_function(q, tp) if callable(a_function) else problem.dynamics_matrix,
                 dtype=float,
@@ -62,12 +84,17 @@ class AffinePrediction:
             c0, cm, c1 = coefficients(q), coefficients(q + h / 2), coefficients(q + h)
 
             def step(x, u, c0=c0, cm=cm, c1=c1):
+                """Advance state x one interval under input u with the bound terms.
+
+                Raises ValueError if dynamics_type is not "discrete" or "continuous".
+                """
                 if problem.dynamics_type == "discrete":
                     return c0[0] @ x + b @ u + c0[1]
                 if problem.dynamics_type != "continuous":
                     raise ValueError("Unknown nominal dynamics type")
 
                 def rhs(v, c):
+                    """Return the derivative c[0] @ v + B @ u + c[1]."""
                     return c[0] @ v + b @ u + c[1]
 
                 k1 = rhs(x, c0)
@@ -94,6 +121,14 @@ class AffinePrediction:
         return cls(np.stack(aa), np.stack(bb), np.stack(dd), initial)
 
     def rollout(self, controls):
+        """Return the node states obtained by applying controls from initial_state.
+
+        Inputs:
+            controls: Inputs, shape (inputs, intervals).
+        Outputs:
+            States, shape (states, intervals + 1). Raises ValueError if controls have
+            the wrong shape or are not finite, or if the rollout is not finite.
+        """
         u = np.asarray(controls, dtype=float)
         count = len(self.state_matrices)
         m = self.input_matrices.shape[2]
@@ -113,6 +148,11 @@ class AffinePrediction:
 
 
 def input_limits(problem):
+    """Return per-input (lower, upper) arrays from problem.input_bounds.
+
+    A missing bound or missing input_bounds gives -inf or +inf. Raises ValueError
+    if the bounds do not match the input count, contain NaN, or have lower > upper.
+    """
     bounds = problem.input_bounds
     if bounds is None:
         return np.full(problem.num_inputs, -np.inf), np.full(problem.num_inputs, np.inf)

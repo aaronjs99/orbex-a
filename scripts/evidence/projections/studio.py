@@ -35,6 +35,15 @@ def _history(entry, key, count, *, interval=False):
 
 
 def _occupancy(error, bound):
+    """Return per-sample maximum of |error| / bound over components, None if unbounded.
+
+    Inputs:
+        error: (N, 3) array of errors.
+        bound: array broadcastable to error; a zero bound gives ratio 0 for zero
+            error and infinity otherwise.
+    Outputs:
+        List of N floats; infinite ratios become None.
+    """
     ratios = np.zeros_like(error)
     np.divide(np.abs(error), bound, out=ratios, where=bound > 0)
     ratios[(bound == 0) & (error != 0)] = np.inf
@@ -54,6 +63,15 @@ class StudioDataset:
     result: Any
 
     def to_dict(self):
+        """Build the Mission Studio data dictionary from the recorded result.
+
+        Outputs:
+            Dictionary with schema ``STUDIO_DATA_SCHEMA``, sample anomalies, optional
+            elapsed time, phases, one track per chaser, target, notes, outcome label,
+            model scope text and metric semantics. Unavailable values are None.
+            Raises ValueError when there is no recorded state sample or the anomaly
+            samples are not strictly increasing.
+        """
         samples = MissionSamples(self.result)
         count = len(samples.q)
         if count < 1 or not samples.ids:

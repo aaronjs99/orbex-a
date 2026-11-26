@@ -99,6 +99,16 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     ) as archive:
 
         def progress(event):
+            """Commit one runner progress event as the live projection.
+
+            Writes committed-projection.json, flushes the proof archive and
+            queues a "ready" message for a start event or "committed"
+            otherwise. When run_event is cleared it queues "paused", blocks
+            until it is set, then queues "running".
+
+            Raises:
+                ValueError: the event has neither a projection nor a result.
+            """
             projection = event.get("projection")
             if projection is None and event.get("result") is not None:
                 projection = StudioDataset(event["result"]).to_dict()
@@ -126,6 +136,15 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
                 messages.put({"kind": "running"})
 
         def checkpoint(update, runner, outcome):
+            """Flush the proof archive and record its progress after an update.
+
+            Clears the executor journal and runtime events and writes
+            archive-progress.json.
+
+            Raises:
+                ValueError: the archive hold count differs from the recorder hold
+                    records.
+            """
             archive.flush()
             if archive.holds != len(runner.recorder.hold_records):
                 raise ValueError(
@@ -193,6 +212,10 @@ def _execute_nonlinear_job(settings, parameters, directory, messages, run_event)
     store = CompleteMissionStore(directory / "completion")
 
     def stage_sink(stage, result):
+        """Record a completion stage result and announce it.
+
+        Stores the result in the CompleteMissionStore and queues a "stage" message.
+        """
         store.record(stage, result)
         messages.put({"kind": "stage", "message": "Physical completion: " + stage})
 

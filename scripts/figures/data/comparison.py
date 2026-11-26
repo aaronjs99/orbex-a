@@ -30,11 +30,13 @@ _COLORS = ("#0072B2", "#56B4E9", "#D55E00", "#D99B00")
 
 
 def _read(path):
+    """Return the parsed JSON content of the UTF-8 file at ``path``."""
     with Path(path).open(encoding="utf-8") as stream:
         return json.load(stream)
 
 
 def _sha(path):
+    """Return the SHA-256 hex digest of the file at ``path``, read in 1 MiB blocks."""
     result = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -43,6 +45,12 @@ def _sha(path):
 
 
 def _inside(directory, relative):
+    """Return the resolved path of an existing file under ``directory``.
+
+    Outputs:
+        Raises ValueError if ``relative`` resolves outside ``directory`` or is
+        not a file.
+    """
     path = (directory / relative).resolve()
     if not path.is_relative_to(directory) or not path.is_file():
         raise ValueError(
@@ -53,6 +61,7 @@ def _inside(directory, relative):
 
 
 def _finite(value):
+    """Return ``value`` as a float, or None if bool, non-numeric or not finite."""
     if isinstance(value, bool):
         return None
     try:
@@ -63,6 +72,7 @@ def _finite(value):
 
 
 def _sum_values(values):
+    """Return the sum of ``values``, or None if empty or any entry is not finite."""
     values = list(values)
     numbers = [_finite(value) for value in values]
     return (
@@ -159,6 +169,16 @@ class MatchedNonlinearComparison:
     """
 
     def __init__(self, arm_directories, output_dir, *, dpi=180):
+        """Resolve the arm directories and store the output directory and dpi.
+
+        Inputs:
+            arm_directories: retained arm directories, each supplied once.
+            output_dir: directory that receives the verification report and plots.
+            dpi: integer figure resolution, at least 50.
+
+        Outputs:
+            Raises ValueError for no or duplicate directories, or an invalid dpi.
+        """
         self.directories = tuple(Path(value).resolve() for value in arm_directories)
         if not self.directories or len(set(self.directories)) != len(self.directories):
             raise ValueError("Supply each retained arm directory exactly once")
@@ -170,6 +190,17 @@ class MatchedNonlinearComparison:
 
     @staticmethod
     def _load(directory):
+        """Load and cross-check one retained arm directory, returning its record.
+
+        Reads source-manifest.json, the frozen runtime sources and inputs,
+        study-manifest.json, study-metrics.json, run-result.json and, if present,
+        approach/mission_data.json, comparing hashes, declarations and selection.
+
+        Outputs:
+            Dict with the arm key (case, adaptation, bandwidth), parsed manifests,
+            metrics, SHA-256 digests and whether the approach binding was verified.
+            Raises ValueError on any mismatch or missing required file content.
+        """
         source_path, study_path = (
             directory / "source-manifest.json",
             directory / "study-manifest.json",
@@ -348,6 +379,17 @@ class MatchedNonlinearComparison:
         }
 
     def verify(self):
+        """Check every arm against the predeclared grid and build the report.
+
+        Loads each directory, collecting load errors, then compares source hashes,
+        runtime environment, inputs, declarations and resolved study fields across
+        arms, and reports missing or undeclared case/arm selections. Nothing is
+        plotted or written.
+
+        Outputs:
+            Sets ``records``, ``case_ids`` and ``report``; returns the report dict,
+            whose ``matched`` is True only when there is no error.
+        """
         errors, loaded, records = [], [], {}
         for directory in self.directories:
             try:
@@ -415,6 +457,7 @@ class MatchedNonlinearComparison:
                 )
 
                 def case_normalized_options(study):
+                    """Return a copy of the resolved options without ``sensor.seed``."""
                     options = copy.deepcopy(study["resolved_options"])
                     del options["sensor"]["seed"]
                     return options
@@ -517,6 +560,16 @@ class MatchedNonlinearComparison:
         return self.report
 
     def _save(self, figure, filename, label):
+        """Tighten the layout, save the figure into the output directory and clear it.
+
+        Inputs:
+            figure: Matplotlib figure to save.
+            filename: file name under ``output_dir``.
+            label: description recorded with the artifact.
+
+        Outputs:
+            Writes the PNG at ``dpi`` and appends (path, label) to ``artifacts``.
+        """
         try:
             figure.tight_layout(rect=(0, 0.035, 1, 0.92))
             path = self.output_dir / filename
@@ -526,6 +579,14 @@ class MatchedNonlinearComparison:
         self.artifacts.append((path, label))
 
     def render(self):
+        """Verify the grid, write the report and, if matched, write the plots.
+
+        Outputs:
+            Writes nonlinear-comparison-verification.json always. Raises ValueError
+            without plotting if the report is not matched. Otherwise writes four PNG
+            figures and nonlinear-comparison-plots.json, and returns the list of
+            (path, label) artifacts.
+        """
         report = self.verify()
         self.output_dir.mkdir(parents=True, exist_ok=True)
         path = self.output_dir / "nonlinear-comparison-verification.json"
@@ -556,6 +617,12 @@ class MatchedNonlinearComparison:
         return list(self.artifacts)
 
     def _outcomes(self):
+        """Plot the case-by-arm matrix of recorded status for every outcome.
+
+        Reads each record's metrics status and recorded outcome evidence; execution
+        errors and completions without eligible success evidence are hatched or
+        labelled with unknown feasibility. Saves nonlinear_comparison_outcomes.png.
+        """
         figure, axis = artifact_subplots(
             figsize=(12, max(3.5, 1.1 * len(self.case_ids) + 1.8))
         )
@@ -628,6 +695,17 @@ class MatchedNonlinearComparison:
         )
 
     def _bars(self, axis, values, title):
+        """Draw grouped bars per case and arm of one metric on ``axis``.
+
+        Inputs:
+            axis: Matplotlib axes to draw on.
+            values: callable mapping an arm record to a number or None.
+            title: axes title.
+
+        Outputs:
+            Unavailable values are drawn as N/A. Raises ValueError if a value is
+            negative or a record has no metrics status.
+        """
         x, width = np.arange(len(self.case_ids)), 0.19
         any_known = False
         for number, arm in enumerate(ARMS):
@@ -683,7 +761,15 @@ class MatchedNonlinearComparison:
             axis.set_yticks([])
 
     def _metrics(self):
+        """Plot six recorded metrics for every arm and save the metrics figure.
+
+        Reads physical_elapsed_s, translation fuel debit, applied input effort,
+        final tube position radius, native attempts and full-update deadline
+        misses from each record's metrics. Saves nonlinear_comparison_metrics.png.
+        """
+
         def fuel(row):
+            """Return the summed translation fuel debit in kg, or None."""
             return _sum_values(
                 (row["metrics"].get("fuel_bound") or {})
                 .get("translation_fuel_debit_kg", {})
@@ -691,12 +777,14 @@ class MatchedNonlinearComparison:
             )
 
         def effort(row):
+            """Return the summed applied-input squared integral, or None."""
             return _sum_values(
                 value.get("applied_input_squared_integral_per_reference_anomaly")
                 for value in row["metrics"].get("effort", {}).values()
             )
 
         def omega(row):
+            """Return the largest final position-tube radius norm in m, or None."""
             values = [
                 value.get("final_position_radius_m")
                 for value in row["metrics"].get("tubes", {}).values()
@@ -708,6 +796,7 @@ class MatchedNonlinearComparison:
             )
 
         def deadline(row):
+            """Return the full-update deadline miss count, or None if not recorded."""
             metrics = row["metrics"]
             timings = metrics.get("update_wall_timing", [])
             if (
@@ -776,7 +865,18 @@ class MatchedNonlinearComparison:
         )
 
     def _widths(self):
+        """Plot final recorded eccentricity, alpha and beta marginal widths per arm.
+
+        Reads set_width finals from each record's metrics. Saves
+        nonlinear_comparison_set_widths.png.
+        """
+
         def width(row, key):
+            """Return the final width of ``key``, in m^2/kg for alpha and beta.
+
+            Alpha and beta widths are divided by the reference density coefficient of
+            the study's model bounds; None if the value or the model bounds are missing.
+            """
             value = _finite(
                 row["metrics"].get("set_width", {}).get(key, {}).get("final")
             )
@@ -825,6 +925,10 @@ class MatchedNonlinearComparison:
         )
 
     def _success_times(self):
+        """Plot the physical duration of every arm eligible as a full mission success.
+
+        Saves nonlinear_comparison_time_to_success.png.
+        """
         figure, axis = artifact_subplots(figsize=(12, 5))
         figure.suptitle(
             str(self.report["study_id"]) + " — time to full mission success",
@@ -842,6 +946,7 @@ class MatchedNonlinearComparison:
         )
 
         def successful_time(row):
+            """Return physical_elapsed_s in s if success-time eligible, else None."""
             metrics = row["metrics"]
             evidence = recorded_outcome_evidence(metrics)
             return (

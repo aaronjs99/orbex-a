@@ -24,6 +24,10 @@ _ZSTD_MAGIC = b"\x28\xb5\x2f\xfd"
 
 
 def _zstandard():
+    """Import and return the zstandard module.
+
+    Raises ImportError naming the certification extra when it is not installed.
+    """
     try:
         import zstandard
     except ImportError as error:
@@ -43,6 +47,15 @@ class _ClosedZstdReader(io.RawIOBase):
     """
 
     def __init__(self, path):
+        """Open the archive and validate its Zstd frame header.
+
+        Inputs:
+            path: closed archive file.
+        Outputs:
+            Raises ValueError if the file does not start with a standard Zstd frame, the
+            header is invalid, or the frame lacks a checksum, declares a window above
+            ``ZSTD_WINDOW_BYTES`` or uses a dictionary. The file is closed on failure.
+        """
         super().__init__()
         self._raw = Path(path).open("rb")
         self._pending, self._offset, self._finished = b"", 0, False
@@ -77,9 +90,15 @@ class _ClosedZstdReader(io.RawIOBase):
             raise
 
     def readable(self):
+        """Report that the stream supports reading."""
         return True
 
     def _advance(self):
+        """Decompress the next compressed block into the pending buffer.
+
+        Raises ValueError when the frame is incomplete, corrupt or fails its checksum,
+        leaves unconsumed input, or is followed by trailing bytes or another frame.
+        """
         block, self._header = self._header, b""
         if not block:
             block = self._raw.read(128)
@@ -106,6 +125,10 @@ class _ClosedZstdReader(io.RawIOBase):
             self._finished = True
 
     def readinto(self, target):
+        """Fill target with decompressed bytes and return the count, 0 at the frame end.
+
+        Raises ValueError if the reader is closed or decompression fails.
+        """
         if self.closed:
             raise ValueError("Read from closed nonlinear Zstd archive")
         if not len(target):
@@ -120,6 +143,7 @@ class _ClosedZstdReader(io.RawIOBase):
         return count
 
     def close(self):
+        """Close the file, drop the decoder and buffered data, and close the stream."""
         if not self.closed:
             self._raw.close()
             self._pending = b""
@@ -128,6 +152,11 @@ class _ClosedZstdReader(io.RawIOBase):
 
 
 def _open_archive_binary(path):
+    """Open a closed archive for binary reading, chosen by its leading magic bytes.
+
+    Returns a buffered verified Zstd reader or a gzip reader. Raises ValueError for
+    any other content.
+    """
     # Magic, rather than the name, preserves reads of renamed legacy gzip files.
     with Path(path).open("rb") as source:
         magic = source.read(4)
@@ -139,7 +168,10 @@ def _open_archive_binary(path):
 
 
 class _Encoder(json.JSONEncoder):
+    """JSON encoder for arrays, NumPy scalars, paths, fractions and dataclasses."""
+
     def default(self, value):
+        """Convert a non-JSON value to a serializable one, else defer to the base."""
         if isinstance(value, np.ndarray):
             return value.tolist()
         if isinstance(value, np.generic):
@@ -174,6 +206,7 @@ def semantic_sha256(value, *, fast=False):
 
 
 def file_sha256(path):
+    """Return the SHA-256 hex digest of the file at path, read in 1 MiB blocks."""
     result = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -210,6 +243,17 @@ class NonlinearProofArchive:
     """
 
     def __init__(self, path, *, maximum_entry_bytes=MAXIMUM_ENTRY_BYTES):
+        """Create a new archive file for writing; an existing file is not overwritten.
+
+        Inputs:
+            path: archive path; a ``.zst`` suffix selects a checksummed Zstd frame,
+                any other suffix gzip.
+            maximum_entry_bytes: largest permitted encoded entry, from 1 up to
+                ``MAXIMUM_ENTRY_BYTES``.
+        Outputs:
+            Creates path exclusively. Raises ValueError for an invalid byte budget,
+            FileExistsError if path exists, ImportError if Zstd is needed but missing.
+        """
         self.path = Path(path).resolve()
         if (
             isinstance(maximum_entry_bytes, bool)
@@ -264,12 +308,27 @@ class NonlinearProofArchive:
         self._source = None
 
     def __enter__(self):
+        """Return the archive for use as a context manager."""
         return self
 
     def __exit__(self, *_args):
+        """Close the archive on leaving the context."""
         self.close()
 
     def append(self, payload):
+        """Write one payload as a numbered, hashed JSONL entry and flush it to disk.
+
+        Inputs:
+            payload: producer dictionary; its kind comes from ``archive_event_kind``,
+                else ``kind``, else "APPLIED_HOLD_COMPLETE" if it has a ``record``,
+                else "WITNESS".
+        Outputs:
+            Returns the payload's semantic SHA-256 and updates the entry, kind, hold and
+            rolling-identity counters. Raises ValueError if the archive is closed, the
+            payload is not a dictionary, a completed-hold payload lacks a dictionary
+            ``record``, or the encoded entry exceeds the byte budget (checked before
+            anything is written).
+        """
         if self.closed or not isinstance(payload, dict):
             raise ValueError(
                 "Proof archive needs an open writer and a complete producer dictionary"
@@ -316,6 +375,7 @@ class NonlinearProofArchive:
         return identity
 
     def flush(self):
+        """Flush buffered entries and fsync the archive file; no-op once closed."""
         if not self.closed:
             # Text flush calls the Zstd writer's FLUSH_BLOCK (not FLUSH_FRAME),
             # retaining prior history while making this event decodable.
@@ -327,6 +387,14 @@ class NonlinearProofArchive:
                 os.fsync(self.stream.buffer.fileobj.fileno())
 
     def close(self):
+        """Finish the archive, write its manifest, and return a NonlinearHoldArchive.
+
+        Outputs:
+            Closes and fsyncs the file, writes ``<archive name>.manifest.json`` with the
+            raw SHA-256, entry and hold counts, event kinds and rolling identity, and
+            returns a hold view bound to those values. Repeated calls return the same
+            view.
+        """
         if self.closed:
             return self._source
         self.stream.close()
@@ -383,6 +451,20 @@ class NonlinearHoldArchive:
         expected_payload_ids_sha256=None,
         maximum_entry_bytes=MAXIMUM_ENTRY_BYTES,
     ):
+        """Bind a closed archive file to its expected digest and counts.
+
+        Inputs:
+            path: closed archive file.
+            expected_sha256: 64-character SHA-256 of the raw file.
+            expected_holds: number of completed holds.
+            expected_entries, expected_payload_ids_sha256: optional entry count and
+                rolling payload-identity digest checked during iteration.
+            maximum_entry_bytes: largest permitted line length.
+        Outputs:
+            Sets ``identity`` from these values. Raises ValueError when the digest has
+            the wrong length, a count or budget is invalid, or the file's SHA-256
+            differs.
+        """
         self.path, self.raw_sha256 = Path(path).resolve(), str(expected_sha256)
         self.count, self.entries = int(expected_holds), expected_entries
         self.payload_ids_sha256 = expected_payload_ids_sha256
@@ -407,9 +489,11 @@ class NonlinearHoldArchive:
         )
 
     def __len__(self):
+        """Return the expected number of completed holds."""
         return self.count
 
     def as_dict(self):
+        """Return the archive path, digest, counts, identity and method name."""
         return {
             "path": str(self.path),
             "raw_sha256": self.raw_sha256,
@@ -420,6 +504,15 @@ class NonlinearHoldArchive:
         }
 
     def __iter__(self):
+        """Re-read and verify the archive, yielding each completed hold record in order.
+
+        Raises ValueError if the file hash differs before or after reading, a line is
+        truncated or oversized, an entry's schema, sequence or payload hash is wrong, a
+        staged witness is missing, mismatched or out of order, an assumption violation
+        is present, or the hold, entry or rolling-identity totals differ from those
+        expected. Records are yielded as they pass, so errors can occur after
+        some have been yielded.
+        """
         if file_sha256(self.path) != self.raw_sha256:
             raise ValueError("Nonlinear archive changed before accounting")
         entries = holds = 0

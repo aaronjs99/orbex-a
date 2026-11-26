@@ -42,9 +42,17 @@ class MissionStudio:
     """
 
     def __init__(self, output_dir: Path):
+        """Store the resolved export root."""
         self.output_dir = Path(output_dir).resolve()
 
     def _link(self, value):
+        """Return a local relative media link after checking it names an existing file.
+
+        Outputs:
+            Returns None for None. Raises ValueError for an absolute, drive or
+            backslash path, or one that does not resolve to a file inside
+            ``output_dir`` relative to ``output_dir/studio``.
+        """
         if value is None:
             return None
         if ":" in value or "\\" in value or value.startswith("/"):
@@ -63,6 +71,25 @@ class MissionStudio:
         theory_documents: Mapping[str, Path] | None = None,
         live: bool = False,
     ) -> Path:
+        """Write the Studio workspace for the entries and return its index path.
+
+        Projects each result, checks that every raw record equals its result and
+        that any lifecycle record is bound to that approach, then copies the
+        packaged web assets into ``output_dir/studio``.
+
+        Inputs:
+            entries: saved results with their links; keys are unique.
+            theory_documents: optional title to Markdown file mapping, rendered to
+                HTML pages (requires the optional mistune dependency).
+            live: whether the catalog is marked live; allows an empty entries list.
+
+        Outputs:
+            Writes mission-<key>.json per entry, theory-<n>.html, catalog.json and
+            the assets, then adds a cache-busting version to local script and style
+            references. Raises TypeError if ``live`` is not a bool, ValueError for
+            an empty or duplicate-key catalog, an invalid key, an invalid link, a
+            raw record or lifecycle mismatch, and ImportError if mistune is missing.
+        """
         if type(live) is not bool:
             raise TypeError("live must be a boolean")
         if (not entries and not live) or len({entry.key for entry in entries}) != len(
@@ -201,7 +228,10 @@ class MissionStudio:
             heading_ids = {}
 
             class DocumentRenderer(mistune.HTMLRenderer):
+                """Markdown renderer with unique heading anchors and link checks."""
+
                 def heading(self, text, level, heading_ids=heading_ids, **attrs):
+                    """Return an HTML heading with a unique slug id."""
                     plain = html.unescape(re.sub(r"<[^>]+>", "", text)).lower()
                     slug = (
                         re.sub(r"\s+", "-", re.sub(r"[^\w\s-]", "", plain)).strip("-")
@@ -213,6 +243,12 @@ class MissionStudio:
                     return f'<h{level} id="{html.escape(anchor, quote=True)}">{text}</h{level}>\n'
 
                 def link(self, text, url, title=None, source=source):
+                    """Return a link, rewriting bundled Markdown and missing targets.
+
+                    Links to ``.md`` files become the bundle's theory page, or a span if
+                    not included. Other local links that are not existing files in
+                    the bundle become a span.
+                    """
                     relative, separator, fragment = url.partition("#")
                     if ":" not in relative and relative.endswith(".md"):
                         target = (Path(source).parent / relative).resolve()

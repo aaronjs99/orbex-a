@@ -19,6 +19,17 @@ STUDY_SCHEMA = "orbexa.nonlinear-study.v1"
 
 @dataclass(frozen=True)
 class StudyArmRequest:
+    """Validated, immutable declaration of one study arm.
+
+    Attributes:
+        config, spacecraft, study: input files, resolved to absolute paths.
+        case: selected case identifier.
+        adaptation: "adaptive" or "frozen".
+        bandwidth: "dynamic" or "fixed".
+        output_dir: resolved output directory.
+        steps: optional positive cap on updates.
+    """
+
     config: Path
     spacecraft: Path
     study: Path
@@ -29,6 +40,13 @@ class StudyArmRequest:
     steps: int | None = None
 
     def __post_init__(self):
+        """Resolve paths and validate the arm declaration.
+
+        Raises ValueError when an input file is missing, the case is empty, the
+        adaptation or bandwidth is not one of its allowed values, or steps is not a
+        positive integer (booleans refused). The output directory must pass
+        ``ProjectLayout.require_output``, whose own error propagates.
+        """
         for name in ("config", "spacecraft", "study"):
             path = Path(getattr(self, name)).expanduser().resolve()
             if not path.is_file():

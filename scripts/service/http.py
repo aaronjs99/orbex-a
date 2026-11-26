@@ -20,13 +20,28 @@ from orbexa.service.session import LiveSimulationService
 
 
 class _LiveHandler(BaseHTTPRequestHandler):
+    """Request handler for the loopback live API.
+
+    Serves GET /health and /state and POST /run, /pause and /reset on behalf of
+    the LiveSimulationService stored on the server.
+    """
+
     server_version = "ORBEXA-Loopback/1"
     protocol_version = "HTTP/1.1"
 
     def log_message(self, *_args):
-        pass
+        """Discard request log lines."""
 
     def _origin(self):
+        """Check the Host and Origin headers of the current request.
+
+        Outputs:
+            The Origin header value, or None when the request carries none.
+
+        Raises:
+            PermissionError: Host is not 127.0.0.1 or localhost on the server port, or
+                Origin is not in the server's allowed origins.
+        """
         origin = self.headers.get("Origin")
         host = self.headers.get("Host", "")
         if host not in (
@@ -39,6 +54,18 @@ class _LiveHandler(BaseHTTPRequestHandler):
         return origin
 
     def _reply(self, status, payload=None, *, preflight=False):
+        """Send a JSON response with the given status.
+
+        Inputs:
+            status: HTTP status code; 204 sends an empty body.
+            payload: object serialized with allow_nan=False.
+            preflight: when True and the Origin is allowed, add the CORS preflight
+                headers.
+
+        Outputs:
+            Writes status, headers and body to the client; the Access-Control-Allow-
+            Origin header is added only for an allowed Origin.
+        """
         raw = (
             b""
             if status == 204
@@ -67,6 +94,19 @@ class _LiveHandler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
 
     def _body(self):
+        """Read and parse the JSON object body of a POST request.
+
+        Applies a 5 s socket timeout and reads exactly Content-Length bytes.
+
+        Outputs:
+            The decoded dict.
+
+        Raises:
+            ValueError: the content type is not application/json, Content-Length is
+                invalid or outside 1..16384, Transfer-Encoding is present, the JSON
+                is malformed, repeats a key, holds a non-finite constant or is not an
+                object.
+        """
         if (
             self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
             != "application/json"
@@ -81,6 +121,11 @@ class _LiveHandler(BaseHTTPRequestHandler):
         self.connection.settimeout(5)
 
         def pairs(rows):
+            """Build a dict from decoded JSON pairs.
+
+            Raises:
+                ValueError: a key occurs more than once.
+            """
             result = {}
             for key, value in rows:
                 if key in result:
@@ -89,6 +134,11 @@ class _LiveHandler(BaseHTTPRequestHandler):
             return result
 
         def invalid(_value):
+            """Reject a non-finite JSON constant.
+
+            Raises:
+                ValueError: always.
+            """
             raise ValueError("JSON numbers must be finite")
 
         try:
@@ -102,6 +152,12 @@ class _LiveHandler(BaseHTTPRequestHandler):
         return value
 
     def do_OPTIONS(self):
+        """Answer a browser CORS preflight request.
+
+        Replies 204 for /run, /pause, /reset, /state and /health when the Origin is
+        allowed and only the Content-Type header and GET or POST are requested; 404
+        for another path; 403 on PermissionError.
+        """
         try:
             self._origin()
             if self.headers.get("Origin") is None:
@@ -130,6 +186,12 @@ class _LiveHandler(BaseHTTPRequestHandler):
             self._reply(403, {"error": str(error)})
 
     def do_GET(self):
+        """Serve GET /health and GET /state.
+
+        /state accepts only one `after` (revision) and one `timeout` (s) query value
+        and returns the service state, long-polling when `after` is given. Replies
+        403 on PermissionError, 400 on invalid input and 404 for another path.
+        """
         try:
             self._origin()
             url = urlsplit(self.path)
@@ -171,6 +233,14 @@ class _LiveHandler(BaseHTTPRequestHandler):
             pass
 
     def do_POST(self):
+        """Dispatch POST /run, /pause and /reset.
+
+        The body must be an envelope with exactly protocol_version, session_id and
+        payload, matching LIVE_PROTOCOL_VERSION and the current session. Replies 202
+        for /run, 200 for /pause and /reset, 404 for another path, 403 on
+        PermissionError, 400 on ValueError, TypeError or OSError, and 409 when the
+        envelope does not match the session or the service raises RuntimeError.
+        """
         try:
             self._origin()
             envelope = self._body()

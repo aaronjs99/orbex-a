@@ -39,6 +39,19 @@ class GekkoDynamicTube:
     """Optional six-state, three-acceleration coupled MPC formulation."""
 
     def __init__(self, problem, config):
+        """Validate the dynamic-tube specification and build the GEKKO model.
+
+        Reads problem.extra_params["dynamic_tube"], the optional prospective contact
+        terminal and the terminal-suffix policy, then calls _build.
+        Inputs:
+            problem: MPCProblem with the dynamic_tube mapping in extra_params.
+            config: Solver options (remote, max_memory, composite_geometry_mode,
+                terminal_solve_reserve, ...).
+        Outputs:
+            Raises ValueError for an invalid terminal policy, reserve, planning
+            fraction, suffix index or region, or contact evidence that does not match
+            the problem clock grid. The GEKKO model is cleaned up if _build fails.
+        """
         self.problem = problem
         self.config = config
         self.max_memory = gekko_memory_exponent(config.get("max_memory", 4))
@@ -150,6 +163,11 @@ class GekkoDynamicTube:
             raise
 
     def _array(self, key, shape, nonnegative=False):
+        """Return spec[key] as a finite float array of the given shape.
+
+        Raises ValueError if the shape differs, an entry is not finite, or nonnegative
+        is set and an entry is negative.
+        """
         value = np.asarray(self.spec[key], dtype=float)
         if value.shape != shape or not np.all(np.isfinite(value)):
             raise ValueError(f"dynamic_tube.{key} must be finite with shape {shape}")
@@ -158,18 +176,24 @@ class GekkoDynamicTube:
         return value
 
     def _eq(self, left, right=0.0):
+        """Constrain left - right == 0 and record the residual with its context."""
         residual = self.model.Intermediate(left - right)
         self.model.Equation(residual == 0)
         self.residuals.append((residual, True))
         self.residual_descriptions.append(self.constraint_context)
 
     def _ge(self, left, right=0.0):
+        """Constrain left - right >= 0 and record the residual with its context."""
         residual = self.model.Intermediate(left - right)
         self.model.Equation(residual >= 0)
         self.residuals.append((residual, False))
         self.residual_descriptions.append(self.constraint_context)
 
     def _abs(self, value, seed=0.0):
+        """Return a variable bounding |value| from above through two inequalities.
+
+        The variable starts at abs(seed) and enters the objective with weight 1e-6.
+        """
         bound = self.model.Var(value=abs(float(seed)), lb=0.0)
         self._ge(bound, value)
         self._ge(bound, -value)
@@ -178,6 +202,7 @@ class GekkoDynamicTube:
         return bound
 
     def _norm(self, values):
+        """Return sqrt(sum(values**2) + 1e-20) as a GEKKO expression."""
         # The tiny positive term makes the derivative finite at a zero tube.
         return self.model.sqrt(sum(value * value for value in values) + 1.0e-20)
 
@@ -193,18 +218,31 @@ class GekkoDynamicTube:
 
     @staticmethod
     def _dot(matrix, vector):
+        """Return matrix @ vector as expressions, skipping zero matrix entries."""
         return [
             sum(float(a) * b for a, b in zip(row, vector) if a != 0) for row in matrix
         ]
 
     @staticmethod
     def _bound(bound, key):
+        """Return bound[key] ("lower" or "upper") as a float.
+
+        A missing or None entry gives -inf for "lower" and +inf for "upper".
+        """
         value = bound.get(key)
         if value is None:
             return -np.inf if key == "lower" else np.inf
         return float(value)
 
     def _coefficients(self, q):
+        """Return the six-state dynamics matrix A and disturbance vector d at q.
+
+        Inputs:
+            q: Independent variable, true anomaly (rad).
+        Outputs:
+            (A, d) with shapes (6, 6) and (6,). Raises ValueError if either is not
+            finite or has the wrong shape.
+        """
         p, extra = self.problem, self.problem.extra_params
         tp = extra.get("time_periapsis", 0.0)
         a_func = extra.get("dynamics_callable")
@@ -231,10 +269,20 @@ class GekkoDynamicTube:
         return a, d
 
     def _rk4(self, state, control, coefficients):
+        """Return the state expressions after one RK4 step of length anom_step.
+
+        Inputs:
+            state: Six state expressions at the start of the interval.
+            control: Three input expressions held over the interval.
+            coefficients: (A, d) pairs at the start, midpoint and end of the interval.
+        Outputs:
+            Six expressions for the state at the end of the interval.
+        """
         h = self.problem.anom_step
         b = np.asarray(self.problem.input_matrix, dtype=float)
 
         def rhs(x, pair):
+            """Return intermediates for the derivative A x + B u + d of state x."""
             a, d = pair
             ax, bu = self._dot(a, x), self._dot(b, control)
             return [
@@ -250,6 +298,11 @@ class GekkoDynamicTube:
         ]
 
     def _guess(self, key, shape, fallback):
+        """Return extra_params[key] as a float array of the given shape.
+
+        fallback is returned when the key is absent; a transposed array is accepted.
+        Raises ValueError if the shape is wrong or an entry is not finite.
+        """
         value = self.problem.extra_params.get(key)
         if value is None:
             return fallback
@@ -266,6 +319,7 @@ class GekkoDynamicTube:
         bu = np.asarray(self.problem.input_matrix) @ control
 
         def rhs(x, pair):
+            """Return the numeric derivative A x + B u + d of state x."""
             return pair[0] @ x + bu + pair[1]
 
         k1 = rhs(state, coefficients[0])
@@ -275,6 +329,17 @@ class GekkoDynamicTube:
         return state + h * (k1 + 2 * k2 + 2 * k3 + k4) / 6
 
     def _build(self):
+        """Formulate the nonlinear coupled state and tube problem in the GEKKO model.
+
+        Validates the problem and tube data, builds the initial iterate, creates the
+        state, input, tube and bandwidth variables, the RK4 nominal dynamics, the
+        tube and input-reserve equations, the constraints from _constraints, the
+        objective terms and the IPOPT options.
+        Outputs:
+            Raises ValueError if the problem is not continuous six-state/three-input
+            acceleration dynamics in true anomaly, or any tube datum, bound, gain or
+            coefficient cover is invalid or inconsistent.
+        """
         p, m, spec = self.problem, self.model, self.spec
         if p.num_states != 6 or p.num_inputs != 3 or p.dynamics_type != "continuous":
             raise ValueError(
@@ -807,6 +872,19 @@ class GekkoDynamicTube:
         m.options.SCALING = self.config.get("scaling", 1)
 
     def _constraints(self, *, contact_seeds=None):
+        """Add the node-wise geometry, bound and terminal constraints to the model.
+
+        Covers state bounds enlarged by the tube envelope, the target exclusion
+        (composite geometry, rendezvous sphere or docking cylinder), pairwise
+        separation, affine constraints, and, when enabled, the terminal tolerance,
+        terminal region and prospective contact constraints.
+        Inputs:
+            contact_seeds: (state, phi, omega) initial iterates; required for the
+                reference-corridor geometry mode and the contact terminal.
+        Outputs:
+            Raises ValueError for invalid target data, rotations or pairwise data, a
+            missing or invalid initial iterate, or missing terminal tolerances.
+        """
         p, m, spec = self.problem, self.model, self.spec
         lam = np.asarray(spec["lambda_gain"], dtype=float)
         target = p.extra_params.get("target_params") or {}
@@ -1175,6 +1253,15 @@ class GekkoDynamicTube:
 
     @staticmethod
     def _values(rows, *, prescribed_first=None):
+        """Return solved variable values as an array with one row per node or interval.
+
+        Inputs:
+            rows: Lists of GEKKO variables.
+            prescribed_first: Optional values used for the first row instead of the
+                solver export.
+        Outputs:
+            Raises ValueError if prescribed_first has the wrong length or is not finite.
+        """
         # Initial nodes are fixed Param inputs. APMonitor's printed parameter
         # report can lose digits at large anomaly velocities; it is not a new
         # optimizer choice. Read those inputs from their retained declaration.
@@ -1373,6 +1460,16 @@ class GekkoDynamicTube:
         }
 
     def _solve_once(self):
+        """Solve the model once and verify the result against its recorded residuals.
+
+        Reads back states, inputs and tube values, checks equality and inequality
+        residuals, geometry margins, terminal readbacks, tube bounds and the contact
+        terminal. Success needs finite values, a violation within residual_tolerance
+        (default 1e-8), GEKKO APPSTATUS 1 and, if configured, an admissible contact.
+        Outputs:
+            SolverResult; an exception during the solve gives success=False with the
+            error in the message.
+        """
         started = time.time()
         native_log = Path(self.model.path) / NATIVE_IPOPT_LOG
         log_unavailable = (
@@ -1610,6 +1707,7 @@ class GekkoDynamicTube:
         attempts = []
 
         def record(result, initialization):
+            """Append a summary of result, labelled by initialization, to attempts."""
             attempts.append(
                 {
                     "initialization": initialization,
@@ -1710,4 +1808,5 @@ class GekkoDynamicTube:
         return result
 
     def cleanup(self):
+        """Release the GEKKO model."""
         self.model.cleanup()
